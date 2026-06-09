@@ -1,0 +1,16 @@
+fastapi>=0.110.0
+uvicorn[standard]
+sqlalchemy[asyncio]>=2.0
+asyncpg
+alembic
+pydantic>=2.0
+pydantic-settings>=2.0
+python-multipart
+boto3
+PyMuPDF
+pdf2image
+pytesseract
+Pillow
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv

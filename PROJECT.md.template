@@ -1,0 +1,330 @@
+# PROJECT.md — [Project Name]
+
+> **How to use this file**
+> This is the single source of project-specific context for every agent
+> session. Fill in every section before starting work. Sections marked
+> `[REQUIRED]` must be completed before any `spec-generator` run.
+> Sections marked `[RECOMMENDED]` should be completed but can be deferred
+> if genuinely unknown.
+>
+> Delete all `> [guidance]` blocks once the section is filled in.
+> Keep this file up to date as the project evolves — it is read at the
+> start of every session and referenced by `architect-reviewer` and
+> `dev-reviewer` as the ground truth for the project's architecture.
+
+---
+
+## [REQUIRED] 1. Project Overview
+
+**Name**: <!-- e.g. Payment Processing Platform -->
+**Purpose**: <!-- One paragraph: what does this system do, who uses it, what problem does it solve? -->
+**Stage**: <!-- Greenfield / Brownfield / Migration -->
+**Team size**: <!-- Approximate number of engineers working on this -->
+
+---
+
+## [REQUIRED] 2. Tech Stack
+
+> List the exact versions. The agent uses these to avoid generating code for
+> incompatible APIs. Be specific — "Node.js" is less useful than "Node.js 22 LTS".
+
+| Layer | Technology | Version |
+|---|---|---|
+| Language(s) | | |
+| Runtime | | |
+| Web framework | | |
+| ORM / query builder | | |
+| Primary database | | |
+| Cache | | |
+| Message broker | | |
+| Test framework | | |
+| Lint / format | | |
+| Container runtime | | |
+| Infrastructure-as-code | | |
+| CI/CD | | |
+| Observability (metrics) | | |
+| Observability (tracing) | | |
+| Observability (logging) | | |
+
+---
+
+## [REQUIRED] 3. Repository Structure
+
+> Describe the layout well enough that the agent can infer where new files
+> should go without asking. Include monorepo package boundaries if applicable.
+
+```
+<project-root>/
+├── <describe top-level directories and their purpose>
+│
+│   Example:
+│   src/
+│   ├── services/         ← one folder per microservice
+│   │   ├── orders/
+│   │   │   ├── domain/   ← entities, value objects, aggregates
+│   │   │   ├── app/      ← use cases / application services
+│   │   │   ├── infra/    ← DB repos, message publishers, HTTP clients
+│   │   │   └── api/      ← controllers, route definitions
+│   │   └── payments/
+│   ├── shared/           ← shared types, utilities, base classes
+│   └── config/           ← environment config, DI wiring
+│   tests/
+│   ├── unit/
+│   ├── integration/
+│   └── contract/
+│   openspec/
+│   ├── project.md        ← OpenSpec project context (separate from this file)
+│   ├── specs/
+│   └── changes/
+│   docs/
+│   └── adr/              ← Architecture Decision Records
+```
+
+**Monorepo**: Yes / No
+**Package manager**: <!-- npm / pnpm / yarn / bun -->
+**Workspace tool**: <!-- turborepo / nx / none -->
+
+---
+
+## [REQUIRED] 4. Service Topology
+
+> List every service. For each, state what it owns and how it communicates.
+> This is what `architect-reviewer` uses to check domain boundary integrity.
+
+| Service | Responsibility | Data Store | Publishes Events | Consumes Events | Sync Callers |
+|---|---|---|---|---|---|
+| `<service-name>` | | | | | |
+
+**Communication style**: <!-- Async-first / Sync-first / Mixed -->
+**Service discovery**: <!-- Kubernetes DNS / Consul / hardcoded URLs / API gateway -->
+
+---
+
+## [REQUIRED] 5. Architecture Decision Records
+
+> List all accepted ADRs. The agent reads this table to check conformance
+> without having to scan the `docs/adr/` directory first.
+
+
+| ADR | Title | Status | Summary |
+|---|---|---|---|
+| ADR-001 | | Accepted | |
+| ADR-002 | | Accepted | |
+| ADR-003 | | Superseded by ADR-007 | |
+
+**ADR location**: `docs/adr/` <!-- or wherever your ADRs live -->
+**ADR format**: <!-- MADR / custom / RFC style -->
+
+> If there are many ADRs you can create a seperate index and refer that file here
+
+> The following pattern categories require an existing ADR before
+> `spec-generator` may apply them (per AGENTS.md Section 4.3):
+> CQRS, Saga Orchestration, Bulkheads, new caching infrastructure.
+> List the relevant ADRs for each below if they exist:
+
+| Pattern | Governing ADR |
+|---|---|
+| CQRS | ADR-NNN or "No ADR — not permitted" |
+| Saga Orchestration | |
+| Bulkheads | |
+| Caching infrastructure | |
+
+---
+
+## [REQUIRED] 6. Infrastructure Available
+
+> The agent checks this before applying microservice patterns. If something
+> is listed here, it can be used. If it is absent, the agent must flag it
+> as a missing prerequisite rather than designing for it.
+
+### Message Broker
+- **Type**: <!-- Kafka / RabbitMQ / SQS / Azure Service Bus / none -->
+- **Topics/queues naming convention**: <!-- e.g. `<service>.<entity>.<event>` in snake_case -->
+- **Delivery guarantee**: <!-- at-least-once / exactly-once / best-effort -->
+- **Outbox relay**: <!-- exists (library/service name) / needs to be built / not applicable -->
+
+### Cache
+- **Type**: <!-- Redis 7 / Memcached / none -->
+- **Cluster or standalone**: <!-- cluster / standalone -->
+- **Client library**: <!-- ioredis / node-redis / etc. -->
+- **Key namespace convention**: <!-- e.g. `<service>:<entity>:<id>` -->
+- **Default TTL policy**: <!-- 5m / 1h / no default — set per use case -->
+
+### Database
+- **Type**: <!-- PostgreSQL 16 / MySQL / MongoDB / DynamoDB / etc. -->
+- **Connection pooling**: <!-- PgBouncer / built-in pool / none -->
+- **Migration tool**: <!-- Flyway / Liquibase / Prisma migrate / custom -->
+- **Schema-per-service**: <!-- Yes / No / Mixed -->
+
+### Secret Management
+- **Tool**: <!-- AWS Secrets Manager / HashiCorp Vault / .env files / etc. -->
+- **Convention**: <!-- how secrets are named and injected -->
+
+### Feature Flags
+- **Tool**: <!-- LaunchDarkly / Unleash / none -->
+- **How to gate new features**: <!-- flag name convention, default state -->
+
+---
+
+## [REQUIRED] 7. Resilience Defaults
+
+> These values are used by `spec-generator` when writing resilience design
+> sections, and by `architect-reviewer` when checking that configured values
+> are consistent across services. Override per-service in that service's
+> section if needed.
+
+| Pattern | Default Configuration |
+|---|---|
+| HTTP connect timeout | <!-- e.g. 2s --> |
+| HTTP read timeout | <!-- e.g. 10s --> |
+| DB query timeout | <!-- e.g. 5s --> |
+| Retry count | <!-- e.g. 3 --> |
+| Retry backoff | <!-- e.g. exponential, base 200ms, max 5s, jitter --> |
+| Non-retryable HTTP status codes | <!-- e.g. 400, 401, 403, 404, 422 --> |
+| Circuit breaker threshold | <!-- e.g. 10 errors in 30s --> |
+| Circuit breaker recovery window | <!-- e.g. 60s half-open probe --> |
+| Circuit breaker fallback | <!-- e.g. return cached last-known-good / 503 --> |
+| Idempotency TTL | <!-- e.g. 24h --> |
+
+---
+
+## [REQUIRED] 8. Observability Standards
+
+> Every spec's Observability section must conform to these standards.
+
+**Metrics system**: <!-- Prometheus / Datadog / CloudWatch / etc. -->
+**Tracing**: <!-- OpenTelemetry + Jaeger / Datadog APM / none -->
+**Log format**: <!-- JSON structured / plaintext -->
+**Correlation ID header**: <!-- X-Request-ID / X-Correlation-ID / traceparent -->
+**Log levels used**: <!-- error / warn / info / debug — when to use each -->
+
+Required signals per pattern (confirm these are emitted for each applied pattern):
+
+| Pattern | Required Metric / Log / Trace |
+|---|---|
+| Retries | `retry_count` counter, labelled by operation and outcome |
+| Circuit Breaker | `circuit_state` gauge (0=closed, 1=open, 0.5=half-open) |
+| Cache | `cache_hit_total` and `cache_miss_total` counters, labelled by entity |
+| Outbox | `outbox_pending_count` gauge, `outbox_relay_lag_seconds` histogram |
+| Saga | Log entry per step with: saga_id, step_name, status, duration |
+
+---
+
+## [RECOMMENDED] 9. Coding Conventions
+
+> Used by `dev-reviewer` to check codebase consistency.
+
+### Naming
+- **Files**: <!-- kebab-case / PascalCase / snake_case -->
+- **Classes**: <!-- PascalCase -->
+- **Functions/methods**: <!-- camelCase / snake_case -->
+- **DB tables**: <!-- snake_case plural e.g. `order_items` -->
+- **Events**: <!-- PascalCase e.g. `OrderPlaced` / snake_case e.g. `order.placed` -->
+- **Environment variables**: <!-- UPPER_SNAKE_CASE -->
+
+### Error handling
+- **Error base class**: <!-- e.g. `AppError` extends `Error` with `code` and `statusCode` -->
+- **HTTP error response schema**: <!-- e.g. `{ error: { code, message, requestId } }` -->
+- **Transient vs permanent error classification**: <!-- how your codebase distinguishes them -->
+
+### Dependency injection
+- **DI container**: <!-- InversifyJS / tsyringe / manual / none -->
+- **Registration location**: <!-- e.g. `src/config/container.ts` -->
+
+### API design
+- **Style**: <!-- REST / GraphQL / gRPC / mixed -->
+- **Versioning**: <!-- URL path (/v1/) / header / none -->
+- **Auth**: <!-- JWT Bearer / API key / OAuth2 / session cookie -->
+- **Pagination**: <!-- cursor-based / offset / keyset -->
+- **Error codes**: <!-- link to or describe your error code list -->
+
+### Test conventions
+- **Test file location**: <!-- co-located `*.test.ts` / separate `tests/` tree -->
+- **Test file naming**: <!-- `<module>.test.ts` / `<module>.spec.ts` -->
+- **Mock library**: <!-- Jest mocks / Sinon / vi.mock (Vitest) -->
+- **DB test strategy**: <!-- in-memory / test containers / shared test DB -->
+- **Factory/fixture tool**: <!-- factory-bot / fishery / manual builders -->
+
+---
+
+## [RECOMMENDED] 10. Build, Run, and Test Commands
+
+> The agent uses these to verify its own work.
+
+```bash
+# Install dependencies
+<command>
+
+# Start in development mode
+<command>
+
+# Run all tests
+<command>
+
+# Run unit tests only
+<command>
+
+# Run integration tests only
+<command>
+
+# Run a single test file
+<command>
+
+# Lint
+<command>
+
+# Format
+<command>
+
+# Type check
+<command>
+
+# Build for production
+<command>
+
+# Run DB migrations
+<command>
+
+# Seed the database
+<command>
+```
+
+---
+
+## [RECOMMENDED] 11. Environment Setup
+
+> What a developer (or agent) needs to run the project locally.
+
+**Required environment variables**: <!-- list or link to `.env.example` -->
+**Local infrastructure**: <!-- Docker Compose / Nix / manual -->
+
+```bash
+# How to spin up local dependencies (DB, broker, cache, etc.)
+<command>
+```
+
+**Known setup gotchas**: <!-- anything that routinely trips people up -->
+
+---
+
+## [RECOMMENDED] 12. Per-Service Overrides
+
+> If individual services deviate from the defaults above, document them here.
+> `architect-reviewer` checks service-level overrides against the governing ADR.
+
+### Service: `<service-name>`
+- **Resilience overrides**: <!-- e.g. higher timeout for batch operations -->
+- **Cache TTL overrides**: <!-- e.g. user profile cached for 1h, not default 5m -->
+- **Non-standard patterns**: <!-- anything not in Sections 5–7, with ADR reference -->
+
+---
+
+## 13. Changelog
+
+> Keep a brief record of significant changes to this file so the agent
+> knows the project has evolved.
+
+| Date | Change | Author |
+|---|---|---|
+| YYYY-MM-DD | Initial PROJECT.md created | |
+| YYYY-MM-DD | Added ADR-004 (Kafka for events) | |
