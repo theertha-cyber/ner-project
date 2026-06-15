@@ -40,8 +40,6 @@ async def cleanup_public():
         rows = await conn.execute(text("SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_%'"))
         for row in rows:
             await conn.execute(text(f"DROP SCHEMA IF EXISTS {row[0]} CASCADE"))
-    async with engine.connect() as conn:
-        await conn.execute(text("DROP TABLE IF EXISTS public.tenants CASCADE"))
     await engine.dispose()
 
 
@@ -112,7 +110,7 @@ async def seeded_tenant():
 
     async with engine.connect() as conn:
         await conn.execute(
-            text("INSERT INTO public.tenants (id, name, slug, status) VALUES (:id, :name, :slug, 'active')"),
+            text("INSERT INTO public.tenants (id, name, slug, status, max_users, max_documents, max_storage_gb, max_model_versions) VALUES (:id, :name, :slug, 'active', 10, 1000, 5, 10)"),
             {"id": tid, "name": f"Doc Test {_coll_counter}", "slug": slug},
         )
 

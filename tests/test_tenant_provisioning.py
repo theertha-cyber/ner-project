@@ -106,7 +106,7 @@ async def test_scenario_5_deactivate_tenant(client: AsyncClient, engine):
 
     user_token = create_access_token(tenant_id=tid, user_id="test-user", role="annotator")
     entity_resp = await client.get(
-        f"/api/v1/tenants/deactivate-test/entity-types",
+        "/api/v1/entity-types",
         headers={"Authorization": f"Bearer {user_token}"}
     )
-    assert entity_resp.status_code == 403, f"Expected 403, got {entity_resp.status_code}"
+    assert entity_resp.status_code == 403, f"Expected 403, got {entity_resp.status_code}: {entity_resp.text}"

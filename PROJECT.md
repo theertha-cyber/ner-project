@@ -19,6 +19,7 @@
 |---|---|---|---|
 | Language(s) | Python, TypeScript | Python 3.12+, Node.js 22 LTS |
 | ML framework | PyTorch + Hugging Face Transformers | PyTorch 2.x |
+| ML experiment tracking | MLflow | 2.20+ |
 | Base NER model | dslim/bert-base-NER | Latest |
 | Web framework (backend) | FastAPI | Latest |
 | Web framework (frontend) | React / Next.js (App Router) | Latest |

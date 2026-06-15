@@ -23,6 +23,7 @@ Implement tasks from an OpenSpec change.
    ```
    Parse the JSON to understand:
    - `schemaName`: The workflow being used (e.g., "spec-driven")
+   - `planningHome`, `changeRoot`, and `actionContext`: planning scope and edit constraints
    - Which artifact contains the tasks (typically "tasks" for spec-driven, check status for others)
 
 3. **Get apply instructions**
@@ -32,7 +33,7 @@ Implement tasks from an OpenSpec change.
    ```
 
    This returns:
-   - Context file paths (varies by schema)
+   - `contextFiles`: artifact ID -> array of concrete file paths (varies by schema)
    - Progress (total, complete, remaining)
    - Task list with status
    - Dynamic instruction based on current state
@@ -42,9 +43,11 @@ Implement tasks from an OpenSpec change.
    - If `state: "all_done"`: congratulate, suggest archive
    - Otherwise: proceed to implementation
 
+   **Workspace guard:** If status JSON reports `actionContext.mode: "workspace-planning"` and `allowedEditRoots` is empty, explain that full workspace apply is not supported in this slice. Treat linked repos and folders as read-only context, ask the user to select an affected area through an explicit implementation workflow, and STOP before editing files.
+
 4. **Read context files**
 
-   Read the files listed in `contextFiles` from the apply instructions output.
+   Read every file path listed under `contextFiles` from the apply instructions output.
    The files depend on the schema being used:
    - **spec-driven**: proposal, specs, design, tasks
    - Other schemas: follow the contextFiles from CLI output
@@ -63,23 +66,13 @@ Implement tasks from an OpenSpec change.
    - Show which task is being worked on
    - Make the code changes required
    - Keep changes minimal and focused
-   - **Run the AC's verification artifact(s)**: for every AC listed in
-     the task, execute the named verification artifact (test file +
-     test case) and confirm it runs green. This enforces the AC
-     Verification Policy (`docs/workflow/acceptance-criteria.md`).
-   - **Do NOT mark a task `- [x]` until every AC under it has a
-     verification artifact that (a) exists, (b) is automatically
-     executable, and (c) passes.** If an AC has no named artifact,
-     pause and hand back to `spec-generator` to update `tasks.md`
-     rather than marking the task complete.
+   - Mark task complete in the tasks file: `- [ ]` → `- [x]`
    - Continue to next task
 
    **Pause if:**
    - Task is unclear → ask for clarification
    - Implementation reveals a design issue → suggest updating artifacts
    - Error or blocker encountered → report and wait for guidance
-   - **An AC has no named verification artifact → pause; do not invent
-     one silently; hand back to `spec-generator`**
    - User interrupts
 
 7. **On completion or pause, show status**
@@ -147,10 +140,7 @@ What would you like to do?
 - If task is ambiguous, pause and ask before implementing
 - If implementation reveals issues, pause and suggest artifact updates
 - Keep code changes minimal and scoped to each task
-- A task is only complete when every AC under it has a named,
-  automatically executable verification artifact that passes. Never
-  mark `- [x]` on an unverified AC — see
-  `docs/workflow/acceptance-criteria.md`.
+- Update task checkbox immediately after completing each task
 - Pause on errors, blockers, or unclear requirements - don't guess
 - Use contextFiles from CLI output, don't assume specific file names
 

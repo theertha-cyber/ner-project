@@ -89,7 +89,7 @@ async def test_scenario_8_expired_token(client: AsyncClient, seeded_tenant_and_u
         algorithm=settings.jwt_algorithm,
     )
     resp = await client.get(
-        f"/api/v1/tenants/{seeded_tenant_and_user['slug']}/entity-types",
+        "/api/v1/entity-types",
         headers=auth_header(expired_token),
     )
     assert resp.status_code == 401, f"Expected 401, got {resp.status_code}: {resp.text}"
@@ -169,54 +169,38 @@ async def test_scenario_11_matching_token(client: AsyncClient):
 
     user_token = create_access_token(tenant_id=tid, user_id="match-user", role="annotator")
     entity_resp = await client.get(
-        f"/api/v1/tenants/match-token/entity-types",
+        "/api/v1/entity-types",
         headers=auth_header(user_token),
     )
     assert entity_resp.status_code == 200, f"Expected 200, got {entity_resp.status_code}"
 
 
-# --- Scenario 12: Non-existent tenant slug returns 404 ---
+# --- Scenario 12: Non-existent tenant returns 404 ---
 @pytest.mark.asyncio
 async def test_scenario_12_nonexistent_tenant(client: AsyncClient):
     user_token = create_access_token(
         tenant_id="ghost-tenant-id", user_id="ghost-user", role="annotator"
     )
     resp = await client.get(
-        "/api/v1/tenants/ghost-tenant/entity-types",
+        "/api/v1/entity-types",
         headers=auth_header(user_token),
     )
     assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
 
 
-# --- Scenario 13: Tenant mismatch returns 403 ---
+# --- Scenario 13: System admin cannot access tenant-scoped entity-types ---
 @pytest.mark.asyncio
-async def test_scenario_13_tenant_mismatch(client: AsyncClient):
+async def test_scenario_13_system_admin_no_tenant(client: AsyncClient):
     sys_token = create_access_token(
         tenant_id="00000000-0000-0000-0000-000000000000",
         user_id="admin-005",
         role="system_admin",
     )
-    resp = await client.post("/api/v1/admin/tenants", json={
-        "name": "Mismatch Tenant A", "slug": "mismatch-a",
-    }, headers=auth_header(sys_token))
-    assert resp.status_code == 201
-
-    resp_b = await client.post("/api/v1/admin/tenants", json={
-        "name": "Mismatch Tenant B", "slug": "mismatch-b",
-    }, headers=auth_header(sys_token))
-    assert resp_b.status_code == 201
-
-    tid_a = resp.json()["tenant"]["id"]
-    user_token_b = create_access_token(
-        tenant_id=resp_b.json()["tenant"]["id"],
-        user_id="user-b",
-        role="annotator",
+    resp = await client.get(
+        "/api/v1/entity-types",
+        headers=auth_header(sys_token),
     )
-    mismatch_resp = await client.get(
-        f"/api/v1/tenants/mismatch-a/entity-types",
-        headers=auth_header(user_token_b),
-    )
-    assert mismatch_resp.status_code == 403, f"Expected 403, got {mismatch_resp.status_code}: {mismatch_resp.text}"
+    assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
 
 
 # --- Tenant Admin user CRUD via tenant-scoped routes ---

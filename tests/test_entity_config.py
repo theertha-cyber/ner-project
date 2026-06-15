@@ -38,7 +38,7 @@ async def tenant_with_token(client: AsyncClient):
 async def test_scenario_14_create_entity_type_v1(client: AsyncClient, tenant_with_token):
     tenant = tenant_with_token
     resp = await client.post(
-        f"/api/v1/tenants/{tenant['slug']}/entity-types",
+        "/api/v1/entity-types",
         json={
             "name": "Organization",
             "description": "Company or organization names",
@@ -57,7 +57,7 @@ async def test_scenario_14_create_entity_type_v1(client: AsyncClient, tenant_wit
 async def test_scenario_15_update_increments_version(client: AsyncClient, tenant_with_token):
     tenant = tenant_with_token
     resp = await client.post(
-        f"/api/v1/tenants/{tenant['slug']}/entity-types",
+        "/api/v1/entity-types",
         json={"name": "Person", "base_label_mapping": {"PER": ["person_name"]}},
         headers=auth_header(tenant["token"]),
     )
@@ -65,7 +65,7 @@ async def test_scenario_15_update_increments_version(client: AsyncClient, tenant
     entity_id = resp.json()["entity_type"]["id"]
 
     update_resp = await client.put(
-        f"/api/v1/tenants/{tenant['slug']}/entity-types/{entity_id}",
+        f"/api/v1/entity-types/{entity_id}",
         json={"description": "Updated description"},
         headers=auth_header(tenant["token"]),
     )
@@ -79,7 +79,7 @@ async def test_scenario_15_update_increments_version(client: AsyncClient, tenant
 async def test_scenario_16_valid_label_mapping(client: AsyncClient, tenant_with_token):
     tenant = tenant_with_token
     resp = await client.post(
-        f"/api/v1/tenants/{tenant['slug']}/entity-types",
+        "/api/v1/entity-types",
         json={
             "name": "Location Entity",
             "base_label_mapping": {
@@ -100,7 +100,7 @@ async def test_scenario_16_valid_label_mapping(client: AsyncClient, tenant_with_
 async def test_scenario_17_invalid_label_422(client: AsyncClient, tenant_with_token):
     tenant = tenant_with_token
     resp = await client.post(
-        f"/api/v1/tenants/{tenant['slug']}/entity-types",
+        "/api/v1/entity-types",
         json={
             "name": "Bad Entity",
             "base_label_mapping": {"INVALID_LABEL": ["something"]},
@@ -117,13 +117,13 @@ async def test_scenario_18_list_all_entity_types(client: AsyncClient, tenant_wit
     for name, label in [("Type A", "PER"), ("Type B", "ORG"), ("Type C", "LOC"),
                           ("Type D", "MISC"), ("Type E", "PER")]:
         await client.post(
-            f"/api/v1/tenants/{tenant['slug']}/entity-types",
+            "/api/v1/entity-types",
             json={"name": name, "base_label_mapping": {label: ["test"]}},
             headers=auth_header(tenant["token"]),
         )
 
     resp = await client.get(
-        f"/api/v1/tenants/{tenant['slug']}/entity-types",
+        "/api/v1/entity-types",
         headers=auth_header(tenant["token"]),
     )
     assert resp.status_code == 200
@@ -138,7 +138,7 @@ async def test_scenario_18_list_all_entity_types(client: AsyncClient, tenant_wit
 async def test_scenario_19_filter_active(client: AsyncClient, tenant_with_token):
     tenant = tenant_with_token
     resp = await client.get(
-        f"/api/v1/tenants/{tenant['slug']}/entity-types?is_active=true",
+        "/api/v1/entity-types?is_active=true",
         headers=auth_header(tenant["token"]),
     )
     assert resp.status_code == 200

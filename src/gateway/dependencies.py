@@ -60,3 +60,20 @@ async def resolve_tenant(request: Request, db: AsyncSession = Depends(get_db)) -
         raise TenantMismatchError()
     request.state.tenant_id = token_tenant_id
     return token_tenant_id
+
+
+async def resolve_tenant_from_jwt(request: Request, db: AsyncSession = Depends(get_db)) -> str:
+    tenant_id = getattr(request.state, "token_tenant_id", None)
+    if not tenant_id or tenant_id == "system":
+        raise TenantNotFoundError(tenant_id or "unknown")
+    result = await db.execute(
+        text("SELECT id, status FROM public.tenants WHERE id = :id"),
+        {"id": tenant_id},
+    )
+    row = result.fetchone()
+    if not row:
+        raise TenantNotFoundError(tenant_id)
+    if row.status == "inactive":
+        raise TenantInactiveError(tenant_id)
+    request.state.tenant_id = tenant_id
+    return tenant_id

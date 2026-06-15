@@ -35,8 +35,8 @@ def test_settings_fallback_defaults():
     try:
         settings = Settings(_env_file=None)
 
-        assert settings.database_url == "postgresql+asyncpg://ner:ner@localhost:5432/ner_dev"
-        assert settings.database_url_sync == "postgresql://ner:ner@localhost:5432/ner_dev"
+        assert settings.database_url == "postgresql+asyncpg://ner:ner@localhost:5432/ner_dev?ssl=disable"
+        assert settings.database_url_sync == "postgresql://ner:ner@localhost:5432/ner_dev?sslmode=disable"
         assert settings.redis_url == "redis://localhost:6379/0"
         assert settings.jwt_secret == "change-me-in-production"
         assert settings.jwt_algorithm == "HS256"
