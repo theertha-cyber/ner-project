@@ -6,7 +6,7 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir poetry
 RUN pip install --no-cache-dir celery redis requests \
     transformers datasets evaluate seqeval \
-    boto3 sqlalchemy asyncpg python-jose passlib pydantic-settings \
+    boto3 sqlalchemy asyncpg psycopg2-binary python-jose passlib pydantic-settings \
     "mlflow[postgresql,s3]" && \
     pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 

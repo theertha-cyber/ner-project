@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.gateway.services.tenant_service import TenantService
 from src.gateway.dependencies import get_db, require_system_admin
@@ -6,14 +7,25 @@ from src.gateway.dependencies import get_db, require_system_admin
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 
+class CreateTenantRequest(BaseModel):
+    name: str
+    slug: str | None = None
+    max_users: int = 10
+    max_documents: int = 1000
+    max_storage_gb: int = 5
+    max_model_versions: int = 10
+    admin_email: EmailStr
+    admin_password: str
+
+
 @router.post("/tenants", status_code=201)
 async def create_tenant(
-    payload: dict,
+    payload: CreateTenantRequest,
     db: AsyncSession = Depends(get_db),
     _: str = Depends(require_system_admin),
 ):
     service = TenantService(db)
-    return await service.create_tenant(payload)
+    return await service.create_tenant(payload.model_dump())
 
 
 @router.get("/tenants")

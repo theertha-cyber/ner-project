@@ -56,6 +56,17 @@ class AuthService:
         user_id = payload["user_id"]
         role = payload["role"]
 
+        result = await self.db.execute(
+            text("""
+                SELECT u.email, t.slug
+                FROM public.tenant_users u
+                JOIN public.tenants t ON t.id = u.tenant_id
+                WHERE u.id = :user_id AND u.tenant_id = :tenant_id
+            """),
+            {"user_id": user_id, "tenant_id": tenant_id},
+        )
+        row = result.fetchone()
+
         new_access = create_access_token(tenant_id, user_id, role)
         new_refresh = create_refresh_token(tenant_id, user_id, role)
 
@@ -63,6 +74,13 @@ class AuthService:
             "access_token": new_access,
             "refresh_token": new_refresh,
             "token_type": "bearer",
+            "user": {
+                "id": user_id,
+                "email": row.email if row else "",
+                "role": role,
+                "tenant_id": tenant_id,
+                "tenant_slug": row.slug if row else None,
+            },
         }
 
     async def logout(self, access_token: str) -> None:

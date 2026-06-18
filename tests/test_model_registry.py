@@ -308,14 +308,31 @@ async def test_get_active_exists(client, engine, setup_schema):
 
 
 @pytest.mark.asyncio
-async def test_get_active_none_404(client, engine, setup_schema):
+async def test_get_active_none_returns_base_model(client, engine, setup_schema):
     tid, schema = setup_schema
     await _seed_versions(engine, schema, tid, [
         {"version_number": 1, "status": "completed", "metrics": {}},
     ])
     token = make_token(tid)
     resp = await client.get("/api/v1/models/active", headers=auth_header(token))
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["version_number"] == 0
+    assert data["artifact_path"] == "base"
+    assert "label_list" in data
+    assert resp.headers.get("x-model-source") == "base"
+
+@pytest.mark.asyncio
+async def test_get_active_base_model_has_conll_labels(client, engine, setup_schema):
+    tid, schema = setup_schema
+    token = make_token(tid)
+    resp = await client.get("/api/v1/models/active", headers=auth_header(token))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["version_number"] == 0
+    expected_labels = ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-MISC", "I-MISC"]
+    assert data["label_list"] == expected_labels
+    assert data["metrics"]["label_list"] == expected_labels
 
 
 @pytest.mark.asyncio
@@ -368,4 +385,5 @@ async def test_standalone_warmup_does_not_change_status(client, engine, setup_sc
     resp = await client.post("/api/v1/models/1/warmup", headers=auth_header(token))
     assert resp.status_code == 200
     get_resp = await client.get("/api/v1/models/active", headers=auth_header(token))
-    assert get_resp.status_code == 404
+    assert get_resp.status_code == 200
+    assert get_resp.json()["version_number"] == 0

@@ -19,6 +19,25 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/models", tags=["model-registry"])
 
+CONLL_LABELS = ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-MISC", "I-MISC"]
+
+
+def _base_model_metadata() -> dict:
+    return {
+        "id": "0",
+        "version_number": 0,
+        "training_job_id": None,
+        "status": "promoted",
+        "metrics": {"label_list": CONLL_LABELS},
+        "artifact_path": "base",
+        "mlflow_run_id": None,
+        "mlflow_run_url": None,
+        "created_at": None,
+        "promoted_at": None,
+        "archived_at": None,
+        "label_list": CONLL_LABELS,
+    }
+
 
 def get_tenant_id(request: Request) -> str:
     tid = getattr(request.state, "tenant_id", None)
@@ -55,6 +74,7 @@ def _row_to_response(row: dict) -> ModelVersionResponse:
         created_at=row.get("created_at"),
         promoted_at=row.get("promoted_at"),
         archived_at=row.get("archived_at"),
+        label_list=row.get("label_list"),
     )
 
 
@@ -81,7 +101,12 @@ async def get_active_model(
     tenant_id = get_tenant_id(request)
     row, warning = mlflow_get_active(tenant_id)
     if not row:
-        raise HTTPException(status_code=404, detail="No active model found")
+        base = _base_model_metadata()
+        return JSONResponse(
+            status_code=200,
+            content=ModelVersionResponse(**base).model_dump(),
+            headers={"X-Model-Source": "base", "X-Info": "no-promoted-model"},
+        )
     result = _row_to_response(row)
     if warning:
         return JSONResponse(
@@ -120,18 +145,23 @@ async def promote_model(
     if not result:
         raise HTTPException(status_code=404, detail="Model version not found in MLflow Registry")
 
-    await _warmup_model(tenant_id, version_number)
+    await _warmup_model(tenant_id, version_number, request)
 
     return _row_to_response(result)
 
 
-async def _warmup_model(tenant_id: str, version_number: int):
+async def _warmup_model(tenant_id: str, version_number: int, request: Request | None = None):
     if not settings.model_serving_url:
         return
-    url = f"{settings.model_serving_url.rstrip('/')}/internal/v1/tenants/{tenant_id}/warmup"
+    url = f"{settings.model_serving_url.rstrip('/')}/internal/v1/warmup"
+    headers = {}
+    if request is not None:
+        auth = request.headers.get("Authorization")
+        if auth:
+            headers["Authorization"] = auth
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, json={"version_number": version_number})
+            resp = await client.post(url, json={"version_number": version_number}, headers=headers)
             if resp.status_code == 200:
                 logger.info("Model warmup succeeded for tenant=%s version=%d", tenant_id, version_number)
             else:
@@ -149,7 +179,7 @@ async def warmup_model(
     tenant_id = get_tenant_id(request)
     version_number = int(version_id)
     _get_version_or_404(tenant_id, version_number)
-    await _warmup_model(tenant_id, version_number)
+    await _warmup_model(tenant_id, version_number, request)
     return {"status": "ok", "version_number": version_number}
 
 

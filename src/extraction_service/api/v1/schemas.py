@@ -16,6 +16,7 @@ class ExtractedEntity(BaseModel):
 
 class ExtractResponse(BaseModel):
     entities: list[ExtractedEntity]
+    model_version: str | None = None
 
 
 class BatchExtractResponse(BaseModel):
@@ -31,6 +32,7 @@ class BatchRunStatus(BaseModel):
     failed_count: int | None = None
     completed_at: datetime | None = None
     started_at: datetime | None = None
+    model_version: str | None = None
 
 
 class EntityQueryParams(BaseModel):

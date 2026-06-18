@@ -1,9 +1,10 @@
 """Create extraction service tables in ner_test database."""
 import asyncio
+import os
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
-DATABASE_URL = "postgresql+asyncpg://ner:ner@localhost:54320/ner_test"
+DATABASE_URL = os.environ.get("NER_DATABASE_URL", "postgresql+asyncpg://ner:ner@localhost:54320/ner_test")
 
 SCHEMAS = [
     "tenant_test_tenant",
@@ -17,11 +18,15 @@ TABLES = [
     CREATE TABLE IF NOT EXISTS "{schema}".extraction_runs (
         id VARCHAR PRIMARY KEY,
         tenant_id VARCHAR NOT NULL,
-        document_id VARCHAR NOT NULL,
-        model_version VARCHAR NOT NULL,
+        document_id VARCHAR,
+        model_version VARCHAR,
         status VARCHAR NOT NULL DEFAULT 'queued',
         started_at TIMESTAMP WITH TIME ZONE NOT NULL,
-        completed_at TIMESTAMP WITH TIME ZONE
+        completed_at TIMESTAMP WITH TIME ZONE,
+        total_documents INTEGER NOT NULL DEFAULT 0,
+        processed_count INTEGER NOT NULL DEFAULT 0,
+        skipped_count INTEGER NOT NULL DEFAULT 0,
+        failed_count INTEGER NOT NULL DEFAULT 0
     )
     """,
     """
@@ -113,3 +118,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+

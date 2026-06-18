@@ -1,4 +1,5 @@
 import uuid
+import requests
 from datetime import datetime, timezone
 from sqlalchemy import text, create_engine
 from src.shared.config import settings
@@ -34,10 +35,11 @@ def _get_already_extracted(tenant_id: str, doc_ids: list[str], model_version: st
     with engine.connect() as conn:
         result = conn.execute(
             text(f"""
-                SELECT document_id FROM {schema}.extraction_runs
-                WHERE document_id IN ({placeholders})
-                AND model_version = :model_version
-                AND status = 'completed'
+                SELECT DISTINCT e.document_id
+                FROM {schema}.extracted_entities e
+                JOIN {schema}.extraction_runs r ON e.run_id = r.id
+                WHERE e.document_id IN ({placeholders})
+                AND r.model_version = :model_version
             """),
             {"model_version": model_version},
         )
@@ -58,26 +60,9 @@ def _get_active_model_version(tenant_id: str) -> str | None:
             {"tenant_id": tenant_id},
         )
         row = result.fetchone()
-        return str(row[0]) if row else None
-
-
-def _create_run(tenant_id: str, run_id: str, doc_id: str, model_version: str):
-    engine = _get_sync_engine()
-    schema = _schema(tenant_id)
-    with engine.begin() as conn:
-        conn.execute(
-            text(f"""
-                INSERT INTO {schema}.extraction_runs (id, tenant_id, document_id, model_version, status, started_at)
-                VALUES (:id, :tenant_id, :document_id, :model_version, 'queued', :started_at)
-            """),
-            {
-                "id": run_id,
-                "tenant_id": tenant_id,
-                "document_id": doc_id,
-                "model_version": model_version,
-                "started_at": datetime.now(timezone.utc),
-            },
-        )
+        if row:
+            return str(row[0])
+        return "0"
 
 
 def _update_run_status(tenant_id: str, run_id: str, status: str, **kwargs):
@@ -116,33 +101,35 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
 
     for doc_id in to_process:
         try:
-            import requests
             from src.shared.auth import create_access_token
 
-            token = create_access_token(
-                tenant_id=tenant_id,
-                user_id="extraction-worker",
-                role="system_admin",
-            )
-            text_url = f"http://document_service:8001/api/v1/tenants/{tenant_id}/documents/{doc_id}/text"
-            text_resp = requests.get(
-                text_url,
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=30,
-            )
-            if text_resp.status_code != 200:
+            engine = _get_sync_engine()
+            schema = _schema(tenant_id)
+
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text(f"""
+                        SELECT text FROM {schema}.document_text_spans
+                        WHERE document_id = :doc_id
+                        ORDER BY span_index NULLS LAST
+                    """),
+                    {"doc_id": doc_id},
+                )
+                spans = [row[0] for row in result.fetchall() if row[0]]
+
+            doc_text = " ".join(spans)
+            tokens = doc_text.split()
+            print(f"WORKER: doc={doc_id} spans={len(spans)} tokens={len(tokens)} text_preview={doc_text[:80]!r}", flush=True)
+            if not tokens:
                 failed += 1
                 continue
-
-            text = text_resp.json().get("text", "")
-            tokens = text.split()
 
             serving_token = create_access_token(
                 tenant_id=tenant_id,
                 user_id="extraction-worker",
                 role="system_admin",
             )
-            infer_url = f"{settings.model_serving_url}/internal/v1/tenants/{tenant_id}/infer"
+            infer_url = f"{settings.model_serving_url}/internal/v1/infer"
             infer_resp = requests.post(
                 infer_url,
                 headers={"Authorization": f"Bearer {serving_token}"},
@@ -153,21 +140,22 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
                 _update_run_status(tenant_id, run_id, "failed")
                 return
             infer_resp.raise_for_status()
-            predictions = infer_resp.json().get("predictions", [])
+            body = infer_resp.json()
+            predictions = body.get("predictions", [])
+            model_version = body.get("model_version", "0")
 
-            engine = _get_sync_engine()
-            schema = _schema(tenant_id)
             with engine.begin() as conn:
                 for pred in predictions:
                     conn.execute(
                         text(f"""
                             INSERT INTO {schema}.extracted_entities
-                                (id, run_id, entity_id, value, confidence, review_status)
-                            VALUES (:id, :run_id, :entity_id, :value, :confidence, 'unreviewed')
+                                (id, run_id, document_id, entity_id, value, confidence, review_status)
+                            VALUES (:id, :run_id, :document_id, :entity_id, :value, :confidence, 'unreviewed')
                         """),
                         {
                             "id": str(uuid.uuid4()),
                             "run_id": run_id,
+                            "document_id": doc_id,
                             "entity_id": pred.get("label", "UNKNOWN"),
                             "value": pred.get("token", ""),
                             "confidence": pred.get("confidence", 0.0),
@@ -176,11 +164,18 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
 
             processed += 1
 
-        except Exception:
+        except Exception as e:
+            import traceback
+            print(f"EXTRACTION_WORKER_ERROR doc={doc_id}: {e}", flush=True)
+            traceback.print_exc()
             failed += 1
             continue
 
     _update_run_status(
         tenant_id, run_id, "completed",
         completed_at=datetime.now(timezone.utc),
+        processed_count=processed,
+        skipped_count=len(skipped),
+        failed_count=failed,
+        model_version=model_version,
     )

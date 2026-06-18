@@ -1,0 +1,114 @@
+"use client";
+
+import type { ConfirmedSpan } from "./span-reducer";
+
+export interface EntityTypeItem {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
+interface EntityPaletteProps {
+  entityTypes: EntityTypeItem[];
+  entityColors: Record<string, string>;
+  confirmedSpans: ConfirmedSpan[];
+  armedType: string | null;
+  onArm: (name: string) => void;
+  onDisarm: () => void;
+}
+
+export function EntityPalette({
+  entityTypes,
+  entityColors,
+  confirmedSpans,
+  armedType,
+  onArm,
+  onDisarm,
+}: EntityPaletteProps) {
+  const spanCounts = confirmedSpans.reduce<Record<string, number>>((acc, s) => {
+    acc[s.entityType] = (acc[s.entityType] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const active = entityTypes.filter((et) => et.is_active);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: "var(--color-text-secondary)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          marginBottom: 4,
+        }}
+      >
+        Entity Types
+      </div>
+      {active.map((et) => {
+        const color = entityColors[et.name] ?? "#94a3b8";
+        const count = spanCounts[et.name] ?? 0;
+        const isArmed = armedType === et.name;
+
+        return (
+          <button
+            key={et.id}
+            onClick={() => (isArmed ? onDisarm() : onArm(et.name))}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: isArmed ? `2px solid ${color}` : "2px solid transparent",
+              background: isArmed ? color + "22" : "var(--color-surface-raised)",
+              cursor: "pointer",
+              textAlign: "left",
+              transition: "all 0.15s",
+              outline: isArmed ? `2px solid ${color}` : "none",
+              outlineOffset: 1,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: color,
+                  display: "inline-block",
+                  flexShrink: 0,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: isArmed ? 600 : 400,
+                  color: isArmed ? color : "var(--color-text-primary)",
+                }}
+              >
+                {et.name}
+              </span>
+            </div>
+            <span
+              style={{
+                fontSize: 12,
+                color: count > 0 ? color : "var(--color-text-secondary)",
+                fontWeight: count > 0 ? 600 : 400,
+                fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+              }}
+            >
+              {count}
+            </span>
+          </button>
+        );
+      })}
+      {active.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--color-text-secondary)", padding: "8px 0" }}>
+          No entity types configured
+        </div>
+      )}
+    </div>
+  );
+}

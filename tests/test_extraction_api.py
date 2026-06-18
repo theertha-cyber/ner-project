@@ -21,7 +21,7 @@ class TestExtractTextReturnsEntities:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/api/v1/tenants/test-tenant/extract",
+                "/api/v1/extract",
                 json={"text": "John works at Acme Corp"},
                 headers=auth_header("test-tenant"),
             )
@@ -34,7 +34,7 @@ class TestExtractNoModelReturns400:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/api/v1/tenants/no-model/extract",
+                "/api/v1/extract",
                 json={"text": "test"},
                 headers=auth_header("no-model"),
             )
@@ -49,7 +49,7 @@ class TestExtractNonAdminReturns403:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/api/v1/tenants/test-tenant/extract",
+                "/api/v1/extract",
                 json={"text": "test"},
                 headers=auth_header("test-tenant", role="annotator"),
             )
@@ -59,7 +59,7 @@ class TestExtractNonAdminReturns403:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/api/v1/tenants/test-tenant/extract",
+                "/api/v1/extract",
                 json={"text": "test"},
                 headers=auth_header("test-tenant", role="system_admin"),
             )
@@ -72,7 +72,7 @@ class TestLowConfidenceFiltered:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/api/v1/tenants/test-tenant/extract",
+                "/api/v1/extract",
                 json={"text": "a"},
                 headers=auth_header("test-tenant"),
             )

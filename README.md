@@ -1138,6 +1138,267 @@ Reject a training job. Requires `role: system_admin`. Accepts a `tenant_id` quer
 
 ---
 
+### Extraction Service API (`/api/v1/tenants/{tid}/extract`)
+
+**Service:** `src.extraction_service.main:app` — port 8005
+**Swagger UI:** `http://localhost:8005/docs`
+
+Requires `Authorization: Bearer <token>` with `role: tenant_admin` or `role: business_user` for single extraction; batch extraction requires `role: tenant_admin`.
+
+The extraction service sends tokens to the model-serving inference endpoint and maps the resulting token-level predictions back to character offsets in the original text. Predictions below the `confidence_threshold` (configurable via `NER_CONFIDENCE_THRESHOLD`) are filtered out. Results are sorted by confidence descending.
+
+---
+
+#### POST `/api/v1/tenants/{tid}/extract`
+Run NER inference on a single text string. The text is tokenized (split by whitespace), sent to the inference service, and token-level predictions are mapped back to character offsets.
+
+**Request body:**
+```json
+{
+  "text": "Acme Corp is a leading supplier based in New York."
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `text` | string | The input text to extract entities from |
+
+**Response `200`:**
+```json
+{
+  "entities": [
+    {
+      "entity_type": "B-ORG",
+      "value": "Acme",
+      "confidence": 0.998,
+      "start_offset": 0,
+      "end_offset": 4
+    },
+    {
+      "entity_type": "I-ORG",
+      "value": "Corp",
+      "confidence": 0.997,
+      "start_offset": 5,
+      "end_offset": 9
+    },
+    {
+      "entity_type": "B-LOC",
+      "value": "New",
+      "confidence": 0.962,
+      "start_offset": 44,
+      "end_offset": 47
+    },
+    {
+      "entity_type": "I-LOC",
+      "value": "York",
+      "confidence": 0.981,
+      "start_offset": 48,
+      "end_offset": 52
+    }
+  ],
+  "model_version": "3"
+}
+```
+
+**Response `200` (base model fallback — no promoted model):**
+```json
+{
+  "entities": [
+    {
+      "entity_type": "B-ORG",
+      "value": "Acme",
+      "confidence": 0.998,
+      "start_offset": 0,
+      "end_offset": 4
+    }
+  ],
+  "model_version": "0"
+}
+```
+When the tenant has no promoted fine-tuned model, the system uses the curated base model (`dslim/bert-base-NER`, version `"0"`). The response is identical in structure — only `model_version` differs.
+
+**Response `403`:** Non-admin or non-business-user role.
+
+**Response `400`:**
+```json
+{
+  "detail": "No active model is available for this tenant"
+}
+```
+
+**Storage:** No DB write — calls `POST /internal/v1/tenants/{tid}/infer` on the model-serving service, then returns mapped entities. Entities are NOT persisted (re-run on every request).
+
+---
+
+#### POST `/api/v1/tenants/{tid}/extract-batch`
+Trigger batch extraction via Celery worker. Processes multiple documents asynchronously. Each document's text is fetched from the document service, sent to the inference service, and the resulting entities are persisted in `tenant_{tid}.extracted_entities`.
+
+**Query params:** `?documentIds=uuid1,uuid2`
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `documentIds` | string | Comma-separated list of document UUIDs to process |
+
+**Response `201` (`201` because a resource is created):**
+```json
+{
+  "run_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "queued"
+}
+```
+
+**Response `403`:** Non-admin role.
+
+**Response `422`:** No document IDs provided.
+
+**Storage:** Creates a Celery task (`run_batch_extraction`) with `args=[tenant_id, run_id, doc_ids]`. The worker inserts rows into `tenant_{tid}.extraction_runs` and `tenant_{tid}.extracted_entities`.
+
+---
+
+#### GET `/api/v1/tenants/{tid}/extract-batch/{run_id}`
+Get the status and results of a batch extraction run.
+
+**Response `200` (running):**
+```json
+{
+  "status": "running",
+  "total_documents": 5,
+  "processed_count": 2,
+  "skipped_count": 0,
+  "failed_count": 0,
+  "started_at": "2026-06-10T12:00:00Z",
+  "completed_at": null,
+  "model_version": "3"
+}
+```
+
+**Response `200` (completed):**
+```json
+{
+  "status": "completed",
+  "total_documents": 5,
+  "processed_count": 5,
+  "skipped_count": 0,
+  "failed_count": 0,
+  "started_at": "2026-06-10T12:00:00Z",
+  "completed_at": "2026-06-10T12:01:30Z",
+  "model_version": "3"
+}
+```
+
+**Response `200` (completed with base model):**
+```json
+{
+  "status": "completed",
+  "total_documents": 5,
+  "processed_count": 5,
+  "skipped_count": 0,
+  "failed_count": 0,
+  "started_at": "2026-06-10T12:00:00Z",
+  "completed_at": "2026-06-10T12:01:30Z",
+  "model_version": "0"
+}
+```
+
+**Response `404`:**
+```json
+{
+  "detail": "Extraction run not found"
+}
+```
+
+**Storage:** `SELECT FROM tenant_{tid}.extraction_runs WHERE id = :run_id`.
+
+---
+
+#### GET `/api/v1/tenants/{tid}/entities`
+Query extracted entities with optional filters. Returns entities from batch extraction runs that have been persisted in the database.
+
+**Query params:** `?documentId=uuid&type=ORG&minConfidence=0.9&reviewStatus=unreviewed&page=1&per_page=20`
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `documentId` | string | — | Filter by document UUID |
+| `type` | string | — | Filter by entity type label (e.g., `B-ORG`, `B-PER`) |
+| `minConfidence` | float | — | Minimum confidence threshold |
+| `reviewStatus` | string | — | Filter by review status: `unreviewed`, `confirmed`, `corrected`, `rejected` |
+| `page` | int | 1 | Page number (≥ 1) |
+| `per_page` | int | 20 | Items per page (1–100) |
+
+**Response `200`:**
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "run_id": "uuid",
+      "entity_id": "B-ORG",
+      "value": "Acme Corp",
+      "confidence": 0.998,
+      "normalized_value": null,
+      "source_span_id": null,
+      "review_status": "unreviewed",
+      "corrected_value": null,
+      "corrected_by": null,
+      "correction_notes": null
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "per_page": 20
+}
+```
+
+**Storage:** `SELECT FROM tenant_{tid}.extracted_entities` with optional WHERE clauses and LIMIT/OFFSET.
+
+---
+
+#### PATCH `/api/v1/tenants/{tid}/entities/{entity_id}`
+Update the review status and/or corrected value for a single extracted entity.
+
+**Request body:**
+```json
+{
+  "review_status": "corrected",
+  "corrected_value": "Acme Corporation",
+  "correction_notes": "Full legal name per contract"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `review_status` | string | Required. One of: `unreviewed`, `confirmed`, `corrected`, `rejected` |
+| `corrected_value` | string | Optional. The human-corrected value for the entity |
+| `correction_notes` | string | Optional. Free-text notes about the correction |
+
+**Response `200`:**
+```json
+{
+  "id": "uuid",
+  "run_id": "uuid",
+  "entity_id": "B-ORG",
+  "value": "Acme Corp",
+  "confidence": 0.998,
+  "normalized_value": null,
+  "source_span_id": null,
+  "review_status": "corrected",
+  "corrected_value": "Acme Corporation",
+  "corrected_by": "user-uuid",
+  "correction_notes": "Full legal name per contract"
+}
+```
+
+**Response `404`:**
+```json
+{
+  "detail": "Entity not found"
+}
+```
+
+**Storage:** `UPDATE tenant_{tid}.extracted_entities SET review_status = :status, corrected_value = :val, corrected_by = :uid, correction_notes = :notes WHERE id = :id`.
+
+---
+
 ### Model Registry API (`/api/v1/models`)
 
 **Service:** `src.training_service.main:app` — port 8003
@@ -1181,9 +1442,9 @@ List all model versions for the tenant, ordered by `version_number` descending.
 ---
 
 #### GET `/api/v1/models/active`
-Get the currently promoted model version.
+Get the currently promoted model version. Falls back to the curated base model (`dslim/bert-base-NER`, version 0) when no fine-tuned model has been promoted for the tenant.
 
-**Response `200`:**
+**Response `200` (fine-tuned model promoted):**
 ```json
 {
   "id": "uuid",
@@ -1192,31 +1453,122 @@ Get the currently promoted model version.
   "artifact_path": "tenants/{tid}/models/v1/{version_id}/",
   "mlflow_run_id": "a1b2c3d4e5f6...",
   "mlflow_run_url": "http://localhost:5000/#/experiments/1/runs/a1b2c3d4e5f6...",
-  "metrics": { "eval_f1": 0.90 },
+  "metrics": { "eval_f1": 0.90, "eval_precision": 0.92, "eval_recall": 0.89, "eval_loss": 0.021 },
+  "label_list": ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-MISC", "I-MISC"],
   ...
 }
 ```
 
-**Response `404`:**
+**Response `200` (base model fallback — no promoted model):**
 ```json
 {
-  "detail": "No active model found"
+  "id": "0",
+  "version_number": 0,
+  "training_job_id": null,
+  "status": "promoted",
+  "metrics": {
+    "label_list": ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-MISC", "I-MISC"]
+  },
+  "artifact_path": "base",
+  "mlflow_run_id": null,
+  "mlflow_run_url": null,
+  "created_at": null,
+  "promoted_at": null,
+  "archived_at": null,
+  "label_list": ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-MISC", "I-MISC"]
 }
 ```
+Response header: `X-Model-Source: base`, `X-Info: no-promoted-model`.
 
-**Storage:** `SELECT FROM tenant_{tid}.model_versions WHERE status = 'promoted' LIMIT 1`.
+The base model is treated as conceptual version 0 for every tenant. It reports the standard CoNLL label set (PER, ORG, LOC, MISC in BIO2 format). The `label_list` field is always included in `ModelVersionResponse` and allows callers to map prediction labels to entity types without a separate API call.
+
+**Storage:** `SELECT FROM tenant_{tid}.model_versions WHERE status = 'promoted' LIMIT 1`. When no row is found, returns a synthetic response — no DB row exists for version 0.
 
 ---
 
-### Model Warmup
+### Model Serving API
 
 **Service:** `src.model_serving.main:app` — port 8004
 **Swagger UI:** `http://localhost:8004/docs`
 
 Requires `Authorization: Bearer <token>` with any valid tenant-scoped role.
 
+All endpoints are prefixed with `/internal/v1/` — they are internal service-to-service endpoints called by the extraction service and the training service.
+
+The model serving service hosts two model execution paths:
+
+1. **Fine-tuned models** — loaded via ONNX Runtime (`ort.InferenceSession`) from MinIO artifact store, cached in-memory via `model_cache`. Used when a tenant has a promoted fine-tuned model (version >= 1).
+2. **Base model** — loaded as a singleton Hugging Face `pipeline("ner", model="dslim/bert-base-NER")`. Used **for every tenant** that has no promoted fine-tuned model (fallback). Also used as a fallback when a fine-tuned model fails to load.
+
+Model resolution order for a given tenant:
+1. Check if the tenant's promoted model is loaded in cache → use it
+2. If not cached, try to download and load the ONNX model from MinIO
+3. If no promoted model exists or loading fails → fall back to the base model pipeline
+
+---
+
+#### POST `/internal/v1/tenants/{tid}/infer`
+Run token-level NER inference on a pre-tokenized input. Accepts a list of tokens (strings), runs inference through the resolved model, and returns per-token predictions with confidence scores.
+
+**Request body:**
+```json
+{
+  "tokens": ["Acme", "Corp", "is", "a", "leading", "supplier", "based", "in", "New", "York", "."]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tokens` | array[string] | Pre-tokenized input (whitespace-split). Must not be empty. |
+
+**Response `200` (fine-tuned model):**
+```json
+{
+  "predictions": [
+    { "token": "Acme", "label": "B-ORG", "confidence": 0.998 },
+    { "token": "Corp", "label": "I-ORG", "confidence": 0.997 },
+    { "token": "is", "label": "O", "confidence": 0.999 },
+    { "token": "a", "label": "O", "confidence": 0.999 },
+    { "token": "leading", "label": "O", "confidence": 0.995 },
+    { "token": "supplier", "label": "O", "confidence": 0.993 },
+    { "token": "based", "label": "O", "confidence": 0.991 },
+    { "token": "in", "label": "O", "confidence": 0.999 },
+    { "token": "New", "label": "B-LOC", "confidence": 0.962 },
+    { "token": "York", "label": "I-LOC", "confidence": 0.981 },
+    { "token": ".", "label": "O", "confidence": 0.999 }
+  ],
+  "model_version": "3"
+}
+```
+
+**Response `200` (base model fallback):**
+```json
+{
+  "predictions": [
+    { "token": "Acme", "label": "B-ORG", "confidence": 0.998 },
+    { "token": "Corp", "label": "I-ORG", "confidence": 0.997 }
+  ],
+  "model_version": "0"
+}
+```
+When `model_version` is `"0"`, the response also includes the header `X-Model-Source: base`.
+
+**Response `404`:**
+```json
+{
+  "detail": "No model available for this tenant"
+}
+```
+This occurs when both the fine-tuned model AND the base model pipeline fail to initialize.
+
+**Storage:** No DB writes. Calls `_resolve_active_version()` to determine which model to use, then either loads from `model_cache` (fine-tuned ONNX model) or uses the singleton base pipeline. Token-level predictions are returned directly — entities are not persisted here.
+
+---
+
 #### POST `/internal/v1/tenants/{tid}/warmup`
-Pre-load a model into the inference cache for a tenant. If `version_number` is provided, that specific version is loaded. Otherwise, the currently promoted (active) version is resolved.
+Pre-load a model into memory for a tenant. If `version_number` is provided, that specific version is loaded. Otherwise, the currently promoted (active) version is resolved.
+
+When `version_number` is `0` (base model), this initializes the Hugging Face pipeline singleton — no ONNX artifacts are downloaded. When `version_number` is `>= 1`, the ONNX model artifacts are fetched from MinIO and loaded via ONNX Runtime into the in-memory `model_cache`.
 
 **Request body:** (optional — omit to load active version)
 ```json
@@ -1225,7 +1577,7 @@ Pre-load a model into the inference cache for a tenant. If `version_number` is p
 }
 ```
 
-**Response `200`:** Model loaded into cache.
+**Response `200` (fine-tuned model):**
 ```json
 {
   "status": "ok",
@@ -1233,14 +1585,22 @@ Pre-load a model into the inference cache for a tenant. If `version_number` is p
 }
 ```
 
-**Response `404`:** No active version found, or specified version does not exist / cannot be loaded.
+**Response `200` (base model):**
 ```json
 {
-  "detail": "No active model version found for this tenant"
+  "status": "ok",
+  "version_number": 0
 }
 ```
 
-**Storage:** Calls `download_model_artifacts(tenant_id, version_number)` to fetch ONNX model from MinIO at `tenants/{tid}/models/v{version}/`, then loads it via ONNX Runtime and stores it in the in-memory `model_cache`. On subsequent inference requests, the cached model is reused without re-loading.
+**Response `404`:** No active version found, or specified version does not exist / cannot be loaded.
+```json
+{
+  "detail": "Model version v99 could not be loaded"
+}
+```
+
+**Storage:** For fine-tuned models (version >= 1), calls `download_model_artifacts(tenant_id, version_number)` to fetch ONNX model from MinIO at `tenants/{tid}/models/v{version}/`, then loads it via ONNX Runtime and stores it in the in-memory `model_cache`. For the base model (version 0), initializes the singleton Hugging Face pipeline — no cache entry is created.
 
 ---
 

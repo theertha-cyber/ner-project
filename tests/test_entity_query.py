@@ -20,7 +20,7 @@ class TestQueryEntitiesByDocument:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(
-                "/api/v1/tenants/test-tenant/entities?documentId=doc1",
+                "/api/v1/entities?documentId=doc1",
                 headers=auth_header("test-tenant"),
             )
             assert resp.status_code == 200
@@ -32,7 +32,7 @@ class TestQueryEntitiesByType:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(
-                "/api/v1/tenants/test-tenant/entities?type=ORG",
+                "/api/v1/entities?type=ORG",
                 headers=auth_header("test-tenant"),
             )
             assert resp.status_code == 200
@@ -44,7 +44,7 @@ class TestQueryEntitiesByConfidence:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(
-                "/api/v1/tenants/test-tenant/entities?minConfidence=0.8",
+                "/api/v1/entities?minConfidence=0.8",
                 headers=auth_header("test-tenant"),
             )
             assert resp.status_code == 200
@@ -56,7 +56,7 @@ class TestQueryEntitiesUnreviewed:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(
-                "/api/v1/tenants/test-tenant/entities?reviewStatus=unreviewed",
+                "/api/v1/entities?reviewStatus=unreviewed",
                 headers=auth_header("test-tenant"),
             )
             assert resp.status_code == 200
@@ -68,7 +68,7 @@ class TestQueryEntitiesAnnotator200:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(
-                "/api/v1/tenants/test-tenant/entities",
+                "/api/v1/entities",
                 headers=auth_header("test-tenant", role="annotator"),
             )
             assert resp.status_code == 200
@@ -80,7 +80,7 @@ class TestQueryEntitiesCrossTenant404:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(
-                "/api/v1/tenants/tenant-b/entities?documentId=tenant-a-doc",
+                "/api/v1/entities?documentId=tenant-a-doc",
                 headers=auth_header("tenant-b"),
             )
             assert resp.status_code == 200
@@ -92,7 +92,7 @@ class TestCorrectEntity:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.patch(
-                "/api/v1/tenants/test-tenant/entities/nonexistent-id",
+                "/api/v1/entities/nonexistent-id",
                 json={"review_status": "corrected", "corrected_value": "fixed"},
                 headers=auth_header("test-tenant"),
             )
@@ -105,7 +105,7 @@ class TestCorrectEntityAnnotator:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.patch(
-                "/api/v1/tenants/test-tenant/entities/nonexistent-id",
+                "/api/v1/entities/nonexistent-id",
                 json={"review_status": "corrected", "corrected_value": "fixed"},
                 headers=auth_header("test-tenant", role="annotator"),
             )

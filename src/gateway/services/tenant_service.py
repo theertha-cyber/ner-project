@@ -1,7 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from src.gateway.models import Tenant, slugify, generate_uuid
-from src.shared.exceptions import NotFoundError, ConflictError
+from src.shared.auth import hash_password, validate_password
+from src.shared.exceptions import NotFoundError, ConflictError, ValidationError
 
 
 class TenantService:
@@ -11,6 +12,12 @@ class TenantService:
     async def create_tenant(self, payload: dict) -> dict:
         name = payload["name"]
         slug = payload.get("slug", slugify(name))
+        admin_email = payload["admin_email"]
+        admin_password = payload["admin_password"]
+
+        password_error = validate_password(admin_password)
+        if password_error:
+            raise ValidationError(password_error)
 
         existing = await self.db.execute(
             text("SELECT id FROM public.tenants WHERE slug = :slug"),
@@ -49,10 +56,28 @@ class TenantService:
                 f"(LIKE tenant_template.{table_name} INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)"
             ))
 
+        # Create the initial tenant admin in the same transaction
+        admin_id = generate_uuid()
+        await self.db.execute(
+            text("""
+                INSERT INTO public.tenant_users (id, tenant_id, email, password_hash, role, status)
+                VALUES (:id, :tid, :email, :pwd_hash, 'tenant_admin', 'active')
+            """),
+            {
+                "id": admin_id,
+                "tid": tenant_id,
+                "email": admin_email,
+                "pwd_hash": hash_password(admin_password),
+            },
+        )
+
         await self.db.commit()
 
         tenant_data = await self._get_by_id(tenant_id)
-        return {"tenant": tenant_data}
+        return {
+            "tenant": tenant_data,
+            "admin_user": {"id": admin_id, "email": admin_email, "role": "tenant_admin"},
+        }
 
     async def list_tenants(self, status: str | None = None, page: int = 1, per_page: int = 20) -> dict:
         conditions = []

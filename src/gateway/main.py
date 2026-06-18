@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
-from src.gateway.api.v1 import admin, auth, entity_types, users, extraction_proxy
+from src.gateway.api.v1 import admin, auth, entity_types, users, extraction_proxy, dashboard
 from src.gateway.middleware.tenant_context import TenantContextMiddleware
 from src.shared.database import get_engine
+from src.shared.config import settings
 
 
 def add_bearer_security(app: FastAPI):
@@ -38,6 +40,15 @@ app = FastAPI(
 
 add_bearer_security(app)
 app.add_middleware(TenantContextMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_origin_regex=settings.cors_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_private_network=settings.cors_allow_private_network,
+)
 
 
 @app.exception_handler(AppError)
@@ -59,6 +70,7 @@ app.include_router(auth.router)
 app.include_router(entity_types.router)
 app.include_router(users.router)
 app.include_router(extraction_proxy.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/health")

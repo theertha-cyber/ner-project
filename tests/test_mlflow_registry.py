@@ -135,3 +135,44 @@ class TestGetActiveModel:
         assert result is not None
         assert result["version_number"] == 2
         assert warning == "mlflow-unavailable"
+
+    def test_get_active_returns_none_when_no_production_version(self, monkeypatch):
+        from mlflow.exceptions import RestException
+
+        def mock_client(*args, **kwargs):
+            class MockMlflowClient:
+                def get_registered_model(self, name):
+                    raise RestException({"message": "not found", "error_code": "RESOURCE_DOES_NOT_EXIST"})
+
+                def get_run(self, run_id):
+                    pass
+
+            return MockMlflowClient()
+
+        monkeypatch.setattr("src.training_service.infra.mlflow_registry.MlflowClient", mock_client)
+
+        result, warning = get_active_model("tenant-x")
+        assert result is None
+        assert warning is None
+
+    def test_get_active_returns_none_on_exception_with_no_cache(self, monkeypatch):
+        def mock_client(*args, **kwargs):
+            class MockMlflowClient:
+                def get_registered_model(self, name):
+                    raise Exception("MLflow unreachable")
+
+                def get_run(self, run_id):
+                    pass
+
+            return MockMlflowClient()
+
+        monkeypatch.setattr("src.training_service.infra.mlflow_registry.MlflowClient", mock_client)
+
+        def mock_read_cache(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr("src.training_service.infra.mlflow_registry._read_cache_active_model", mock_read_cache)
+
+        result, warning = get_active_model("tenant-x")
+        assert result is None
+        assert warning == "mlflow-unavailable"

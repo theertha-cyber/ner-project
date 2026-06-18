@@ -19,7 +19,7 @@
 
 ## 2. The invariants
 
-This project uses **Spec-Driven Development (SDD)** via OpenSpec. Two
+This project uses **Spec-Driven Development (SDD)** via OpenSpec. Three
 invariants govern everything else:
 
 1. **No code is written before a spec exists and has been reviewed.**
@@ -30,6 +30,15 @@ invariants govern everything else:
    clause is violated.** See `docs/workflow/acceptance-criteria.md` for
    the full policy (allowed artifact types, what counts as satisfied,
    enforcement points).
+3. **No secret may be hardcoded in source code, configuration files, or
+   committed `.env` files.** All secrets (API keys, signing keys,
+   passwords, access tokens) MUST be loaded exclusively from environment
+   variables sourced from a developer's local `.env` file that is
+   excluded from version control via `.gitignore`. Default values for
+   secret-class settings in `Settings` (e.g. `jwt_secret`,
+   `minio_access_key`, `minio_secret_key`) MUST NOT be present — the
+   application SHALL fail at startup if they are absent from the
+   environment.
 
 ---
 

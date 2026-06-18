@@ -46,6 +46,7 @@ class ModelVersionResponse(BaseModel):
     created_at: datetime | None = None
     promoted_at: datetime | None = None
     archived_at: datetime | None = None
+    label_list: list[str] | None = None
 
 
 class ModelVersionListResponse(BaseModel):

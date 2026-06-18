@@ -11,7 +11,7 @@ from src.extraction_service.services.entity_store import (
 )
 from src.extraction_service.dependencies import get_db
 
-router = APIRouter(prefix="/api/v1/tenants/{tid}", tags=["entities"])
+router = APIRouter(prefix="/api/v1", tags=["entities"])
 
 
 def _get_tenant_id(request: Request) -> str:
@@ -30,7 +30,6 @@ def _get_user_id(request: Request) -> str:
 
 @router.get("/entities", response_model=EntityListResponse)
 async def list_entities(
-    tid: str,
     request: Request,
     document_id: str | None = Query(None, alias="documentId"),
     entity_type: str | None = Query(None, alias="type"),
@@ -41,8 +40,6 @@ async def list_entities(
     db: AsyncSession = Depends(get_db),
 ):
     tenant_id = _get_tenant_id(request)
-    if tid != tenant_id:
-        raise HTTPException(status_code=403, detail="Tenant mismatch")
 
     rows, total = await query_entities(
         db, tenant_id,
@@ -60,15 +57,12 @@ async def list_entities(
 
 @router.patch("/entities/{entity_id}", response_model=EntityItem)
 async def patch_entity(
-    tid: str,
     entity_id: str,
     body: EntityPatchRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     tenant_id = _get_tenant_id(request)
-    if tid != tenant_id:
-        raise HTTPException(status_code=403, detail="Tenant mismatch")
 
     user_id = _get_user_id(request)
 

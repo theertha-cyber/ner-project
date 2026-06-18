@@ -20,7 +20,7 @@ class TestInferenceReturnsPredictions:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/internal/v1/tenants/test-tenant/infer",
+                "/internal/v1/infer",
                 json={"tokens": ["John", "works", "at", "Acme"]},
                 headers=auth_header("test-tenant"),
             )
@@ -33,7 +33,7 @@ class TestInferenceNoModelReturns404:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/internal/v1/tenants/no-model-tenant/infer",
+                "/internal/v1/infer",
                 json={"tokens": ["test"]},
                 headers=auth_header("no-model-tenant"),
             )
@@ -46,7 +46,7 @@ class TestInferenceAuth:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/internal/v1/tenants/test-tenant/infer",
+                "/internal/v1/infer",
                 json={"tokens": ["test"]},
             )
             assert resp.status_code == 401
@@ -57,3 +57,78 @@ class TestInferenceAuth:
             resp = await client.get("/health")
             assert resp.status_code == 200
             assert resp.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+class TestInferenceBaseModelFallback:
+    async def test_infer_returns_conll_labels_for_no_model_tenant(self, monkeypatch):
+        def mock_resolve(*args):
+            return "base", 0
+
+        def mock_base_pipeline():
+            class MockPipe:
+                def __call__(self, text):
+                    return [
+                        {"entity": "B-PER", "word": "John", "score": 0.98},
+                        {"entity": "O", "word": "works", "score": 0.99},
+                        {"entity": "O", "word": "at", "score": 0.99},
+                        {"entity": "B-ORG", "word": "Acme", "score": 0.95},
+                    ]
+            return MockPipe()
+
+        monkeypatch.setattr(
+            "src.model_serving.services.inference_service._resolve_active_version",
+            mock_resolve,
+        )
+        monkeypatch.setattr(
+            "src.model_serving.services.inference_service._get_base_pipeline",
+            mock_base_pipeline,
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/internal/v1/infer",
+                json={"tokens": ["John", "works", "at", "Acme"]},
+                headers=auth_header("test-tenant"),
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "predictions" in data
+            assert data["model_version"] == "0"
+            assert resp.headers.get("x-model-source") == "base"
+
+    async def test_infer_base_has_conll_labels(self, monkeypatch):
+        def mock_resolve(*args):
+            return "base", 0
+
+        def mock_base_pipeline():
+            class MockPipe:
+                def __call__(self, text):
+                    return [
+                        {"entity": "B-PER", "word": "John", "score": 0.98},
+                        {"entity": "B-ORG", "word": "Acme", "score": 0.95},
+                    ]
+            return MockPipe()
+
+        monkeypatch.setattr(
+            "src.model_serving.services.inference_service._resolve_active_version",
+            mock_resolve,
+        )
+        monkeypatch.setattr(
+            "src.model_serving.services.inference_service._get_base_pipeline",
+            mock_base_pipeline,
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/internal/v1/infer",
+                json={"tokens": ["John", "works", "at", "Acme"]},
+                headers=auth_header("test-tenant"),
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            labels = {p["label"] for p in data["predictions"]}
+            assert "B-PER" in labels or "I-PER" in labels
+            assert "B-ORG" in labels or "I-ORG" in labels

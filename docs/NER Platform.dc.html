@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --surface:#f1f3f7; --surface-2:#ffffff; --surface-3:#f8fafc; --panel:#ffffff;
+  --ink:#0f172a; --ink-2:#475569; --ink-3:#94a3b8; --line:#e4e8ef; --line-2:#eef1f6;
+  --primary:#c2410c; --primary-2:#9a3412; --primary-soft:rgba(194,65,12,.09); --primary-line:rgba(194,65,12,.22);
+  --good:#15803d; --good-soft:rgba(21,128,61,.10); --warn:#b45309; --warn-soft:rgba(180,83,9,.10);
+  --bad:#b91c1c; --bad-soft:rgba(185,28,28,.10); --info:#1d4ed8; --info-soft:rgba(29,78,216,.10);
+  --shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -12px rgba(15,23,42,.12);
+  --shadow-lg:0 24px 60px -24px rgba(15,23,42,.30);
+  --glass:rgba(255,255,255,.62); --glass-line:rgba(255,255,255,.7);
+}
+[data-theme="dark"]{
+  --surface:#080b11; --surface-2:#10151f; --surface-3:#0c1119; --panel:#10151f;
+  --ink:#f1f5f9; --ink-2:#a9b6c8; --ink-3:#64748b; --line:#1c2533; --line-2:#161d29;
+  --primary:#fb7549; --primary-2:#fb8b66; --primary-soft:rgba(251,117,73,.13); --primary-line:rgba(251,117,73,.30);
+  --good:#34d399; --good-soft:rgba(52,211,153,.13); --warn:#fbbf24; --warn-soft:rgba(251,191,36,.13);
+  --bad:#f87171; --bad-soft:rgba(248,113,113,.13); --info:#60a5fa; --info-soft:rgba(96,165,250,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.7);
+  --shadow-lg:0 32px 80px -28px rgba(0,0,0,.8);
+  --glass:rgba(18,24,35,.55); --glass-line:rgba(255,255,255,.07);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--surface);font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:var(--primary-soft);color:var(--primary-2)}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:20px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--ink-3)}
+@keyframes meshDrift{0%{transform:translate(0,0) scale(1)}50%{transform:translate(4%,-3%) scale(1.12)}100%{transform:translate(-3%,4%) scale(1.05)}}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.82)}}
+@keyframes pulseRing{0%{box-shadow:0 0 0 0 var(--primary-soft)}70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(.97)}100%{opacity:1;transform:none}}
+@keyframes toastIn{0%{opacity:0;transform:translateY(14px) scale(.96)}100%{opacity:1;transform:none}}
+@keyframes slideOver{0%{transform:translateX(100%)}100%{transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.15}}
+@keyframes sweep{0%{transform:translateX(-120%)}100%{transform:translateX(420%)}}
+@keyframes fadeUp{0%{opacity:0;transform:translateY(10px)}100%{opacity:1;transform:none}}
+@keyframes growBar{0%{width:0}}
+</style>
+</helmet>
+
+<div data-theme="{{ theme }}" style="min-height:100vh;background:var(--surface);color:var(--ink);font-family:'Inter',sans-serif;position:relative;overflow:hidden">
+
+  <!-- grain overlay -->
+  <div style="position:fixed;inset:0;z-index:9000;pointer-events:none;opacity:.5;mix-blend-mode:soft-light;background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22140%22 height=%22140%22><filter id=%22n%22><feTurbulence type=%22fractalNoise%22 baseFrequency=%220.85%22 numOctaves=%222%22 stitchTiles=%22stitch%22/></filter><rect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22 opacity=%220.45%22/></svg>')"></div>
+
+  <!-- ============ LOGIN ============ -->
+  <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+    <div style="position:relative;min-height:100vh;display:grid;grid-template-columns:1.15fr .85fr;overflow:hidden">
+      <div style="position:absolute;inset:0;overflow:hidden;background:var(--surface)">
+        <div style="position:absolute;width:60vw;height:60vw;left:-12vw;top:-18vw;border-radius:50%;filter:blur(70px);opacity:.9;background:radial-gradient(circle at 30% 30%,#c2410c,transparent 62%);animation:meshDrift 17s ease-in-out infinite alternate"></div>
+        <div style="position:absolute;width:46vw;height:46vw;right:-6vw;top:24vh;border-radius:50%;filter:blur(80px);opacity:.7;background:radial-gradient(circle at 50% 50%,#475569,transparent 60%);animation:meshDrift 21s ease-in-out infinite alternate-reverse"></div>
+        <div style="position:absolute;width:34vw;height:34vw;left:18vw;bottom:-12vw;border-radius:50%;filter:blur(70px);opacity:.55;background:radial-gradient(circle at 50% 50%,#f59e0b,transparent 62%);animation:meshDrift 25s ease-in-out infinite alternate"></div>
+      </div>
+
+      <div style="position:relative;z-index:2;padding:64px 72px;display:flex;flex-direction:column;justify-content:space-between;color:#fff">
+        <div style="display:flex;align-items:center;gap:11px">
+          <div style="width:34px;height:34px;border-radius:9px;background:#fff;display:grid;place-items:center;font-family:'Hanken Grotesk';font-weight:800;color:#c2410c;font-size:19px">n</div>
+          <span style="font-family:'Hanken Grotesk';font-weight:700;font-size:18px;letter-spacing:-.02em">nerplatform</span>
+        </div>
+        <div style="max-width:540px">
+          <div style="font-family:'JetBrains Mono';font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.8;margin-bottom:20px">Multi-tenant document intelligence</div>
+          <h1 style="font-family:'Hanken Grotesk';font-weight:800;font-size:60px;line-height:.98;letter-spacing:-.035em;margin:0 0 22px">Define your entities.<br>Train your model.<br>Extract the truth.</h1>
+          <p style="font-size:17px;line-height:1.55;opacity:.92;max-width:460px;margin:0;font-weight:450">A tenant-isolated NER pipeline — annotate documents, fine-tune <span style="font-family:'JetBrains Mono';font-size:14px">bert-base-NER</span>, and promote models to production from one console.</p>
+        </div>
+        <div style="display:flex;gap:28px;font-family:'JetBrains Mono';font-size:12.5px;opacity:.85">
+          <span>SOC&nbsp;2&nbsp;Type&nbsp;II</span><span>Schema-per-tenant</span><span>JWT&nbsp;+&nbsp;RBAC</span>
+        </div>
+      </div>
+
+      <div style="position:relative;z-index:2;display:grid;place-items:center;padding:40px">
+        <div style="width:100%;max-width:392px;background:var(--glass);backdrop-filter:blur(26px) saturate(1.4);-webkit-backdrop-filter:blur(26px) saturate(1.4);border:1px solid var(--glass-line);border-radius:22px;padding:34px 32px;box-shadow:var(--shadow-lg);animation:popIn .5s ease both">
+          <h2 style="font-family:'Hanken Grotesk';font-weight:700;font-size:25px;letter-spacing:-.025em;margin:0 0 4px;color:var(--ink)">Sign in</h2>
+          <p style="margin:0 0 22px;font-size:13.5px;color:var(--ink-2)">Welcome back. Authenticate to your tenant console.</p>
+
+          <label style="display:block;font-size:11.5px;font-weight:600;color:var(--ink-2);margin-bottom:6px;font-family:'JetBrains Mono';letter-spacing:.04em">EMAIL</label>
+          <input value="{{ email }}" onChange="{{ onEmail }}" style="width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);font-family:'JetBrains Mono';font-size:13.5px;margin-bottom:15px;outline:none" style-focus="border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)">
+
+          <label style="display:block;font-size:11.5px;font-weight:600;color:var(--ink-2);margin-bottom:6px;font-family:'JetBrains Mono';letter-spacing:.04em">PASSWORD</label>
+          <input type="password" value="Admin123!" style="width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);font-family:'JetBrains Mono';font-size:13.5px;margin-bottom:20px;outline:none" style-focus="border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)">
+
+          <button onClick="{{ onLoginPrimary }}" style="width:100%;padding:12px;border:none;border-radius:11px;background:var(--primary);color:#fff;font-family:'Hanken Grotesk';font-weight:700;font-size:15px;cursor:pointer;transition:transform .12s,filter .12s;box-shadow:0 8px 20px -8px var(--primary)" style-hover="filter:brightness(1.06)" style-active="transform:scale(.985)">Sign in &rarr;</button>
+
+          <div style="display:flex;align-items:center;gap:12px;margin:20px 0 16px">
+            <div style="flex:1;height:1px;background:var(--line)"></div>
+            <span style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono';letter-spacing:.08em">DEMO · SIGN IN AS</span>
+            <div style="flex:1;height:1px;background:var(--line)"></div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <sc-for list="{{ roleChips }}" as="rc" hint-placeholder-count="4">
+              <button onClick="{{ rc.onClick }}" style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;padding:9px 11px;border-radius:11px;border:1px solid var(--line);background:var(--surface-2);cursor:pointer;text-align:left;transition:border-color .14s,transform .1s" style-hover="border-color:var(--primary-line);background:var(--primary-soft)" style-active="transform:scale(.98)">
+                <span style="font-family:'Hanken Grotesk';font-weight:700;font-size:13px;color:var(--ink)">{{ rc.label }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-3)">{{ rc.sub }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ APP ============ -->
+  <sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;min-height:100vh">
+
+      <!-- SIDEBAR -->
+      <aside style="width:248px;flex-shrink:0;background:var(--surface-2);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh">
+        <div style="padding:20px 18px 14px;display:flex;align-items:center;gap:10px">
+          <div style="width:30px;height:30px;border-radius:8px;background:var(--primary);display:grid;place-items:center;font-family:'Hanken Grotesk';font-weight:800;color:#fff;font-size:17px">n</div>
+          <span style="font-family:'Hanken Grotesk';font-weight:700;font-size:16px;letter-spacing:-.02em;color:var(--ink)">nerplatform</span>
+        </div>
+
+        <div style="margin:4px 12px 14px;padding:9px 11px;border:1px solid var(--line);border-radius:12px;display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--surface-3)" style-hover="border-color:var(--primary-line)">
+          <div style="width:26px;height:26px;border-radius:7px;background:var(--primary-soft);display:grid;place-items:center;font-family:'Hanken Grotesk';font-weight:700;font-size:12px;color:var(--primary-2)">{{ tenantInitials }}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ tenantName }}</div>
+            <div style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-3)">{{ tenantSlug }}</div>
+          </div>
+          <span style="color:var(--ink-3);font-size:11px">▾</span>
+        </div>
+
+        <nav style="flex:1;overflow:auto;padding:4px 12px">
+          <sc-for list="{{ navItems }}" as="nv" hint-placeholder-count="6">
+            <button onClick="{{ nv.onClick }}" style="{{ nv.style }}">
+              <span style="width:18px;text-align:center;font-size:14px">{{ nv.icon }}</span>
+              <span style="flex:1;text-align:left">{{ nv.label }}</span>
+              <sc-if value="{{ nv.badge }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono';font-size:10px;font-weight:600;padding:1px 6px;border-radius:20px;background:var(--primary-soft);color:var(--primary-2)">{{ nv.badge }}</span></sc-if>
+            </button>
+          </sc-for>
+        </nav>
+
+        <div style="padding:12px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px">
+          <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--primary),var(--primary-2));display:grid;place-items:center;color:#fff;font-family:'Hanken Grotesk';font-weight:700;font-size:13px">{{ userInitials }}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ userEmail }}</div>
+            <div style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-3)">{{ roleLabel }}</div>
+          </div>
+          <button onClick="{{ onLogout }}" title="Sign out" style="border:none;background:none;color:var(--ink-3);cursor:pointer;font-size:15px;padding:4px" style-hover="color:var(--primary)">⎋</button>
+        </div>
+      </aside>
+
+      <!-- MAIN -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;overflow:hidden">
+        <!-- TOPBAR -->
+        <header style="height:62px;flex-shrink:0;border-bottom:1px solid var(--line);background:var(--surface-2);display:flex;align-items:center;gap:16px;padding:0 24px;position:relative;z-index:50">
+          <div style="display:flex;align-items:baseline;gap:9px">
+            <span style="font-family:'Hanken Grotesk';font-weight:700;font-size:16px;letter-spacing:-.02em;color:var(--ink)">{{ screenTitle }}</span>
+            <span style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3)">{{ screenPath }}</span>
+          </div>
+          <div style="flex:1"></div>
+          <div style="display:flex;align-items:center;gap:8px;background:var(--surface-3);border:1px solid var(--line);border-radius:10px;padding:7px 12px;width:230px;color:var(--ink-3)">
+            <span style="font-size:13px">⌕</span>
+            <span style="font-family:'JetBrains Mono';font-size:12px">search · ⌘K</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:3px;background:var(--surface-3);border:1px solid var(--line);border-radius:10px;padding:3px">
+            <span style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono';padding:0 6px">AS</span>
+            <sc-for list="{{ roleSwitch }}" as="rs" hint-placeholder-count="4">
+              <button onClick="{{ rs.onClick }}" title="{{ rs.title }}" style="{{ rs.style }}">{{ rs.short }}</button>
+            </sc-for>
+          </div>
+
+          <button onClick="{{ onToggleDark }}" title="Toggle theme" style="width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--surface-3);color:var(--ink-2);cursor:pointer;font-size:15px" style-hover="border-color:var(--primary-line);color:var(--primary)">{{ darkIcon }}</button>
+          <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--primary-2));display:grid;place-items:center;color:#fff;font-family:'Hanken Grotesk';font-weight:700;font-size:13px">{{ userInitials }}</div>
+        </header>
+
+        <!-- SCREEN BODY -->
+        <main style="flex:1;overflow:auto;position:relative">
+
+          <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+            <div style="padding:28px 32px 60px;max-width:1240px;margin:0 auto;animation:fadeUp .4s ease both">
+
+              <!-- variant toggle -->
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px">
+                <div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3);letter-spacing:.06em">DASHBOARD · {{ roleLabel }}</div>
+                <div style="display:flex;gap:3px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:3px">
+                  <button onClick="{{ onDashA }}" style="{{ dashAStyle }}">Editorial</button>
+                  <button onClick="{{ onDashB }}" style="{{ dashBStyle }}">Command</button>
+                </div>
+              </div>
+
+              <!-- HERO -->
+              <div style="{{ heroWrapStyle }}">
+                <sc-if value="{{ heroIsB }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;inset:0;overflow:hidden;border-radius:24px">
+                    <div style="position:absolute;width:50%;height:180%;left:-6%;top:-40%;border-radius:50%;filter:blur(60px);opacity:.85;background:radial-gradient(circle,#c2410c,transparent 60%);animation:meshDrift 18s ease-in-out infinite alternate"></div>
+                    <div style="position:absolute;width:42%;height:160%;right:6%;top:-30%;border-radius:50%;filter:blur(70px);opacity:.6;background:radial-gradient(circle,#475569,transparent 62%);animation:meshDrift 23s ease-in-out infinite alternate-reverse"></div>
+                  </div>
+                </sc-if>
+                <div style="position:relative;z-index:2">
+                  <div style="font-family:'JetBrains Mono';font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px;color:{{ heroKickerColor }}">{{ heroKicker }}</div>
+                  <h1 style="font-family:'Hanken Grotesk';font-weight:800;font-size:38px;line-height:1.02;letter-spacing:-.03em;margin:0 0 12px;color:{{ heroTitleColor }}">{{ heroTitle }}</h1>
+                  <p style="font-size:15px;line-height:1.5;margin:0;max-width:560px;color:{{ heroLineColor }}">{{ heroLine }}</p>
+                </div>
+              </div>
+
+              <!-- STAT STRIP -->
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px">
+                <sc-for list="{{ stats }}" as="st" hint-placeholder-count="4">
+                  <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow);transition:transform .14s,border-color .14s" style-hover="transform:translateY(-2px);border-color:var(--primary-line)">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                      <span style="font-size:12px;color:var(--ink-2);font-weight:500">{{ st.label }}</span>
+                      <span style="{{ st.deltaStyle }}">{{ st.delta }}</span>
+                    </div>
+                    <div style="font-family:'Hanken Grotesk';font-weight:800;font-size:30px;letter-spacing:-.03em;color:var(--ink);line-height:1">{{ st.value }}<span style="font-size:14px;color:var(--ink-3);font-weight:600;margin-left:3px">{{ st.unit }}</span></div>
+                    <div style="font-family:'JetBrains Mono';font-size:10.5px;color:var(--ink-3);margin-top:8px">{{ st.sub }}</div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- PANELS -->
+              <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-top:16px">
+                <!-- primary panel -->
+                <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden">
+                  <div style="padding:18px 20px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;justify-content:space-between">
+                    <span style="font-family:'Hanken Grotesk';font-weight:700;font-size:15px;color:var(--ink)">{{ panelPrimaryTitle }}</span>
+                    <span style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3)">{{ panelPrimaryMeta }}</span>
+                  </div>
+                  <div style="padding:8px 8px 12px">
+                    <sc-for list="{{ panelPrimaryRows }}" as="r" hint-placeholder-count="4">
+                      <button onClick="{{ r.onClick }}" style="width:100%;display:flex;align-items:center;gap:13px;padding:12px;border:none;background:none;border-radius:12px;cursor:pointer;text-align:left;transition:background .12s" style-hover="background:var(--surface-3)">
+                        <div style="{{ r.dotStyle }}"></div>
+                        <div style="flex:1;min-width:0">
+                          <div style="font-size:13.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.title }}</div>
+                          <div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3)">{{ r.sub }}</div>
+                        </div>
+                        <span style="{{ r.tagStyle }}">{{ r.tag }}</span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </div>
+
+                <!-- secondary panel: active model / progress -->
+                <div style="display:flex;flex-direction:column;gap:16px">
+                  <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:20px">
+                    <div style="font-family:'Hanken Grotesk';font-weight:700;font-size:15px;color:var(--ink);margin-bottom:4px">{{ sideTopTitle }}</div>
+                    <div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3);margin-bottom:16px">{{ sideTopMeta }}</div>
+                    <div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:6px">
+                      <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:44px;letter-spacing:-.04em;color:var(--primary);line-height:.9">{{ sideBigValue }}</span>
+                      <span style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3);margin-bottom:8px">{{ sideBigUnit }}</span>
+                    </div>
+                    <div style="height:8px;border-radius:6px;background:var(--surface-3);overflow:hidden;margin-top:10px">
+                      <div style="{{ sideBarStyle }}"></div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:14px;font-family:'JetBrains Mono';font-size:11px;color:var(--ink-2)">
+                      <sc-for list="{{ sideMetrics }}" as="m" hint-placeholder-count="3">
+                        <span>{{ m.k }} <b style="color:var(--ink)">{{ m.v }}</b></span>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:20px">
+                    <div style="font-family:'Hanken Grotesk';font-weight:700;font-size:15px;color:var(--ink);margin-bottom:14px">{{ sideBottomTitle }}</div>
+                    <sc-for list="{{ sideBottomRows }}" as="b" hint-placeholder-count="3">
+                      <div style="margin-bottom:13px">
+                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span style="color:var(--ink-2);font-weight:500">{{ b.label }}</span><span style="font-family:'JetBrains Mono';color:var(--ink);font-weight:600">{{ b.val }}</span></div>
+                        <div style="height:6px;border-radius:5px;background:var(--surface-3);overflow:hidden"><div style="{{ b.barStyle }}"></div></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- screen placeholders, filled in next steps -->
+          <sc-if value="{{ isAnnotation }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;height:100%;animation:fadeUp .35s ease both">
+
+              <!-- toolbar -->
+              <div style="flex-shrink:0;padding:16px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;background:var(--surface-2)">
+                <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                  <span style="font-family:'JetBrains Mono';font-size:13px;font-weight:600;color:var(--ink)">invoice-2026-00417.pdf</span>
+                  <span style="{{ taskTagStyle }}">{{ taskStatus }}</span>
+                </div>
+                <div style="display:flex;gap:3px;background:var(--surface-3);border:1px solid var(--line);border-radius:9px;padding:3px">
+                  <sc-for list="{{ statusBtns }}" as="sb" hint-placeholder-count="3"><button onClick="{{ sb.onClick }}" style="{{ sb.style }}">{{ sb.label }}</button></sc-for>
+                </div>
+                <div style="flex:1"></div>
+                <span style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3)">{{ totalSpans }} confirmed · {{ sugCount }} suggested</span>
+                <button onClick="{{ onPrelabel }}" style="display:flex;align-items:center;gap:7px;padding:8px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink-2);font-family:'Inter';font-weight:600;font-size:12.5px;cursor:pointer" style-hover="border-color:var(--primary-line);color:var(--primary)"><span>✦</span>Pre-label</button>
+                <div style="display:flex;gap:3px;background:var(--surface-3);border:1px solid var(--line);border-radius:9px;padding:3px">
+                  <button onClick="{{ onAnnoA }}" style="{{ annoAStyle }}">3-pane</button>
+                  <button onClick="{{ onAnnoB }}" style="{{ annoBStyle }}">Focus</button>
+                </div>
+              </div>
+
+              <!-- armed banner -->
+              <sc-if value="{{ armedActive }}" hint-placeholder-val="{{ false }}">
+                <div style="flex-shrink:0;padding:10px 24px;background:var(--primary-soft);border-bottom:1px solid var(--primary-line);display:flex;align-items:center;gap:10px">
+                  <span style="width:8px;height:8px;border-radius:50%;background:var(--primary);animation:pulse 1.3s infinite"></span>
+                  <span style="font-size:12.5px;color:var(--primary-2);font-weight:600">{{ armedBanner }}</span>
+                  <div style="flex:1"></div>
+                  <button onClick="{{ onDisarm }}" style="font-family:'JetBrains Mono';font-size:11px;border:none;background:none;color:var(--primary-2);cursor:pointer;font-weight:600">esc · done</button>
+                </div>
+              </sc-if>
+
+              <!-- ====== VARIANT A: three-pane ====== -->
+              <sc-if value="{{ annoIsA }}" hint-placeholder-val="{{ true }}">
+                <div style="flex:1;min-height:0;display:grid;grid-template-columns:228px 1fr 326px;gap:1px;background:var(--line)">
+                  <!-- queue -->
+                  <div style="background:var(--surface);overflow:auto;padding:14px">
+                    <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.08em;color:var(--ink-3);margin:4px 6px 12px">TASK QUEUE</div>
+                    <sc-for list="{{ annoQueue }}" as="q" hint-placeholder-count="4">
+                      <button style="{{ q.style }}" style-hover="background:var(--surface-2)">
+                        <span style="font-family:'JetBrains Mono';font-size:11.5px;color:var(--ink);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px">{{ q.name }}</span>
+                        <span style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-3)">{{ q.meta }}</span>
+                      </button>
+                    </sc-for>
+                  </div>
+                  <!-- document -->
+                  <div style="background:var(--surface);overflow:auto;padding:34px 40px">
+                    <div style="max-width:680px;margin:0 auto;background:var(--surface-2);border:1px solid var(--line);border-radius:16px;padding:36px 40px;box-shadow:var(--shadow)">
+                      <sc-for list="{{ docRows }}" as="row" hint-placeholder-count="12">
+                        <div style="margin-bottom:2px;display:flex;flex-wrap:wrap;align-items:baseline">
+                          <sc-for list="{{ row }}" as="tok" hint-placeholder-count="5"><span onClick="{{ tok.onClick }}" style="{{ tok.style }}" style-hover="background:var(--surface-3)">{{ tok.text }}</span></sc-for>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <!-- right rail -->
+                  <div style="background:var(--surface);overflow:auto;padding:16px">
+                    <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.08em;color:var(--ink-3);margin:2px 2px 11px">ENTITY TYPES</div>
+                    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:22px">
+                      <sc-for list="{{ etypes }}" as="et" hint-placeholder-count="5">
+                        <button onClick="{{ et.onArm }}" style="{{ et.style }}">
+                          <span style="{{ et.dot }}"></span>
+                          <div style="flex:1;min-width:0"><div style="font-family:'JetBrains Mono';font-size:12px;font-weight:600;color:var(--ink)">{{ et.name }}</div><div style="font-family:'JetBrains Mono';font-size:9.5px;color:var(--ink-3)">base: {{ et.base }}</div></div>
+                          <span style="font-family:'Hanken Grotesk';font-weight:700;font-size:14px;color:var(--ink-2)">{{ et.count }}</span>
+                        </button>
+                      </sc-for>
+                    </div>
+
+                    <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
+                      <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface-2);padding:15px;margin-bottom:18px;animation:popIn .25s ease both">
+                        <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.08em;color:var(--ink-3);margin-bottom:10px">SPAN INSPECTOR</div>
+                        <div style="display:inline-block;padding:5px 10px;border-radius:8px;background:{{ sel.soft }};color:{{ sel.ink }};font-size:14px;font-weight:600;margin-bottom:12px">{{ sel.text }}</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;font-family:'JetBrains Mono';font-size:11px;margin-bottom:12px">
+                          <div><div style="color:var(--ink-3);margin-bottom:2px">char_start</div><div style="color:var(--ink);font-weight:600">{{ sel.charStart }}</div></div>
+                          <div><div style="color:var(--ink-3);margin-bottom:2px">char_end</div><div style="color:var(--ink);font-weight:600">{{ sel.charEnd }}</div></div>
+                          <div><div style="color:var(--ink-3);margin-bottom:2px">confidence</div><div style="color:var(--ink);font-weight:600">{{ sel.confidence }}</div></div>
+                          <div><div style="color:var(--ink-3);margin-bottom:2px">base</div><div style="color:var(--ink);font-weight:600">{{ sel.base }}</div></div>
+                        </div>
+                        <div style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-3);margin-bottom:7px">REASSIGN TYPE</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:13px">
+                          <sc-for list="{{ sel.retype }}" as="rt" hint-placeholder-count="5"><button onClick="{{ rt.onClick }}" style="display:flex;align-items:center;gap:5px;padding:4px 8px;border-radius:7px;border:1px solid var(--line);background:var(--surface-3);cursor:pointer;font-family:'JetBrains Mono';font-size:10.5px;color:var(--ink-2)" style-hover="border-color:var(--primary-line)"><span style="{{ rt.dot }}"></span>{{ rt.name }}</button></sc-for>
+                        </div>
+                        <button onClick="{{ sel.onDelete }}" style="width:100%;padding:8px;border:1px solid var(--bad-soft);border-radius:9px;background:var(--bad-soft);color:var(--bad);font-family:'Inter';font-weight:600;font-size:12px;cursor:pointer" style-hover="filter:brightness(1.05)">Delete span</button>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ hasSug }}" hint-placeholder-val="{{ false }}">
+                      <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.08em;color:var(--ink-3);margin:2px 2px 10px">SUGGESTIONS · PRE-LABELED</div>
+                      <div style="display:flex;flex-direction:column;gap:8px">
+                        <sc-for list="{{ sgGroups }}" as="sgr" hint-placeholder-count="3">
+                          <div style="border:1px dashed var(--line);border-radius:12px;background:var(--surface-2);padding:11px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px"><span style="{{ sgr.dot }}"></span><span style="font-size:13px;font-weight:600;color:var(--ink);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sgr.text }}</span></div>
+                            <div style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-3);margin-bottom:9px">{{ sgr.name }} · conf 0.85</div>
+                            <div style="display:flex;gap:6px">
+                              <button onClick="{{ sgr.onPromote }}" style="flex:1;padding:6px;border:none;border-radius:8px;background:var(--primary);color:#fff;font-family:'Inter';font-weight:600;font-size:11.5px;cursor:pointer" style-hover="filter:brightness(1.06)">Promote</button>
+                              <button onClick="{{ sgr.onDismiss }}" style="padding:6px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-3);color:var(--ink-2);font-family:'Inter';font-weight:600;font-size:11.5px;cursor:pointer" style-hover="color:var(--bad)">✕</button>
+                            </div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-if>
+
+              <!-- ====== VARIANT B: focus mode ====== -->
+              <sc-if value="{{ annoIsB }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:1;min-height:0;overflow:auto;position:relative;background:var(--surface-3)">
+                  <div style="max-width:760px;margin:0 auto;padding:46px 24px 160px">
+                    <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:20px;padding:54px 64px;box-shadow:var(--shadow-lg);font-size:16.5px">
+                      <sc-for list="{{ docRows }}" as="row" hint-placeholder-count="12">
+                        <div style="margin-bottom:3px;display:flex;flex-wrap:wrap;align-items:baseline">
+                          <sc-for list="{{ row }}" as="tok" hint-placeholder-count="5"><span onClick="{{ tok.onClick }}" style="{{ tok.style }}" style-hover="background:var(--surface-3)">{{ tok.text }}</span></sc-for>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+
+                  <!-- floating inspector -->
+                  <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:fixed;top:140px;right:30px;width:290px;z-index:200;border:1px solid var(--line);border-radius:16px;background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);padding:16px;box-shadow:var(--shadow-lg);animation:popIn .25s ease both">
+                      <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.08em;color:var(--ink-3);margin-bottom:10px">SPAN INSPECTOR</div>
+                      <div style="display:inline-block;padding:5px 10px;border-radius:8px;background:{{ sel.soft }};color:{{ sel.ink }};font-size:14px;font-weight:600;margin-bottom:12px">{{ sel.text }}</div>
+                      <div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-2);margin-bottom:12px">{{ sel.name }} · [{{ sel.charStart }},{{ sel.charEnd }}] · conf {{ sel.confidence }}</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">
+                        <sc-for list="{{ sel.retype }}" as="rt" hint-placeholder-count="5"><button onClick="{{ rt.onClick }}" style="display:flex;align-items:center;gap:5px;padding:4px 8px;border-radius:7px;border:1px solid var(--line);background:var(--surface-2);cursor:pointer;font-family:'JetBrains Mono';font-size:10.5px;color:var(--ink-2)" style-hover="border-color:var(--primary-line)"><span style="{{ rt.dot }}"></span>{{ rt.name }}</button></sc-for>
+                      </div>
+                      <button onClick="{{ sel.onDelete }}" style="width:100%;padding:8px;border:1px solid var(--bad-soft);border-radius:9px;background:var(--bad-soft);color:var(--bad);font-family:'Inter';font-weight:600;font-size:12px;cursor:pointer">Delete span</button>
+                    </div>
+                  </sc-if>
+
+                  <!-- floating palette dock -->
+                  <div style="position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:200;display:flex;align-items:center;gap:6px;padding:9px 11px;border-radius:18px;background:var(--glass);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);border:1px solid var(--glass-line);box-shadow:var(--shadow-lg)">
+                    <span style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-3);padding:0 6px">LABEL AS</span>
+                    <sc-for list="{{ etypes }}" as="et" hint-placeholder-count="5">
+                      <button onClick="{{ et.onArm }}" style="{{ et.style }};width:auto;padding:7px 11px;border-radius:11px">
+                        <span style="{{ et.dot }}"></span>
+                        <span style="font-family:'JetBrains Mono';font-size:11.5px;font-weight:600;color:var(--ink)">{{ et.name }}</span>
+                        <span style="font-family:'Hanken Grotesk';font-weight:700;font-size:12px;color:var(--ink-3)">{{ et.count }}</span>
+                      </button>
+                    </sc-for>
+                    <div style="width:1px;height:24px;background:var(--line);margin:0 2px"></div>
+                    <button onClick="{{ onPrelabel }}" style="padding:7px 12px;border-radius:11px;border:none;background:var(--primary);color:#fff;font-family:'Inter';font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px">✦ Pre-label</button>
+                  </div>
+                </div>
+              </sc-if>
+
+            </div>
+          </sc-if>
+          <sc-if value="{{ isTenants }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:28px 32px 60px;max-width:1180px;margin:0 auto;animation:fadeUp .35s ease both">
+              <!-- header -->
+              <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:24px">
+                <div>
+                  <div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3);letter-spacing:.06em;margin-bottom:8px">SYSTEM ADMIN · /admin/tenants</div>
+                  <h1 style="font-family:'Hanken Grotesk';font-weight:800;font-size:34px;letter-spacing:-.03em;margin:0;color:var(--ink)">Tenants</h1>
+                </div>
+                <button onClick="{{ onCreateOpen }}" style="display:flex;align-items:center;gap:8px;padding:11px 17px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-family:'Hanken Grotesk';font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 8px 20px -8px var(--primary);transition:transform .12s,filter .12s" style-hover="filter:brightness(1.06)" style-active="transform:scale(.97)"><span style="font-size:16px">+</span> Create tenant</button>
+              </div>
+
+              <!-- filter row -->
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+                <div style="display:flex;gap:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:4px">
+                  <sc-for list="{{ tFilterTabs }}" as="ft" hint-placeholder-count="3"><button onClick="{{ ft.onClick }}" style="{{ ft.style }}">{{ ft.label }} <span style="opacity:.6;font-family:'JetBrains Mono';font-size:11px">{{ ft.count }}</span></button></sc-for>
+                </div>
+                <div style="flex:1"></div>
+                <span style="font-family:'JetBrains Mono';font-size:12px;color:var(--ink-3)">{{ tCount }} tenants · cursor-paginated</span>
+              </div>
+
+              <!-- table head -->
+              <div style="display:grid;grid-template-columns:1.7fr .8fr 1.2fr 1.2fr 1.2fr .6fr 24px;gap:14px;padding:0 18px 10px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.05em;color:var(--ink-3)">
+                <span>TENANT</span><span>STATUS</span><span>USERS</span><span>DOCUMENTS</span><span>STORAGE</span><span>MODELS</span><span></span>
+              </div>
+              <!-- rows -->
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <sc-for list="{{ tRows }}" as="t" hint-placeholder-count="6">
+                  <button onClick="{{ t.onClick }}" style="{{ t.rowStyle }}" style-hover="border-color:var(--primary-line);transform:translateY(-1px)">
+                    <div style="display:flex;align-items:center;gap:11px;min-width:0">
+                      <div style="width:34px;height:34px;border-radius:9px;background:var(--primary-soft);display:grid;place-items:center;font-family:'Hanken Grotesk';font-weight:700;font-size:12px;color:var(--primary-2);flex-shrink:0">{{ t.initials }}</div>
+                      <div style="min-width:0"><div style="font-family:'Inter';font-weight:600;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.name }}</div><div style="font-family:'JetBrains Mono';font-size:10.5px;color:var(--ink-3)">{{ t.slug }}</div></div>
+                    </div>
+                    <span style="{{ t.statusStyle }}">{{ t.status }}</span>
+                    <div><div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-2);margin-bottom:5px">{{ t.users.label }}</div><div style="height:5px;border-radius:4px;background:var(--surface-3);overflow:hidden"><div style="{{ t.users.fill }}"></div></div></div>
+                    <div><div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-2);margin-bottom:5px">{{ t.docs.label }}</div><div style="height:5px;border-radius:4px;background:var(--surface-3);overflow:hidden"><div style="{{ t.docs.fill }}"></div></div></div>
+                    <div><div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-2);margin-bottom:5px">{{ t.storage.label }}</div><div style="height:5px;border-radius:4px;background:var(--surface-3);overflow:hidden"><div style="{{ t.storage.fill }}"></div></div></div>
+                    <span style="font-family:'Hanken Grotesk';font-weight:700;font-size:15px;color:var(--ink)">{{ t.models }}</span>
+                    <span style="color:var(--ink-3);font-size:14px;text-align:center">›</span>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- DETAIL SLIDE-OVER -->
+            <sc-if value="{{ hasTDetail }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ onTClose }}" style="position:fixed;inset:0;z-index:300;background:rgba(8,11,17,.34)"></div>
+              <div style="position:fixed;top:0;right:0;bottom:0;width:420px;z-index:310;background:var(--surface-2);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);overflow:auto;animation:slideOver .32s cubic-bezier(.2,.85,.3,1) both">
+                <div style="padding:24px 26px;border-bottom:1px solid var(--line-2);display:flex;align-items:flex-start;gap:14px">
+                  <div style="width:46px;height:46px;border-radius:12px;background:var(--primary-soft);display:grid;place-items:center;font-family:'Hanken Grotesk';font-weight:700;font-size:16px;color:var(--primary-2)">{{ tDetail.initials }}</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-family:'Hanken Grotesk';font-weight:700;font-size:19px;letter-spacing:-.02em;color:var(--ink)">{{ tDetail.name }}</div>
+                    <div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3);margin-top:2px">tenant_{{ tDetail.slug }}</div>
+                  </div>
+                  <button onClick="{{ onTClose }}" style="border:none;background:var(--surface-3);width:30px;height:30px;border-radius:8px;cursor:pointer;color:var(--ink-2);font-size:15px">✕</button>
+                </div>
+                <div style="padding:24px 26px">
+                  <div style="display:flex;gap:8px;margin-bottom:22px"><span style="{{ tDetail.statusStyle }}">{{ tDetail.status }}</span><span style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3);align-self:center">created {{ tDetail.created }}</span></div>
+                  <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.06em;color:var(--ink-3);margin-bottom:14px">QUOTA USAGE</div>
+                  <sc-for list="{{ tDetail.quotas }}" as="q" hint-placeholder-count="4">
+                    <div style="margin-bottom:16px">
+                      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px;color:var(--ink-2);font-weight:500">{{ q.k }}</span><span style="font-family:'JetBrains Mono';font-size:11.5px;color:var(--ink);font-weight:600">{{ q.label }}</span></div>
+                      <div style="height:7px;border-radius:5px;background:var(--surface-3);overflow:hidden"><div style="{{ q.fill }}"></div></div>
+                    </div>
+                  </sc-for>
+                  <div style="margin-top:28px;padding-top:22px;border-top:1px solid var(--line-2)">
+                    <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.06em;color:var(--ink-3);margin-bottom:12px">DANGER ZONE</div>
+                    <button onClick="{{ tDetail.onToggle }}" style="{{ tDetail.toggleStyle }}">{{ tDetail.toggleLabel }}</button>
+                    <p style="font-size:11.5px;color:var(--ink-3);margin:10px 2px 0;line-height:1.5">Deactivating sets status:inactive — tenant-scoped requests return 403. The schema and data are preserved.</p>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- CREATE SLIDE-OVER -->
+            <sc-if value="{{ tCreateOpen }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ onCreateClose }}" style="position:fixed;inset:0;z-index:300;background:rgba(8,11,17,.34)"></div>
+              <div style="position:fixed;top:0;right:0;bottom:0;width:440px;z-index:310;background:var(--surface-2);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);overflow:auto;animation:slideOver .32s cubic-bezier(.2,.85,.3,1) both">
+                <div style="padding:24px 28px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;justify-content:space-between">
+                  <div><div style="font-family:'Hanken Grotesk';font-weight:700;font-size:20px;letter-spacing:-.02em;color:var(--ink)">Create tenant</div><div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3);margin-top:2px">POST /api/v1/admin/tenants</div></div>
+                  <button onClick="{{ onCreateClose }}" style="border:none;background:var(--surface-3);width:30px;height:30px;border-radius:8px;cursor:pointer;color:var(--ink-2);font-size:15px">✕</button>
+                </div>
+                <div style="padding:24px 28px">
+                  <label style="display:block;font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:7px;letter-spacing:.03em">NAME</label>
+                  <input value="{{ cfName }}" onChange="{{ onCfName }}" placeholder="Acme Corp" style="width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--line);background:var(--surface-3);color:var(--ink);font-family:'Inter';font-size:14px;margin-bottom:16px;outline:none" style-focus="border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)">
+                  <label style="display:block;font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:7px;letter-spacing:.03em">SLUG <span style="color:var(--ink-3);font-weight:400">· auto</span></label>
+                  <div style="width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--line);background:var(--surface);color:var(--ink-3);font-family:'JetBrains Mono';font-size:13px;margin-bottom:22px">{{ cfSlug }}</div>
+
+                  <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.06em;color:var(--ink-3);margin-bottom:14px">QUOTAS</div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:26px">
+                    <div><label style="display:block;font-size:11.5px;color:var(--ink-2);margin-bottom:6px;font-weight:500">Max users</label><input type="number" value="{{ cfMaxUsers }}" onChange="{{ onCfUsers }}" style="width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-3);color:var(--ink);font-family:'JetBrains Mono';font-size:13px;outline:none" style-focus="border-color:var(--primary)"></div>
+                    <div><label style="display:block;font-size:11.5px;color:var(--ink-2);margin-bottom:6px;font-weight:500">Max documents</label><input type="number" value="{{ cfMaxDocs }}" onChange="{{ onCfDocs }}" style="width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-3);color:var(--ink);font-family:'JetBrains Mono';font-size:13px;outline:none" style-focus="border-color:var(--primary)"></div>
+                    <div><label style="display:block;font-size:11.5px;color:var(--ink-2);margin-bottom:6px;font-weight:500">Max storage (GB)</label><input type="number" value="{{ cfMaxStorage }}" onChange="{{ onCfStorage }}" style="width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-3);color:var(--ink);font-family:'JetBrains Mono';font-size:13px;outline:none" style-focus="border-color:var(--primary)"></div>
+                    <div><label style="display:block;font-size:11.5px;color:var(--ink-2);margin-bottom:6px;font-weight:500">Max model versions</label><input type="number" value="{{ cfMaxModels }}" onChange="{{ onCfModels }}" style="width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-3);color:var(--ink);font-family:'JetBrains Mono';font-size:13px;outline:none" style-focus="border-color:var(--primary)"></div>
+                  </div>
+                  <button onClick="{{ onCreateSubmit }}" style="width:100%;padding:13px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-family:'Hanken Grotesk';font-weight:700;font-size:14.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px" style-hover="filter:brightness(1.06)" style-active="transform:scale(.99)">
+                    <sc-if value="{{ tCreating }}" hint-placeholder-val="{{ false }}"><span style="width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite"></span></sc-if>
+                    <span>{{ createBtnLabel }}</span>
+                  </button>
+                  <p style="font-size:11.5px;color:var(--ink-3);margin:12px 2px 0;line-height:1.5;text-align:center">Creates the row and provisions an isolated <span style="font-family:'JetBrains Mono'">CREATE SCHEMA tenant_{id}</span>.</p>
+                </div>
+              </div>
+            </sc-if>
+          </sc-if>
+          <sc-if value="{{ isTraining }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:28px 32px 40px;max-width:1240px;margin:0 auto;animation:fadeUp .35s ease both">
+              <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:22px">
+                <div>
+                  <div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3);letter-spacing:.06em;margin-bottom:8px">/api/v1/training-jobs</div>
+                  <h1 style="font-family:'Hanken Grotesk';font-weight:800;font-size:34px;letter-spacing:-.03em;margin:0;color:var(--ink)">Training Jobs</h1>
+                </div>
+                <button onClick="{{ onNewJob }}" style="display:flex;align-items:center;gap:8px;padding:11px 17px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-family:'Hanken Grotesk';font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 8px 20px -8px var(--primary)" style-hover="filter:brightness(1.06)" style-active="transform:scale(.97)"><span style="font-size:16px">+</span> Submit job</button>
+              </div>
+
+              <div style="display:flex;gap:7px;margin-bottom:18px;flex-wrap:wrap">
+                <sc-for list="{{ tFilterTabs }}" as="ft" hint-placeholder-count="5"><button onClick="{{ ft.onClick }}" style="{{ ft.style }}">{{ ft.label }}</button></sc-for>
+              </div>
+
+              <div style="display:grid;grid-template-columns:340px 1fr;gap:18px;align-items:start">
+                <!-- LIST -->
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <sc-for list="{{ jobRows }}" as="j" hint-placeholder-count="6">
+                    <button onClick="{{ j.onClick }}" style="{{ j.cardStyle }}" style-hover="border-color:var(--primary-line)">
+                      <div style="display:flex;align-items:center;gap:9px;margin-bottom:9px">
+                        <span style="{{ j.dotStyle }}"></span>
+                        <span style="font-family:'JetBrains Mono';font-size:13px;font-weight:600;color:var(--ink)">{{ j.id }}</span>
+                        <div style="flex:1"></div>
+                        <span style="{{ j.statusStyle }}">{{ j.statusLabel }}</span>
+                      </div>
+                      <div style="display:flex;align-items:center;justify-content:space-between">
+                        <span style="font-family:'JetBrains Mono';font-size:10.5px;color:var(--ink-3)">{{ j.hp }}</span>
+                        <span style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-2)">F1 <b style="color:var(--ink);font-family:'Hanken Grotesk'">{{ j.f1 }}</b></span>
+                      </div>
+                    </button>
+                  </sc-for>
+                </div>
+
+                <!-- DETAIL -->
+                <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden">
+                  <div style="padding:22px 24px;border-bottom:1px solid var(--line-2)">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+                      <span style="font-family:'JetBrains Mono';font-size:17px;font-weight:600;color:var(--ink)">{{ dJobId }}</span>
+                      <span style="{{ dStatusStyle }}">{{ dStatus }}</span>
+                      <div style="flex:1"></div>
+                      <span style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3)">{{ dCreated }}</span>
+                    </div>
+                    <!-- timeline -->
+                    <div style="display:flex;align-items:center;gap:0;margin-top:6px">
+                      <sc-for list="{{ dTimeline }}" as="tl" hint-placeholder-count="4">
+                        <div style="display:flex;align-items:center;gap:8px"><div style="{{ tl.dotStyle }}"></div><span style="{{ tl.textStyle }}">{{ tl.label }}</span></div>
+                        <div style="flex:1;height:2px;background:var(--line);margin:0 12px;min-width:18px"></div>
+                      </sc-for>
+                    </div>
+                  </div>
+
+                  <div style="padding:22px 24px">
+                    <!-- live running -->
+                    <sc-if value="{{ dIsRunning }}" hint-placeholder-val="{{ false }}">
+                      <div style="background:var(--info-soft);border:1px solid var(--info-soft);border-radius:14px;padding:17px 18px;margin-bottom:20px">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px">
+                          <span style="display:flex;align-items:center;gap:9px;font-family:'Hanken Grotesk';font-weight:700;font-size:14px;color:var(--ink)"><span style="width:8px;height:8px;border-radius:50%;background:var(--info);animation:pulse 1.2s infinite"></span>Fine-tuning in progress</span>
+                          <span style="font-family:'JetBrains Mono';font-size:12px;color:var(--ink-2)">epoch <b style="color:var(--ink)">{{ runEpochInt }}</b>/3</span>
+                        </div>
+                        <div style="height:9px;border-radius:6px;background:var(--surface-3);overflow:hidden;margin-bottom:12px"><div style="{{ runPctStyle }}"></div></div>
+                        <div style="display:flex;gap:22px;font-family:'JetBrains Mono';font-size:12px;color:var(--ink-2)">
+                          <span>loss <b style="color:var(--ink)">{{ runLossDisp }}</b></span>
+                          <span>epoch <b style="color:var(--ink)">{{ runEpochDisp }}</b></span>
+                          <span>GPU <b style="color:var(--ink)">worker-2</b></span>
+                        </div>
+                      </div>
+                    </sc-if>
+
+                    <!-- error -->
+                    <sc-if value="{{ dIsFailed }}" hint-placeholder-val="{{ false }}">
+                      <div style="background:var(--bad-soft);border:1px solid var(--bad-soft);border-radius:14px;padding:15px 17px;margin-bottom:20px">
+                        <div style="font-family:'JetBrains Mono';font-size:10.5px;color:var(--bad);letter-spacing:.05em;margin-bottom:7px">ERROR_MESSAGE</div>
+                        <div style="font-family:'JetBrains Mono';font-size:12.5px;color:var(--ink);line-height:1.5">{{ dError }}</div>
+                      </div>
+                    </sc-if>
+
+                    <!-- hyperparams -->
+                    <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.06em;color:var(--ink-3);margin-bottom:12px">HYPERPARAMETERS</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:11px;margin-bottom:24px">
+                      <sc-for list="{{ dHp }}" as="h" hint-placeholder-count="4">
+                        <div style="background:var(--surface-3);border:1px solid var(--line);border-radius:11px;padding:12px"><div style="font-family:'JetBrains Mono';font-size:9.5px;color:var(--ink-3);margin-bottom:5px">{{ h.k }}</div><div style="font-family:'JetBrains Mono';font-size:14px;font-weight:600;color:var(--ink)">{{ h.v }}</div></div>
+                      </sc-for>
+                    </div>
+
+                    <!-- metrics -->
+                    <sc-if value="{{ dHasMetrics }}" hint-placeholder-val="{{ false }}">
+                      <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.06em;color:var(--ink-3);margin-bottom:14px">EVALUATION METRICS</div>
+                      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:14px">
+                        <sc-for list="{{ dMetrics }}" as="m" hint-placeholder-count="3">
+                          <div>
+                            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-family:'Hanken Grotesk';font-weight:800;font-size:26px;letter-spacing:-.03em;color:var(--primary)">{{ m.v }}</span><span style="font-family:'JetBrains Mono';font-size:10.5px;color:var(--ink-3)">{{ m.k }}</span></div>
+                            <div style="height:6px;border-radius:5px;background:var(--surface-3);overflow:hidden"><div style="{{ m.fill }}"></div></div>
+                          </div>
+                        </sc-for>
+                      </div>
+                      <div style="font-family:'JetBrains Mono';font-size:11.5px;color:var(--ink-2);margin-bottom:24px">eval_loss <b style="color:var(--ink)">{{ dLoss }}</b></div>
+                    </sc-if>
+
+                    <!-- lineage -->
+                    <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.06em;color:var(--ink-3);margin-bottom:12px">LINEAGE</div>
+                    <div style="display:flex;align-items:stretch;gap:10px;margin-bottom:22px">
+                      <div style="flex:1;background:var(--surface-3);border:1px solid var(--line);border-radius:11px;padding:12px 13px"><div style="font-family:'JetBrains Mono';font-size:9.5px;color:var(--ink-3);margin-bottom:4px">DATASET</div><div style="font-family:'JetBrains Mono';font-size:12.5px;font-weight:600;color:var(--ink)">{{ dDataset }}</div><div style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-3);margin-top:2px">{{ dSpans }} spans</div></div>
+                      <div style="display:grid;place-items:center;color:var(--ink-3)">→</div>
+                      <div style="flex:1;background:var(--primary-soft);border:1px solid var(--primary-line);border-radius:11px;padding:12px 13px"><div style="font-family:'JetBrains Mono';font-size:9.5px;color:var(--primary-2);margin-bottom:4px">TRAINING JOB</div><div style="font-family:'JetBrains Mono';font-size:12.5px;font-weight:600;color:var(--ink)">{{ dJobId }}</div><div style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-3);margin-top:2px">bert-base-NER</div></div>
+                      <div style="display:grid;place-items:center;color:var(--ink-3)">→</div>
+                      <div style="flex:1;background:var(--surface-3);border:1px solid var(--line);border-radius:11px;padding:12px 13px"><div style="font-family:'JetBrains Mono';font-size:9.5px;color:var(--ink-3);margin-bottom:4px">MODEL VERSION</div><div style="font-family:'JetBrains Mono';font-size:12.5px;font-weight:600;color:var(--ink)">{{ dVersionLabel }}</div><div style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-3);margin-top:2px">registry</div></div>
+                    </div>
+
+                    <!-- mlflow -->
+                    <sc-if value="{{ dHasMlflow }}" hint-placeholder-val="{{ false }}">
+                      <a href="#" style="display:flex;align-items:center;gap:10px;text-decoration:none;background:var(--surface-3);border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-bottom:22px" style-hover="border-color:var(--primary-line)">
+                        <span style="width:26px;height:26px;border-radius:7px;background:var(--info-soft);display:grid;place-items:center;font-size:13px">📊</span>
+                        <div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;color:var(--ink)">MLflow run</div><div style="font-family:'JetBrains Mono';font-size:10.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ dMlflow }}</div></div>
+                        <span style="color:var(--ink-3);font-size:13px">↗</span>
+                      </a>
+                    </sc-if>
+
+                    <!-- actions -->
+                    <sc-if value="{{ dHasActions }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;gap:10px;padding-top:6px">
+                        <sc-for list="{{ dActions }}" as="a" hint-placeholder-count="2"><button onClick="{{ a.onClick }}" style="{{ a.style }}" style-hover="filter:brightness(1.05)" style-active="transform:scale(.99)">{{ a.label }}</button></sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- NEW JOB SLIDE-OVER -->
+            <sc-if value="{{ njOpen }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ onNjClose }}" style="position:fixed;inset:0;z-index:300;background:rgba(8,11,17,.34)"></div>
+              <div style="position:fixed;top:0;right:0;bottom:0;width:440px;z-index:310;background:var(--surface-2);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);overflow:auto;animation:slideOver .32s cubic-bezier(.2,.85,.3,1) both">
+                <div style="padding:24px 28px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;justify-content:space-between">
+                  <div><div style="font-family:'Hanken Grotesk';font-weight:700;font-size:20px;letter-spacing:-.02em;color:var(--ink)">Submit training job</div><div style="font-family:'JetBrains Mono';font-size:11px;color:var(--ink-3);margin-top:2px">POST /api/v1/training-jobs</div></div>
+                  <button onClick="{{ onNjClose }}" style="border:none;background:var(--surface-3);width:30px;height:30px;border-radius:8px;cursor:pointer;color:var(--ink-2);font-size:15px">✕</button>
+                </div>
+                <div style="padding:24px 28px">
+                  <div style="display:flex;align-items:center;gap:10px;background:var(--good-soft);border-radius:11px;padding:12px 14px;margin-bottom:22px"><span style="color:var(--good);font-size:15px">✓</span><span style="font-size:12.5px;color:var(--ink-2)"><b style="color:var(--ink)">812 confirmed spans</b> · meets the 500-span minimum</span></div>
+
+                  <label style="display:block;font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:7px">LEARNING_RATE</label>
+                  <input value="{{ njLr }}" onChange="{{ onNjLr }}" style="width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--line);background:var(--surface-3);color:var(--ink);font-family:'JetBrains Mono';font-size:13px;margin-bottom:18px;outline:none" style-focus="border-color:var(--primary)">
+
+                  <label style="display:block;font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:7px">NUM_EPOCHS · <span style="color:var(--primary-2)">{{ njEpochs }}</span></label>
+                  <input type="range" min="1" max="50" value="{{ njEpochs }}" onChange="{{ onNjEpochs }}" style="width:100%;margin-bottom:20px;accent-color:var(--primary)">
+
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:26px">
+                    <div><label style="display:block;font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:7px">BATCH_SIZE</label><input type="number" value="{{ njBatch }}" onChange="{{ onNjBatch }}" style="width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-3);color:var(--ink);font-family:'JetBrains Mono';font-size:13px;outline:none" style-focus="border-color:var(--primary)"></div>
+                    <div><label style="display:block;font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:7px">MAX_SEQ_LENGTH</label><input type="number" value="{{ njSeq }}" onChange="{{ onNjSeq }}" style="width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-3);color:var(--ink);font-family:'JetBrains Mono';font-size:13px;outline:none" style-focus="border-color:var(--primary)"></div>
+                  </div>
+                  <button onClick="{{ onNjSubmit }}" style="width:100%;padding:13px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-family:'Hanken Grotesk';font-weight:700;font-size:14.5px;cursor:pointer" style-hover="filter:brightness(1.06)" style-active="transform:scale(.99)">Submit for approval</button>
+                  <p style="font-size:11.5px;color:var(--ink-3);margin:12px 2px 0;line-height:1.5;text-align:center">Creates the job in <span style="font-family:'JetBrains Mono'">pending_approval</span>. A Celery task is enqueued only after a system_admin approves.</p>
+                </div>
+              </div>
+            </sc-if>
+          </sc-if>
+
+        </main>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ TOAST ============ -->
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:9500;animation:toastIn .32s cubic-bezier(.2,.9,.3,1.2) both">
+      <div style="display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--surface-2);padding:12px 18px;border-radius:13px;box-shadow:var(--shadow-lg);max-width:440px">
+        <span style="{{ toastIconStyle }}">{{ toastIcon }}</span>
+        <span style="font-size:13.5px;font-weight:500">{{ toastMsg }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+class Component extends DCLogic {
+  state = {
+    screen: 'login', authed: false, role: 'tenant_admin', dark: false,
+    email: 'avery@acme-corp.io', dashVariant: 'A', toast: null,
+    // training sim
+    runEpoch: 1.6, runLoss: 0.041,
+    // annotation
+    annoVariant: 'A', armedType: null, selGroup: null, taskStatus: 'in-progress',
+    confirmedSpans: {1:'vendor',2:'vendor',3:'vendor',12:'customer',13:'customer',18:'invdate',42:'total'},
+    suggested: {15:'invnum',36:'total',49:'vendor',50:'vendor',51:'vendor'},
+    // tenants
+    tenants:[
+      {name:'Acme Corp', slug:'acme-corp', status:'active', users:8, maxUsers:10, docs:642, maxDocs:1000, storage:3.2, maxStorage:5, models:3, maxModels:10, created:'2026-03-02'},
+      {name:'Northwind Logistics', slug:'northwind', status:'active', users:24, maxUsers:25, docs:4120, maxDocs:5000, storage:18.4, maxStorage:25, models:6, maxModels:10, created:'2026-01-18'},
+      {name:'Globex Health', slug:'globex-health', status:'active', users:5, maxUsers:10, docs:230, maxDocs:1000, storage:1.1, maxStorage:5, models:2, maxModels:10, created:'2026-04-21'},
+      {name:'Umbrella Pharma', slug:'umbrella', status:'active', users:14, maxUsers:15, docs:2890, maxDocs:4000, storage:9.1, maxStorage:15, models:4, maxModels:10, created:'2026-02-09'},
+      {name:'Initech Legal', slug:'initech', status:'inactive', users:2, maxUsers:10, docs:78, maxDocs:1000, storage:0.4, maxStorage:5, models:1, maxModels:10, created:'2025-12-03'},
+      {name:'Soylent Foods', slug:'soylent', status:'active', users:3, maxUsers:10, docs:156, maxDocs:1000, storage:0.8, maxStorage:5, models:0, maxModels:10, created:'2026-05-14'},
+    ],
+    tStatusFilter:'all', tSelected:null, tCreateOpen:false,
+    cfName:'', cfSlug:'', cfMaxUsers:10, cfMaxDocs:1000, cfMaxStorage:5, cfMaxModels:10, tCreating:false,
+    // training
+    jobs:[
+      {id:'tj_9f2a', status:'running', lr:'2e-5', epochs:3, batch:8, seq:128, dataset:'invoices-v4', spans:812, created:'2026-06-15 09:12', mlflow:'localhost:5000/#/experiments/3/runs/a1b2c3d4e5f6'},
+      {id:'tj_8b13', status:'pending_approval', lr:'3e-5', epochs:4, batch:16, seq:256, dataset:'invoices-v4', spans:812, created:'2026-06-15 08:40'},
+      {id:'tj_7c04', status:'completed', lr:'2e-5', epochs:3, batch:8, seq:128, f1:0.90, precision:0.92, recall:0.89, loss:0.021, dataset:'invoices-v3', spans:640, version:3, created:'2026-06-14 16:20', mlflow:'localhost:5000/#/experiments/3/runs/77aa11bc9d'},
+      {id:'tj_6a55', status:'failed', lr:'5e-5', epochs:5, batch:32, seq:512, dataset:'invoices-v3', spans:640, created:'2026-06-13 11:02', error:'CUDA out of memory on GPU worker (batch_size=32, max_seq_length=512). Checkpoint at epoch 1 retained.'},
+      {id:'tj_5d29', status:'completed', lr:'2e-5', epochs:3, batch:8, seq:128, f1:0.87, precision:0.88, recall:0.86, loss:0.028, dataset:'invoices-v2', spans:520, version:2, created:'2026-06-11 14:05', mlflow:'localhost:5000/#/experiments/3/runs/55cc02ab71'},
+      {id:'tj_4e10', status:'rejected', lr:'4e-5', epochs:6, batch:16, seq:256, dataset:'invoices-v2', spans:520, created:'2026-06-10 09:30', error:'GPU cluster at capacity'},
+    ],
+    trainSelected:'tj_9f2a', tFilter:'all',
+    njOpen:false, njLr:'2e-5', njEpochs:3, njBatch:8, njSeq:128,
+  };
+
+  selectJob(id){ this.setState({trainSelected:id}); }
+  setJobStatus(id,status,err){ this.setState(st=>({jobs:st.jobs.map(j=>j.id===id?{...j,status,error:err!==undefined?err:j.error}:j)})); }
+  approveJob(id){ this.setJobStatus(id,'queued'); this.toast('Job approved → queued · Celery task enqueued'); }
+  rejectJob(id){ this.setJobStatus(id,'rejected','GPU cluster at capacity'); this.toast('Job rejected','bad'); }
+  cancelJob(id){ this.setJobStatus(id,'cancelled'); this.toast('Job cancelled · Celery task revoked','bad'); }
+  openNewJob(){ this.setState({njOpen:true, njLr:'2e-5', njEpochs:3, njBatch:8, njSeq:128}); }
+  submitNewJob(){
+    const s=this.state; const id='tj_'+Math.random().toString(16).slice(2,6);
+    this.setState(st=>({jobs:[{id, status:'pending_approval', lr:s.njLr, epochs:s.njEpochs, batch:s.njBatch, seq:s.njSeq, dataset:'invoices-v4', spans:812, created:'2026-06-15 10:30', fresh:true}, ...st.jobs], njOpen:false, trainSelected:id}));
+    this.toast('Training job submitted · awaiting system_admin approval');
+  }
+
+  slugify(s){ return s.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+  openCreate(){ this.setState({tCreateOpen:true, cfName:'', cfSlug:'', cfMaxUsers:10, cfMaxDocs:1000, cfMaxStorage:5, cfMaxModels:10}); }
+  closeCreate(){ this.setState({tCreateOpen:false}); }
+  cfSetName(v){ this.setState({cfName:v, cfSlug:this.slugify(v)}); }
+  createTenant(){
+    const s=this.state; const name=s.cfName.trim()||'New Tenant'; const slug=s.cfSlug||this.slugify(name);
+    if(s.tenants.some(t=>t.slug===slug)){ this.toast(`Slug '${slug}' already exists`,'bad'); return; }
+    this.setState({tCreating:true});
+    setTimeout(()=>{
+      this.setState(st=>({tenants:[{name, slug, status:'active', users:0, maxUsers:s.cfMaxUsers, docs:0, maxDocs:s.cfMaxDocs, storage:0, maxStorage:s.cfMaxStorage, models:0, maxModels:s.cfMaxModels, created:'2026-06-15', fresh:true}, ...st.tenants], tCreateOpen:false, tCreating:false}));
+      this.toast(`Tenant '${name}' created · schema provisioned`);
+    },900);
+  }
+  selectTenant(slug){ this.setState({tSelected:slug}); }
+  closeTenant(){ this.setState({tSelected:null}); }
+  toggleTenantStatus(slug){ this.setState(st=>({tenants:st.tenants.map(t=>t.slug===slug?{...t,status:t.status==='active'?'inactive':'active'}:t)})); const t=this.state.tenants.find(x=>x.slug===slug); this.toast(t&&t.status==='active'?`Tenant deactivated`:`Tenant reactivated`, t&&t.status==='active'?'bad':'ok'); }
+
+  DOC = [
+    ["INVOICE"],
+    ["Northwind","Logistics","Ltd"],
+    ["1200","Harbor","Way,","Seattle","WA","98101"],
+    ["Bill","To:","Acme","Corp"],
+    ["Invoice","#INV-2026-00417","·","Date:","2026-06-09"],
+    ["Description","Qty","Unit","Total"],
+    ["Pallet","racking","system","12","$420.00","$5,040.00"],
+    ["Freight","&","handling","1","$380.00","$380.00"],
+    ["Subtotal","$5,420.00"],
+    ["Tax","(9.5%)","$514.90"],
+    ["Total","Due","$5,934.90"],
+    ["Payment","terms:","Net","30.","Remit","to","Northwind","Logistics","Ltd."],
+  ];
+  ETYPES = [
+    {id:'vendor', name:'vendor_name', base:'ORG', hue:25},
+    {id:'customer', name:'customer_name', base:'ORG', hue:330},
+    {id:'invnum', name:'invoice_number', base:'MISC', hue:235},
+    {id:'invdate', name:'invoice_date', base:'MISC', hue:285},
+    {id:'total', name:'total_amount', base:'MISC', hue:155},
+  ];
+  etype(id){ return this.ETYPES.find(e=>e.id===id); }
+  ecolors(id){
+    const e=this.etype(id); const h=e?e.hue:25; const d=this.state.dark;
+    return { solid:`oklch(0.63 0.16 ${h})`,
+      soft:`oklch(0.63 0.16 ${h} / ${d?0.22:0.15})`,
+      ink: d?`oklch(0.82 0.13 ${h})`:`oklch(0.43 0.15 ${h})`,
+      faint:`oklch(0.63 0.16 ${h} / ${d?0.12:0.08})` };
+  }
+  flatTokens(){ const out=[]; let gi=0; this.DOC.forEach((line,li)=>{ const row=[]; line.forEach(w=>{ row.push({gi,text:w,li}); gi++; }); out.push(row); }); return out; }
+
+  armType(id){ this.setState(s=>({armedType: s.armedType===id?null:id, selGroup:null})); }
+  clickToken(gi){
+    const s=this.state;
+    if(s.armedType){
+      this.setState(st=>{ const cs={...st.confirmedSpans}; if(cs[gi]===st.armedType) delete cs[gi]; else cs[gi]=st.armedType; return {confirmedSpans:cs}; });
+      const e=this.etype(s.armedType); this.toast(`Span labeled · ${e?e.name:''}`);
+    } else {
+      const t = s.confirmedSpans[gi];
+      if(t){ // find group start
+        let start=gi; while(s.confirmedSpans[start-1]===t) start--; this.setState({selGroup:start});
+      } else { this.setState({selGroup:null}); }
+    }
+  }
+  groupAt(start){ const s=this.state; const t=s.confirmedSpans[start]; const gis=[]; let i=start; while(s.confirmedSpans[i]===t){ gis.push(i); i++; } return {type:t, gis}; }
+  deleteGroup(){ const s=this.state; if(s.selGroup==null) return; const {gis}=this.groupAt(s.selGroup); this.setState(st=>{ const cs={...st.confirmedSpans}; gis.forEach(g=>delete cs[g]); return {confirmedSpans:cs, selGroup:null}; }); this.toast('Span deleted','bad'); }
+  retypeGroup(newType){ const s=this.state; if(s.selGroup==null) return; const {gis}=this.groupAt(s.selGroup); this.setState(st=>{ const cs={...st.confirmedSpans}; gis.forEach(g=>cs[g]=newType); return {confirmedSpans:cs}; }); this.toast('Entity type changed'); }
+  promoteSug(gis){ this.setState(st=>{ const cs={...st.confirmedSpans}; const sg={...st.suggested}; gis.forEach(g=>{ cs[g]=sg[g]; delete sg[g]; }); return {confirmedSpans:cs, suggested:sg}; }); this.toast('Suggestion promoted → confirmed'); }
+  dismissSug(gis){ this.setState(st=>{ const sg={...st.suggested}; gis.forEach(g=>delete sg[g]); return {suggested:sg}; }); this.toast('Suggestion dismissed','bad'); }
+  runPrelabel(){ this.setState({suggested:{15:'invnum',36:'total',49:'vendor',50:'vendor',51:'vendor'}}); this.toast('Pre-labeling complete · 3 suggestions'); }
+  setTask(st){
+    const s=this.state;
+    const order=['unannotated','in-progress','completed'];
+    if(st==='completed' && Object.keys(s.confirmedSpans).length===0){ this.toast('Need ≥1 confirmed span to complete','bad'); return; }
+    this.setState({taskStatus:st}); this.toast(`Task → ${st}`);
+  }
+
+  componentDidMount(){
+    this._t = setInterval(()=>{
+      this.setState(s=>{
+        let e = s.runEpoch + 0.018; if(e>3) e=1.0;
+        let l = Math.max(0.018, s.runLoss - 0.0009); if(s.runEpoch>2.98) l=0.041;
+        return {runEpoch:e, runLoss:l};
+      });
+    }, 700);
+  }
+  componentWillUnmount(){ clearInterval(this._t); if(this._toastT) clearTimeout(this._toastT); }
+
+  toast(msg, kind){ kind=kind||'ok'; if(this._toastT) clearTimeout(this._toastT);
+    this.setState({toast:{msg,kind}}); this._toastT=setTimeout(()=>this.setState({toast:null}),2600); }
+
+  go(screen){ this.setState({screen}); }
+  loginAs(role){ this.setState({authed:true, role, screen:'dashboard'}); }
+
+  ROLES = {
+    system_admin:{label:'System Admin', short:'SA', email:'root@nerplatform.io', tenant:'All tenants', slug:'platform-wide', initials:'P'},
+    tenant_admin:{label:'Tenant Admin', short:'TA', email:'avery@acme-corp.io', tenant:'Acme Corp', slug:'acme-corp', initials:'AC'},
+    annotator:{label:'Annotator', short:'AN', email:'jordan@acme-corp.io', tenant:'Acme Corp', slug:'acme-corp', initials:'AC'},
+    business_user:{label:'Business User', short:'BU', email:'sam@acme-corp.io', tenant:'Acme Corp', slug:'acme-corp', initials:'AC'},
+  };
+
+  navFor(role){
+    const mk=(id,icon,label,screen,badge)=>({id,icon,label,screen,badge});
+    if(role==='system_admin') return [mk('dashboard','◆','Overview','dashboard'),mk('tenants','▦','Tenants','tenants','6'),mk('training','◷','Training Queue','training','2'),mk('models','◈','Model Registry','models'),mk('audit','▤','Audit Log','audit'),mk('settings','⚙','Platform Settings','settings')];
+    if(role==='annotator') return [mk('dashboard','◆','My Work','dashboard'),mk('annotation','✎','Annotation','annotation','4'),mk('documents','▣','Documents','documents'),mk('settings','⚙','Settings','settings')];
+    if(role==='business_user') return [mk('dashboard','◆','Overview','dashboard'),mk('documents','▣','Documents','documents'),mk('extractions','◇','Extractions','extractions'),mk('models','◈','Models','models'),mk('settings','⚙','Settings','settings')];
+    return [mk('dashboard','◆','Dashboard','dashboard'),mk('documents','▣','Documents','documents'),mk('annotation','✎','Annotation','annotation'),mk('entitytypes','❖','Entity Types','entitytypes'),mk('training','◷','Training Jobs','training','1'),mk('models','◈','Model Registry','models'),mk('users','◐','Users','users'),mk('settings','⚙','Settings','settings')];
+  }
+
+  pill(bg,fg){ return `font-family:'JetBrains Mono';font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px;background:${bg};color:${fg};white-space:nowrap`; }
+  statusColors(st){
+    const m={running:['var(--info-soft)','var(--info)'],completed:['var(--good-soft)','var(--good)'],pending_approval:['var(--warn-soft)','var(--warn)'],queued:['var(--info-soft)','var(--info)'],failed:['var(--bad-soft)','var(--bad)'],rejected:['var(--bad-soft)','var(--bad)'],cancelled:['var(--surface-3)','var(--ink-3)'],active:['var(--good-soft)','var(--good)'],inactive:['var(--surface-3)','var(--ink-3)'],promoted:['var(--primary-soft)','var(--primary-2)']};
+    return m[st]||['var(--surface-3)','var(--ink-3)'];
+  }
+
+  dashData(role){
+    if(role==='system_admin') return {
+      kicker:'Platform control plane', title:'6 tenants. 2 jobs await approval.',
+      line:'Acme Corp and Northwind have training runs queued for review. Platform F1 across promoted models holds at 0.89. Storage at 41% of provisioned capacity.',
+      stats:[{label:'Active tenants',value:'6',unit:'',sub:'1 inactive',delta:'+2',dir:'up'},{label:'Documents (all)',value:'12.4',unit:'k',sub:'across schemas',delta:'+840',dir:'up'},{label:'Pending approvals',value:'2',unit:'',sub:'needs review',delta:'now',dir:'warn'},{label:'Avg model F1',value:'0.89',unit:'',sub:'promoted models',delta:'+.01',dir:'up'}],
+      pTitle:'Approval queue', pMeta:'system_admin',
+      pRows:[
+        {title:'Acme Corp · invoices-v4',sub:'tj_8b13 · lr 3e-5 · 4 epochs',tag:'pending',tk:'pending_approval',go:'training'},
+        {title:'Northwind · shipping-docs',sub:'tj_4421 · lr 2e-5 · 3 epochs',tag:'pending',tk:'pending_approval',go:'training'},
+        {title:'Globex Health · intake-forms',sub:'tj_3a09 · running · epoch 2/3',tag:'running',tk:'running',go:'training'},
+        {title:'Umbrella · labels-v2',sub:'tj_2f71 · completed · F1 0.91',tag:'completed',tk:'completed',go:'training'},
+      ],
+      sideTop:'Platform health', sideMeta:'uptime 30d', big:'99.9', bigUnit:'% SLA', bar:99.9,
+      sideMetrics:[{k:'p95',v:'142ms'},{k:'err',v:'0.02%'},{k:'GPU',v:'3/4'}],
+      sideBot:'Storage by tenant', sideRows:[{label:'Northwind',val:'18.4 / 25 GB',pct:74,c:'var(--primary)'},{label:'Umbrella',val:'9.1 / 15 GB',pct:61,c:'var(--info)'},{label:'Acme Corp',val:'3.2 / 5 GB',pct:64,c:'var(--good)'}],
+    };
+    if(role==='annotator') return {
+      kicker:'Your annotation queue', title:'4 documents waiting on you.',
+      line:'You have 1 task in progress and 3 unannotated. Pre-labeling has suggested 28 spans across the queue — promote the good ones and keep the dataset moving toward the 500-span training threshold.',
+      stats:[{label:'Assigned tasks',value:'4',unit:'',sub:'1 in-progress',delta:'+2',dir:'up'},{label:'Spans confirmed',value:'312',unit:'',sub:'this week',delta:'+47',dir:'up'},{label:'Suggestions',value:'28',unit:'',sub:'awaiting review',delta:'new',dir:'warn'},{label:'Completion',value:'78',unit:'%',sub:'queue cleared',delta:'+12%',dir:'up'}],
+      pTitle:'My tasks', pMeta:'annotator',
+      pRows:[
+        {title:'invoice-2026-00417.pdf',sub:'in-progress · 5 spans · 2 suggested',tag:'in-progress',tk:'running',go:'annotation'},
+        {title:'contract-northwind.pdf',sub:'unannotated · 8 suggestions',tag:'unannotated',tk:'queued',go:'annotation'},
+        {title:'receipt-batch-09.png',sub:'unannotated · 4 suggestions',tag:'unannotated',tk:'queued',go:'annotation'},
+        {title:'po-44219.pdf',sub:'unannotated · 14 suggestions',tag:'unannotated',tk:'queued',go:'annotation'},
+      ],
+      sideTop:'Dataset readiness', sideMeta:'toward training', big:'312', bigUnit:'/ 500 spans', bar:62,
+      sideMetrics:[{k:'docs',v:'18'},{k:'types',v:'5'},{k:'today',v:'+47'}],
+      sideBot:'Spans by entity type', sideRows:[{label:'vendor_name',val:'104',pct:84,c:'oklch(0.64 0.15 25)'},{label:'total_amount',val:'78',pct:63,c:'oklch(0.64 0.15 150)'},{label:'invoice_number',val:'63',pct:50,c:'oklch(0.64 0.15 230)'}],
+    };
+    if(role==='business_user') return {
+      kicker:'Extraction intelligence', title:'1,284 documents processed this month.',
+      line:'Your promoted model v3 is extracting structured records at 0.90 F1. Vendor and amount fields lead volume. Confidence is healthy — 92% of extractions clear the 0.80 review threshold automatically.',
+      stats:[{label:'Docs extracted',value:'1.28',unit:'k',sub:'this month',delta:'+18%',dir:'up'},{label:'Entities found',value:'9.7',unit:'k',sub:'structured records',delta:'+1.1k',dir:'up'},{label:'Avg confidence',value:'0.91',unit:'',sub:'mean score',delta:'+.02',dir:'up'},{label:'Auto-cleared',value:'92',unit:'%',sub:'above threshold',delta:'+4%',dir:'up'}],
+      pTitle:'Recent extractions', pMeta:'business_user',
+      pRows:[
+        {title:'invoice-2026-00417.pdf',sub:'5 entities · conf 0.94 · 2.1s',tag:'extracted',tk:'completed',go:'extractions'},
+        {title:'shipping-manifest-88.pdf',sub:'12 entities · conf 0.88 · 3.4s',tag:'extracted',tk:'completed',go:'extractions'},
+        {title:'po-44219.pdf',sub:'8 entities · conf 0.79 · review',tag:'review',tk:'pending_approval',go:'extractions'},
+        {title:'receipt-batch-09.png',sub:'4 entities · conf 0.96 · 1.2s',tag:'extracted',tk:'completed',go:'extractions'},
+      ],
+      sideTop:'Active model', sideMeta:'v3 · promoted', big:'0.90', bigUnit:'eval F1', bar:90,
+      sideMetrics:[{k:'prec',v:'0.92'},{k:'rec',v:'0.89'},{k:'loss',v:'.021'}],
+      sideBot:'Top extracted fields', sideRows:[{label:'vendor_name',val:'2,940',pct:88,c:'oklch(0.64 0.15 25)'},{label:'total_amount',val:'2,610',pct:78,c:'oklch(0.64 0.15 150)'},{label:'invoice_date',val:'1,820',pct:55,c:'oklch(0.64 0.15 280)'}],
+    };
+    return {
+      kicker:'Good morning, Avery', title:'Acme Corp · the pipeline is healthy.',
+      line:'642 documents ingested, 312 spans confirmed, and model v3 serving at 0.90 F1. One training job is running on invoices-v4 — it should promote within the hour.',
+      stats:[{label:'Documents',value:'642',unit:'',sub:'64% of quota',delta:'+38',dir:'up'},{label:'Annotation',value:'78',unit:'%',sub:'12 docs left',delta:'+9%',dir:'up'},{label:'Active model',value:'0.90',unit:'F1',sub:'v3 promoted',delta:'+.03',dir:'up'},{label:'Training',value:'1',unit:'',sub:'running now',delta:'live',dir:'warn'}],
+      pTitle:'Pipeline activity', pMeta:'last 24h',
+      pRows:[
+        {title:'Training run · invoices-v4',sub:'tj_9f2a · epoch 2/3 · loss 0.032',tag:'running',tk:'running',go:'training'},
+        {title:'Dataset approved · invoices-v4',sub:'812 spans · 5 entity types',tag:'approved',tk:'completed',go:'annotation'},
+        {title:'38 documents processed',sub:'OCR complete · ready to annotate',tag:'processed',tk:'completed',go:'documents'},
+        {title:'Model v3 promoted',sub:'auto-warmup ok · serving live',tag:'promoted',tk:'promoted',go:'models'},
+      ],
+      sideTop:'Active model', sideMeta:'v3 · promoted 2h ago', big:'0.90', bigUnit:'eval F1', bar:90,
+      sideMetrics:[{k:'prec',v:'0.92'},{k:'rec',v:'0.89'},{k:'loss',v:'.021'}],
+      sideBot:'Quota usage', sideRows:[{label:'Documents',val:'642 / 1000',pct:64,c:'var(--primary)'},{label:'Storage',val:'3.2 / 5 GB',pct:64,c:'var(--info)'},{label:'Model versions',val:'3 / 10',pct:30,c:'var(--good)'}],
+    };
+  }
+
+  annoVals(){
+    const s=this.state;
+    const segActive = "font-family:'Hanken Grotesk';font-weight:700;font-size:12px;padding:5px 12px;border:none;border-radius:8px;cursor:pointer;background:var(--primary);color:#fff";
+    const segIdle = "font-family:'Hanken Grotesk';font-weight:600;font-size:12px;padding:5px 12px;border:none;border-radius:8px;cursor:pointer;background:transparent;color:var(--ink-2)";
+
+    // doc rows
+    const rows = this.flatTokens();
+    const docRows = rows.map(row=> row.map(tk=>{
+      const t = s.confirmedSpans[tk.gi]; const sg = s.suggested[tk.gi];
+      let style = "font-family:'Inter';font-size:15.5px;line-height:2.05;padding:3px 4px;margin:0 1px;border-radius:6px;cursor:pointer;transition:background .12s,box-shadow .12s;color:var(--ink);display:inline-block";
+      if(t){ const c=this.ecolors(t); const inGroup = s.selGroup!=null && s.confirmedSpans[s.selGroup]===t && tk.gi>=s.selGroup && tk.gi< s.selGroup + this.groupAt(s.selGroup).gis.length;
+        style += `;background:${c.soft};color:${c.ink};box-shadow:inset 0 -2px 0 ${c.solid}`;
+        if(inGroup) style += `;box-shadow:0 0 0 2px ${c.solid},inset 0 -2px 0 ${c.solid}`;
+      } else if(sg){ const c=this.ecolors(sg); style += `;background:${c.faint};border-bottom:2px dashed ${c.solid};border-radius:4px`; }
+      return { gi:tk.gi, text:tk.text, style, onClick:()=>this.clickToken(tk.gi) };
+    }));
+
+    // entity palette with counts
+    const groupCount=(typeId)=>{ let n=0,prev=null; rows.flat().forEach(tk=>{ const t=s.confirmedSpans[tk.gi]; if(t===typeId && prev!==typeId) n++; prev=t; }); return n; };
+    const etypes = this.ETYPES.map(e=>{ const c=this.ecolors(e.id); const armed=s.armedType===e.id;
+      return { id:e.id, name:e.name, base:e.base, count:groupCount(e.id),
+        dot:`width:11px;height:11px;border-radius:3px;background:${c.solid};flex-shrink:0`,
+        style:`display:flex;align-items:center;gap:10px;width:100%;padding:9px 11px;border-radius:11px;cursor:pointer;text-align:left;transition:all .12s;border:1px solid ${armed?c.solid:'var(--line)'};background:${armed?c.soft:'var(--surface-2)'}`,
+        onArm:()=>this.armType(e.id) };
+    });
+
+    // suggestion groups
+    const sgGroups=[]; { let i=0; const flat=rows.flat();
+      while(i<flat.length){ const gi=flat[i].gi; const t=s.suggested[gi]; if(t){ const gis=[gi]; let j=i+1; while(j<flat.length && s.suggested[flat[j].gi]===t){ gis.push(flat[j].gi); j++; } const txt=gis.map(g=>flat.find(f=>f.gi===g).text).join(' '); const c=this.ecolors(t); const e=this.etype(t);
+        sgGroups.push({key:'sg'+gi, text:txt, name:e.name, dot:`width:9px;height:9px;border-radius:3px;background:${c.solid};flex-shrink:0`, onPromote:()=>this.promoteSug(gis), onDismiss:()=>this.dismissSug(gis)}); i=j; } else i++; } }
+
+    // selection inspector
+    let sel=null;
+    if(s.selGroup!=null){ const {type,gis}=this.groupAt(s.selGroup); const flat=rows.flat(); const txt=gis.map(g=>flat.find(f=>f.gi===g).text).join(' '); const c=this.ecolors(type); const e=this.etype(type);
+      // fake char offsets
+      let cs=0; for(let k=0;k<s.selGroup;k++) cs+=(flat[k].text.length+1); const ce=cs+txt.length;
+      sel={ text:txt, name:e.name, base:e.base, color:c.solid, soft:c.soft, ink:c.ink, charStart:cs, charEnd:ce, confidence:'1.00',
+        retype:this.ETYPES.map(et=>{ const cc=this.ecolors(et.id); return {id:et.id, name:et.name, active:et.id===type, dot:`width:8px;height:8px;border-radius:2px;background:${cc.solid}`, onClick:()=>this.retypeGroup(et.id)}; }) };
+    }
+
+    const totalSpans=Object.keys(s.confirmedSpans).length;
+    const tsColors={unannotated:['var(--surface-3)','var(--ink-3)'],'in-progress':['var(--info-soft)','var(--info)'],completed:['var(--good-soft)','var(--good)']};
+    const tc=tsColors[s.taskStatus];
+    const statusBtns=['unannotated','in-progress','completed'].map(st=>({label:st, active:st===s.taskStatus, style:`font-family:'JetBrains Mono';font-size:10.5px;font-weight:600;padding:5px 10px;border-radius:7px;border:none;cursor:pointer;background:${st===s.taskStatus?'var(--primary)':'transparent'};color:${st===s.taskStatus?'#fff':'var(--ink-2)'}`, onClick:()=>this.setTask(st)}));
+
+    return {
+      annoVariant:s.annoVariant, annoIsB:s.annoVariant==='B', annoIsA:s.annoVariant==='A',
+      onAnnoA:()=>this.setState({annoVariant:'A'}), onAnnoB:()=>this.setState({annoVariant:'B'}),
+      annoAStyle:s.annoVariant==='A'?segActive:segIdle, annoBStyle:s.annoVariant==='B'?segActive:segIdle,
+      docRows, etypes, sgGroups, sel, hasSel:!!sel, hasSug:sgGroups.length>0,
+      onPrelabel:()=>this.runPrelabel(),
+      armedBanner: s.armedType?`Labeling mode · click words to tag as ${this.etype(s.armedType).name}`:'',
+      armedActive: !!s.armedType, onDisarm:()=>this.setState({armedType:null}),
+      totalSpans, sugCount:Object.keys(s.suggested).length,
+      taskStatus:s.taskStatus, taskTagStyle:`font-family:'JetBrains Mono';font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px;background:${tc[0]};color:${tc[1]}`,
+      statusBtns,
+      annoQueue:[
+        {name:'invoice-2026-00417.pdf', meta:'processed · 12 spans', active:true},
+        {name:'contract-northwind.pdf', meta:'processed · 0 spans', active:false},
+        {name:'po-44219.pdf', meta:'processed · 0 spans', active:false},
+        {name:'receipt-batch-09.png', meta:'processed · 0 spans', active:false},
+      ].map(q=>({...q, style:`display:flex;flex-direction:column;gap:3px;align-items:flex-start;width:100%;padding:11px;border-radius:11px;border:1px solid ${q.active?'var(--primary-line)':'transparent'};background:${q.active?'var(--primary-soft)':'transparent'};cursor:pointer;text-align:left;margin-bottom:3px;transition:background .12s`})),
+    };
+  }
+
+  tenantVals(){
+    const s=this.state;
+    const barColor=(pct)=> pct>=85?'var(--bad)':pct>=70?'var(--warn)':'var(--primary)';
+    const miniBar=(used,max)=>{ const pct=Math.min(100,Math.round(used/max*100)); return {pct, label:`${used} / ${max}`, fill:`height:100%;border-radius:4px;width:${pct}%;background:${barColor(pct)};animation:growBar 1s ease both`}; };
+    const filtered = s.tenants.filter(t=> s.tStatusFilter==='all' || t.status===s.tStatusFilter);
+    const rows = filtered.map(t=>{
+      const [bg,fg]=this.statusColors(t.status);
+      return { ...t,
+        initials:t.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(),
+        statusStyle:this.pill(bg,fg),
+        users:miniBar(t.users,t.maxUsers), docs:miniBar(t.docs,t.maxDocs), storage:miniBar(t.storage,t.maxStorage),
+        rowStyle:`display:grid;grid-template-columns:1.7fr .8fr 1.2fr 1.2fr 1.2fr .6fr 24px;gap:14px;align-items:center;padding:15px 18px;border:none;border-radius:13px;background:${t.fresh?'var(--primary-soft)':'var(--surface-2)'};cursor:pointer;text-align:left;width:100%;border:1px solid var(--line);transition:border-color .14s,transform .1s`,
+        onClick:()=>this.selectTenant(t.slug),
+      };
+    });
+    const filterTabs=['all','active','inactive'].map(f=>({label:f, count: f==='all'?s.tenants.length:s.tenants.filter(t=>t.status===f).length,
+      style:`font-family:'Inter';font-weight:600;font-size:12.5px;padding:7px 14px;border-radius:9px;border:none;cursor:pointer;background:${s.tStatusFilter===f?'var(--ink)':'transparent'};color:${s.tStatusFilter===f?'var(--surface-2)':'var(--ink-2)'}`,
+      onClick:()=>this.setState({tStatusFilter:f})}));
+    // detail
+    let detail=null; const dt=s.tenants.find(t=>t.slug===s.tSelected);
+    if(dt){ const [bg,fg]=this.statusColors(dt.status);
+      detail={ ...dt, initials:dt.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(), statusStyle:this.pill(bg,fg),
+        quotas:[ {k:'Users', ...miniBar(dt.users,dt.maxUsers)}, {k:'Documents', ...miniBar(dt.docs,dt.maxDocs)}, {k:'Storage (GB)', ...miniBar(dt.storage,dt.maxStorage)}, {k:'Model versions', ...miniBar(dt.models,dt.maxModels)} ],
+        isActive:dt.status==='active', onToggle:()=>this.toggleTenantStatus(dt.slug),
+        toggleLabel:dt.status==='active'?'Deactivate tenant':'Reactivate tenant',
+        toggleStyle:`width:100%;padding:11px;border-radius:11px;font-family:'Inter';font-weight:600;font-size:13px;cursor:pointer;border:1px solid ${dt.status==='active'?'var(--bad-soft)':'var(--good-soft)'};background:${dt.status==='active'?'var(--bad-soft)':'var(--good-soft)'};color:${dt.status==='active'?'var(--bad)':'var(--good)'}`,
+      };
+    }
+    return {
+      tRows:rows, tFilterTabs:filterTabs, tCount:filtered.length,
+      onCreateOpen:()=>this.openCreate(), tCreateOpen:s.tCreateOpen, onCreateClose:()=>this.closeCreate(),
+      cfName:s.cfName, cfSlug:s.cfSlug||'auto-generated', onCfName:(e)=>this.cfSetName(e.target.value),
+      cfMaxUsers:s.cfMaxUsers, cfMaxDocs:s.cfMaxDocs, cfMaxStorage:s.cfMaxStorage, cfMaxModels:s.cfMaxModels,
+      onCfUsers:(e)=>this.setState({cfMaxUsers:+e.target.value}), onCfDocs:(e)=>this.setState({cfMaxDocs:+e.target.value}),
+      onCfStorage:(e)=>this.setState({cfMaxStorage:+e.target.value}), onCfModels:(e)=>this.setState({cfMaxModels:+e.target.value}),
+      onCreateSubmit:()=>this.createTenant(), tCreating:s.tCreating,
+      createBtnLabel: s.tCreating?'Provisioning schema…':'Create tenant',
+      tDetail:detail, hasTDetail:!!detail, onTClose:()=>this.closeTenant(),
+    };
+  }
+
+  trainVals(){
+    const s=this.state;
+    const statusLabel={running:'running',pending_approval:'pending approval',queued:'queued',completed:'completed',failed:'failed',rejected:'rejected',cancelled:'cancelled'};
+    const filtered = s.jobs.filter(j=> s.tFilter==='all' || j.status===s.tFilter);
+    const jobRows = filtered.map(j=>{
+      const [bg,fg]=this.statusColors(j.status); const active=j.id===s.trainSelected;
+      const isRun=j.status==='running';
+      return { id:j.id, dataset:j.dataset, created:j.created, f1:j.f1!=null?j.f1.toFixed(2):'—', isRun,
+        cardStyle:`width:100%;text-align:left;border:1px solid ${active?'var(--primary-line)':'var(--line)'};background:${active?'var(--primary-soft)':'var(--surface-2)'};border-radius:14px;padding:14px 15px;cursor:pointer;transition:border-color .14s,transform .1s`,
+        statusStyle:this.pill(bg,fg), statusLabel:statusLabel[j.status],
+        dotStyle:`width:8px;height:8px;border-radius:50%;background:${fg};${isRun?'animation:pulse 1.3s infinite':''}`,
+        hp:`lr ${j.lr} · ${j.epochs}ep · bs ${j.batch}`,
+        onClick:()=>this.selectJob(j.id) };
+    });
+    const tFilterTabs=['all','running','pending_approval','completed','failed'].map(f=>({label:f.replace('_',' '), active:s.tFilter===f,
+      style:`font-family:'Inter';font-weight:600;font-size:11.5px;padding:6px 11px;border-radius:8px;border:none;cursor:pointer;white-space:nowrap;background:${s.tFilter===f?'var(--ink)':'var(--surface-2)'};color:${s.tFilter===f?'var(--surface-2)':'var(--ink-2)'};border:1px solid var(--line)`,
+      onClick:()=>this.setState({tFilter:f})}));
+
+    // detail
+    const j=s.jobs.find(x=>x.id===s.trainSelected) || s.jobs[0];
+    const [dbg,dfg]=this.statusColors(j.status);
+    const isAdmin=s.role==='system_admin';
+    const lifecycle=['pending_approval','queued','running','completed'];
+    const failOrder={failed:['pending_approval','queued','running','failed'],rejected:['pending_approval','rejected'],cancelled:['pending_approval','cancelled']};
+    const chain = failOrder[j.status]||lifecycle;
+    const curIdx = chain.indexOf(j.status);
+    const timeline = chain.map((st,i)=>{ const [b,f]=this.statusColors(st); const done=i<curIdx, cur=i===curIdx;
+      return {label:st.replace('_',' '), dotStyle:`width:11px;height:11px;border-radius:50%;flex-shrink:0;z-index:2;background:${cur?f:done?f:'var(--surface-3)'};border:2px solid ${cur||done?f:'var(--line)'};${cur&&st==='running'?'animation:pulseRing 1.6s infinite':''}`,
+        textStyle:`font-size:12.5px;font-weight:${cur?600:500};color:${cur?'var(--ink)':done?'var(--ink-2)':'var(--ink-3)'}` }; });
+
+    const actions=[];
+    if(j.status==='pending_approval'){
+      if(isAdmin){ actions.push({label:'Approve & queue', kind:'primary', onClick:()=>this.approveJob(j.id)}); actions.push({label:'Reject', kind:'danger', onClick:()=>this.rejectJob(j.id)}); }
+      else { actions.push({label:'Cancel request', kind:'danger', onClick:()=>this.cancelJob(j.id)}); }
+    } else if(j.status==='running'||j.status==='queued'){ actions.push({label:'Cancel job', kind:'danger', onClick:()=>this.cancelJob(j.id)}); }
+    const actionBtns=actions.map(a=>({...a, style:`flex:1;padding:11px;border-radius:11px;font-family:'Hanken Grotesk';font-weight:700;font-size:13.5px;cursor:pointer;border:1px solid ${a.kind==='primary'?'var(--primary)':a.kind==='danger'?'var(--bad-soft)':'var(--line)'};background:${a.kind==='primary'?'var(--primary)':a.kind==='danger'?'var(--bad-soft)':'var(--surface-3)'};color:${a.kind==='primary'?'#fff':a.kind==='danger'?'var(--bad)':'var(--ink-2)'}`}));
+
+    const metrics = (j.f1!=null)?[
+      {k:'eval_f1', v:j.f1.toFixed(2), pct:Math.round(j.f1*100)},
+      {k:'precision', v:j.precision.toFixed(2), pct:Math.round(j.precision*100)},
+      {k:'recall', v:j.recall.toFixed(2), pct:Math.round(j.recall*100)},
+    ].map(m=>({...m, fill:`height:100%;border-radius:5px;width:${m.pct}%;background:linear-gradient(90deg,var(--primary),var(--primary-2));animation:growBar 1s ease both`})):null;
+
+    return {
+      jobRows, tFilterTabs, jobCount:filtered.length,
+      onNewJob:()=>this.openNewJob(), njOpen:s.njOpen, onNjClose:()=>this.setState({njOpen:false}),
+      njLr:s.njLr, njEpochs:s.njEpochs, njBatch:s.njBatch, njSeq:s.njSeq,
+      onNjLr:(e)=>this.setState({njLr:e.target.value}), onNjEpochs:(e)=>this.setState({njEpochs:+e.target.value}),
+      onNjBatch:(e)=>this.setState({njBatch:+e.target.value}), onNjSeq:(e)=>this.setState({njSeq:+e.target.value}),
+      onNjSubmit:()=>this.submitNewJob(),
+      // detail
+      dJobId:j.id, dStatus:statusLabel[j.status], dStatusStyle:this.pill(dbg,dfg), dStatusFg:dfg,
+      dDataset:j.dataset, dSpans:j.spans, dCreated:j.created,
+      dHp:[{k:'learning_rate',v:j.lr},{k:'num_epochs',v:j.epochs},{k:'batch_size',v:j.batch},{k:'max_seq_length',v:j.seq}],
+      dIsRunning:j.status==='running', dIsFailed:j.status==='failed'||j.status==='rejected', dError:j.error||'',
+      dHasMetrics:metrics!=null, dMetrics:metrics, dLoss:j.loss!=null?j.loss.toFixed(3):'—',
+      dVersionLabel:j.version!=null?('v'+j.version):'pending',
+      dHasMlflow:!!j.mlflow, dMlflow:j.mlflow||'',
+      dTimeline:timeline, dActions:actionBtns, dHasActions:actionBtns.length>0,
+      runEpochDisp:(s.runEpoch).toFixed(2), runLossDisp:(s.runLoss).toFixed(3), runPctStyle:`height:100%;border-radius:6px;width:${Math.round(s.runEpoch/3*100)}%;background:linear-gradient(90deg,var(--primary),var(--primary-2));transition:width .6s ease`,
+      runEpochInt:Math.ceil(s.runEpoch),
+    };
+  }
+
+  renderVals(){
+    const s=this.state, R=this.ROLES[s.role];
+    const isApp = s.authed;
+    const segActive = "font-family:'Hanken Grotesk';font-weight:700;font-size:12px;padding:5px 12px;border:none;border-radius:8px;cursor:pointer;background:var(--primary);color:#fff";
+    const segIdle = "font-family:'Hanken Grotesk';font-weight:600;font-size:12px;padding:5px 12px;border:none;border-radius:8px;cursor:pointer;background:transparent;color:var(--ink-2)";
+
+    // nav
+    const navItems = this.navFor(s.role).map(n=>{
+      const active = n.screen===s.screen;
+      return {...n, style:`display:flex;align-items:center;gap:11px;width:100%;padding:9px 11px;margin-bottom:2px;border:none;border-radius:10px;cursor:pointer;font-family:'Inter';font-size:13.5px;font-weight:${active?600:500};text-align:left;transition:background .12s,color .12s;background:${active?'var(--primary-soft)':'transparent'};color:${active?'var(--primary-2)':'var(--ink-2)'}`,
+        onClick:()=>this.go(n.screen) };
+    });
+
+    // role switch (topbar)
+    const roleSwitch = Object.keys(this.ROLES).map(k=>{
+      const active=k===s.role; const r=this.ROLES[k];
+      return {short:r.short, title:r.label, style:`font-family:'JetBrains Mono';font-size:11px;font-weight:600;padding:4px 9px;border:none;border-radius:7px;cursor:pointer;background:${active?'var(--primary)':'transparent'};color:${active?'#fff':'var(--ink-3)'}`,
+        onClick:()=>this.setState({role:k, screen:'dashboard'}) };
+    });
+
+    // login chips
+    const roleChips = [
+      {role:'system_admin',label:'System Admin',sub:'root@platform'},
+      {role:'tenant_admin',label:'Tenant Admin',sub:'avery@acme'},
+      {role:'annotator',label:'Annotator',sub:'jordan@acme'},
+      {role:'business_user',label:'Business User',sub:'sam@acme'},
+    ].map(c=>({...c, onClick:()=>this.loginAs(c.role)}));
+
+    const screenTitles = {dashboard:['Dashboard','/dashboard'],annotation:['Annotation Workspace','/annotation'],tenants:['Tenants','/admin/tenants'],training:['Training Jobs','/training-jobs'],models:['Model Registry','/models'],documents:['Documents','/documents'],entitytypes:['Entity Types','/entity-types'],users:['Users','/users'],extractions:['Extractions','/extractions'],audit:['Audit Log','/audit'],settings:['Settings','/settings']};
+    const stp = screenTitles[s.screen]||['Dashboard','/dashboard'];
+
+    // dashboard
+    const d = this.dashData(s.role);
+    const deltaStyle=(dir)=>{
+      const c = dir==='up'?'var(--good)':dir==='warn'?'var(--warn)':'var(--ink-3)';
+      const bg = dir==='up'?'var(--good-soft)':dir==='warn'?'var(--warn-soft)':'var(--surface-3)';
+      return `font-family:'JetBrains Mono';font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;color:${c};background:${bg}`;
+    };
+    const stats = d.stats.map(x=>({...x, deltaStyle:deltaStyle(x.dir)}));
+    const pRows = d.pRows.map(r=>{
+      const [bg,fg]=this.statusColors(r.tk);
+      return {...r, onClick:()=>this.go(r.go), dotStyle:`width:9px;height:9px;border-radius:50%;flex-shrink:0;background:${fg};${r.tk==='running'?'animation:pulse 1.4s infinite':''}`, tagStyle:this.pill(bg,fg)};
+    });
+    const sideRows = d.sideRows.map(b=>({...b, barStyle:`height:100%;border-radius:5px;width:${b.pct}%;background:${b.c};animation:growBar 1s ease both`}));
+    const heroIsB = s.dashVariant==='B';
+    const heroWrapStyle = heroIsB
+      ? "position:relative;border-radius:24px;padding:36px 36px 40px;overflow:hidden;background:#161b24;box-shadow:var(--shadow-lg);border:1px solid var(--line)"
+      : "position:relative;border-radius:24px;padding:30px 0 18px;overflow:hidden";
+
+    return {
+      ...this.annoVals(),
+      ...this.tenantVals(),
+      ...this.trainVals(),
+      theme: s.dark?'dark':'light',
+      darkIcon: s.dark?'☀':'☾',
+      isLogin: !isApp, isApp,
+      isDashboard: isApp && s.screen==='dashboard',
+      isAnnotation: isApp && s.screen==='annotation',
+      isTenants: isApp && s.screen==='tenants',
+      isTraining: isApp && s.screen==='training',
+      email: s.email, onEmail:(e)=>this.setState({email:e.target.value}),
+      onLoginPrimary:()=>this.loginAs(s.role==='tenant_admin'?'tenant_admin':s.role),
+      roleChips,
+      onLogout:()=>this.setState({authed:false, screen:'login'}),
+      onToggleDark:()=>this.setState({dark:!s.dark}),
+      tenantName:R.tenant, tenantSlug:R.slug, tenantInitials:R.initials,
+      userEmail:R.email, userInitials:R.short, roleLabel:R.label,
+      navItems, roleSwitch,
+      screenTitle:stp[0], screenPath:stp[1],
+      // dashboard
+      onDashA:()=>this.setState({dashVariant:'A'}), onDashB:()=>this.setState({dashVariant:'B'}),
+      dashAStyle: s.dashVariant==='A'?segActive:segIdle, dashBStyle: s.dashVariant==='B'?segActive:segIdle,
+      heroIsB, heroWrapStyle,
+      heroKicker:d.kicker, heroTitle:d.title, heroLine:d.line,
+      heroKickerColor: heroIsB?'var(--primary-2)':'var(--primary-2)',
+      heroTitleColor: heroIsB?'#fff':'var(--ink)',
+      heroLineColor: heroIsB?'rgba(255,255,255,.82)':'var(--ink-2)',
+      stats,
+      panelPrimaryTitle:d.pTitle, panelPrimaryMeta:d.pMeta, panelPrimaryRows:pRows,
+      sideTopTitle:d.sideTop, sideTopMeta:d.sideMeta, sideBigValue:d.big, sideBigUnit:d.bigUnit,
+      sideBarStyle:`height:100%;border-radius:6px;width:${d.bar}%;background:linear-gradient(90deg,var(--primary),var(--primary-2));animation:growBar 1.1s ease both`,
+      sideMetrics:d.sideMetrics, sideBottomTitle:d.sideBot, sideBottomRows:sideRows,
+      // toast
+      toast: s.toast,
+      toastMsg: s.toast?s.toast.msg:'',
+      toastIcon: s.toast?(s.toast.kind==='bad'?'✕':'✓'):'',
+      toastIconStyle: s.toast?`width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;flex-shrink:0;background:${s.toast.kind==='bad'?'var(--bad)':'var(--primary)'};color:#fff`:'',
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -13,6 +13,7 @@ class TokenPrediction(BaseModel):
 
 class InferResponse(BaseModel):
     predictions: list[TokenPrediction]
+    model_version: str | None = None
 
 
 class WarmupRequest(BaseModel):

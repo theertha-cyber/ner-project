@@ -168,6 +168,27 @@ async def get_document(
     }
 
 
+@router.get("/{doc_id}/text")
+async def get_document_text(
+    doc_id: str,
+    request: Request = None,
+    session: AsyncSession = Depends(get_session),
+):
+    tenant_id = get_tenant_id(request)
+    schema = _schema(tenant_id)
+
+    result = await session.execute(
+        text(f"SELECT text FROM {schema}.document_text_spans WHERE document_id = :doc_id ORDER BY span_index"),
+        {"doc_id": doc_id},
+    )
+    rows = result.fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": f"No text found for document {doc_id}"})
+
+    combined_text = "\n".join(r[0] or "" for r in rows)
+    return {"text": combined_text}
+
+
 @router.delete("/{doc_id}")
 async def delete_document(
     doc_id: str,

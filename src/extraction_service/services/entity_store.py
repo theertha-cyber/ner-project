@@ -115,7 +115,7 @@ async def query_entities(
     params = {}
 
     if document_id:
-        conditions.append("e.run_id IN (SELECT id FROM {schema}.extraction_runs WHERE document_id = :document_id)")
+        conditions.append("e.document_id = :document_id")
         params["document_id"] = document_id
     if entity_type:
         conditions.append("e.entity_id = :entity_type")

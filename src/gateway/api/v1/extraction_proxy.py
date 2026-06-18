@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from src.shared.config import settings
 
-router = APIRouter(prefix="/api/v1/tenants/{tid}", tags=["extraction-proxy"])
+router = APIRouter(prefix="/api/v1", tags=["extraction-proxy"])
 
 EXTRACTION_BASE = settings.model_serving_url.replace("://model_serving", "://extraction_service")
 EXTRACTION_BASE = EXTRACTION_BASE.replace(":8004", ":8005")
@@ -31,28 +31,28 @@ async def _proxy(method: str, path: str, request: Request, body: dict | None = N
 
 
 @router.post("/extract")
-async def proxy_extract(tid: str, request: Request):
+async def proxy_extract(request: Request):
     body = await request.json()
-    return await _proxy("POST", f"/api/v1/tenants/{tid}/extract", request, body)
+    return await _proxy("POST", "/api/v1/extract", request, body)
 
 
 @router.post("/extract-batch")
-async def proxy_batch(tid: str, request: Request):
+async def proxy_batch(request: Request):
     body = await request.json() if request.headers.get("content-type") == "application/json" else None
-    return await _proxy("POST", f"/api/v1/tenants/{tid}/extract-batch", request, body)
+    return await _proxy("POST", "/api/v1/extract-batch", request, body)
 
 
 @router.get("/extract-batch/{run_id}")
-async def proxy_batch_status(tid: str, run_id: str, request: Request):
-    return await _proxy("GET", f"/api/v1/tenants/{tid}/extract-batch/{run_id}", request)
+async def proxy_batch_status(run_id: str, request: Request):
+    return await _proxy("GET", f"/api/v1/extract-batch/{run_id}", request)
 
 
 @router.get("/entities")
-async def proxy_list_entities(tid: str, request: Request):
-    return await _proxy("GET", f"/api/v1/tenants/{tid}/entities", request)
+async def proxy_list_entities(request: Request):
+    return await _proxy("GET", "/api/v1/entities", request)
 
 
 @router.patch("/entities/{entity_id}")
-async def proxy_patch_entity(tid: str, entity_id: str, request: Request):
+async def proxy_patch_entity(entity_id: str, request: Request):
     body = await request.json()
-    return await _proxy("PATCH", f"/api/v1/tenants/{tid}/entities/{entity_id}", request, body)
+    return await _proxy("PATCH", f"/api/v1/entities/{entity_id}", request, body)

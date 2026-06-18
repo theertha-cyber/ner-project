@@ -11,6 +11,8 @@ from sqlalchemy.pool import NullPool
 os.environ.setdefault("NER_DATABASE_URL", "postgresql+asyncpg://ner:ner@localhost:54320/ner_test")
 os.environ.setdefault("NER_DATABASE_URL_SYNC", "postgresql://ner:ner@localhost:54320/ner_test")
 os.environ.setdefault("NER_JWT_SECRET", "test-secret-do-not-use-in-prod")
+os.environ.setdefault("NER_MINIO_ACCESS_KEY", "test-minio-access-key")
+os.environ.setdefault("NER_MINIO_SECRET_KEY", "test-minio-secret-key")
 
 from src.shared.config import settings
 from src.gateway.main import app

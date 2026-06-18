@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ner
       POSTGRES_DB: ner_dev
     ports:
-      - "54320:5432"
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ner -d ner_dev"]
       interval: 5s
@@ -18,8 +18,8 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -36,26 +36,6 @@ services:
       timeout: 3s
       retries: 5
 
-  training_service:
-    build:
-      context: .
-      dockerfile: src/training_service/Dockerfile
-    ports:
-      - "8003:8000"
-    environment:
-      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
-      NER_REDIS_URL: "redis://redis:6379/0"
-      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
-      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
-      NER_JWT_SECRET: "change-me-in-production"
-      NER_MINIO_ENDPOINT: "minio:9000"
-      NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
-    depends_on:
-      postgres-test:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
   mlflow:
     build:
       context: .
@@ -70,8 +50,8 @@ services:
       - "5000:5000"
     environment:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
       AWS_DEFAULT_REGION: us-east-1
     depends_on:
       postgres-test:
@@ -79,18 +59,121 @@ services:
       minio:
         condition: service_started
 
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn src.gateway.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_MINIO_ENDPOINT: "minio:9000"
+      NER_DOCUMENT_SERVICE_URL: "http://document_service:8000"
+      NER_MODEL_SERVING_URL: "http://model_serving:8000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  document_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn src.document_service.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8001:8000"
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_MINIO_ENDPOINT: "minio:9000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+
+  extraction_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn src.extraction_service.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8002:8000"
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      NER_DOCUMENT_SERVICE_URL: "http://document_service:8000"
+      NER_MODEL_SERVING_URL: "http://model_serving:8000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  model_serving:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn src.model_serving.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8004:8000"
+    env_file: .env
+    environment:
+      NER_MINIO_ENDPOINT: "minio:9000"
+      NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
+
+  annotation_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn src.annotation_service.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8005:8000"
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+
+  training_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn src.training_service.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8003:8000"
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      NER_MINIO_ENDPOINT: "minio:9000"
+      NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   celery_worker:
     build:
       context: .
-      dockerfile: src/training_service/Dockerfile
+      dockerfile: Dockerfile
     command: celery -A src.training_service.celery_app worker --loglevel=info --concurrency=1
+    env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
       NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
       NER_REDIS_URL: "redis://redis:6379/0"
       NER_CELERY_BROKER_URL: "redis://redis:6379/0"
       NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
-      NER_JWT_SECRET: "change-me-in-production"
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_TRAINING_DEVICE: "cpu"
       NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
@@ -101,6 +184,32 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  celery_worker_extraction:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A src.extraction_service.celery_app worker -Q extraction --pool=solo --loglevel=info
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      NER_DOCUMENT_SERVICE_URL: "http://document_service:8000"
+      NER_MODEL_SERVING_URL: "http://model_serving:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      document_service:
+        condition: service_started
+      model_serving:
+        condition: service_started
 
 volumes:
   minio-data:

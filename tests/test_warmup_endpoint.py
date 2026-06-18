@@ -22,7 +22,7 @@ class TestWarmupEndpointExists:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/internal/v1/tenants/test-tenant/warmup",
+                "/internal/v1/warmup",
                 json={},
                 headers=auth_header("test-tenant"),
             )
@@ -35,7 +35,7 @@ class TestWarmupWithVersionNumber:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/internal/v1/tenants/test-tenant/warmup",
+                "/internal/v1/warmup",
                 json={"version_number": 1},
                 headers=auth_header("test-tenant"),
             )
@@ -48,7 +48,7 @@ class TestWarmupNonexistentVersion:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/internal/v1/tenants/test-tenant/warmup",
+                "/internal/v1/warmup",
                 json={"version_number": 9999},
                 headers=auth_header("test-tenant"),
             )
@@ -61,7 +61,7 @@ class TestWarmupAuth:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/internal/v1/tenants/test-tenant/warmup",
+                "/internal/v1/warmup",
                 json={},
             )
             assert resp.status_code == 401
@@ -96,7 +96,7 @@ class TestWarmupPopulatesCache:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/internal/v1/tenants/test-tenant/warmup",
+                "/internal/v1/warmup",
                 json={"version_number": 1},
                 headers=auth_header("test-tenant"),
             )
@@ -134,7 +134,7 @@ class TestWarmupPopulatesCache:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/internal/v1/tenants/test-tenant/warmup",
+                "/internal/v1/warmup",
                 json={},
                 headers=auth_header("test-tenant"),
             )
