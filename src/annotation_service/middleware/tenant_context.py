@@ -15,6 +15,11 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
 
         path = request.url.path
 
+        if request.method == "OPTIONS":
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
+
         exempt_paths = {"/health", "/docs", "/redoc", "/openapi.json"}
         if path in exempt_paths:
             response = await call_next(request)

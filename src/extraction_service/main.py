@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
+from src.shared.config import settings
 from src.shared.database import get_engine
 from src.extraction_service.middleware.tenant_context import TenantContextMiddleware
 from src.extraction_service.api.v1 import extraction, entities
@@ -38,6 +40,15 @@ app = FastAPI(
 
 add_bearer_security(app)
 app.add_middleware(TenantContextMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_origin_regex=settings.cors_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_private_network=settings.cors_allow_private_network,
+)
 
 
 @app.exception_handler(AppError)

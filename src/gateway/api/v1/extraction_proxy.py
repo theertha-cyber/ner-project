@@ -5,14 +5,14 @@ from src.shared.config import settings
 
 router = APIRouter(prefix="/api/v1", tags=["extraction-proxy"])
 
-EXTRACTION_BASE = settings.model_serving_url.replace("://model_serving", "://extraction_service")
-EXTRACTION_BASE = EXTRACTION_BASE.replace(":8004", ":8005")
+EXTRACTION_BASE = settings.extraction_service_url
 
 
 async def _proxy(method: str, path: str, request: Request, body: dict | None = None):
     url = f"{EXTRACTION_BASE}{path}"
     headers = dict(request.headers)
     headers.pop("host", None)
+    headers.pop("content-length", None)
 
     async with httpx.AsyncClient(timeout=60) as client:
         if method == "GET":
@@ -32,7 +32,7 @@ async def _proxy(method: str, path: str, request: Request, body: dict | None = N
 
 @router.post("/extract")
 async def proxy_extract(request: Request):
-    body = await request.json()
+    body = await request.json() if request.headers.get("content-type") == "application/json" else None
     return await _proxy("POST", "/api/v1/extract", request, body)
 
 

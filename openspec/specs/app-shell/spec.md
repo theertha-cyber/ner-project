@@ -10,14 +10,14 @@ The system SHALL render a sticky 248 px sidebar (`position: sticky; top: 0; heig
 
 **Nav section** (`flex: 1; overflow: auto`): renders `navFor(user.role)` as `<button>` elements. Active item (pathname starts with `item.href`) SHALL have a distinct visual treatment matching the mockup's primary-colour highlight. Badge counts render as pill chips in JetBrains Mono when present.
 
-**User strip** (pinned bottom, border-top): avatar gradient square showing `userInitials`, email (truncated), role label in JetBrains Mono, and a logout button (⎋ icon). Clicking logout calls `useAuth().logout()` then redirects to `/login`.
+**User strip** (pinned bottom, border-top): avatar gradient square showing `userInitials`, email (truncated), role label in JetBrains Mono, and a `⋮` (vertical ellipsis) trigger button. Clicking the trigger SHALL toggle a floating action menu positioned upward with a 150ms fade-in/out opacity transition. The menu SHALL contain two items: **Settings** (navigates to `/settings`) and **Logout** (calls `useAuth().logout()` then redirects to `/login`). Clicking outside the menu or pressing Escape SHALL close it.
 
 #### Scenario: sidebar renders correct nav for role
 
 - **GIVEN** the authenticated user has role `annotator`
 - **WHEN** the `AppShell` mounts
-- **THEN** the sidebar nav contains exactly 4 items: My Work, Annotation, Documents, Settings
-- **AND** no Tenants or Training Queue items are visible
+- **THEN** the sidebar nav contains exactly 3 items: My Work, Annotation, Documents
+- **AND** no Settings or Tenants items are visible
 
 #### Scenario: active nav item is highlighted
 
@@ -38,10 +38,36 @@ The system SHALL render a sticky 248 px sidebar (`position: sticky; top: 0; heig
 - **WHEN** the sidebar renders
 - **THEN** the tenant pill shows the first letter initial, the tenant name, and the slug in JetBrains Mono
 
+#### Scenario: floating menu opens and closes on trigger
+
+- **GIVEN** the user strip is rendered in the sidebar
+- **WHEN** the user clicks the `⋮` trigger button
+- **THEN** a floating menu appears above the trigger with a 150ms fade-in transition
+- **AND** the menu contains a "Settings" item and a "Logout" item
+
+#### Scenario: menu closes on outside click
+
+- **GIVEN** the floating menu is open
+- **WHEN** the user clicks anywhere outside the menu or the trigger button
+- **THEN** the menu fades out and closes
+
+#### Scenario: menu closes on Escape
+
+- **GIVEN** the floating menu is open
+- **WHEN** the user presses the Escape key
+- **THEN** the menu fades out and closes
+
+#### Scenario: Settings navigates to /settings
+
+- **GIVEN** the floating menu is open
+- **WHEN** the user clicks the "Settings" item
+- **THEN** the browser navigates to `/settings`
+- **AND** the menu closes
+
 #### Scenario: logout clears session and redirects
 
-- **GIVEN** the user is authenticated
-- **WHEN** they click the logout button (⎋) in the user strip
+- **GIVEN** the menu is open
+- **WHEN** the user clicks the "Logout" item
 - **THEN** `useAuth().logout()` is called
 - **AND** the browser navigates to `/login`
 

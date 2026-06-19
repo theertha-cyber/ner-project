@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     model_cache_memory_limit_gb: int = 2
     model_cache_ttl_minutes: int = 30
     model_serving_url: str = "http://localhost:8004"
+    extraction_service_url: str = "http://localhost:8002"
     document_service_url: str = "http://localhost:8001"
 
     environment: str = "development"

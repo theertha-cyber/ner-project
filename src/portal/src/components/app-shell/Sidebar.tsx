@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
@@ -24,6 +25,31 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
   const pathname = usePathname();
 
   if (!user) return null;
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        triggerRef.current && !triggerRef.current.contains(e.target as Node)
+      ) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, []);
 
   const navItems = navFor(effectiveRole);
   const tenantName = tenantDisplayName(user.tenantSlug);
@@ -217,6 +243,7 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
       {/* User strip */}
       <div
         style={{
+          position: "relative",
           borderTop: "1px solid rgba(0,0,0,0.08)",
           padding: "12px 12px",
           display: "flex",
@@ -266,11 +293,11 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
           </div>
         </div>
         <button
-          onClick={async () => {
-            await logout();
-            router.push("/login");
-          }}
-          title="Sign out"
+          ref={triggerRef}
+          onClick={() => setMenuOpen(prev => !prev)}
+          title="More actions"
+          aria-haspopup="true"
+          aria-expanded={menuOpen}
           style={{
             background: "none",
             border: "none",
@@ -285,8 +312,75 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
             flexShrink: 0,
           }}
         >
-          ⎋
+          ⋮
         </button>
+
+        <div
+          ref={menuRef}
+          style={{
+            position: "absolute",
+            bottom: "100%",
+            left: 8,
+            right: 8,
+            marginBottom: 4,
+            background: "var(--color-glass, rgba(255,255,255,0.95))",
+            border: "1px solid rgba(0,0,0,0.08)",
+            borderRadius: 8,
+            padding: "4px",
+            backdropFilter: "blur(16px)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+            opacity: menuOpen ? 1 : 0,
+            pointerEvents: menuOpen ? "auto" : "none",
+            transition: "opacity 0.15s ease",
+          }}
+        >
+          <button
+            onClick={() => { router.push("/settings"); setMenuOpen(false); }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 6,
+              border: "none",
+              background: "transparent",
+              color: "var(--color-text-primary, #0f172a)",
+              fontFamily: "var(--font-display, sans-serif)",
+              fontSize: 13,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.05)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+          >
+            <span style={{ fontSize: 15, lineHeight: 1 }}>⚙</span>
+            <span>Settings</span>
+          </button>
+          <button
+            onClick={async () => { await logout(); router.push("/login"); }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 6,
+              border: "none",
+              background: "transparent",
+              color: "var(--color-text-primary, #0f172a)",
+              fontFamily: "var(--font-display, sans-serif)",
+              fontSize: 13,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.05)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+          >
+            <span style={{ fontSize: 15, lineHeight: 1 }}>⎋</span>
+            <span>Logout</span>
+          </button>
+        </div>
       </div>
     </aside>
   );

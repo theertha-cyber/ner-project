@@ -18,7 +18,6 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "training-jobs", icon: "↻", label: "Training Queue", href: "/training-jobs", roles: ["system_admin"], badge: 2 },
         { id: "models", icon: "◈", label: "Model Registry", href: "/models", roles: ["system_admin"] },
         { id: "audit", icon: "≡", label: "Audit Log", href: "/audit", roles: ["system_admin"] },
-        { id: "settings", icon: "⚙", label: "Platform Settings", href: "/settings", roles: ["system_admin"] },
       ];
     case "tenant_admin":
       return [
@@ -29,14 +28,12 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "training-jobs", icon: "↻", label: "Training Jobs", href: "/training-jobs", roles: ["tenant_admin"], badge: 1 },
         { id: "models", icon: "◈", label: "Model Registry", href: "/models", roles: ["tenant_admin"] },
         { id: "users", icon: "⊙", label: "Users", href: "/users", roles: ["tenant_admin"] },
-        { id: "settings", icon: "⚙", label: "Settings", href: "/settings", roles: ["tenant_admin"] },
       ];
     case "annotator":
       return [
         { id: "dashboard", icon: "⊞", label: "My Work", href: "/dashboard", roles: ["annotator"] },
         { id: "annotation", icon: "✎", label: "Annotation", href: "/annotation", roles: ["annotator"], badge: 4 },
         { id: "documents", icon: "◻", label: "Documents", href: "/documents", roles: ["annotator"] },
-        { id: "settings", icon: "⚙", label: "Settings", href: "/settings", roles: ["annotator"] },
       ];
     case "business_user":
       return [
@@ -44,7 +41,6 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "documents", icon: "◻", label: "Documents", href: "/documents", roles: ["business_user"] },
         { id: "extractions", icon: "⤴", label: "Extractions", href: "/extractions", roles: ["business_user"] },
         { id: "models", icon: "◈", label: "Models", href: "/models", roles: ["business_user"] },
-        { id: "settings", icon: "⚙", label: "Settings", href: "/settings", roles: ["business_user"] },
       ];
   }
 }

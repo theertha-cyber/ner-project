@@ -29,7 +29,7 @@ class EntityService:
                 "tid": tenant_id,
                 "name": payload["name"],
                 "desc": payload.get("description"),
-                "examples": payload.get("examples"),
+                "examples": json.dumps(payload.get("examples")) if payload.get("examples") is not None else None,
                 "rule": payload.get("validation_rule"),
                 "target": payload.get("target_table"),
                 "mapping": json.dumps(mapping) if isinstance(mapping, dict) else mapping,
@@ -89,6 +89,8 @@ class EntityService:
         if updates:
             if "base_label_mapping" in updates and isinstance(updates["base_label_mapping"], dict):
                 updates["base_label_mapping"] = json.dumps(updates["base_label_mapping"])
+            if "examples" in updates and updates["examples"] is not None:
+                updates["examples"] = json.dumps(updates["examples"])
             set_clause = ", ".join(f"{k} = :{k}" for k in updates)
             updates["id"] = entity_id
             await self.db.execute(

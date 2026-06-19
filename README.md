@@ -495,6 +495,32 @@ Soft-delete — sets `is_active: false`.
 
 ---
 
+### Dashboard (`/api/v1/dashboard`)
+
+**Service:** `src.gateway.main:app` — port 8000
+**Swagger UI:** `http://localhost:8000/docs`
+
+Requires `Authorization: Bearer <token>` with any valid tenant-scoped role. The tenant is resolved from the JWT. `system_admin` users receive platform-wide aggregates; tenant-scoped roles receive tenant-specific stats.
+
+#### GET `/api/v1/dashboard/summary`
+Returns summary statistics for the authenticated user's role.
+
+**Response `200`:**
+```json
+{
+  "data": { ... },
+  "sources": {
+    "tenants": true,
+    "training": true,
+    "documents": true,
+    "annotations": true,
+    "models": true
+  }
+}
+```
+
+---
+
 ### Document Ingestion (`/api/v1/documents`)
 
 **Service:** `src.document_service.main:app` — port 8001
@@ -596,6 +622,27 @@ Get a single document's metadata and processing status.
   "error": { "code": "NOT_FOUND", "message": "Document 'uuid' not found" }
 }
 ```
+
+#### GET `/api/v1/documents/{doc_id}/text`
+Return the full OCR-extracted text for a processed document. Text spans are fetched ordered by `span_index` and joined with newlines.
+
+**Response `200`:**
+```json
+{
+  "text": "Invoice #1234\nAcme Corp\nNew York, NY 10001\n..."
+}
+```
+
+**Response `404`:** Document has no extracted text spans (not yet processed, or processing failed).
+```json
+{
+  "detail": { "code": "NOT_FOUND", "message": "No text found for document uuid" }
+}
+```
+
+**Storage:** `SELECT text FROM tenant_{tid}.document_text_spans WHERE document_id = :doc_id ORDER BY span_index`.
+
+---
 
 #### DELETE `/api/v1/documents/{doc_id}`
 Soft-delete a document. Sets `status: "deleted"`. The blob remains in MinIO.
@@ -1138,18 +1185,18 @@ Reject a training job. Requires `role: system_admin`. Accepts a `tenant_id` quer
 
 ---
 
-### Extraction Service API (`/api/v1/tenants/{tid}/extract`)
+### Extraction Service API (`/api/v1/extract`)
 
 **Service:** `src.extraction_service.main:app` — port 8005
 **Swagger UI:** `http://localhost:8005/docs`
 
-Requires `Authorization: Bearer <token>` with `role: tenant_admin` or `role: business_user` for single extraction; batch extraction requires `role: tenant_admin`.
+Requires `Authorization: Bearer <token>` with `role: tenant_admin` or `role: business_user` for single extraction; batch extraction requires `role: tenant_admin`. The tenant is resolved from the JWT — no `{tid}` in the URL.
 
 The extraction service sends tokens to the model-serving inference endpoint and maps the resulting token-level predictions back to character offsets in the original text. Predictions below the `confidence_threshold` (configurable via `NER_CONFIDENCE_THRESHOLD`) are filtered out. Results are sorted by confidence descending.
 
 ---
 
-#### POST `/api/v1/tenants/{tid}/extract`
+#### POST `/api/v1/extract`
 Run NER inference on a single text string. The text is tokenized (split by whitespace), sent to the inference service, and token-level predictions are mapped back to character offsets.
 
 **Request body:**
@@ -1226,11 +1273,11 @@ When the tenant has no promoted fine-tuned model, the system uses the curated ba
 }
 ```
 
-**Storage:** No DB write — calls `POST /internal/v1/tenants/{tid}/infer` on the model-serving service, then returns mapped entities. Entities are NOT persisted (re-run on every request).
+**Storage:** No DB write — calls `POST /internal/v1/infer` on the model-serving service, then returns mapped entities. Entities are NOT persisted (re-run on every request).
 
 ---
 
-#### POST `/api/v1/tenants/{tid}/extract-batch`
+#### POST `/api/v1/extract-batch`
 Trigger batch extraction via Celery worker. Processes multiple documents asynchronously. Each document's text is fetched from the document service, sent to the inference service, and the resulting entities are persisted in `tenant_{tid}.extracted_entities`.
 
 **Query params:** `?documentIds=uuid1,uuid2`
@@ -1255,7 +1302,7 @@ Trigger batch extraction via Celery worker. Processes multiple documents asynchr
 
 ---
 
-#### GET `/api/v1/tenants/{tid}/extract-batch/{run_id}`
+#### GET `/api/v1/extract-batch/{run_id}`
 Get the status and results of a batch extraction run.
 
 **Response `200` (running):**
@@ -1311,7 +1358,7 @@ Get the status and results of a batch extraction run.
 
 ---
 
-#### GET `/api/v1/tenants/{tid}/entities`
+#### GET `/api/v1/entities`
 Query extracted entities with optional filters. Returns entities from batch extraction runs that have been persisted in the database.
 
 **Query params:** `?documentId=uuid&type=ORG&minConfidence=0.9&reviewStatus=unreviewed&page=1&per_page=20`
@@ -1353,7 +1400,7 @@ Query extracted entities with optional filters. Returns entities from batch extr
 
 ---
 
-#### PATCH `/api/v1/tenants/{tid}/entities/{entity_id}`
+#### PATCH `/api/v1/entities/{entity_id}`
 Update the review status and/or corrected value for a single extracted entity.
 
 **Request body:**
@@ -1507,7 +1554,7 @@ Model resolution order for a given tenant:
 
 ---
 
-#### POST `/internal/v1/tenants/{tid}/infer`
+#### POST `/internal/v1/infer`
 Run token-level NER inference on a pre-tokenized input. Accepts a list of tokens (strings), runs inference through the resolved model, and returns per-token predictions with confidence scores.
 
 **Request body:**
@@ -1565,7 +1612,7 @@ This occurs when both the fine-tuned model AND the base model pipeline fail to i
 
 ---
 
-#### POST `/internal/v1/tenants/{tid}/warmup`
+#### POST `/internal/v1/warmup`
 Pre-load a model into memory for a tenant. If `version_number` is provided, that specific version is loaded. Otherwise, the currently promoted (active) version is resolved.
 
 When `version_number` is `0` (base model), this initializes the Hugging Face pipeline singleton — no ONNX artifacts are downloaded. When `version_number` is `>= 1`, the ONNX model artifacts are fetched from MinIO and loaded via ONNX Runtime into the in-memory `model_cache`.
@@ -1631,7 +1678,7 @@ Promote a completed model to production. Auto-archives any previously promoted v
 
 **Response `404`:** Version not found.
 
-**Storage:** `UPDATE tenant_{tid}.model_versions SET status = 'archived' WHERE status = 'promoted'` → `UPDATE tenant_{tid}.model_versions SET status = 'promoted', promoted_at = NOW() WHERE id = :id`. Then HTTP POST to model-serving warmup endpoint at `/internal/v1/tenants/{tid}/warmup`.
+**Storage:** `UPDATE tenant_{tid}.model_versions SET status = 'archived' WHERE status = 'promoted'` → `UPDATE tenant_{tid}.model_versions SET status = 'promoted', promoted_at = NOW() WHERE id = :id`. Then HTTP POST to model-serving warmup endpoint at `/internal/v1/warmup`.
 
 ---
 

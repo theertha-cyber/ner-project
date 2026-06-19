@@ -11,6 +11,15 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# Allow the DB URL to be overridden via environment (required when running inside Docker).
+# NER_DATABASE_URL_SYNC is the sync (psycopg2) form; fall back to stripping +asyncpg
+# from NER_DATABASE_URL if only the async form is present.
+_db_url = os.environ.get("NER_DATABASE_URL_SYNC") or os.environ.get(
+    "NER_DATABASE_URL", ""
+).replace("postgresql+asyncpg://", "postgresql://")
+if _db_url:
+    config.set_main_option("sqlalchemy.url", _db_url)
+
 target_metadata = Base.metadata
 
 

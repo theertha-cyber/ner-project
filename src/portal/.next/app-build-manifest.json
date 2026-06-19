@@ -11,40 +11,55 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/(auth)/dashboard/page": [
+    "/(auth)/annotation/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(auth)/dashboard/page.js"
+      "static/chunks/app/(auth)/annotation/page.js"
     ],
     "/(auth)/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/(auth)/layout.js"
     ],
+    "/(auth)/dashboard/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(auth)/dashboard/page.js"
+    ],
+    "/(auth)/admin/tenants/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(auth)/admin/tenants/page.js"
+    ],
+    "/(auth)/admin/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(auth)/admin/layout.js"
+    ],
+    "/(auth)/admin/tenants/new/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(auth)/admin/tenants/new/page.js"
+    ],
+    "/(auth)/admin/tenants/[id]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(auth)/admin/tenants/[id]/page.js"
+    ],
     "/(auth)/documents/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/(auth)/documents/page.js"
     ],
-    "/(auth)/settings/page": [
+    "/(auth)/entity-types/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(auth)/settings/page.js"
+      "static/chunks/app/(auth)/entity-types/page.js"
     ],
-    "/page": [
+    "/(auth)/users/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
-    ],
-    "/(auth)/annotation/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(auth)/annotation/page.js"
-    ],
-    "/(auth)/training-jobs/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(auth)/training-jobs/page.js"
+      "static/chunks/app/(auth)/users/page.js"
     ]
   }
 }

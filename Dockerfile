@@ -8,6 +8,8 @@ RUN pip install --no-cache-dir poetry && \
     poetry install --no-root --without dev --no-interaction
 
 COPY src/ src/
+COPY alembic/ alembic/
+COPY alembic.ini .
 
 EXPOSE 8000
 

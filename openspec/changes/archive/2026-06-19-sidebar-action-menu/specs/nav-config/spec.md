@@ -1,0 +1,44 @@
+## MODIFIED Requirements
+
+### Requirement: Role Navigation Matrix
+
+The system SHALL provide a pure function `navFor(role: AuthUser["role"]): NavItem[]` that returns the ordered list of navigation items for each role, matching the mockup's `navFor()` implementation exactly. Each `NavItem` SHALL carry an `id`, `icon` (single character/symbol), `label`, `href` (absolute path), `roles` array, and an optional `badge` count.
+
+The role → nav mapping SHALL be:
+
+| Role | Nav items (in order) |
+|------|----------------------|
+| `system_admin` | Dashboard `/dashboard`, Tenants `/admin/tenants` (badge 6), Training Queue `/training-jobs` (badge 2), Model Registry `/models`, Audit Log `/audit` |
+| `tenant_admin` | Dashboard `/dashboard`, Documents `/documents`, Annotation `/annotation`, Entity Types `/entity-types`, Training Jobs `/training-jobs` (badge 1), Model Registry `/models`, Users `/users` |
+| `annotator` | My Work `/dashboard`, Annotation `/annotation` (badge 4), Documents `/documents` |
+| `business_user` | Overview `/dashboard`, Documents `/documents`, Extractions `/extractions`, Models `/models` |
+
+**Note**: Settings is no longer a nav item for any role. It is accessible via the floating action menu in the sidebar user strip.
+
+#### Scenario: system_admin nav
+
+- **GIVEN** the authenticated user has role `system_admin`
+- **WHEN** `navFor("system_admin")` is called
+- **THEN** it returns 5 items in order: Dashboard, Tenants (badge 6), Training Queue (badge 2), Model Registry, Audit Log
+- **AND** Settings is not in the returned items
+
+#### Scenario: tenant_admin nav
+
+- **GIVEN** the authenticated user has role `tenant_admin`
+- **WHEN** `navFor("tenant_admin")` is called
+- **THEN** it returns 7 items: Dashboard, Documents, Annotation, Entity Types, Training Jobs (badge 1), Model Registry, Users
+- **AND** Settings is not in the returned items
+
+#### Scenario: annotator nav
+
+- **GIVEN** the authenticated user has role `annotator`
+- **WHEN** `navFor("annotator")` is called
+- **THEN** it returns 3 items: My Work, Annotation (badge 4), Documents
+- **AND** Settings is not in the returned items
+
+#### Scenario: business_user nav
+
+- **GIVEN** the authenticated user has role `business_user`
+- **WHEN** `navFor("business_user")` is called
+- **THEN** it returns 4 items: Overview, Documents, Extractions, Models
+- **AND** Settings is not in the returned items

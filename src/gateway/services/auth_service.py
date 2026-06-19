@@ -31,18 +31,20 @@ class AuthService:
         if row.tenant_status == "inactive":
             raise AuthError("Tenant is deactivated")
 
-        access_token = create_access_token(row.tenant_id, row.id, row.role)
-        refresh_token = create_refresh_token(row.tenant_id, row.id, row.role)
+        tenant_id = str(row.tenant_id)
+        user_id = str(row.id)
+        access_token = create_access_token(tenant_id, user_id, row.role)
+        refresh_token = create_refresh_token(tenant_id, user_id, row.role)
 
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
             "user": {
-                "id": row.id,
+                "id": user_id,
                 "email": email,
                 "role": row.role,
-                "tenant_id": row.tenant_id,
+                "tenant_id": tenant_id,
                 "tenant_slug": row.slug,
             },
         }
