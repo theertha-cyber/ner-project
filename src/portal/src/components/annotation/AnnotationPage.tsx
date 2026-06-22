@@ -41,6 +41,9 @@ export function AnnotationPage() {
   const [taskStatuses, setTaskStatuses] = useState<Record<string, AnnotationTask["status"]>>({});
   const [isPrelabeling, setIsPrelabeling] = useState(false);
   const sentInProgressRef = useRef<Set<string>>(new Set());
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartIndex, setDragStartIndex] = useState<number | null>(null);
+  const [dragEndIndex, setDragEndIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem(LAYOUT_KEY);
@@ -220,17 +223,135 @@ export function AnnotationPage() {
           toast("Failed to create span", "bad");
         }
       } else {
-        // No armed type — open inspector for confirmed span at this token
+        // No armed type — open inspector for confirmed span at this token, or deselect
         const confirmedAtToken = spanState.confirmed.find(
           (s) => !s.optimistic && s.charStart <= entry.charStart && s.charEnd >= entry.charEnd,
         );
         if (confirmedAtToken) {
           dispatch({ type: "SPAN_SET_SELECTED", spanId: confirmedAtToken.id });
+        } else {
+          dispatch({ type: "SPAN_SET_SELECTED", spanId: null });
         }
       }
     },
     [selectedTask, docText, tokenMap, spanState.armedType, spanState.confirmed, taskStatuses, toast],
   );
+
+  // Document-level mouseup handler for drag span creation (placed after tokenMap + handleTokenClick)
+  useEffect(() => {
+    const handler = async () => {
+      if (!isDragging || dragStartIndex === null) {
+        setIsDragging(false);
+        setDragStartIndex(null);
+        setDragEndIndex(null);
+        return;
+      }
+
+      const startIdx = dragStartIndex;
+      const endIdx = dragEndIndex ?? dragStartIndex;
+      const minIdx = Math.min(startIdx, endIdx);
+      const maxIdx = Math.max(startIdx, endIdx);
+
+      setIsDragging(false);
+      setDragStartIndex(null);
+      setDragEndIndex(null);
+
+      // Single-click (same token): fall through to handleTokenClick
+      if (minIdx === maxIdx) {
+        handleTokenClick(minIdx);
+        return;
+      }
+
+      if (!spanState.armedType || !selectedTask || !docText) return;
+
+      // Guard: cancel if any token in range is already confirmed
+      const rangeEntries = tokenMap.slice(minIdx, maxIdx + 1);
+      const blocked = rangeEntries.some((entry) =>
+        spanState.confirmed.some(
+          (s) => !s.optimistic && s.charStart <= entry.charStart && s.charEnd >= entry.charEnd,
+        ),
+      );
+      if (blocked) return;
+
+      const charStart = tokenMap[minIdx].charStart;
+      const charEnd = tokenMap[maxIdx].charEnd;
+      const spanText = docText.slice(charStart, charEnd);
+
+      const optimisticId = `optimistic-${crypto.randomUUID()}`;
+      const optimisticSpan: ConfirmedSpan = {
+        id: optimisticId,
+        entityType: spanState.armedType,
+        charStart,
+        charEnd,
+        text: spanText,
+        confidence: 1.0,
+        optimistic: true,
+      };
+      dispatch({ type: "SPAN_ADD_OPTIMISTIC", span: optimisticSpan });
+
+      try {
+        const res = await authFetch(`/api/v1/documents/${selectedTask.document_id}/spans`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            entity_type: spanState.armedType,
+            char_start: charStart,
+            char_end: charEnd,
+            text: spanText,
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          dispatch({ type: "SPAN_REVERT", optimisticId });
+          toast((err as { error?: { message?: string } }).error?.message ?? "Failed to create span", "bad");
+          return;
+        }
+
+        const data = await res.json();
+        const realSpan: ConfirmedSpan = {
+          id: data.id,
+          entityType: data.entity_type,
+          charStart: data.char_start,
+          charEnd: data.char_end,
+          text: data.text,
+          confidence: data.confidence,
+        };
+        dispatch({ type: "SPAN_CONFIRM", optimisticId, realSpan });
+
+        const currentStatus = taskStatuses[selectedTask.id] ?? selectedTask.status;
+        if (currentStatus === "unannotated" && !sentInProgressRef.current.has(selectedTask.id)) {
+          sentInProgressRef.current.add(selectedTask.id);
+          const patchRes = await authFetch(`/api/v1/annotation-tasks/${selectedTask.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "in-progress" }),
+          });
+          if (patchRes.ok) {
+            setTaskStatuses((prev) => ({ ...prev, [selectedTask.id]: "in-progress" }));
+          }
+        }
+      } catch {
+        dispatch({ type: "SPAN_REVERT", optimisticId });
+        toast("Failed to create span", "bad");
+      }
+    };
+
+    document.addEventListener("mouseup", handler);
+    return () => document.removeEventListener("mouseup", handler);
+  }, [isDragging, dragStartIndex, dragEndIndex, spanState.armedType, spanState.confirmed, selectedTask, docText, tokenMap, taskStatuses, toast, handleTokenClick]);
+
+  const handleTokenMouseDown = useCallback((tokenIndex: number) => {
+    setIsDragging(true);
+    setDragStartIndex(tokenIndex);
+    setDragEndIndex(tokenIndex);
+  }, []);
+
+  const handleTokenMouseEnter = useCallback((tokenIndex: number) => {
+    if (isDragging) {
+      setDragEndIndex(tokenIndex);
+    }
+  }, [isDragging]);
 
   const handleRetype = useCallback(
     async (spanId: string, entityType: string) => {
@@ -321,8 +442,21 @@ export function AnnotationPage() {
         confidence: data.confidence,
       };
       dispatch({ type: "SUGGESTION_PROMOTE", suggestId, confirmedSpan });
+
+      const currentStatus = taskStatuses[selectedTask.id] ?? selectedTask.status;
+      if (currentStatus === "unannotated" && !sentInProgressRef.current.has(selectedTask.id)) {
+        sentInProgressRef.current.add(selectedTask.id);
+        const patchRes = await authFetch(`/api/v1/annotation-tasks/${selectedTask.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "in-progress" }),
+        });
+        if (patchRes.ok) {
+          setTaskStatuses((prev) => ({ ...prev, [selectedTask.id]: "in-progress" }));
+        }
+      }
     },
-    [selectedTask, spanState.suggested, toast],
+    [selectedTask, spanState.suggested, taskStatuses, toast],
   );
 
   const handleDismiss = useCallback((suggestId: string) => {
@@ -358,9 +492,26 @@ export function AnnotationPage() {
     ? (taskStatuses[selectedTask.id] ?? selectedTask.status)
     : null;
 
+  // Sync layout state when browser exits fullscreen via Escape or native controls
+  useEffect(() => {
+    const handler = () => {
+      if (!document.fullscreenElement) {
+        setLayoutMode("3pane");
+        localStorage.setItem(LAYOUT_KEY, "3pane");
+      }
+    };
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
   const toggleLayout = (mode: LayoutMode) => {
     setLayoutMode(mode);
     localStorage.setItem(LAYOUT_KEY, mode);
+    if (mode === "focus") {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
   };
 
   return (
@@ -415,40 +566,27 @@ export function AnnotationPage() {
           }}
         >
           {/* Layout toggle */}
-          <div
+          <button
+            onClick={() => toggleLayout(layoutMode === "focus" ? "3pane" : "focus")}
             style={{
-              display: "flex",
-              gap: 2,
-              background: "var(--color-surface-raised)",
+              padding: "3px 10px",
               borderRadius: 6,
-              padding: 2,
+              border: layoutMode === "focus" ? "none" : "1px solid var(--color-border)",
+              background: layoutMode === "focus" ? "var(--color-brand-primary)" : "transparent",
+              color: layoutMode === "focus" ? "#fff" : "var(--color-text-secondary)",
+              fontSize: 12,
+              cursor: "pointer",
+              fontWeight: layoutMode === "focus" ? 600 : 400,
+              transition: "all 0.15s",
             }}
           >
-            {(["3pane", "focus"] as LayoutMode[]).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => toggleLayout(mode)}
-                style={{
-                  padding: "3px 10px",
-                  borderRadius: 4,
-                  border: "none",
-                  background: layoutMode === mode ? "var(--color-primary)" : "transparent",
-                  color: layoutMode === mode ? "#fff" : "var(--color-text-secondary)",
-                  fontSize: 12,
-                  cursor: "pointer",
-                  fontWeight: layoutMode === mode ? 600 : 400,
-                  transition: "all 0.15s",
-                }}
-              >
-                {mode === "3pane" ? "3-pane" : "Focus"}
-              </button>
-            ))}
-          </div>
+            Focus
+          </button>
 
           {selectedTask && (
             <>
               <span style={{ fontSize: 12, color: "var(--color-text-secondary)", marginLeft: 4 }}>
-                doc-{selectedTask.document_id.slice(0, 8)}
+                Task {filteredTasks.indexOf(selectedTask) + 1}
               </span>
               <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
                 <button
@@ -469,17 +607,22 @@ export function AnnotationPage() {
                 </button>
                 <button
                   onClick={handleMarkComplete}
-                  disabled={confirmedCount === 0}
-                  title={confirmedCount === 0 ? "Add at least one confirmed span before completing" : undefined}
+                  disabled={confirmedCount === 0 || currentTaskStatus === "completed"}
+                  title={
+                    currentTaskStatus === "completed"
+                      ? "Task already completed"
+                      : confirmedCount === 0
+                      ? "Add at least one confirmed span before completing"
+                      : undefined
+                  }
                   style={{
                     padding: "5px 12px",
                     borderRadius: 6,
-                    border: "none",
-                    background: confirmedCount === 0 ? "var(--color-surface-raised)" : "var(--color-primary)",
-                    color: confirmedCount === 0 ? "var(--color-text-secondary)" : "#fff",
+                    border: (confirmedCount === 0 || currentTaskStatus === "completed") ? "1px solid var(--color-border)" : "none",
+                    background: (confirmedCount === 0 || currentTaskStatus === "completed") ? "transparent" : "var(--color-brand-primary)",
+                    color: (confirmedCount === 0 || currentTaskStatus === "completed") ? "var(--color-text-secondary)" : "#fff",
                     fontSize: 12,
-                    cursor: confirmedCount === 0 ? "not-allowed" : "pointer",
-                    opacity: confirmedCount === 0 ? 0.6 : 1,
+                    cursor: (confirmedCount === 0 || currentTaskStatus === "completed") ? "not-allowed" : "pointer",
                     fontWeight: 500,
                   }}
                 >
@@ -546,6 +689,11 @@ export function AnnotationPage() {
             spanState={spanState}
             entityColors={entityColors}
             onTokenClick={handleTokenClick}
+            onTokenMouseDown={handleTokenMouseDown}
+            onTokenMouseEnter={handleTokenMouseEnter}
+            isDragging={isDragging}
+            dragStartIndex={dragStartIndex}
+            dragEndIndex={dragEndIndex}
           />
 
           {/* Span Inspector (positioned inside the scrollable area) */}

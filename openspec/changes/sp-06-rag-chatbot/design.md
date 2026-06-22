@@ -120,6 +120,9 @@ Rollback: Remove gateway routes for chat-api; stop chat-api service; chat data r
 ## Open Questions
 
 - What OpenAI model should be used for SQL generation vs response generation? (Single model for both, or separate models?)
+Answer: Use Azure openai model for both
 - What chunk size and overlap strategy? (Proposed: 512 tokens with 128-token overlap, aligned with embedding model context window.)
 - Should the widget JS be a simple CSS-in-JS bundle or link to a separately hosted CSS file? (Proposed: CSS-in-JS to minimize external requests.)
+Answer: separate hosted css file
 - ADR-007 assumes OpenAI GPT-4o-class with tenant-scoped API keys. Should we use a single shared API key for all tenants (simpler) or per-tenant keys (better isolation)? (Proposed: single shared key for MVP, per-tenant key for production.)
+Answer: shared for now.

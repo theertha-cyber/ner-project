@@ -19,7 +19,7 @@ export function AppShell({ children }: AppShellProps) {
   const effectiveRole = demoRole ?? user.role;
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--color-surface-page, #f1f3f7)" }}>
+    <div style={{ display: "flex", height: "100vh", background: "var(--color-surface-page, #f1f3f7)" }}>
       <Sidebar effectiveRole={effectiveRole} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <Topbar demoRole={demoRole} onDemoRoleChange={setDemoRole} />

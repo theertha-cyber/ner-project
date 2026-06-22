@@ -34,6 +34,24 @@ def generate_uuid():
     return str(uuid.uuid4())
 
 
+def _compute_bio_tags(doc_text: str, char_start: int, char_end: int, entity_type: str) -> list[str]:
+    """Return BIO tag sequence for tokens in [char_start, char_end) using whitespace tokenization."""
+    tags: list[str] = []
+    char_offset = 0
+    for token in doc_text.split():
+        token_start = char_offset
+        token_end = char_offset + len(token)
+        # Advance past the token, then skip one space separator if present
+        char_offset = token_end
+        if char_offset < len(doc_text) and doc_text[char_offset] == " ":
+            char_offset += 1
+        if token_start >= char_end:
+            break
+        if token_end > char_start and token_start < char_end:
+            tags.append(f"B-{entity_type}" if not tags else f"I-{entity_type}")
+    return tags
+
+
 async def validate_entity_type(session: AsyncSession, tenant_id: str, entity_type: str) -> None:
     from fastapi import HTTPException
     result = await session.execute(
@@ -80,10 +98,18 @@ async def create_span(
         from fastapi import HTTPException
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": "char_start and char_end are required"})
 
+    # Fetch document text to compute BIO tags
+    text_row = await session.execute(
+        text(f"SELECT text FROM {schema}.document_text_spans WHERE document_id = :doc_id LIMIT 1"),
+        {"doc_id": doc_id},
+    )
+    doc_text_row = text_row.fetchone()
+    bio_tags = _compute_bio_tags(doc_text_row[0] or "", char_start, char_end, entity_type) if doc_text_row else []
+
     await session.execute(
         text(f"""
-            INSERT INTO {schema}.spans (id, document_id, entity_type, char_start, char_end, text_content, confidence)
-            VALUES (:id, :doc_id, :entity_type, :char_start, :char_end, :text_val, :confidence)
+            INSERT INTO {schema}.spans (id, document_id, entity_type, char_start, char_end, text_content, confidence, bio_tags)
+            VALUES (:id, :doc_id, :entity_type, :char_start, :char_end, :text_val, :confidence, :bio_tags)
         """),
         {
             "id": span_id,
@@ -93,6 +119,7 @@ async def create_span(
             "char_end": char_end,
             "text_val": text_val,
             "confidence": body.get("confidence", 1.0),
+            "bio_tags": bio_tags,
         },
     )
     await session.commit()
@@ -104,6 +131,7 @@ async def create_span(
         "char_end": char_end,
         "text": text_val,
         "confidence": body.get("confidence", 1.0),
+        "bio_tags": bio_tags,
     }
 
 
@@ -155,10 +183,11 @@ async def update_span(
     schema = _schema(tenant_id)
 
     result = await session.execute(
-        text(f"SELECT id FROM {schema}.spans WHERE id = :id AND document_id = :doc_id LIMIT 1"),
+        text(f"SELECT id, char_start, char_end FROM {schema}.spans WHERE id = :id AND document_id = :doc_id LIMIT 1"),
         {"id": span_id, "doc_id": doc_id},
     )
-    if not result.fetchone():
+    existing = result.fetchone()
+    if not existing:
         raise NotFoundError("Span", span_id)
 
     if "entity_type" in body:
@@ -176,6 +205,19 @@ async def update_span(
             updates.append(f"{field} = :{field}")
             params[field] = body[field]
 
+    # Recompute bio_tags when entity_type changes
+    if "entity_type" in body:
+        char_start = body.get("char_start", existing[1])
+        char_end = body.get("char_end", existing[2])
+        text_row = await session.execute(
+            text(f"SELECT text FROM {schema}.document_text_spans WHERE document_id = :doc_id LIMIT 1"),
+            {"doc_id": doc_id},
+        )
+        doc_text_row = text_row.fetchone()
+        bio_tags = _compute_bio_tags(doc_text_row[0] or "", char_start, char_end, body["entity_type"]) if doc_text_row else []
+        updates.append("bio_tags = :bio_tags")
+        params["bio_tags"] = bio_tags
+
     if updates:
         await session.execute(
             text(f"UPDATE {schema}.spans SET {', '.join(updates)} WHERE id = :id AND document_id = :doc_id"),
@@ -184,7 +226,7 @@ async def update_span(
         await session.commit()
 
     result = await session.execute(
-        text(f"SELECT id, entity_type, char_start, char_end, text_content, confidence FROM {schema}.spans WHERE id = :id"),
+        text(f"SELECT id, entity_type, char_start, char_end, text_content, confidence, bio_tags FROM {schema}.spans WHERE id = :id"),
         {"id": span_id},
     )
     r = result.fetchone()
@@ -195,6 +237,7 @@ async def update_span(
         "char_end": r[3],
         "text": r[4],
         "confidence": float(r[5]),
+        "bio_tags": r[6],
     }
 
 

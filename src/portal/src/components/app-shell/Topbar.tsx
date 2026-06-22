@@ -53,6 +53,8 @@ export function Topbar({ demoRole, onDemoRoleChange }: TopbarProps) {
         borderBottom: "1px solid rgba(0,0,0,0.08)",
         background: "var(--color-glass, rgba(255,255,255,0.85))",
         backdropFilter: "blur(16px)",
+        position: "sticky",
+        top: 0,
         zIndex: 50,
         gap: 16,
       }}

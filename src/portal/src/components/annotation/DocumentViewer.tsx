@@ -11,9 +11,24 @@ interface DocumentViewerProps {
   spanState: SpanState;
   entityColors: Record<string, string>;
   onTokenClick: (tokenIndex: number) => void;
+  onTokenMouseDown?: (tokenIndex: number) => void;
+  onTokenMouseEnter?: (tokenIndex: number) => void;
+  isDragging?: boolean;
+  dragStartIndex?: number | null;
+  dragEndIndex?: number | null;
 }
 
-export function DocumentViewer({ tokenMap, spanState, entityColors, onTokenClick }: DocumentViewerProps) {
+export function DocumentViewer({
+  tokenMap,
+  spanState,
+  entityColors,
+  onTokenClick,
+  onTokenMouseDown,
+  onTokenMouseEnter,
+  isDragging,
+  dragStartIndex,
+  dragEndIndex,
+}: DocumentViewerProps) {
   const tokenHighlights = useMemo<TokenHighlight[]>(() => {
     const highlights: TokenHighlight[] = tokenMap.map(() => ({ kind: "none" }));
 
@@ -37,8 +52,20 @@ export function DocumentViewer({ tokenMap, spanState, entityColors, onTokenClick
       }
     }
 
+    // Drag-preview (highest precedence — only when armed and dragging)
+    if (isDragging && spanState.armedType && dragStartIndex !== null && dragStartIndex !== undefined) {
+      const minIdx = Math.min(dragStartIndex, dragEndIndex ?? dragStartIndex);
+      const maxIdx = Math.max(dragStartIndex, dragEndIndex ?? dragStartIndex);
+      const color = entityColors[spanState.armedType] ?? "#94a3b8";
+      for (let i = minIdx; i <= maxIdx; i++) {
+        if (highlights[i]?.kind !== "confirmed") {
+          highlights[i] = { kind: "drag-preview", color };
+        }
+      }
+    }
+
     return highlights;
-  }, [tokenMap, spanState.confirmed, spanState.suggested, entityColors]);
+  }, [tokenMap, spanState.confirmed, spanState.suggested, spanState.armedType, entityColors, isDragging, dragStartIndex, dragEndIndex]);
 
   if (tokenMap.length === 0) {
     return (
@@ -68,6 +95,8 @@ export function DocumentViewer({ tokenMap, spanState, entityColors, onTokenClick
           token={entry.token}
           highlight={tokenHighlights[i]}
           onClick={() => onTokenClick(i)}
+          onMouseDown={onTokenMouseDown ? () => onTokenMouseDown(i) : undefined}
+          onMouseEnter={onTokenMouseEnter ? () => onTokenMouseEnter(i) : undefined}
         />
       ))}
     </div>

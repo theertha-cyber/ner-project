@@ -42,10 +42,9 @@ export function TaskQueue({ tasks, selectedTaskId, taskStatuses, onSelect }: Tas
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {tasks.map((task) => {
+      {tasks.map((task, index) => {
         const status = taskStatuses[task.id] ?? task.status;
         const isSelected = task.id === selectedTaskId;
-        const shortId = task.document_id.slice(0, 8);
 
         return (
           <button
@@ -76,7 +75,7 @@ export function TaskQueue({ tasks, selectedTaskId, taskStatuses, onSelect }: Tas
                   whiteSpace: "nowrap",
                 }}
               >
-                doc-{shortId}
+                Task {index + 1}
               </div>
               <div
                 style={{
