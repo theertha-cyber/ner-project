@@ -1,10 +1,63 @@
 import asyncio
 import traceback
 import uuid
+import tiktoken
+from openai import AsyncOpenAI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
+from src.shared.config import settings
 from src.document_service.services.storage import MinioStorageClient
+
+TOKENIZER = tiktoken.get_encoding("cl100k_base")
+CHUNK_SIZE = 512
+CHUNK_OVERLAP = 128
+
+
+def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[dict]:
+    tokens = TOKENIZER.encode(text)
+    chunks = []
+    start = 0
+    while start < len(tokens):
+        end = min(start + chunk_size, len(tokens))
+        chunk_tokens = tokens[start:end]
+        chunk_str = TOKENIZER.decode(chunk_tokens)
+        chunks.append({"chunk_index": len(chunks), "chunk_text": chunk_str})
+        if end == len(tokens):
+            break
+        start += chunk_size - overlap
+    return chunks
+
+
+async def _embed_chunks(texts: list[str]) -> list[list[float]]:
+    if not texts:
+        return []
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    response = await client.embeddings.create(model="text-embedding-3-small", input=texts)
+    return [r.embedding for r in response.data]
+
+
+async def _store_chunks(document_id: str, tenant_id: str, chunks: list[dict], embeddings: list[list[float]]):
+    engine = get_engine()
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    schema = f"tenant_{tenant_id.replace('-', '_')}"
+    async with session_factory() as session:
+        for i, chunk in enumerate(chunks):
+            emb_str = "[" + ",".join(str(v) for v in embeddings[i]) + "]" if i < len(embeddings) else None
+            await session.execute(
+                text(f"""
+                    INSERT INTO {schema}.document_chunks (id, document_id, chunk_index, chunk_text, embedding)
+                    VALUES (:id, :doc_id, :chunk_index, :chunk_text, :embedding::vector)
+                """),
+                {
+                    "id": str(uuid.uuid4()),
+                    "doc_id": document_id,
+                    "chunk_index": chunk["chunk_index"],
+                    "chunk_text": chunk["chunk_text"],
+                    "embedding": emb_str,
+                },
+            )
+        await session.commit()
 
 
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff"}
@@ -116,6 +169,8 @@ async def process_document(document_id: str, tenant_id: str, blob_path: str, con
         else:
             raise ValueError(f"Unsupported file extension: {ext}")
 
+        full_text = "\n".join(s["text"] for s in spans if s["text"].strip())
+
         async with session_factory() as session:
             for span in spans:
                 span_id = str(uuid.uuid4())
@@ -140,6 +195,15 @@ async def process_document(document_id: str, tenant_id: str, blob_path: str, con
                 {"id": document_id},
             )
             await session.commit()
+
+        if full_text.strip():
+            try:
+                chunks = _chunk_text(full_text)
+                texts = [c["chunk_text"] for c in chunks]
+                embeddings = await _embed_chunks(texts)
+                await _store_chunks(document_id, tenant_id, chunks, embeddings)
+            except Exception as chunk_err:
+                traceback.print_exc()
 
     except Exception as exc:
         error_msg = f"{type(exc).__name__}: {str(exc)}"

@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     model_serving_url: str = "http://localhost:8004"
     extraction_service_url: str = "http://localhost:8002"
     document_service_url: str = "http://localhost:8001"
+    openai_api_key: str
+    chat_api_port: int = 8006
+
+    azure_openai_endpoint: str | None = None
+    azure_openai_api_version: str = "2024-12-01-preview"
+    azure_openai_chat_deployment: str = "gpt-4o-mini"
+    azure_openai_embedding_deployment: str = "text-embedding-3-small"
 
     environment: str = "development"
     cors_origins: list[str] = ["http://localhost:3000"]

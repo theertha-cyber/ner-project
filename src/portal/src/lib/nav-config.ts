@@ -28,6 +28,7 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "training-jobs", icon: "↻", label: "Training Jobs", href: "/training-jobs", roles: ["tenant_admin"], badge: 1 },
         { id: "models", icon: "◈", label: "Model Registry", href: "/models", roles: ["tenant_admin"] },
         { id: "users", icon: "⊙", label: "Users", href: "/users", roles: ["tenant_admin"] },
+        { id: "chat", icon: "💬", label: "Chat", href: "/chat", roles: ["tenant_admin"] },
       ];
     case "annotator":
       return [
@@ -41,6 +42,7 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "documents", icon: "◻", label: "Documents", href: "/documents", roles: ["business_user"] },
         { id: "extractions", icon: "⤴", label: "Extractions", href: "/extractions", roles: ["business_user"] },
         { id: "models", icon: "◈", label: "Models", href: "/models", roles: ["business_user"] },
+        { id: "chat", icon: "💬", label: "Chat", href: "/chat", roles: ["business_user"] },
       ];
   }
 }
@@ -56,6 +58,7 @@ export const SCREEN_TITLES: Record<string, [title: string, path: string]> = {
   users: ["Users", "/users"],
   extractions: ["Extractions", "/extractions"],
   audit: ["Audit Log", "/audit"],
+  chat: ["Chat", "/chat"],
   settings: ["Settings", "/settings"],
 };
 

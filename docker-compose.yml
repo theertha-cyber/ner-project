@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   postgres-test:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ner
       POSTGRES_PASSWORD: ner
@@ -89,10 +89,30 @@ services:
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_DOCUMENT_SERVICE_URL: "http://document_service:8000"
       NER_MODEL_SERVING_URL: "http://model_serving:8000"
+      NER_CHAT_API_PORT: 8006
     depends_on:
       postgres-test:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+
+  chat_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn src.chat_api.main:app --host 0.0.0.0 --port 8000
+    # src/chat_api/ (renamed from chat-api for Python import compatibility)
+    ports:
+      - "8006:8000"
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_MODEL_SERVING_URL: "http://model_serving:8000"
+      NER_CHAT_API_PORT: 8006
+    depends_on:
+      postgres-test:
         condition: service_healthy
       db-init:
         condition: service_completed_successfully

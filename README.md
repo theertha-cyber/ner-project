@@ -1,5 +1,77 @@
 # NER Platform — Identity, Tenant Entity Configuration, Annotation Workspace & Training Pipeline (SM-01→SM-04)
 
+## User Workflow
+
+The platform has four roles. Below is the end-to-end journey each role takes, and how they hand off to one another.
+
+```mermaid
+flowchart TD
+    START([User visits NER Platform]) --> LOGIN
+
+    subgraph AUTH ["Authentication"]
+        LOGIN[Enter email & password] --> JWT{Valid?}
+        JWT -->|No| LOGIN
+        JWT -->|Yes| DASH[Personalized Dashboard]
+    end
+
+    DASH --> ROLE{Role}
+
+    ROLE -->|system_admin| SA1
+    ROLE -->|tenant_admin| TA1
+    ROLE -->|annotator| AN1
+    ROLE -->|business_user| BU1
+
+    subgraph SYSADMIN ["System Admin"]
+        SA1[Manage tenants] --> SA2[Create org & set quotas]
+        SA2 --> SA3[Approve or reject training requests]
+    end
+
+    subgraph TENANTADMIN ["Tenant Admin"]
+        TA1[Define entity types] --> TA2[Upload documents]
+        TA2 --> TA3[OCR extraction runs automatically]
+        TA3 --> TA4[Assign annotation tasks to annotators]
+        TA4 --> TA5["Submit training job\n(requires 500+ confirmed spans)"]
+        TA5 --> TA6{Approved by system admin?}
+        TA6 -->|No — rejected| TA5
+        TA6 -->|Yes| TA7[Fine-tuning runs in background]
+        TA7 --> TA8[View metrics & MLflow run]
+        TA8 --> TA9[Promote best model to production]
+    end
+
+    subgraph ANNOTATOR ["Annotator"]
+        AN1[View assigned task queue] --> AN2[Open document in workspace]
+        AN2 --> AN3[Optional: run AI pre-labeling]
+        AN3 --> AN4[Click or drag tokens to label entity spans]
+        AN4 --> AN5[Inspect, re-type, or delete spans]
+        AN5 --> AN6{Happy with labels?}
+        AN6 -->|No| AN4
+        AN6 -->|Yes| AN7[Mark task complete]
+        AN7 --> AN8{More tasks?}
+        AN8 -->|Yes| AN1
+        AN8 -->|No| AN9([All done])
+    end
+
+    subgraph BIZUSER ["Business User"]
+        BU1[Upload documents] --> BU2[Run batch entity extraction]
+        BU2 --> BU3[Review extracted entities]
+        BU3 --> BU4[Confirm, correct, or reject entities]
+        BU4 --> BU5[Chat with AI assistant about results]
+        BU5 --> BU6([Export structured data])
+    end
+
+    SA3 -.->|Approval decision| TA6
+    TA4 -.->|Tasks appear in queue| AN1
+    TA9 -.->|Active model ready| BU2
+```
+
+**How the roles connect:**
+- The **Tenant Admin** defines the workspace (entities, documents, tasks) and drives the training lifecycle.
+- **Annotators** work through their assigned task queue and build the labeled dataset the model trains on.
+- The **System Admin** acts as a gatekeeper, approving training jobs before GPU resources are consumed.
+- Once a model is promoted, **Business Users** can run extractions and query results through the AI chat assistant.
+
+---
+
 ## Database Schemas
 
 ### `public` Schema — Global tables (shared across all tenants)
@@ -1744,6 +1816,307 @@ The training service logs every fine-tuning run to MLflow for experiment trackin
 **Docker Compose:** The MLflow Tracking Server is defined in `docker-compose.yml` with a PostgreSQL backend (`mlflow-db`) and MinIO artifact store — run `docker compose up -d mlflow` to start it.
 
 **Verification:** Navigate to `http://localhost:5000` in a browser. After a successful training run, models appear under the tenant-specific experiment in the MLflow UI.
+
+---
+
+### Chat API — RAG Chatbot (`/api/v1/tenants/{tid}/chat`)
+
+**Service:** `src.chat_api.main:app` — port 8006
+**Swagger UI:** `http://localhost:8006/docs`
+
+Requires `Authorization: Bearer <token>` with any valid tenant-scoped role. All endpoints are also proxied through the gateway at the same paths on port 8000.
+
+Rate limit: **60 requests per minute** per tenant (internal clients).
+
+---
+
+#### POST `/api/v1/tenants/{tid}/chat`
+Send a message to the RAG chatbot. The orchestrator queries three sources in parallel (SQL over extracted entities, pgvector semantic search over document chunks, live NER inference) and synthesizes an LLM response.
+
+**Request body:**
+```json
+{
+  "message": "How many organizations were extracted?",
+  "conversation_id": null
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message` | string | Required. Max 4000 chars. The user's question. |
+| `conversation_id` | string or null | Optional. UUID of an existing conversation to continue. If null, a new conversation is created. |
+
+**Response `200`:**
+```json
+{
+  "reply": "Based on the extracted data, there are 3 organizations found.",
+  "sources": [
+    {
+      "source_type": "sql",
+      "document_id": null,
+      "chunk_index": null,
+      "chunk_text": null,
+      "relevance_score": 1.0,
+      "entity_type": null,
+      "value": "[{\"entity_type\": \"B-ORG\", \"count\": 3}]",
+      "confidence": null
+    },
+    {
+      "source_type": "document_chunk",
+      "document_id": "uuid",
+      "chunk_index": 2,
+      "chunk_text": "Acme Corp is a supplier...",
+      "relevance_score": 0.92,
+      "entity_type": null,
+      "value": null,
+      "confidence": null
+    }
+  ],
+  "conversation_id": "uuid",
+  "disclaimer": "This answer was generated by AI and may contain errors. Verify important information against source documents."
+}
+```
+
+`source_type` is one of: `sql` (entity query results), `document_chunk` (semantic search match), `ner` (live inference entity).
+
+**Response `401`:** Missing/invalid JWT.
+
+**Response `429`:** Rate limit exceeded.
+```json
+{
+  "detail": { "code": "RATE_LIMIT_EXCEEDED", "message": "Rate limit exceeded", "retry_after": 42 }
+}
+```
+Headers: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+
+**Response `403`:** Tenant mismatch or inactive tenant.
+
+**Storage:** Inserts user message + assistant reply into `tenant_{tid}.chat_messages`. Updates `tenant_{tid}.conversations.updated_at`. Reads conversation history from `chat_messages` when `conversation_id` is provided.
+
+---
+
+#### GET `/api/v1/tenants/{tid}/chat/conversations`
+List conversations for the authenticated user, ordered by most recent message.
+
+**Response `200`:**
+```json
+[
+  {
+    "id": "uuid",
+    "title": null,
+    "created_at": "2026-06-23 10:00:00+00",
+    "message_count": 5
+  }
+]
+```
+
+`title` is always `null` currently (auto-titling not implemented).
+
+**Storage:** `SELECT FROM tenant_{tid}.conversations LEFT JOIN tenant_{tid}.chat_messages` with `WHERE user_id = :uid`, `GROUP BY`, `ORDER BY MAX(created_at) DESC NULLS LAST`.
+
+---
+
+#### GET `/api/v1/tenants/{tid}/chat/conversations/{conv_id}`
+Get a single conversation with all its messages.
+
+**Response `200`:**
+```json
+{
+  "id": "uuid",
+  "title": null,
+  "created_at": "2026-06-23 10:00:00+00",
+  "messages": [
+    {
+      "id": "uuid",
+      "role": "user",
+      "content": "How many organizations?",
+      "sources": null,
+      "created_at": "2026-06-23 10:00:00+00"
+    },
+    {
+      "id": "uuid",
+      "role": "assistant",
+      "content": "Based on the extracted data...",
+      "sources": [
+        { "source_type": "sql", "value": "..." }
+      ],
+      "created_at": "2026-06-23 10:00:01+00"
+    }
+  ]
+}
+```
+
+**Response `404`:**
+```json
+{
+  "detail": "Conversation 'uuid' not found"
+}
+```
+
+**Storage:** `SELECT FROM tenant_{tid}.conversations` + `SELECT FROM tenant_{tid}.chat_messages` with `WHERE conversation_id = :cid ORDER BY created_at ASC`.
+
+---
+
+#### DELETE `/api/v1/tenants/{tid}/chat/conversations/{conv_id}` (204)
+Delete a conversation and all its messages.
+
+**Response `204`:** No content.
+
+**Response `404`:** Conversation not found.
+
+**Storage:** `DELETE FROM tenant_{tid}.chat_messages WHERE conversation_id = :cid` + `DELETE FROM tenant_{tid}.conversations WHERE id = :cid` in a transaction.
+
+---
+
+### Widget API Keys (`/api/v1/tenants/{tid}/widget-keys`)
+
+**Service:** `src.chat_api.main:app` — port 8006
+
+Requires `Authorization: Bearer <token>` with `role: tenant_admin`. Proxied through the gateway.
+
+Widget API keys are SHA-256 hashed on storage; only the prefix `ner_widget_...` (first 8 chars) is returned on list. The raw key is shown **once** at creation time.
+
+---
+
+#### POST `/api/v1/tenants/{tid}/widget-keys` (201)
+Generate a new widget API key for embedding the chat widget on external sites.
+
+**Response `201`:**
+```json
+{
+  "id": "uuid",
+  "raw_key": "ner_widget_a1b2c3d4e5f6...",
+  "key_prefix": "ner_widg"
+}
+```
+
+**⚠️ Store `raw_key` — it cannot be retrieved later.** The hashed version is saved in `public.widget_api_keys`.
+
+**Storage:** `INSERT INTO public.widget_api_keys (id, tenant_id, key_hash, key_prefix)`.
+
+---
+
+#### GET `/api/v1/tenants/{tid}/widget-keys`
+List active (non-revoked) widget API keys.
+
+**Response `200`:**
+```json
+[
+  {
+    "id": "uuid",
+    "key_prefix": "ner_widg",
+    "created_at": "2026-06-23 10:00:00+00",
+    "last_used_at": null
+  }
+]
+```
+
+**Storage:** `SELECT FROM public.widget_api_keys WHERE tenant_id = :tid AND revoked_at IS NULL ORDER BY created_at DESC`.
+
+---
+
+#### DELETE `/api/v1/tenants/{tid}/widget-keys/{key_id}` (204)
+Revoke a widget API key. Sets `revoked_at = NOW()`.
+
+**Response `204`:** No content.
+
+**Response `404`:** Key not found or already revoked.
+
+**Storage:** `UPDATE public.widget_api_keys SET revoked_at = NOW() WHERE id = :kid`.
+
+---
+
+### Public Widget API (`/api/v1/public`)
+
+**Service:** `src.chat_api.main:app` — port 8006
+
+Public endpoints are accessible **without** a JWT. Widget authentication uses widget API keys (`Authorization: Bearer ner_widget_...`). CORS is open (`Access-Control-Allow-Origin: *`).
+
+Rate limit: **20 requests per minute** per tenant (widget clients).
+
+---
+
+#### GET `/api/v1/public/widget.js`
+Serve the embeddable chat widget JavaScript. Renders a floating chat bubble → chat panel on any website.
+
+**Query params:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `tenant` | string | **Required.** Tenant slug (e.g., `acme-corp`). |
+
+**Response `200`:** `application/javascript`
+
+The JS file self-renders a widget with:
+- Floating blue chat bubble (bottom-right)
+- Chat panel with message history, text input, send button
+- Greeting message: "Hello! I can help you explore your extracted entities..."
+- Error handling for network failures and API errors
+
+**Usage in HTML:**
+```html
+<script src="https://your-domain.com/api/v1/public/widget.js?tenant=acme-corp"></script>
+<script>
+  // After script loads, the widget renders automatically.
+  // To authenticate, set the API key:
+  // (Your wrapper code sets nerWidgetApiKey = 'ner_widget_...')
+</script>
+```
+
+**Storage:** No DB — JS is generated server-side with the tenant slug injected.
+
+---
+
+#### POST `/api/v1/public/chat`
+Single-turn chat for widget users. No conversation persistence.
+
+**Headers:** `Authorization: Bearer ner_widget_<key>`
+
+**Request body:**
+```json
+{
+  "message": "What entities were found?"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message` | string | Required. Max 4000 chars. |
+
+**Response `200`:**
+```json
+{
+  "reply": "The extracted entities include organizations such as Acme Corp...",
+  "sources": [
+    { "source_type": "sql", "value": "..." }
+  ],
+  "disclaimer": "This answer was generated by AI and may contain errors. Verify important information against source documents."
+}
+```
+
+**Response `401`:** Missing or invalid widget API key.
+
+**Response `429`:** Rate limit exceeded (20 req/min per tenant).
+
+**Storage:** No DB writes. Calls `RAGOrchestrator.execute()` and returns the result directly.
+
+---
+
+#### OPTIONS `/api/v1/public/chat`
+CORS preflight handler for widget chat.
+
+**Response `204`:** No content.
+Headers: `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: POST, OPTIONS`, `Access-Control-Allow-Headers: Authorization, Content-Type`.
+
+---
+
+### Chat Service / Starting the Server
+
+```bash
+uvicorn src.chat_api.main:app --port 8006 --reload   # http://localhost:8006/docs
+```
+
+Requires `NER_OPENAI_API_KEY` (or Azure OpenAI config) in `.env`. The gateway proxies chat routes to this service automatically — clients can use `http://localhost:8000/api/v1/tenants/{tid}/chat` instead of the direct URL.
 
 ---
 
