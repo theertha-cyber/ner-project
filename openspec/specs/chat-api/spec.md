@@ -199,6 +199,22 @@ The system SHALL reject questions that require more than 3 distinct source looku
 - **THEN** the response SHALL ask the user to simplify the question
 - **AND** the complexity score SHALL be logged
 
+### Requirement: Configurable chat API service URL
+
+The chat API service URL SHALL be configurable via a `chat_api_url` setting that defaults to `http://localhost:8006`. The gateway proxy SHALL use this setting to route chat API requests, allowing Docker compose to override it with a service-specific URL.
+
+#### Scenario: Gateway proxies to configured URL
+
+- **GIVEN** a running gateway with `chat_api_url` set to `http://chat_api:8000`
+- **WHEN** a chat request is proxied
+- **THEN** the request SHALL be sent to `http://chat_api:8000/api/v1/chat/...`
+
+#### Scenario: Default URL works for local development
+
+- **GIVEN** a running gateway with default settings
+- **WHEN** a chat request is proxied
+- **THEN** the request SHALL be sent to `http://localhost:8006/api/v1/chat/...`
+
 ### Requirement: Disclaimer in every response
 
 Every chat response SHALL include a disclaimer string in the response body indicating that the answer was AI-generated and may contain errors. The disclaimer SHALL NOT be included in the `reply` text itself but as a separate `disclaimer` field in the response JSON.

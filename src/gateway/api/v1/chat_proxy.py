@@ -5,7 +5,7 @@ from src.shared.config import settings
 
 router = APIRouter(prefix="/api/v1", tags=["chat-proxy"])
 
-CHAT_API_BASE = f"http://localhost:{settings.chat_api_port}"
+CHAT_API_BASE = settings.chat_api_url
 
 
 async def _proxy(method: str, path: str, request: Request):

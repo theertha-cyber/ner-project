@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.gateway.services.tenant_service import TenantService
+from src.gateway.services.user_service import UserService
 from src.gateway.dependencies import get_db, require_system_admin
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
@@ -69,4 +70,16 @@ async def deactivate_tenant(
 ):
     service = TenantService(db)
     return await service.deactivate_tenant(tenant_id)
+
+
+@router.get("/tenants/{tenant_id}/users")
+async def list_tenant_users(
+    tenant_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_system_admin),
+):
+    tenant_service = TenantService(db)
+    await tenant_service.get_tenant(tenant_id)
+    user_service = UserService(db)
+    return await user_service.list_users(tenant_id)
 

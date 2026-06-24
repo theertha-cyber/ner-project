@@ -5,6 +5,7 @@ import { RequireAuth } from "@/components/require-auth";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { MessageThread } from "@/components/chat/MessageThread";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { authFetch } from "@/lib/auth-fetch";
 
 interface Message {
   id: string;
@@ -43,7 +44,7 @@ function ChatPageInner() {
 
   const loadConversations = useCallback(async () => {
     try {
-      const resp = await fetch(CHAT_API_BASE + "/conversations", { credentials: "include" });
+      const resp = await authFetch(CHAT_API_BASE + "/conversations");
       if (resp.ok) {
         const data = await resp.json();
         setConversations(data);
@@ -60,7 +61,7 @@ function ChatPageInner() {
   const loadMessages = useCallback(async (convId: string) => {
     setLoading(true);
     try {
-      const resp = await fetch(CHAT_API_BASE + "/conversations/" + convId, { credentials: "include" });
+      const resp = await authFetch(CHAT_API_BASE + "/conversations/" + convId);
       if (resp.ok) {
         const data = await resp.json();
         setMessages(data.messages || []);
@@ -84,9 +85,8 @@ function ChatPageInner() {
 
   const handleDeleteConversation = useCallback(async (convId: string) => {
     try {
-      const resp = await fetch(CHAT_API_BASE + "/conversations/" + convId, {
+      const resp = await authFetch(CHAT_API_BASE + "/conversations/" + convId, {
         method: "DELETE",
-        credentials: "include",
       });
       if (resp.status === 204) {
         setConversations((prev) => prev.filter((c) => c.id !== convId));
@@ -114,10 +114,9 @@ function ChatPageInner() {
     setSending(true);
 
     try {
-      const resp = await fetch(CHAT_API_BASE, {
+      const resp = await authFetch(CHAT_API_BASE, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           message: text,
           conversation_id: activeConvId,

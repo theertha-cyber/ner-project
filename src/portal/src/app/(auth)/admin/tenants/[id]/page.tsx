@@ -19,8 +19,16 @@ interface TenantDetail {
   updated_at: string;
 }
 
+interface TenantUser {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+}
+
 export default function TenantDetailPage({ params }: { params: { id: string } }) {
   const [tenant, setTenant] = useState<TenantDetail | null>(null);
+  const [users, setUsers] = useState<TenantUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
@@ -45,6 +53,13 @@ export default function TenantDetailPage({ params }: { params: { id: string } })
       })
       .catch((err: Error) => alert(err.message))
       .finally(() => setLoading(false));
+  }, [params.id]);
+
+  useEffect(() => {
+    authFetch(`${GATEWAY_URL}/api/v1/admin/tenants/${params.id}/users`)
+      .then((r) => r.json() as Promise<{ users: TenantUser[] }>)
+      .then((data) => setUsers(data.users ?? []))
+      .catch(() => setUsers([]));
   }, [params.id]);
 
   const handleUpdate = async () => {
@@ -202,6 +217,42 @@ export default function TenantDetailPage({ params }: { params: { id: string } })
           <p>Created: {new Date(tenant.created_at).toLocaleString()}</p>
           <p>Updated: {new Date(tenant.updated_at).toLocaleString()}</p>
         </div>
+      </div>
+
+      <div className="mt-6 rounded-lg bg-white p-6 shadow">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Users</h2>
+        {users.length === 0 ? (
+          <p className="text-sm text-gray-500">No users found.</p>
+        ) : (
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Email</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Role</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {users.map((u) => (
+                <tr key={u.id} className="hover:bg-gray-50">
+                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900">{u.email}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{u.role}</td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
+                        u.status === "active"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {u.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

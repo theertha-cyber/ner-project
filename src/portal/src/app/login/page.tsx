@@ -221,6 +221,7 @@ export default function LoginPage() {
 
       {isTransitioning && (
         <div
+          data-testid="transition-overlay"
           style={{ position: "fixed", inset: 0, zIndex: 50, background: "radial-gradient(circle at 30% 40%, #f59e0b, #ea580c 40%, #c2410c 70%)", animation: "orbBurst 0.55s ease-in both" }}
           onAnimationEnd={() => router.replace("/dashboard")}
         />

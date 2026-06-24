@@ -90,6 +90,7 @@ services:
       NER_DOCUMENT_SERVICE_URL: "http://document_service:8000"
       NER_MODEL_SERVING_URL: "http://model_serving:8000"
       NER_CHAT_API_PORT: 8006
+      NER_CHAT_API_URL: "http://host.docker.internal:8006"
     depends_on:
       postgres-test:
         condition: service_healthy

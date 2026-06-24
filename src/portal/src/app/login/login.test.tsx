@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import LoginPage from "./page";
@@ -54,6 +54,17 @@ describe("LoginPage", () => {
 
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalledWith("admin@example.com", "correctpass");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("transition-overlay")).toBeDefined();
+    });
+
+    act(() => {
+      fireEvent.animationEnd(screen.getByTestId("transition-overlay"));
+    });
+
+    await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith("/dashboard");
     });
   });
@@ -87,7 +98,7 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /sign in →/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button")).toBeDisabled();
+      expect(screen.getByRole("button", { name: /signing in/i })).toBeDisabled();
       expect(screen.getByTestId("spinner")).toBeInTheDocument();
     });
 
