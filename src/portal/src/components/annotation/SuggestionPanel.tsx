@@ -20,7 +20,7 @@ export function SuggestionPanel({ suggestions, entityColors, onPromote, onDismis
           textAlign: "center",
         }}
       >
-        No suggestions — click Pre-label to generate
+        No suggestions — click ✦ Pre-label to generate
       </div>
     );
   }
@@ -32,16 +32,29 @@ export function SuggestionPanel({ suggestions, entityColors, onPromote, onDismis
         return (
           <div
             key={s.id}
+            data-testid={`suggestion-card-${s.id}`}
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              padding: "8px 10px",
-              border: `1px dashed ${color}`,
-              borderRadius: 6,
-              background: color + "0d",
+              gap: 10,
+              padding: "10px 12px",
+              border: "1px dashed var(--color-border)",
+              borderRadius: 12,
+              background: color + "08",
             }}
           >
+            {/* Colored dot */}
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: color,
+                flexShrink: 0,
+              }}
+            />
+
+            {/* Text + type + confidence */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <span
                 style={{
@@ -53,6 +66,7 @@ export function SuggestionPanel({ suggestions, entityColors, onPromote, onDismis
                   whiteSpace: "nowrap",
                   display: "block",
                 }}
+                data-testid={`suggestion-text-${s.id}`}
               >
                 {s.text}
               </span>
@@ -60,43 +74,49 @@ export function SuggestionPanel({ suggestions, entityColors, onPromote, onDismis
                 style={{
                   fontSize: 11,
                   color,
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
                 }}
+                data-testid={`suggestion-meta-${s.id}`}
               >
-                {s.entityType}
+                {s.entityType} · conf {s.confidence.toFixed(2)}
               </span>
             </div>
+
+            {/* Promote button */}
             <button
               onClick={() => onPromote(s.id)}
-              title="Promote to confirmed span"
+              data-testid={`promote-btn-${s.id}`}
               style={{
-                padding: "3px 8px",
-                background: color,
+                padding: "4px 10px",
+                background: "var(--color-brand-primary)",
                 color: "#fff",
                 border: "none",
-                borderRadius: 4,
-                fontSize: 11,
+                borderRadius: 6,
+                fontSize: 12,
                 cursor: "pointer",
                 fontWeight: 600,
                 whiteSpace: "nowrap",
+                flexShrink: 0,
               }}
             >
-              ✓ Keep
+              Promote
             </button>
+
+            {/* Dismiss button */}
             <button
               onClick={() => onDismiss(s.id)}
-              title="Dismiss suggestion"
+              data-testid={`dismiss-btn-${s.id}`}
               style={{
-                padding: "3px 8px",
+                padding: "4px 8px",
                 background: "none",
                 color: "var(--color-text-secondary)",
                 border: "1px solid var(--color-border)",
-                borderRadius: 4,
-                fontSize: 11,
+                borderRadius: 6,
+                fontSize: 12,
                 cursor: "pointer",
+                flexShrink: 0,
               }}
+              aria-label="Dismiss suggestion"
             >
               ✕
             </button>

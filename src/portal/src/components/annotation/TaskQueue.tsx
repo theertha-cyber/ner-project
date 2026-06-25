@@ -7,6 +7,9 @@ export interface AnnotationTask {
   status: "unannotated" | "in-progress" | "completed";
   created_at: string;
   updated_at: string | null;
+  filename: string;
+  document_status?: string;
+  span_count?: number;
 }
 
 interface TaskQueueProps {
@@ -42,9 +45,12 @@ export function TaskQueue({ tasks, selectedTaskId, taskStatuses, onSelect }: Tas
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {tasks.map((task, index) => {
+      {tasks.map((task) => {
         const status = taskStatuses[task.id] ?? task.status;
         const isSelected = task.id === selectedTaskId;
+        const subtitle = task.document_status
+          ? `${task.document_status} · ${task.span_count ?? 0} spans`
+          : status.replace("-", " ");
 
         return (
           <button
@@ -69,23 +75,23 @@ export function TaskQueue({ tasks, selectedTaskId, taskStatuses, onSelect }: Tas
                 style={{
                   fontSize: 13,
                   fontWeight: 500,
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
                   color: "var(--color-text-primary)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                 }}
               >
-                Task {index + 1}
+                {task.filename}
               </div>
               <div
                 style={{
                   fontSize: 11,
                   color: STATUS_COLORS[status],
                   marginTop: 2,
-                  textTransform: "capitalize",
                 }}
               >
-                {status.replace("-", " ")}
+                {subtitle}
               </div>
             </div>
           </button>

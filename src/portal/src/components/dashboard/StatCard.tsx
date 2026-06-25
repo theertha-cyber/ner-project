@@ -6,41 +6,79 @@ interface StatCardProps {
   item: StatItem;
 }
 
+const deltaPill: Record<string, { bg: string; fg: string }> = {
+  up: { bg: "var(--good-soft, rgba(21,128,61,0.10))", fg: "var(--color-delta-up, #16a34a)" },
+  warn: { bg: "var(--warn-soft, rgba(180,83,9,0.10))", fg: "var(--color-delta-warn, #d97706)" },
+};
+
 export function StatCard({ item }: StatCardProps) {
-  const displayValue = item.value === null ? "—" : String(item.value);
+  const displayValue = item.value === null ? "\u2014" : String(item.value);
+  const pill = item.dir ? deltaPill[item.dir] : null;
 
   return (
     <div
       style={{
         background: "var(--color-surface-raised)",
         border: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-lg, 12px)",
+        borderRadius: 16,
         padding: "20px 22px",
         display: "flex",
         flexDirection: "column",
         gap: 6,
-        flex: 1,
         minWidth: 0,
+        transition: "transform 0.15s ease, border-color 0.15s ease",
+        cursor: "default",
       }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--primary-line)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.borderColor = "var(--color-border)"; }}
     >
-      <div
-        style={{
-          fontFamily: "var(--font-body, Inter, sans-serif)",
-          fontSize: 11,
-          fontWeight: 500,
-          color: "var(--color-text-secondary)",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-        }}
-      >
-        {item.label}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span
+          style={{
+            fontFamily: "var(--font-body, Inter, sans-serif)",
+            fontSize: 12,
+            fontWeight: 500,
+            color: "var(--color-text-secondary)",
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+          }}
+        >
+          {item.label}
+        </span>
+        {item.delta && (
+          pill ? (
+            <span
+              style={{
+                fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                fontSize: 10,
+                fontWeight: 600,
+                padding: "2px 7px",
+                borderRadius: 20,
+                background: pill.bg,
+                color: pill.fg,
+              }}
+            >
+              {item.delta}
+            </span>
+          ) : (
+            <span
+              style={{
+                fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                fontSize: 10,
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              {item.delta}
+            </span>
+          )
+        )}
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
         <span
           style={{
             fontFamily: "var(--font-display, 'Hanken Grotesk', sans-serif)",
-            fontSize: 28,
-            fontWeight: 700,
+            fontSize: 30,
+            fontWeight: 800,
             color: "var(--color-text-primary)",
             lineHeight: 1,
           }}
@@ -61,46 +99,13 @@ export function StatCard({ item }: StatCardProps) {
       </div>
       <div
         style={{
-          fontFamily: "var(--font-body, Inter, sans-serif)",
-          fontSize: 12,
+          fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+          fontSize: 10.5,
           color: "var(--color-text-secondary)",
         }}
       >
         {item.sub}
       </div>
-      {item.delta && (
-        <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-          {item.dir === "up" && (
-            <span style={{ color: "var(--color-delta-up)", fontSize: 12 }}>↑</span>
-          )}
-          {item.dir === "warn" && (
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: "var(--color-delta-warn)",
-                display: "inline-block",
-                flexShrink: 0,
-              }}
-            />
-          )}
-          <span
-            style={{
-              fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-              fontSize: 11,
-              color:
-                item.dir === "warn"
-                  ? "var(--color-delta-warn)"
-                  : item.dir === "up"
-                  ? "var(--color-delta-up)"
-                  : "var(--color-text-secondary)",
-            }}
-          >
-            {item.delta}
-          </span>
-        </div>
-      )}
     </div>
   );
 }

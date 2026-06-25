@@ -114,7 +114,7 @@ export default function UsersPage() {
   };
 
   return (
-    <div>
+    <div className="animate-fade-up">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Users</h1>
         <button

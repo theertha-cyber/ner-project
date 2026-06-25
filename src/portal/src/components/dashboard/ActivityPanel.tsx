@@ -35,7 +35,7 @@ export function ActivityPanel({ pTitle, pMeta, pRows }: ActivityPanelProps) {
       style={{
         background: "var(--color-surface-raised)",
         border: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-lg, 12px)",
+        borderRadius: 18,
         padding: "20px 22px",
         display: "flex",
         flexDirection: "column",
@@ -49,12 +49,14 @@ export function ActivityPanel({ pTitle, pMeta, pRows }: ActivityPanelProps) {
           justifyContent: "space-between",
           alignItems: "baseline",
           marginBottom: 14,
+          borderBottom: "1px solid var(--color-border)",
+          paddingBottom: 12,
         }}
       >
         <span
           style={{
             fontFamily: "var(--font-display, 'Hanken Grotesk', sans-serif)",
-            fontSize: 14,
+            fontSize: 15,
             fontWeight: 700,
             color: "var(--color-text-primary)",
           }}
@@ -64,7 +66,7 @@ export function ActivityPanel({ pTitle, pMeta, pRows }: ActivityPanelProps) {
         <span
           style={{
             fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-            fontSize: 10,
+            fontSize: 11,
             color: "var(--color-text-secondary)",
           }}
         >
@@ -72,32 +74,69 @@ export function ActivityPanel({ pTitle, pMeta, pRows }: ActivityPanelProps) {
         </span>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
         {pRows.map((row, i) => (
           <button
             key={i}
-            onClick={() => row.title !== "—" && router.push(goToHref(row.go))}
+            onClick={() => row.title !== "\u2014" && router.push(goToHref(row.go))}
             style={{
               display: "flex",
               alignItems: "center",
               gap: 10,
-              padding: "9px 10px",
-              borderRadius: "var(--radius-md, 8px)",
+              padding: 12,
+              borderRadius: 12,
               border: "none",
               background: "transparent",
-              cursor: row.title !== "—" ? "pointer" : "default",
+              cursor: row.title !== "\u2014" ? "pointer" : "default",
               textAlign: "left",
               width: "100%",
               transition: "background 0.12s",
             }}
             onMouseEnter={(e) => {
-              if (row.title !== "—")
+              if (row.title !== "\u2014")
                 (e.currentTarget as HTMLElement).style.background = "var(--color-surface)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.background = "transparent";
             }}
           >
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                flexShrink: 0,
+                background: tagStyle(row.tk).background,
+              }}
+            />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  fontFamily: "var(--font-body, Inter, sans-serif)",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  color: "var(--color-text-primary)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {row.title}
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                  fontSize: 11,
+                  color: "var(--color-text-secondary)",
+                  marginTop: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {row.sub}
+              </div>
+            </div>
             <span
               style={{
                 fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
@@ -112,34 +151,6 @@ export function ActivityPanel({ pTitle, pMeta, pRows }: ActivityPanelProps) {
             >
               {row.tag}
             </span>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div
-                style={{
-                  fontFamily: "var(--font-body, Inter, sans-serif)",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: "var(--color-text-primary)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {row.title}
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-                  fontSize: 10.5,
-                  color: "var(--color-text-secondary)",
-                  marginTop: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {row.sub}
-              </div>
-            </div>
           </button>
         ))}
       </div>

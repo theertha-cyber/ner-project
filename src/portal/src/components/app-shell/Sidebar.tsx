@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
@@ -23,25 +23,7 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-
-  if (!user) return null;
-
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        menuRef.current && !menuRef.current.contains(e.target as Node) &&
-        triggerRef.current && !triggerRef.current.contains(e.target as Node)
-      ) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   useEffect(() => {
     function handleEscape(e: KeyboardEvent) {
@@ -50,6 +32,8 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
   }, []);
+
+  if (!user) return null;
 
   const navItems = navFor(effectiveRole);
   const tenantName = tenantDisplayName(user.tenantSlug);
@@ -68,9 +52,8 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
         height: "100vh",
         display: "flex",
         flexDirection: "column",
-        background: "var(--color-glass, rgba(255,255,255,0.85))",
-        borderRight: "1px solid rgba(0,0,0,0.08)",
-        backdropFilter: "blur(16px)",
+        background: "var(--surface-2)",
+        borderRight: "1px solid var(--line)",
       }}
     >
       {/* Logo block */}
@@ -78,16 +61,16 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div
             style={{
-              width: 34,
-              height: 34,
+              width: 30,
+              height: 30,
               borderRadius: 8,
-              background: "var(--color-brand-primary, #c2410c)",
+              background: "var(--primary)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontFamily: "var(--font-display, sans-serif)",
-              fontWeight: 700,
-              fontSize: 18,
+              fontWeight: 800,
+              fontSize: 17,
               color: "#fff",
               flexShrink: 0,
             }}
@@ -97,10 +80,10 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
           <span
             style={{
               fontFamily: "var(--font-display, sans-serif)",
-              fontWeight: 600,
-              fontSize: 14,
-              color: "var(--color-text-primary, #0f172a)",
-              letterSpacing: "-0.01em",
+              fontWeight: 700,
+              fontSize: 16,
+              color: "var(--ink)",
+              letterSpacing: "-0.02em",
             }}
           >
             nerplatform
@@ -109,50 +92,51 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
       </div>
 
       {/* Tenant pill */}
-      <div style={{ padding: "0 12px 16px" }}>
+      <div style={{ padding: "0 12px 14px" }}>
         <div
           style={{
             display: "flex",
             alignItems: "center",
             gap: 8,
-            padding: "8px 10px",
-            borderRadius: 8,
-            border: "1px solid transparent",
+            padding: "9px 11px",
+            borderRadius: 12,
+            border: "1px solid var(--line)",
+            background: "var(--surface-3)",
             cursor: "default",
             transition: "border-color 0.15s",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(0,0,0,0.12)";
+            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--primary-line)";
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "transparent";
+            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--line)";
           }}
         >
           <div
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              background: "var(--color-brand-primary, #c2410c)",
+              width: 26,
+              height: 26,
+              borderRadius: 7,
+              background: "var(--primary-soft)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontFamily: "var(--font-mono, monospace)",
               fontWeight: 700,
               fontSize: 13,
-              color: "#fff",
+              color: "var(--primary-2)",
               flexShrink: 0,
             }}
           >
             {tenantInitial}
           </div>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div
               style={{
                 fontFamily: "var(--font-display, sans-serif)",
-                fontWeight: 500,
-                fontSize: 12,
-                color: "var(--color-text-primary, #0f172a)",
+                fontWeight: 600,
+                fontSize: 12.5,
+                color: "var(--ink)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
@@ -164,7 +148,7 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
               style={{
                 fontFamily: "var(--font-mono, monospace)",
                 fontSize: 10,
-                color: "var(--color-text-secondary, #64748b)",
+                color: "var(--ink-3)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
@@ -173,11 +157,12 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
               {user.tenantSlug ?? "—"}
             </div>
           </div>
+          <span style={{ fontSize: 11, color: "var(--ink-3)", flexShrink: 0 }}>▾</span>
         </div>
       </div>
 
       {/* Nav section */}
-      <nav style={{ flex: 1, overflowY: "auto", padding: "0 8px" }}>
+      <nav style={{ flex: 1, overflowY: "auto", padding: "4px 12px" }}>
         {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
@@ -189,15 +174,13 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
                 alignItems: "center",
                 gap: 10,
                 width: "100%",
-                padding: "9px 10px",
-                borderRadius: 7,
+                padding: "9px 11px",
+                borderRadius: 10,
                 border: "none",
-                background: isActive
-                  ? "var(--color-brand-primary, #c2410c)"
-                  : "transparent",
-                color: isActive ? "#fff" : "var(--color-text-secondary, #64748b)",
+                background: isActive ? "var(--primary)" : "transparent",
+                color: isActive ? "#fff" : "var(--ink-2)",
                 fontFamily: "var(--font-display, sans-serif)",
-                fontSize: 13,
+                fontSize: 13.5,
                 fontWeight: isActive ? 600 : 400,
                 cursor: "pointer",
                 textAlign: "left",
@@ -206,14 +189,14 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.05)";
-                  (e.currentTarget as HTMLButtonElement).style.color = "var(--color-text-primary, #0f172a)";
+                  (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)";
+                  (e.currentTarget as HTMLButtonElement).style.color = "var(--ink)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
                   (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                  (e.currentTarget as HTMLButtonElement).style.color = "var(--color-text-secondary, #64748b)";
+                  (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-2)";
                 }
               }}
             >
@@ -227,8 +210,8 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
                     fontWeight: 600,
                     padding: "1px 6px",
                     borderRadius: 20,
-                    background: isActive ? "rgba(255,255,255,0.25)" : "rgba(194,65,12,0.12)",
-                    color: isActive ? "#fff" : "var(--color-brand-primary, #c2410c)",
+                    background: isActive ? "rgba(255,255,255,0.25)" : "var(--primary-soft)",
+                    color: isActive ? "#fff" : "var(--primary)",
                     flexShrink: 0,
                   }}
                 >
@@ -240,98 +223,119 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
         })}
       </nav>
 
-      {/* User strip */}
-      <div
-        style={{
-          position: "relative",
-          borderTop: "1px solid rgba(0,0,0,0.08)",
-          padding: "12px 12px",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-        }}
-      >
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 6,
-            background: "linear-gradient(135deg, var(--color-brand-primary, #c2410c), #f59e0b)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "var(--font-mono, monospace)",
-            fontWeight: 700,
-            fontSize: 12,
-            color: "#fff",
-            flexShrink: 0,
-          }}
-        >
-          {initials}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              color: "var(--color-text-primary, #0f172a)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {user.email}
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--font-mono, monospace)",
-              fontSize: 10,
-              color: "var(--color-text-secondary, #64748b)",
-            }}
-          >
-            {roleLabel}
-          </div>
-        </div>
+      {/* User strip — full-width trigger button */}
+      <div style={{ borderTop: "1px solid var(--line)", padding: "12px" }}>
         <button
-          ref={triggerRef}
-          onClick={() => setMenuOpen(prev => !prev)}
-          title="More actions"
+          onClick={() => setMenuOpen((prev) => !prev)}
           aria-haspopup="true"
           aria-expanded={menuOpen}
           style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            fontSize: 16,
-            color: "var(--color-text-secondary, #64748b)",
-            padding: "4px",
-            borderRadius: 4,
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
+            gap: 8,
+            width: "100%",
+            padding: "7px 8px",
+            borderRadius: 11,
+            border: menuOpen ? "1px solid var(--primary-line)" : "1px solid transparent",
+            background: menuOpen ? "var(--primary-soft)" : "transparent",
+            cursor: "pointer",
+            textAlign: "left",
+            transition: "border-color 0.15s, background 0.15s",
           }}
         >
-          ⋮
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 9,
+              background: "linear-gradient(135deg, var(--primary), var(--primary-2))",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: "var(--font-display, sans-serif)",
+              fontWeight: 700,
+              fontSize: 12,
+              color: "#fff",
+              flexShrink: 0,
+            }}
+          >
+            {initials}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: "var(--ink)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {user.email}
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: 10,
+                color: "var(--ink-3)",
+              }}
+            >
+              {roleLabel}
+            </div>
+          </div>
+          <span
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 7,
+              background: "var(--surface-2)",
+              border: "1px solid var(--line)",
+              display: "grid",
+              placeItems: "center",
+              color: "var(--ink-2)",
+              fontSize: 9,
+              flexShrink: 0,
+              transition: "transform 0.18s ease",
+              transform: menuOpen ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          >
+            ▾
+          </span>
         </button>
+      </div>
 
+      {/* Backdrop — covers viewport below menu (z-index 60) */}
+      {menuOpen && (
         <div
-          ref={menuRef}
+          onClick={() => setMenuOpen(false)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 60,
+          }}
+        />
+      )}
+
+      {/* Floating menu panel (z-index 61, above backdrop) */}
+      {menuOpen && (
+        <div
+          className="animate-menu-pop"
           style={{
             position: "absolute",
-            bottom: "100%",
-            left: 8,
-            right: 8,
-            marginBottom: 4,
-            background: "var(--color-glass, rgba(255,255,255,0.95))",
-            border: "1px solid rgba(0,0,0,0.08)",
+            left: 12,
+            right: 12,
+            bottom: 62,
+            zIndex: 61,
+            transformOrigin: "bottom center",
+            background: "var(--surface-2)",
+            border: "1px solid var(--line)",
             borderRadius: 8,
-            padding: "4px",
-            backdropFilter: "blur(16px)",
+            padding: 4,
             boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-            opacity: menuOpen ? 1 : 0,
-            pointerEvents: menuOpen ? "auto" : "none",
-            transition: "opacity 0.15s ease",
           }}
         >
           <button
@@ -345,13 +349,13 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
               borderRadius: 6,
               border: "none",
               background: "transparent",
-              color: "var(--color-text-primary, #0f172a)",
+              color: "var(--ink)",
               fontFamily: "var(--font-display, sans-serif)",
               fontSize: 13,
               cursor: "pointer",
               textAlign: "left",
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.05)"; }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
           >
             <span style={{ fontSize: 15, lineHeight: 1 }}>⚙</span>
@@ -368,20 +372,20 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
               borderRadius: 6,
               border: "none",
               background: "transparent",
-              color: "var(--color-text-primary, #0f172a)",
+              color: "var(--bad)",
               fontFamily: "var(--font-display, sans-serif)",
               fontSize: 13,
               cursor: "pointer",
               textAlign: "left",
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.05)"; }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--bad-soft)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
           >
             <span style={{ fontSize: 15, lineHeight: 1 }}>⎋</span>
             <span>Logout</span>
           </button>
         </div>
-      </div>
+      )}
     </aside>
   );
 }

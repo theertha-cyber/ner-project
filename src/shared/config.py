@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     openai_api_key: str
     chat_api_port: int = 8006
     chat_api_url: str = "http://localhost:8006"
+    analytics_service_url: str = "http://localhost:8007"
 
     azure_openai_endpoint: str | None = None
     azure_openai_api_version: str = "2024-12-01-preview"

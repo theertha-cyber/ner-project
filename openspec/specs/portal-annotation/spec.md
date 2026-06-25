@@ -10,52 +10,37 @@ Frontend annotation workspace at `/annotation` for annotators and tenant admins 
 
 ### Requirement: Layout and Navigation
 
-The annotation workspace SHALL render at `/annotation` inside the authenticated app shell. The workspace SHALL support two layout modes: **3-pane** (default) with a fixed-width task queue on the left, a scrollable document viewer in the center, and a fixed-width entity palette on the right; and **focus mode** where the task queue is hidden, the entity palette becomes a floating `position: fixed` panel, and the workspace occupies the full browser viewport via the browser Fullscreen API. The selected layout mode SHALL be persisted to `localStorage` under the key `"ner-annotation-layout"`.
+The annotation workspace SHALL render at `/annotation` inside the authenticated app shell. The workspace SHALL support two layout modes: **3-pane** (default) with a fixed-width task queue (`228px`) on the left, a scrollable document viewer in the center, and a fixed-width entity panel (`326px`) on the right; and **focus mode** where the task queue is hidden, the entity palette becomes a `position: fixed` horizontal strip anchored to the bottom center of the viewport, and the document viewer expands to the full browser width with a maximum content width of `760px`. The selected layout mode SHALL be persisted to `localStorage` under the key `"ner-annotation-layout"`.
 
-The focus mode control SHALL be a single toggle button labeled "Focus". When focus mode is inactive the button SHALL appear as an outline or secondary style; when active it SHALL appear filled/highlighted. Clicking the button SHALL toggle between 3-pane and focus mode. There SHALL NOT be separate "3-pane" and "Focus" buttons acting as a radio group.
+The view-mode control in the toolbar SHALL be a **two-button radio group** — one button labeled "3-pane" and one labeled "Focus" — rendered inside a shared pill container (`background: var(--surface-3); border: 1px solid var(--line); border-radius: 9px; padding: 3px`). The active button SHALL receive a filled background and visual emphasis; the inactive button SHALL appear unstyled within the pill. There SHALL NOT be a single toggle button whose label changes between modes.
 
-When focus mode is entered, the workspace SHALL call `document.documentElement.requestFullscreen()`. If the Fullscreen API call is rejected (e.g. permission denied), the workspace SHALL fall back to CSS focus mode (queue hidden, palette floating) without crashing. When the browser exits fullscreen (e.g. via Escape or the browser's native fullscreen controls), the workspace SHALL detect the `fullscreenchange` event and revert `layoutMode` to `"3pane"`.
+The workspace SHALL NOT call the Fullscreen API (`requestFullscreen`, `exitFullscreen`) when entering or exiting focus mode. Focus mode is CSS-only: the task queue is hidden, the document viewer expands, and the entity palette repositions to the floating bottom strip. No fullscreen-change event listener is required.
 
 #### Scenario: Default layout renders three columns
 
 - **GIVEN** an authenticated annotator navigates to `/annotation`
-- **WHEN** the page mounts for the first time (no localStorage preference)
-- **THEN** the workspace SHALL render with a task queue column, a document viewer column, and an entity palette column visible simultaneously
-- **AND** the layout mode toggle SHALL show a single "Focus" button in its inactive state
+- **WHEN** the page mounts for the first time (no `localStorage` preference)
+- **THEN** the workspace SHALL render with a task queue column (`228px`), a scrollable document viewer column, and an entity panel column (`326px`) visible simultaneously
+- **AND** the view-mode control SHALL show a "3-pane" button in its active state and a "Focus" button in its inactive state
 
-#### Scenario: Focus toggle enters fullscreen and hides queue
+#### Scenario: Clicking "Focus" button enters CSS focus mode
 
 - **GIVEN** the annotation workspace is in 3-pane mode
-- **WHEN** the user clicks the "Focus" toggle button
+- **WHEN** the user clicks the "Focus" button in the view-mode radio group
 - **THEN** the task queue column SHALL be hidden
-- **AND** the entity palette SHALL render as a `position: fixed` panel at `top: 140px; right: 30px`
-- **AND** the document viewer SHALL expand to fill the full available width
-- **AND** `document.documentElement.requestFullscreen()` SHALL be called
-- **AND** the layout preference SHALL be written to `localStorage`
-- **AND** the "Focus" button SHALL render in its active/filled state
+- **AND** the document viewer SHALL expand to fill the full available width (max-width `760px`, centered)
+- **AND** the entity palette SHALL render as a `position: fixed` bottom-center strip (see Focus Mode Entity Palette)
+- **AND** the "Focus" button SHALL render in its active/filled state and "3-pane" in its inactive state
+- **AND** the layout preference SHALL be written to `localStorage` under `"ner-annotation-layout"`
+- **AND** `document.documentElement.requestFullscreen()` SHALL NOT be called
 
-#### Scenario: Clicking Focus toggle again exits focus mode
+#### Scenario: Clicking "3-pane" button exits focus mode
 
 - **GIVEN** the annotation workspace is in focus mode
-- **WHEN** the user clicks the "Focus" toggle button again
-- **THEN** the workspace SHALL return to 3-pane layout
-- **AND** `document.exitFullscreen()` SHALL be called
-- **AND** the "Focus" button SHALL render in its inactive state
-
-#### Scenario: Browser-native fullscreen exit (Escape) syncs layout state
-
-- **GIVEN** the workspace is in focus mode (fullscreen active)
-- **WHEN** the user presses Escape to exit fullscreen via the browser's native behavior
-- **THEN** the `fullscreenchange` event listener SHALL detect the exit
-- **AND** `layoutMode` SHALL revert to `"3pane"` without requiring a button click
-- **AND** the task queue and 3-pane layout SHALL restore automatically
-
-#### Scenario: Fullscreen API rejection falls back gracefully
-
-- **GIVEN** the browser blocks the Fullscreen API (e.g. iframe restriction)
-- **WHEN** the user clicks the "Focus" toggle
-- **THEN** the workspace SHALL still enter CSS focus mode (queue hidden, palette floating)
-- **AND** no error SHALL be thrown or displayed to the user
+- **WHEN** the user clicks the "3-pane" button in the view-mode radio group
+- **THEN** the workspace SHALL return to three-column layout
+- **AND** the "3-pane" button SHALL render in its active state
+- **AND** the floating bottom entity palette SHALL be replaced by the right-side entity panel
 
 #### Scenario: Layout preference is restored on reload
 
@@ -63,9 +48,86 @@ When focus mode is entered, the workspace SHALL call `document.documentElement.r
 - **WHEN** the user navigates to `/annotation`
 - **THEN** the workspace SHALL render in focus mode without requiring re-selection
 
+### Requirement: Task Display Name
+
+Each annotation task SHALL display its associated document filename as the primary label in both the task queue row and the annotation toolbar. Raw document UUIDs or ordinals such as "Task N" SHALL NOT appear as the primary identifier.
+
+The annotation-task API response SHALL include a `filename` field. The task queue and toolbar SHALL read the `filename` field from the task object directly.
+
+#### Scenario: Task queue shows document filename
+
+- **GIVEN** the task queue is populated with tasks whose documents are named "invoice-2026-00417.pdf" and "contract-northwind.pdf"
+- **WHEN** the task queue sidebar renders
+- **THEN** the first row SHALL display "invoice-2026-00417.pdf" as the primary label
+- **AND** the second row SHALL display "contract-northwind.pdf"
+- **AND** ordinal labels such as "Task 1" or "Task 2" SHALL NOT appear as the primary identifier
+
+#### Scenario: Toolbar shows document filename for the selected task
+
+- **GIVEN** the user has selected a task whose document is "invoice-2026-00417.pdf"
+- **WHEN** the workspace toolbar renders
+- **THEN** the filename "invoice-2026-00417.pdf" SHALL appear in the toolbar in JetBrains Mono
+- **AND** the task status badge SHALL appear adjacent to the filename
+
+### Requirement: Annotation Toolbar
+
+The workspace toolbar SHALL render at the top of the annotation workspace with the following elements from left to right: (1) the active document filename displayed in `JetBrains Mono` with a task status badge adjacent to it; (2) a three-button status group (buttons labeled "pending", "in_progress", "completed") styled as a pill radio group; (3) a flex spacer; (4) a span counter showing "N confirmed · N suggested" in `JetBrains Mono`; (5) a "✦ Pre-label" button; (6) the 3-pane/Focus view-mode radio group. There SHALL NOT be a separate "Mark Complete" button in the toolbar.
+
+Clicking a status button in the status group SHALL send `PATCH /api/v1/annotation-tasks/{id}` with the new status. The request SHALL be sent optimistically — the active status button SHALL update immediately. If the API responds with a 4xx or 5xx error (e.g. 422 when completing with no spans), the status button selection SHALL revert to the previous value and a toast SHALL display the error message. The status group SHALL remain interactive at all times; client-side disabling of the "completed" button based on span count is NOT required.
+
+The active status button SHALL render with a solid primary fill (`background: var(--color-primary, #6366f1); color: #fff`). Inactive buttons SHALL appear unstyled within the pill container.
+
+The span counter SHALL update in real time as spans are created, promoted, or deleted. It SHALL read confirmed span count from client state and suggested span count from client state.
+
+#### Scenario: Toolbar renders all elements for an active task
+
+- **GIVEN** a task is selected with document filename "invoice-2026-00417.pdf", status "in_progress", 3 confirmed spans, and 2 suggested spans
+- **WHEN** the annotation toolbar renders
+- **THEN** the toolbar SHALL show the filename "invoice-2026-00417.pdf" in JetBrains Mono with a status badge
+- **AND** the status group SHALL show "in_progress" as the active button with solid primary fill
+- **AND** the span counter SHALL read "3 confirmed · 2 suggested"
+- **AND** the "✦ Pre-label" button and the 3-pane/Focus toggle SHALL be visible
+
+#### Scenario: Clicking a status button transitions the task
+
+- **GIVEN** an active task with status "in_progress"
+- **WHEN** the user clicks the "completed" button in the status group
+- **THEN** a `PATCH /annotation-tasks/{id}` request SHALL be sent with `{status: "completed"}`
+- **AND** the "completed" button SHALL render as active immediately (optimistic)
+- **AND** on success (200), the task status badge SHALL reflect "completed"
+
+#### Scenario: Status transition rejected by backend reverts selection
+
+- **GIVEN** an active task with status "in_progress" and zero confirmed spans
+- **WHEN** the user clicks the "completed" button
+- **THEN** a `PATCH /annotation-tasks/{id}` request SHALL be sent with `{status: "completed"}`
+- **AND** the API SHALL return 422
+- **AND** the status group SHALL revert to "in_progress" as the active button
+- **AND** a toast SHALL display the error message from the API response
+
 ### Requirement: Annotation Task Queue
 
-The workspace SHALL display a list of annotation tasks from `GET /api/v1/annotation-tasks` in the left queue panel. For `annotator` users the list SHALL show only tasks assigned to the current user. For `tenant_admin` users the list SHALL show all tasks for the tenant. Each task row SHALL display the document filename, task status badge (`unannotated`, `in-progress`, `completed`), and be selectable. Selecting a task SHALL load that document into the document viewer and reset span state.
+The workspace SHALL display a list of annotation tasks from `GET /api/v1/annotation-tasks` in the left queue panel (visible in 3-pane mode). For `annotator` users the list SHALL show only tasks assigned to the current user. For `tenant_admin` users the list SHALL show all tasks for the tenant.
+
+Each task row SHALL display:
+- Primary label: the document filename (e.g. `"invoice-2026-00417.pdf"`) in JetBrains Mono
+- Subtitle: `"<document_status> · <span_count> spans"` (e.g. `"processed · 12 spans"`) in small secondary text
+
+The active (selected) task row SHALL be highlighted with a left border in the primary color and a soft primary-tinted background. Selecting a task SHALL load that document into the document viewer and reset span state.
+
+#### Scenario: Task row shows filename and document metadata
+
+- **GIVEN** the task queue is populated and the active document is named "invoice-2026-00417.pdf" with status "processed" and 12 confirmed spans
+- **WHEN** the task queue panel renders
+- **THEN** the task row primary label SHALL read "invoice-2026-00417.pdf"
+- **AND** the subtitle SHALL read "processed · 12 spans"
+
+#### Scenario: Active task row is highlighted
+
+- **GIVEN** the user has selected the first task in the queue
+- **WHEN** the task queue renders
+- **THEN** the selected row SHALL show a left border in `var(--color-primary)` and a soft primary-tinted background
+- **AND** the other rows SHALL have no border or tinted background
 
 #### Scenario: Annotator sees only assigned tasks
 
@@ -73,20 +135,13 @@ The workspace SHALL display a list of annotation tasks from `GET /api/v1/annotat
 - **WHEN** the annotation workspace loads
 - **THEN** the queue SHALL show exactly two task rows
 
-#### Scenario: Tenant admin sees all tasks
-
-- **GIVEN** an authenticated tenant_admin with five tasks across the tenant
-- **WHEN** the annotation workspace loads
-- **THEN** the queue SHALL show all five task rows
-
 #### Scenario: Selecting a task loads the document
 
 - **GIVEN** the task queue is populated with at least two tasks
 - **WHEN** the user clicks the second task row
 - **THEN** the document viewer SHALL load the text for that task's document via `GET /documents/{id}/text`
-- **AND** the confirmed spans SHALL be fetched via `GET /documents/{id}/spans`
-- **AND** the suggested spans SHALL be fetched via `GET /documents/{id}/spans?type=suggested`
-- **AND** the previously active task's document SHALL be cleared from the viewer
+- **AND** confirmed spans SHALL be fetched via `GET /documents/{id}/spans`
+- **AND** suggested spans SHALL be fetched via `GET /documents/{id}/spans?type=suggested`
 
 #### Scenario: Empty queue shows contextual message
 
@@ -96,7 +151,14 @@ The workspace SHALL display a list of annotation tasks from `GET /api/v1/annotat
 
 ### Requirement: Document Viewer and Token Rendering
 
-The workspace SHALL render the active document's text as a sequence of word tokens in a flex-wrapped container. Tokens belonging to confirmed spans SHALL be highlighted with the entity type's assigned color. Tokens belonging to suggested spans SHALL be highlighted with a dashed-border overlay in a muted variant of the entity type's color. The token rendering SHALL support documents up to 1,000 words without layout jank, using CSS `flex-wrap` token layout (not a virtualized list).
+The workspace SHALL render the active document's text as a sequence of word tokens in a flex-wrapped container. The token area SHALL be wrapped in a paper-like card surface (`border: 1px solid var(--line)`, `border-radius: 16px`, `padding: 36px 40px`, `box-shadow: var(--shadow)`) with a maximum width of `680px` centered within the document column. Token line height SHALL be `2.05` to provide visual breathing room between lines. Tokens belonging to confirmed spans SHALL be highlighted with the entity type's assigned color. Tokens belonging to suggested spans SHALL be highlighted with a dashed-border overlay in a muted variant of the entity type's color. The token rendering SHALL support documents up to 1,000 words without layout jank, using CSS `flex-wrap` token layout (not a virtualized list).
+
+#### Scenario: Document renders inside a card container
+
+- **GIVEN** a task is selected and the document text is loaded
+- **WHEN** the document viewer renders
+- **THEN** the token content SHALL appear inside a card element with `border-radius: 16px` and box shadow
+- **AND** the card SHALL be centered with `max-width: 680px`
 
 #### Scenario: Confirmed span tokens are highlighted
 
@@ -120,34 +182,38 @@ The workspace SHALL render the active document's text as a sequence of word toke
 
 ### Requirement: Entity Type Palette and Armed Mode
 
-The entity palette panel SHALL display all active entity types from `GET /api/v1/entity-types` as clickable chips with their assigned color and a count of confirmed spans of that type on the active document. Clicking an entity type chip SHALL arm it — setting it as the active labeling type. The armed entity type SHALL be visually emphasized (ring/border highlight). A banner SHALL appear at the top of the document viewer indicating the armed type and instructing the user to click tokens. Pressing `Escape` or clicking the armed chip again SHALL disarm the palette.
+The entity palette SHALL display all active entity types from `GET /api/v1/entity-types` as clickable buttons. In 3-pane mode, the palette renders as a vertical list in the right panel. In focus mode, the palette renders as a horizontal strip in the bottom-center floating pill (see Focus Mode Entity Palette). Each entity type button SHALL display: a colored dot using the entity type's assigned color, the entity type name in bold (`JetBrains Mono`), a `base: <base_type>` sub-label in small greyed text, and the confirmed span count for the active document right-aligned. Clicking an entity type button SHALL arm it. The armed entity type button SHALL receive an active border/ring highlight. Pressing `Escape` or clicking the armed button again SHALL disarm the palette.
 
-#### Scenario: Palette shows entity types with span counts
+When an entity type is armed, an **armed banner** SHALL appear below the toolbar with: a pulsing dot (`animation: pulse 1.3s infinite`), the instructional text `"Labeling mode · click words to tag as <entity_name>"`, and an "esc · done" text button on the right to disarm. The banner SHALL use `background: var(--primary-soft)` and `border-bottom: 1px solid var(--primary-line)`.
 
-- **GIVEN** an active document with 3 confirmed "PER" spans and 1 confirmed "ORG" span
+#### Scenario: Palette shows entity types with base label and span count
+
+- **GIVEN** an active document with 3 confirmed "vendor_name" spans; entity type "vendor_name" has base type "ORG"
 - **WHEN** the entity palette renders
-- **THEN** each entity type chip SHALL display the entity type name and its confirmed span count
-- **AND** PER SHALL show count 3, ORG SHALL show count 1, other types SHALL show count 0
+- **THEN** the "vendor_name" button SHALL display "vendor_name" as the primary label
+- **AND** SHALL display "base: ORG" as a secondary sub-label below the name
+- **AND** SHALL display count "3" right-aligned
 
-#### Scenario: Clicking a chip arms the entity type
+#### Scenario: Clicking a chip arms the entity type and shows animated banner
 
 - **GIVEN** the entity palette is idle (no type armed)
-- **WHEN** the user clicks the "PER" chip
-- **THEN** the "PER" chip SHALL render with an active ring highlight
-- **AND** the armed-mode banner SHALL appear above the document viewer with text indicating "PER" is armed
+- **WHEN** the user clicks the "vendor_name" button
+- **THEN** the "vendor_name" button SHALL render with an active ring highlight
+- **AND** the armed banner SHALL appear with a pulsing dot animation
+- **AND** the banner SHALL contain text "Labeling mode · click words to tag as vendor_name"
+- **AND** an "esc · done" control SHALL appear on the right side of the banner
 
-#### Scenario: Escape key disarms the palette
+#### Scenario: Escape key disarms via banner
 
-- **GIVEN** the "PER" entity type is currently armed
-- **WHEN** the user presses the `Escape` key
+- **GIVEN** the "vendor_name" entity type is currently armed and the banner is visible
+- **WHEN** the user presses the `Escape` key OR clicks the "esc · done" banner button
 - **THEN** the armed type SHALL be cleared
-- **AND** the armed-mode banner SHALL disappear
-- **AND** no token clicks SHALL create spans until a type is re-armed
+- **AND** the armed banner SHALL disappear
 
 #### Scenario: Clicking the armed chip again disarms it
 
-- **GIVEN** the "PER" entity type is currently armed
-- **WHEN** the user clicks the "PER" chip again
+- **GIVEN** the "vendor_name" entity type is currently armed
+- **WHEN** the user clicks the "vendor_name" button again
 - **THEN** the armed type SHALL be cleared (toggle-off behavior)
 
 ### Requirement: Token-Click Span Creation
@@ -184,112 +250,132 @@ When an entity type is armed, clicking any document token SHALL create a single-
 
 ### Requirement: Span Inspector
 
-When a user clicks a confirmed-span token while no entity type is armed, the workspace SHALL open a span inspector panel. The inspector SHALL display the span's entity type, `char_start`, `char_end`, `text`, and `confidence` values. The inspector SHALL provide a retype action (dropdown of all entity types) that calls `PATCH /documents/{id}/spans/{span_id}` with the new entity type. The inspector SHALL provide a delete action that calls `DELETE /documents/{id}/spans/{span_id}`. Both actions SHALL update the document viewer optimistically and dismiss the inspector on success.
+When a user clicks a confirmed-span token while no entity type is armed, the workspace SHALL open a span inspector panel. In 3-pane mode the inspector renders as a card inside the right panel (`border: 1px solid var(--line); border-radius: 14px`). In focus mode the inspector renders as a `position: fixed; top: 140px; right: 30px; width: 290px` glass card with `backdrop-filter: blur(20px)`.
 
-#### Scenario: Clicking a confirmed span opens the inspector
+The inspector SHALL display: the span text as a colored chip (`background: <entity-soft-color>`), and a 2×2 metadata grid showing `char_start`, `char_end`, `confidence`, and `base` values in `JetBrains Mono`. The inspector SHALL provide **inline reassign chips** — one chip per entity type — for retyping the span; clicking a chip SHALL call `PATCH /documents/{id}/spans/{span_id}` with the new entity type. The inspector SHALL provide a "Delete span" button that calls `DELETE /documents/{id}/spans/{span_id}`. Both actions SHALL update the document viewer optimistically and dismiss the inspector on success.
 
-- **GIVEN** the document has a confirmed span "John Doe" (PER) at char offsets 10-18 and no type is armed
-- **WHEN** the user clicks the token "John"
-- **THEN** the span inspector SHALL open showing entity_type "PER", char_start 10, char_end 18, text "John Doe", confidence 1.0
+The inspector SHALL include an `animation: popIn 0.25s ease both` entrance animation.
 
-#### Scenario: Retype updates the span entity type
+#### Scenario: Clicking a confirmed span opens the inspector with metadata grid
 
-- **GIVEN** the span inspector is open for span "John Doe" (PER)
-- **WHEN** the user selects "ORG" from the retype dropdown and confirms
-- **THEN** a `PATCH /documents/{id}/spans/{span_id}` request SHALL be sent with `{entity_type: "ORG"}`
-- **AND** on success, the token highlight SHALL change to the ORG color
+- **GIVEN** a confirmed span "Acme Corp" (ORG, `char_start: 0`, `char_end: 9`, confidence 1.0, base "ORG")
+- **WHEN** the user clicks the token "Acme" while no entity type is armed
+- **THEN** the span inspector SHALL open
+- **AND** SHALL show a colored chip with text "Acme Corp"
+- **AND** SHALL show a 2×2 grid with values: `char_start: 0`, `char_end: 9`, `confidence: 1.0`, `base: ORG`
+
+#### Scenario: Retype chips are shown for all entity types
+
+- **GIVEN** the span inspector is open for span "Acme Corp" (ORG) and the tenant has entity types vendor_name, customer_name, invoice_number
+- **WHEN** the "REASSIGN TYPE" section renders
+- **THEN** one inline chip SHALL appear for each entity type (excluding the current type)
+- **AND** each chip SHALL show a colored dot and the entity type name
+
+#### Scenario: Clicking a retype chip updates the span
+
+- **GIVEN** the span inspector is open for span "Acme Corp" (ORG) and the user clicks the "vendor_name" chip
+- **WHEN** the chip is clicked
+- **THEN** a `PATCH /documents/{id}/spans/{span_id}` request SHALL be sent with `{entity_type: "vendor_name"}`
+- **AND** on success, the token highlight SHALL change to the vendor_name color
 - **AND** the inspector SHALL close
 
 #### Scenario: Delete removes the span
 
-- **GIVEN** the span inspector is open for span "John Doe" (PER)
-- **WHEN** the user clicks the delete button
+- **GIVEN** the span inspector is open for span "Acme Corp"
+- **WHEN** the user clicks the "Delete span" button
 - **THEN** a `DELETE /documents/{id}/spans/{span_id}` request SHALL be sent
-- **AND** on success (204), the token highlights for "John" and "Doe" SHALL be removed
+- **AND** on success (204), the token highlights SHALL be removed
 - **AND** the inspector SHALL close
+
+#### Scenario: Focus mode inspector renders as fixed glass card
+
+- **GIVEN** the workspace is in focus mode and the user clicks a confirmed-span token
+- **WHEN** the span inspector mounts
+- **THEN** the inspector SHALL render at `position: fixed; top: 140px; right: 30px; width: 290px`
+- **AND** the container SHALL use `backdrop-filter: blur(20px)` with `background: var(--glass)`
 
 ### Requirement: Pre-labeling and Suggestion Flow
 
-The workspace SHALL provide a "Pre-label" button that triggers `POST /api/v1/documents/{id}/prelabel`. On success, suggested spans SHALL be fetched and rendered with dashed-border styling in the document viewer. Each suggestion group SHALL display a "Promote" button and a "Dismiss" button in the suggestion panel. Promoting calls `POST /documents/{id}/spans/promote/{suggest_id}` and converts the suggestion to a confirmed span. Dismissing removes the suggestion from the UI without an API call (suggestions are replaced on the next pre-label call). The pre-label button SHALL be disabled while a pre-label request is in-flight.
+The workspace SHALL provide a "✦ Pre-label" button in the toolbar that triggers `POST /api/v1/documents/{id}/prelabel`. On success, suggested spans SHALL be fetched and rendered in the suggestion panel (3-pane mode) and as dashed-border token overlays in the document viewer. Each suggestion SHALL render as a dashed-border card in the suggestion panel showing: a colored dot, the matched text, the entity type name, and a confidence score. Each card SHALL have a "Promote" button and a dismiss ("✕") button. Promoting calls `POST /documents/{id}/spans/promote/{suggest_id}` and converts the suggestion to a confirmed span. Clicking "✕" removes the suggestion from the UI without an API call. The Pre-label button SHALL be disabled while a pre-label request is in-flight.
 
-#### Scenario: Pre-label populates the suggestion panel
+#### Scenario: Pre-label populates suggestion cards
 
 - **GIVEN** an active document with no existing suggested spans
-- **WHEN** the user clicks the "Pre-label" button
+- **WHEN** the user clicks the "✦ Pre-label" button
 - **THEN** a `POST /documents/{id}/prelabel` request SHALL be sent
-- **AND** on success, the returned suggested spans SHALL appear in the suggestion panel
-- **AND** the corresponding tokens in the document viewer SHALL render with dashed-border styling
+- **AND** on success, each returned suggested span SHALL appear as a dashed-border card in the suggestion panel
+- **AND** each card SHALL show the span text, entity type, and confidence value (e.g. "conf 0.85")
 
 #### Scenario: Promote converts a suggestion to a confirmed span
 
-- **GIVEN** a suggested span for "Acme Corp" (ORG, suggest_id "s-1") is in the suggestion panel
-- **WHEN** the user clicks "Promote" on that suggestion
+- **GIVEN** a suggestion card for "Acme Corp" (vendor_name, suggest_id "s-1") is visible
+- **WHEN** the user clicks the "Promote" button on that card
 - **THEN** a `POST /documents/{id}/spans/promote/s-1` request SHALL be sent
 - **AND** on success (201), the confirmed span SHALL replace the suggested span in the viewer
-- **AND** the dashed styling SHALL change to solid ORG color
-- **AND** the suggestion row SHALL be removed from the suggestion panel
+- **AND** the dashed styling SHALL change to solid vendor_name color
+- **AND** the suggestion card SHALL be removed from the panel
 
-#### Scenario: Dismiss removes the suggestion locally
+#### Scenario: Dismiss removes suggestion locally
 
-- **GIVEN** a suggested span for "John Doe" (PER) is in the suggestion panel
-- **WHEN** the user clicks "Dismiss" on that suggestion
-- **THEN** the suggestion row SHALL be removed from the suggestion panel
+- **GIVEN** a suggestion card for "Acme Corp" is in the suggestion panel
+- **WHEN** the user clicks the "✕" dismiss button
+- **THEN** the suggestion card SHALL be removed from the panel
 - **AND** the dashed-border token highlight SHALL be removed from the document viewer
-- **AND** no API request SHALL be sent for dismiss
+- **AND** no API request SHALL be sent
 
 #### Scenario: Pre-label button is disabled during in-flight request
 
 - **GIVEN** a `POST /documents/{id}/prelabel` request is in-flight
-- **WHEN** the pre-label button is rendered
+- **WHEN** the "✦ Pre-label" button is rendered
 - **THEN** the button SHALL be visually disabled and non-interactive until the request settles
+
+### Requirement: Focus Mode Entity Palette
+
+In focus mode the entity palette SHALL render as a `position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%)` horizontal pill container with `backdrop-filter: blur(22px) saturate(1.4)` and `background: var(--glass)`. The pill SHALL contain from left to right: a "LABEL AS" label in `JetBrains Mono`, one inline chip per entity type showing colored dot + name + count, a vertical separator, and the "✦ Pre-label" button. Clicking an entity type chip in the bottom palette SHALL arm that entity type (same armed-mode behavior as the 3-pane palette).
+
+The bottom palette SHALL only be visible when the workspace is in focus mode. In 3-pane mode the palette SHALL NOT render at the bottom.
+
+#### Scenario: Bottom palette renders in focus mode
+
+- **GIVEN** the workspace is in focus mode
+- **WHEN** the focus-mode layout renders
+- **THEN** a horizontal pill container SHALL appear at the bottom center of the viewport
+- **AND** each entity type SHALL appear as an inline chip showing a colored dot, entity name, and span count
+- **AND** a "✦ Pre-label" button SHALL appear at the right end of the pill
+
+#### Scenario: Bottom palette is hidden in 3-pane mode
+
+- **GIVEN** the workspace is in 3-pane mode
+- **WHEN** the layout renders
+- **THEN** the bottom-center fixed pill SHALL NOT be present in the DOM
+
+#### Scenario: Arming from the bottom palette works identically to the right-panel palette
+
+- **GIVEN** the workspace is in focus mode
+- **WHEN** the user clicks an entity type chip in the bottom palette
+- **THEN** the entity type SHALL become armed
+- **AND** the armed banner SHALL appear below the toolbar
+- **AND** token clicks SHALL create spans for that entity type
 
 ### Requirement: Task Status Lifecycle
 
-The workspace SHALL manage annotation task status transitions. When the first confirmed span is created on a task's document — whether by direct token click, drag selection, or suggestion promotion — the task SHALL automatically transition from `unannotated` to `in-progress` via `PATCH /annotation-tasks/{id}`. The in-progress transition SHALL be sent at most once per task per browser session (idempotency guard). A "Mark Complete" button SHALL be visible in the workspace toolbar whenever a task is selected. When the document has no confirmed spans, the "Mark Complete" button SHALL be visually disabled but remain clearly visible as a button with a distinct border, background, and text — it SHALL NOT be invisible or blend into the toolbar background. A tooltip on the disabled button SHALL read "Add at least one confirmed span before completing". When at least one confirmed span exists, the button SHALL become enabled and styled with the primary action color. Clicking it SHALL attempt to transition the task to `completed` via `PATCH /annotation-tasks/{id}`. On successful completion, the next available task SHALL be auto-selected.
+When the first confirmed span is created on a task's document — whether by direct token click, drag selection, or suggestion promotion — the task SHALL automatically transition from `unannotated` to `in-progress` via `PATCH /annotation-tasks/{id}`. The in-progress transition SHALL be sent at most once per task per browser session (idempotency guard).
 
-#### Scenario: First span creation via token click triggers in-progress transition
+Task status transitions (pending → in_progress → completed) are managed through the toolbar status group (see Annotation Toolbar requirement). There SHALL NOT be a separate "Mark Complete" button.
+
+#### Scenario: First span creation triggers in-progress transition
 
 - **GIVEN** an active task with status `unannotated` and no confirmed spans
-- **WHEN** the user clicks a token while an entity type is armed, creating the first confirmed span
+- **WHEN** the user creates the first confirmed span (via token click, drag, or promote)
 - **THEN** a `PATCH /annotation-tasks/{id}` request SHALL be sent with `{status: "in-progress"}`
-- **AND** the task row in the queue SHALL update its status badge to "in-progress"
-
-#### Scenario: Promoting a suggestion triggers in-progress transition
-
-- **GIVEN** an active task with status `unannotated` and no confirmed spans
-- **WHEN** the user promotes a suggested span (clicking "Promote" in the suggestion panel)
-- **THEN** a `PATCH /annotation-tasks/{id}` request SHALL be sent with `{status: "in-progress"}` after the successful promote API call
-- **AND** the task row in the queue SHALL update its status badge to "in-progress"
+- **AND** the status badge in the toolbar SHALL update to "in_progress"
 
 #### Scenario: In-progress transition fires only once per session
 
 - **GIVEN** an active task with status `unannotated`
-- **WHEN** the user promotes or creates multiple spans in the same browser session
-- **THEN** the `PATCH /annotation-tasks/{id}` in-progress request SHALL be sent exactly once
-- **AND** subsequent span creations or promotions SHALL NOT send additional in-progress PATCHes
-
-#### Scenario: Mark Complete button is visible but disabled with no spans
-
-- **GIVEN** an active task is selected and the document has zero confirmed spans
-- **WHEN** the workspace toolbar renders
-- **THEN** the "Mark Complete" button SHALL be visible in the toolbar
-- **AND** the button SHALL be clearly distinguishable as a disabled button (distinct border and text, not transparent)
-- **AND** a tooltip on hover SHALL read "Add at least one confirmed span before completing"
-
-#### Scenario: Mark Complete becomes enabled when spans exist
-
-- **GIVEN** an active task is selected and the document has at least one confirmed span
-- **WHEN** the workspace toolbar renders
-- **THEN** the "Mark Complete" button SHALL be enabled and styled with the primary action color
-- **AND** clicking it SHALL send `PATCH /annotation-tasks/{id}` with `{status: "completed"}`
-
-#### Scenario: Mark Complete transitions task to completed
-
-- **GIVEN** an active task with status `in-progress` and at least one confirmed span
-- **WHEN** the user clicks "Mark Complete"
-- **THEN** a `PATCH /annotation-tasks/{id}` request SHALL be sent with `{status: "completed"}`
-- **AND** on success, the task status badge in the queue SHALL update to "completed"
-- **AND** the next available (non-completed) task in the queue SHALL be auto-selected if one exists
+- **WHEN** the user creates multiple spans in the same browser session
+- **THEN** the `PATCH` in-progress request SHALL be sent exactly once
+- **AND** subsequent span creations SHALL NOT send additional in-progress PATCHes
 
 ### Requirement: Span Deselection
 
@@ -308,23 +394,6 @@ The workspace SHALL allow the user to deselect the currently selected span (clos
 - **WHEN** the user clicks an unannotated token
 - **THEN** span creation SHALL proceed (armed behavior takes priority)
 - **AND** the inspector SHALL remain open if the span creation fails
-
-### Requirement: Task Display Name
-
-The workspace SHALL display human-readable task labels instead of raw document ID fragments. Each annotation task SHALL be labeled "Task N" where N is its 1-based position in the currently visible task queue list (top of list = Task 1). The "Task N" label SHALL appear in both the task queue sidebar row and the workspace toolbar when a task is selected.
-
-#### Scenario: Task queue shows Task N labels
-
-- **GIVEN** the task queue is populated with three tasks (top to bottom)
-- **WHEN** the task queue sidebar renders
-- **THEN** the first row SHALL display "Task 1", the second "Task 2", the third "Task 3"
-- **AND** raw document ID fragments (e.g. "doc-296fb9ac") SHALL NOT appear in the task row labels
-
-#### Scenario: Toolbar shows Task N for the selected task
-
-- **GIVEN** the user has selected the second task in the queue
-- **WHEN** the workspace toolbar renders
-- **THEN** the task label in the toolbar SHALL read "Task 2"
 
 ### Requirement: Char-Offset to Token-Index Conversion
 

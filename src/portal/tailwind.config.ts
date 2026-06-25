@@ -50,6 +50,10 @@ const config: Config = {
         card: "var(--shadow-card)",
         overlay: "var(--shadow-overlay)",
       },
+      animation: {
+        "menu-pop": "ner-menu-pop .18s cubic-bezier(.16,1,.3,1) both",
+        "fade-up": "ner-fade-up 0.35s ease both",
+      },
     },
   },
   plugins: [],

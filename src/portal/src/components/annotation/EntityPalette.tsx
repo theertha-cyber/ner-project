@@ -5,6 +5,8 @@ import type { ConfirmedSpan } from "./span-reducer";
 export interface EntityTypeItem {
   id: string;
   name: string;
+  description?: string | null;
+  target_table?: string | null;
   is_active: boolean;
 }
 
@@ -26,7 +28,7 @@ export function EntityPalette({
   onDisarm,
 }: EntityPaletteProps) {
   const spanCounts = confirmedSpans.reduce<Record<string, number>>((acc, s) => {
-    acc[s.entityType] = (acc[s.entityType] ?? 0) + 1;
+    if (!s.optimistic) acc[s.entityType] = (acc[s.entityType] ?? 0) + 1;
     return acc;
   }, {});
 
@@ -55,6 +57,7 @@ export function EntityPalette({
           <button
             key={et.id}
             onClick={() => (isArmed ? onDisarm() : onArm(et.name))}
+            data-testid={`entity-btn-${et.name}`}
             style={{
               display: "flex",
               alignItems: "center",
@@ -68,35 +71,59 @@ export function EntityPalette({
               transition: "all 0.15s",
               outline: isArmed ? `2px solid ${color}` : "none",
               outlineOffset: 1,
+              width: "100%",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              {/* Colored dot */}
               <span
                 style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: "50%",
+                  width: 11,
+                  height: 11,
+                  borderRadius: 3,
                   background: color,
                   display: "inline-block",
                   flexShrink: 0,
                 }}
               />
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: isArmed ? 600 : 400,
-                  color: isArmed ? color : "var(--color-text-primary)",
-                }}
-              >
-                {et.name}
+              {/* Name + base sub-label */}
+              <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                    color: isArmed ? color : "var(--color-text-primary)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {et.name}
+                </span>
+                {et.target_table && (
+                  <span
+                    style={{
+                      fontSize: 9.5,
+                      color: "var(--color-text-secondary)",
+                      fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                    }}
+                    data-testid={`entity-base-${et.name}`}
+                  >
+                    base: {et.target_table}
+                  </span>
+                )}
               </span>
             </div>
+            {/* Span count */}
             <span
               style={{
                 fontSize: 12,
                 color: count > 0 ? color : "var(--color-text-secondary)",
                 fontWeight: count > 0 ? 600 : 400,
                 fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                flexShrink: 0,
+                marginLeft: 4,
               }}
             >
               {count}

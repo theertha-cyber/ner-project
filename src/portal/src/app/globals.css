@@ -58,6 +58,22 @@
   --color-glass: rgba(255, 255, 255, 0.62);
   --color-glass-border: rgba(255, 255, 255, 0.7);
 
+  /* New semantic tokens (from mockup) */
+  --surface: #f1f3f7;
+  --surface-2: #ffffff;
+  --surface-3: #f8fafc;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #94a3b8;
+  --line: #e4e8ef;
+  --line-2: #eef1f6;
+  --primary: #c2410c;
+  --primary-2: #9a3412;
+  --primary-soft: rgba(194, 65, 12, 0.09);
+  --primary-line: rgba(194, 65, 12, 0.22);
+  --bad: #b91c1c;
+  --bad-soft: rgba(185, 28, 28, 0.10);
+
   /* Shadow */
   --shadow-card: 0 4px 24px 0 rgba(0, 0, 0, 0.06), 0 1px 4px 0 rgba(0, 0, 0, 0.04);
   --shadow-overlay: 0 20px 60px 0 rgba(0, 0, 0, 0.15), 0 4px 16px 0 rgba(0, 0, 0, 0.08);
@@ -111,6 +127,22 @@
   --color-glass: rgba(18, 24, 35, 0.55);
   --color-glass-border: rgba(255, 255, 255, 0.07);
 
+  /* New semantic tokens (dark mode) */
+  --surface: #080b11;
+  --surface-2: #10151f;
+  --surface-3: #0c1119;
+  --ink: #f1f5f9;
+  --ink-2: #a9b6c8;
+  --ink-3: #64748b;
+  --line: #1c2533;
+  --line-2: #161d29;
+  --primary: #fb7549;
+  --primary-2: #fb8b66;
+  --primary-soft: rgba(251, 117, 73, 0.13);
+  --primary-line: rgba(251, 117, 73, 0.30);
+  --bad: #f87171;
+  --bad-soft: rgba(248, 113, 113, 0.13);
+
   /* Shadow (darker base for dark mode) */
   --shadow-card: 0 4px 24px 0 rgba(0, 0, 0, 0.3), 0 1px 4px 0 rgba(0, 0, 0, 0.2);
   --shadow-overlay: 0 20px 60px 0 rgba(0, 0, 0, 0.5), 0 4px 16px 0 rgba(0, 0, 0, 0.3);
@@ -126,10 +158,20 @@ body {
 
 /* ─── Animations ─────────────────────────────────────────────────────────────── */
 
+@keyframes ner-fade-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
 @keyframes meshDrift {
   0%   { transform: translate(0, 0) scale(1); }
   50%  { transform: translate(4%, -3%) scale(1.12); }
   100% { transform: translate(-3%, 4%) scale(1.05); }
+}
+
+@keyframes ner-menu-pop {
+  0%   { opacity: 0; transform: translateY(8px) scale(.97); }
+  100% { opacity: 1; transform: none; }
 }
 
 @keyframes popIn {
@@ -145,4 +187,15 @@ body {
 @keyframes dashFadeIn {
   0%   { opacity: 0; }
   100% { opacity: 1; }
+}
+
+@keyframes pulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+@keyframes spanPopIn {
+  0%   { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1); }
 }

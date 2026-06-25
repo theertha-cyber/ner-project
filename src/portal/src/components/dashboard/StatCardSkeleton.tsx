@@ -11,8 +11,6 @@ export function StatCardSkeleton() {
         display: "flex",
         flexDirection: "column",
         gap: 8,
-        flex: 1,
-        minWidth: 0,
       }}
     >
       <style>{`

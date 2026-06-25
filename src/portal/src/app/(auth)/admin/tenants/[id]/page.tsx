@@ -94,7 +94,7 @@ export default function TenantDetailPage({ params }: { params: { id: string } })
   if (!tenant) return <p className="text-gray-500">Tenant not found.</p>;
 
   return (
-    <div>
+    <div className="animate-fade-up">
       <button
         onClick={() => router.push("/admin/tenants")}
         className="mb-4 text-sm text-brand-primary hover:text-brand-hover"

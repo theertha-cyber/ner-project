@@ -40,7 +40,7 @@ export default function TenantsPage() {
   }, [page]);
 
   return (
-    <div>
+    <div className="animate-fade-up">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Tenants</h1>
         <Link

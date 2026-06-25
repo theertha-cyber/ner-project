@@ -58,7 +58,7 @@ export default function TrainingJobsPage() {
   const tenantId = user?.tenantId ?? "";
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="animate-fade-up flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-6 py-3">
         <h1 className="text-xl font-semibold text-gray-900">Training Jobs</h1>

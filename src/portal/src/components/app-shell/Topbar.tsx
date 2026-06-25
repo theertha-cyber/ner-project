@@ -3,11 +3,11 @@
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useDarkMode } from "@/hooks";
-import { SCREEN_TITLES, SCREEN_TITLES_FALLBACK, navFor } from "@/lib/nav-config";
+import { SCREEN_TITLES, SCREEN_TITLES_FALLBACK } from "@/lib/nav-config";
 import type { AuthUser } from "@/lib/auth";
 
 function resolveScreen(pathname: string): [string, string] {
-  for (const [key, value] of Object.entries(SCREEN_TITLES)) {
+  for (const [, value] of Object.entries(SCREEN_TITLES)) {
     if (pathname === value[1] || pathname.startsWith(value[1] + "/")) {
       return value;
     }
@@ -40,7 +40,6 @@ export function Topbar({ demoRole, onDemoRoleChange }: TopbarProps) {
 
   const [title, path] = resolveScreen(pathname);
   const initials = userInitials(user.email);
-  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
   return (
     <header
@@ -50,23 +49,22 @@ export function Topbar({ demoRole, onDemoRoleChange }: TopbarProps) {
         display: "flex",
         alignItems: "center",
         padding: "0 20px",
-        borderBottom: "1px solid rgba(0,0,0,0.08)",
-        background: "var(--color-glass, rgba(255,255,255,0.85))",
-        backdropFilter: "blur(16px)",
+        borderBottom: "1px solid var(--line)",
+        background: "var(--surface-2)",
         position: "sticky",
         top: 0,
         zIndex: 50,
         gap: 16,
       }}
     >
-      {/* Screen title + path */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      {/* Screen title + path — side by side with baseline alignment */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
         <span
           style={{
             fontFamily: "var(--font-display, sans-serif)",
             fontWeight: 700,
-            fontSize: 15,
-            color: "var(--color-text-primary, #0f172a)",
+            fontSize: 16,
+            color: "var(--ink)",
             lineHeight: 1.2,
           }}
         >
@@ -76,7 +74,7 @@ export function Topbar({ demoRole, onDemoRoleChange }: TopbarProps) {
           style={{
             fontFamily: "var(--font-mono, monospace)",
             fontSize: 11,
-            color: "var(--color-text-secondary, #64748b)",
+            color: "var(--ink-3)",
             lineHeight: 1,
           }}
         >
@@ -93,23 +91,46 @@ export function Topbar({ demoRole, onDemoRoleChange }: TopbarProps) {
           display: "flex",
           alignItems: "center",
           gap: 6,
-          padding: "6px 12px",
-          borderRadius: 7,
-          border: "1px solid rgba(0,0,0,0.1)",
-          background: "rgba(0,0,0,0.03)",
+          padding: "7px 12px",
+          borderRadius: 10,
+          border: "1px solid var(--line)",
+          background: "var(--surface-3)",
           fontFamily: "var(--font-mono, monospace)",
           fontSize: 12,
-          color: "var(--color-text-secondary, #64748b)",
+          color: "var(--ink-3)",
           cursor: "default",
           userSelect: "none",
+          width: 230,
         }}
       >
         ⌕ search · ⌘K
       </div>
 
-      {/* Role-switcher chips — demo mode only */}
+      {/* Role-switcher chips — demo mode only, wrapped in pill container */}
       {process.env.NEXT_PUBLIC_DEMO_MODE === "true" && (
-        <div style={{ display: "flex", gap: 4 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 3,
+            background: "var(--surface-3)",
+            border: "1px solid var(--line)",
+            borderRadius: 10,
+            padding: 3,
+          }}
+        >
+          {/* AS: static session label */}
+          <span
+            style={{
+              fontFamily: "var(--font-mono, monospace)",
+              fontSize: 10,
+              color: "var(--ink-3)",
+              userSelect: "none",
+              padding: "0 6px",
+            }}
+          >
+            AS
+          </span>
           {DEMO_ROLES.map(({ label, role }) => {
             const active = demoRole === role;
             return (
@@ -123,13 +144,9 @@ export function Topbar({ demoRole, onDemoRoleChange }: TopbarProps) {
                   padding: "4px 8px",
                   borderRadius: 5,
                   border: "1px solid",
-                  borderColor: active
-                    ? "var(--color-brand-primary, #c2410c)"
-                    : "rgba(0,0,0,0.12)",
-                  background: active
-                    ? "var(--color-brand-primary, #c2410c)"
-                    : "transparent",
-                  color: active ? "#fff" : "var(--color-text-secondary, #64748b)",
+                  borderColor: active ? "var(--primary)" : "transparent",
+                  background: active ? "var(--primary)" : "transparent",
+                  color: active ? "#fff" : "var(--ink-3)",
                   cursor: "pointer",
                 }}
               >
@@ -147,15 +164,15 @@ export function Topbar({ demoRole, onDemoRoleChange }: TopbarProps) {
         style={{
           width: 36,
           height: 36,
-          borderRadius: 7,
-          border: "1px solid rgba(0,0,0,0.1)",
+          borderRadius: 10,
+          border: "1px solid var(--line)",
           background: "transparent",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           fontSize: 16,
-          color: "var(--color-text-secondary, #64748b)",
+          color: "var(--ink-3)",
           flexShrink: 0,
         }}
       >
@@ -167,12 +184,12 @@ export function Topbar({ demoRole, onDemoRoleChange }: TopbarProps) {
         style={{
           width: 36,
           height: 36,
-          borderRadius: 7,
-          background: "linear-gradient(135deg, var(--color-brand-primary, #c2410c), #f59e0b)",
+          borderRadius: 10,
+          background: "linear-gradient(135deg, var(--primary), var(--primary-2))",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontFamily: "var(--font-mono, monospace)",
+          fontFamily: "var(--font-display, sans-serif)",
           fontWeight: 700,
           fontSize: 13,
           color: "#fff",

@@ -150,7 +150,7 @@ function ChatPageInner() {
   }, [activeConvId, loadConversations]);
 
   return (
-    <div style={{ display: "flex", height: "calc(100vh - 60px)", overflow: "hidden" }}>
+    <div className="animate-fade-up" style={{ display: "flex", height: "calc(100vh - 60px)", overflow: "hidden" }}>
       <ChatSidebar
         conversations={conversations}
         activeConvId={activeConvId}

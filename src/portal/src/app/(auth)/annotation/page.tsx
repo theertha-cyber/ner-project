@@ -1,5 +1,5 @@
 import { AnnotationPage } from "@/components/annotation/AnnotationPage";
 
 export default function AnnotationRoute() {
-  return <AnnotationPage />;
+  return <div className="animate-fade-up"><AnnotationPage /></div>;
 }

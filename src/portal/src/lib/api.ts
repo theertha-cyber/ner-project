@@ -4,3 +4,4 @@ export const ANNOTATION_URL = process.env.NEXT_PUBLIC_ANNOTATION_URL ?? "";
 export const TRAINING_URL = process.env.NEXT_PUBLIC_TRAINING_URL ?? "";
 export const MODEL_SERVING_URL = process.env.NEXT_PUBLIC_MODEL_SERVING_URL ?? "";
 export const EXTRACTION_URL = process.env.NEXT_PUBLIC_EXTRACTION_URL ?? "";
+export const ANALYTICS_URL = process.env.NEXT_PUBLIC_ANALYTICS_URL ?? "";

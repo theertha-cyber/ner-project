@@ -88,14 +88,30 @@ async def list_tasks(
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
 
+    base_query = f"""
+        SELECT
+            t.id,
+            t.document_id,
+            t.annotator_user_id,
+            t.status,
+            t.created_at,
+            t.updated_at,
+            d.filename,
+            d.status AS document_status,
+            COUNT(s.id) FILTER (WHERE s.id IS NOT NULL) AS span_count
+        FROM {schema}.annotation_tasks t
+        LEFT JOIN {schema}.documents d ON d.id = t.document_id
+        LEFT JOIN {schema}.spans s ON s.document_id = t.document_id
+    """
+
     if status_filter:
         result = await session.execute(
-            text(f"SELECT id, document_id, annotator_user_id, status, created_at, updated_at FROM {schema}.annotation_tasks WHERE status = :status ORDER BY created_at DESC"),
+            text(base_query + " WHERE t.status = :status GROUP BY t.id, d.filename, d.status ORDER BY t.created_at DESC"),
             {"status": status_filter},
         )
     else:
         result = await session.execute(
-            text(f"SELECT id, document_id, annotator_user_id, status, created_at, updated_at FROM {schema}.annotation_tasks ORDER BY created_at DESC"),
+            text(base_query + " GROUP BY t.id, d.filename, d.status ORDER BY t.created_at DESC"),
         )
 
     rows = result.fetchall()
@@ -107,6 +123,9 @@ async def list_tasks(
             "status": r[3],
             "created_at": str(r[4]),
             "updated_at": str(r[5]) if r[5] else None,
+            "filename": r[6],
+            "document_status": r[7],
+            "span_count": r[8] or 0,
         }
         for r in rows
     ]

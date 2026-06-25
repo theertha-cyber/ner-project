@@ -13,6 +13,9 @@ import { DocumentViewer } from "./DocumentViewer";
 import { EntityPalette, EntityTypeItem } from "./EntityPalette";
 import { SpanInspector } from "./SpanInspector";
 import { SuggestionPanel } from "./SuggestionPanel";
+import { AnnotationToolbar } from "./AnnotationToolbar";
+import { ArmedBanner } from "./ArmedBanner";
+import { FocusPalette } from "./FocusPalette";
 
 type LayoutMode = "3pane" | "focus";
 
@@ -45,6 +48,7 @@ export function AnnotationPage() {
   const [dragStartIndex, setDragStartIndex] = useState<number | null>(null);
   const [dragEndIndex, setDragEndIndex] = useState<number | null>(null);
 
+  // Restore layout from localStorage on mount (CSS-only — no fullscreen)
   useEffect(() => {
     const saved = localStorage.getItem(LAYOUT_KEY);
     if (saved === "3pane" || saved === "focus") setLayoutMode(saved);
@@ -95,6 +99,12 @@ export function AnnotationPage() {
     () => (docText ? buildTokenMap(docText) : []),
     [docText],
   );
+
+  const handleLayoutChange = useCallback((mode: LayoutMode) => {
+    setLayoutMode(mode);
+    localStorage.setItem(LAYOUT_KEY, mode);
+    // CSS-only focus mode — no fullscreen API
+  }, []);
 
   const handleSelectTask = useCallback(
     async (task: AnnotationTask) => {
@@ -150,6 +160,14 @@ export function AnnotationPage() {
     [toast],
   );
 
+  const handleStatusChange = useCallback(
+    (newStatus: AnnotationTask["status"]) => {
+      if (!selectedTask) return;
+      setTaskStatuses((prev) => ({ ...prev, [selectedTask.id]: newStatus }));
+    },
+    [selectedTask],
+  );
+
   const handleTokenClick = useCallback(
     async (tokenIndex: number) => {
       if (!selectedTask || !docText) return;
@@ -157,7 +175,6 @@ export function AnnotationPage() {
       if (!entry) return;
 
       if (spanState.armedType) {
-        // Check if token already covered by a confirmed span
         const alreadyCovered = spanState.confirmed.some(
           (s) => !s.optimistic && s.charStart <= entry.charStart && s.charEnd >= entry.charEnd,
         );
@@ -205,7 +222,6 @@ export function AnnotationPage() {
           };
           dispatch({ type: "SPAN_CONFIRM", optimisticId, realSpan });
 
-          // Transition unannotated → in-progress on first span
           const currentStatus = taskStatuses[selectedTask.id] ?? selectedTask.status;
           if (currentStatus === "unannotated" && !sentInProgressRef.current.has(selectedTask.id)) {
             sentInProgressRef.current.add(selectedTask.id);
@@ -223,7 +239,6 @@ export function AnnotationPage() {
           toast("Failed to create span", "bad");
         }
       } else {
-        // No armed type — open inspector for confirmed span at this token, or deselect
         const confirmedAtToken = spanState.confirmed.find(
           (s) => !s.optimistic && s.charStart <= entry.charStart && s.charEnd >= entry.charEnd,
         );
@@ -237,7 +252,7 @@ export function AnnotationPage() {
     [selectedTask, docText, tokenMap, spanState.armedType, spanState.confirmed, taskStatuses, toast],
   );
 
-  // Document-level mouseup handler for drag span creation (placed after tokenMap + handleTokenClick)
+  // Document-level mouseup handler for drag span creation
   useEffect(() => {
     const handler = async () => {
       if (!isDragging || dragStartIndex === null) {
@@ -256,7 +271,6 @@ export function AnnotationPage() {
       setDragStartIndex(null);
       setDragEndIndex(null);
 
-      // Single-click (same token): fall through to handleTokenClick
       if (minIdx === maxIdx) {
         handleTokenClick(minIdx);
         return;
@@ -264,7 +278,6 @@ export function AnnotationPage() {
 
       if (!spanState.armedType || !selectedTask || !docText) return;
 
-      // Guard: cancel if any token in range is already confirmed
       const rangeEntries = tokenMap.slice(minIdx, maxIdx + 1);
       const blocked = rangeEntries.some((entry) =>
         spanState.confirmed.some(
@@ -348,9 +361,7 @@ export function AnnotationPage() {
   }, []);
 
   const handleTokenMouseEnter = useCallback((tokenIndex: number) => {
-    if (isDragging) {
-      setDragEndIndex(tokenIndex);
-    }
+    if (isDragging) setDragEndIndex(tokenIndex);
   }, [isDragging]);
 
   const handleRetype = useCallback(
@@ -365,9 +376,7 @@ export function AnnotationPage() {
           body: JSON.stringify({ entity_type: entityType }),
         },
       );
-      if (!res.ok) {
-        toast("Failed to update span", "bad");
-      }
+      if (!res.ok) toast("Failed to update span", "bad");
     },
     [selectedTask, toast],
   );
@@ -380,9 +389,7 @@ export function AnnotationPage() {
         `/api/v1/documents/${selectedTask.document_id}/spans/${spanId}`,
         { method: "DELETE" },
       );
-      if (!res.ok) {
-        toast("Failed to delete span", "bad");
-      }
+      if (!res.ok) toast("Failed to delete span", "bad");
     },
     [selectedTask, toast],
   );
@@ -463,70 +470,72 @@ export function AnnotationPage() {
     dispatch({ type: "SUGGESTION_DISMISS", suggestId });
   }, []);
 
-  const handleMarkComplete = useCallback(async () => {
-    if (!selectedTask) return;
-    const res = await authFetch(`/api/v1/annotation-tasks/${selectedTask.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "completed" }),
-    });
-    if (!res.ok) {
-      toast("Failed to complete task", "bad");
-      return;
-    }
-    setTaskStatuses((prev) => ({ ...prev, [selectedTask.id]: "completed" }));
-    // Auto-select next non-completed task
-    const nextTask = filteredTasks.find((t) => {
-      const status = taskStatuses[t.id] ?? t.status;
-      return t.id !== selectedTask.id && status !== "completed";
-    });
-    if (nextTask) handleSelectTask(nextTask);
-  }, [selectedTask, filteredTasks, taskStatuses, toast, handleSelectTask]);
-
   const selectedSpan = spanState.selectedSpanId
     ? spanState.confirmed.find((s) => s.id === spanState.selectedSpanId) ?? null
     : null;
 
   const confirmedCount = spanState.confirmed.filter((s) => !s.optimistic).length;
+  const suggestedCount = spanState.suggested.length;
   const currentTaskStatus = selectedTask
     ? (taskStatuses[selectedTask.id] ?? selectedTask.status)
     : null;
 
-  // Sync layout state when browser exits fullscreen via Escape or native controls
-  useEffect(() => {
-    const handler = () => {
-      if (!document.fullscreenElement) {
-        setLayoutMode("3pane");
-        localStorage.setItem(LAYOUT_KEY, "3pane");
-      }
-    };
-    document.addEventListener("fullscreenchange", handler);
-    return () => document.removeEventListener("fullscreenchange", handler);
-  }, []);
 
-  const toggleLayout = (mode: LayoutMode) => {
-    setLayoutMode(mode);
-    localStorage.setItem(LAYOUT_KEY, mode);
-    if (mode === "focus") {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
-    }
-  };
+  const armedEntityType = spanState.armedType
+    ? entityTypes.find((et) => et.name === spanState.armedType)
+    : null;
 
   return (
-    <div style={{ display: "flex", height: "100%", minHeight: 0, position: "relative" }}>
-      {/* Task Queue — hidden in focus mode */}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: layoutMode === "3pane" ? "228px 1fr 326px" : "1fr",
+        gridTemplateRows: "auto auto 1fr auto",
+        height: "100%",
+        minHeight: 0,
+        position: "relative",
+      }}
+      data-testid="annotation-workspace"
+      data-layout={layoutMode}
+    >
+      {/* ── Toolbar (spans full width, always at top) ── */}
+      <div style={{ gridColumn: "1 / -1", gridRow: 1 }}>
+        <AnnotationToolbar
+          task={selectedTask}
+          filename={selectedTask?.filename ?? ""}
+          currentStatus={currentTaskStatus}
+          confirmedCount={confirmedCount}
+          suggestedCount={suggestedCount}
+          layoutMode={layoutMode}
+          isPrelabeling={isPrelabeling}
+          onStatusChange={handleStatusChange}
+          onLayoutChange={handleLayoutChange}
+          onPrelabel={handlePrelabel}
+        />
+      </div>
+
+      {/* ── Armed Banner (below toolbar) ── */}
+      {spanState.armedType && (
+        <div style={{ gridColumn: "1 / -1", gridRow: 2 }}>
+          <ArmedBanner
+            entityType={spanState.armedType}
+            description={armedEntityType?.description}
+            onDisarm={() => dispatch({ type: "DISARM" })}
+          />
+        </div>
+      )}
+
+      {/* ── Left: Task Queue (3-pane only) ── */}
       {layoutMode === "3pane" && (
         <div
           style={{
-            width: 220,
-            flexShrink: 0,
+            gridRow: "3 / 5",
             borderRight: "1px solid var(--color-border)",
             overflowY: "auto",
             display: "flex",
             flexDirection: "column",
           }}
+          data-testid="task-queue-column"
         >
           <div
             style={{
@@ -552,138 +561,21 @@ export function AnnotationPage() {
         </div>
       )}
 
-      {/* Center: Document Viewer */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Toolbar */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "10px 16px",
-            borderBottom: "1px solid var(--color-border)",
-            flexShrink: 0,
-          }}
-        >
-          {/* Layout toggle */}
-          <button
-            onClick={() => toggleLayout(layoutMode === "focus" ? "3pane" : "focus")}
-            style={{
-              padding: "3px 10px",
-              borderRadius: 6,
-              border: layoutMode === "focus" ? "none" : "1px solid var(--color-border)",
-              background: layoutMode === "focus" ? "var(--color-brand-primary)" : "transparent",
-              color: layoutMode === "focus" ? "#fff" : "var(--color-text-secondary)",
-              fontSize: 12,
-              cursor: "pointer",
-              fontWeight: layoutMode === "focus" ? 600 : 400,
-              transition: "all 0.15s",
-            }}
-          >
-            Focus
-          </button>
-
-          {selectedTask && (
-            <>
-              <span style={{ fontSize: 12, color: "var(--color-text-secondary)", marginLeft: 4 }}>
-                Task {filteredTasks.indexOf(selectedTask) + 1}
-              </span>
-              <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-                <button
-                  onClick={handlePrelabel}
-                  disabled={isPrelabeling}
-                  style={{
-                    padding: "5px 12px",
-                    borderRadius: 6,
-                    border: "1px solid var(--color-border)",
-                    background: "var(--color-surface-raised)",
-                    color: isPrelabeling ? "var(--color-text-secondary)" : "var(--color-text-primary)",
-                    fontSize: 12,
-                    cursor: isPrelabeling ? "not-allowed" : "pointer",
-                    opacity: isPrelabeling ? 0.6 : 1,
-                  }}
-                >
-                  {isPrelabeling ? "Pre-labeling…" : "Pre-label"}
-                </button>
-                <button
-                  onClick={handleMarkComplete}
-                  disabled={confirmedCount === 0 || currentTaskStatus === "completed"}
-                  title={
-                    currentTaskStatus === "completed"
-                      ? "Task already completed"
-                      : confirmedCount === 0
-                      ? "Add at least one confirmed span before completing"
-                      : undefined
-                  }
-                  style={{
-                    padding: "5px 12px",
-                    borderRadius: 6,
-                    border: (confirmedCount === 0 || currentTaskStatus === "completed") ? "1px solid var(--color-border)" : "none",
-                    background: (confirmedCount === 0 || currentTaskStatus === "completed") ? "transparent" : "var(--color-brand-primary)",
-                    color: (confirmedCount === 0 || currentTaskStatus === "completed") ? "var(--color-text-secondary)" : "#fff",
-                    fontSize: 12,
-                    cursor: (confirmedCount === 0 || currentTaskStatus === "completed") ? "not-allowed" : "pointer",
-                    fontWeight: 500,
-                  }}
-                >
-                  Mark Complete
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Armed-mode banner */}
-        {spanState.armedType && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "8px 16px",
-              background: (entityColors[spanState.armedType] ?? "#6366f1") + "22",
-              borderBottom: "1px solid " + (entityColors[spanState.armedType] ?? "#6366f1") + "44",
-              flexShrink: 0,
-            }}
-          >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: entityColors[spanState.armedType] ?? "#6366f1",
-                display: "inline-block",
-                flexShrink: 0,
-              }}
-            />
-            <span style={{ fontSize: 13, color: "var(--color-text-primary)", fontWeight: 500 }}>
-              Labeling as <strong>{spanState.armedType}</strong> — click any word to create a span
-            </span>
-            <button
-              onClick={() => dispatch({ type: "DISARM" })}
-              style={{
-                marginLeft: "auto",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--color-text-secondary)",
-                fontSize: 13,
-              }}
-            >
-              × Disarm
-            </button>
-          </div>
-        )}
-
-        {/* Document text */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "16px 20px",
-            position: "relative",
-          }}
-        >
+      {/* ── Center: Document Viewer ── */}
+      <div
+        style={{
+          gridRow: "3 / 4",
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+          overflowY: "auto",
+          position: "relative",
+          ...(layoutMode === "focus" ? { maxWidth: 760, margin: "0 auto", width: "100%" } : {}),
+        }}
+        data-testid="document-viewer-column"
+      >
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", position: "relative" }}>
           <DocumentViewer
             tokenMap={tokenMap}
             spanState={spanState}
@@ -695,88 +587,93 @@ export function AnnotationPage() {
             dragStartIndex={dragStartIndex}
             dragEndIndex={dragEndIndex}
           />
+        </div>
+      </div>
 
-          {/* Span Inspector (positioned inside the scrollable area) */}
-          {selectedSpan && (
+      {/* ── Right: Entity Palette + Span Inspector (3-pane only) ── */}
+      {layoutMode === "3pane" && (
+        <div
+          style={{
+            gridRow: "3 / 5",
+            borderLeft: "1px solid var(--color-border)",
+            padding: "12px",
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+          data-testid="entity-panel-column"
+        >
+          <EntityPalette
+            entityTypes={entityTypes}
+            entityColors={entityColors}
+            confirmedSpans={spanState.confirmed}
+            armedType={spanState.armedType}
+            onArm={(name) => dispatch({ type: "ARM", entityType: name })}
+            onDisarm={() => dispatch({ type: "DISARM" })}
+          />
+          {selectedSpan && layoutMode === "3pane" && (
             <SpanInspector
               span={selectedSpan}
               entityTypes={entityTypes}
+              entityColors={entityColors}
+              layoutMode="3pane"
               onRetype={handleRetype}
               onDelete={handleDelete}
               onClose={() => dispatch({ type: "SPAN_SET_SELECTED", spanId: null })}
             />
           )}
-        </div>
-
-        {/* Suggestions panel */}
-        {spanState.suggested.length > 0 && selectedTask && (
-          <div
-            style={{
-              borderTop: "1px solid var(--color-border)",
-              padding: "12px 16px",
-              maxHeight: 200,
-              overflowY: "auto",
-              flexShrink: 0,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--color-text-secondary)",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                marginBottom: 8,
-              }}
-            >
-              Suggestions ({spanState.suggested.length})
+          {layoutMode === "3pane" && spanState.suggested.length > 0 && selectedTask && (
+            <div>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "var(--color-text-secondary)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  marginBottom: 8,
+                }}
+              >
+                Suggestions ({spanState.suggested.length})
+              </div>
+              <SuggestionPanel
+                suggestions={spanState.suggested}
+                entityColors={entityColors}
+                onPromote={handlePromote}
+                onDismiss={handleDismiss}
+              />
             </div>
-            <SuggestionPanel
-              suggestions={spanState.suggested}
-              entityColors={entityColors}
-              onPromote={handlePromote}
-              onDismiss={handleDismiss}
-            />
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
-      {/* Entity Palette — right column in 3pane, fixed in focus */}
-      <div
-        style={
-          layoutMode === "focus"
-            ? {
-                position: "fixed",
-                top: 140,
-                right: 30,
-                width: 200,
-                background: "var(--color-surface)",
-                border: "1px solid var(--color-border)",
-                borderRadius: 10,
-                boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
-                padding: "12px",
-                zIndex: 30,
-                maxHeight: "60vh",
-                overflowY: "auto",
-              }
-            : {
-                width: 200,
-                flexShrink: 0,
-                borderLeft: "1px solid var(--color-border)",
-                padding: "12px",
-                overflowY: "auto",
-              }
-        }
-      >
-        <EntityPalette
+      {/* ── Focus Mode: Floating Span Inspector ── */}
+      {selectedSpan && layoutMode === "focus" && (
+        <SpanInspector
+          span={selectedSpan}
+          entityTypes={entityTypes}
+          entityColors={entityColors}
+          layoutMode="focus"
+          onRetype={handleRetype}
+          onDelete={handleDelete}
+          onClose={() => dispatch({ type: "SPAN_SET_SELECTED", spanId: null })}
+        />
+      )}
+
+      {/* ── Focus Mode: Bottom Center Entity Palette ── */}
+      {layoutMode === "focus" && (
+        <FocusPalette
           entityTypes={entityTypes}
           entityColors={entityColors}
           confirmedSpans={spanState.confirmed}
           armedType={spanState.armedType}
+          isPrelabeling={isPrelabeling}
           onArm={(name) => dispatch({ type: "ARM", entityType: name })}
           onDisarm={() => dispatch({ type: "DISARM" })}
+          onPrelabel={handlePrelabel}
         />
-      </div>
+      )}
     </div>
   );
 }

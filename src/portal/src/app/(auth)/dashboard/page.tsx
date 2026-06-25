@@ -1,74 +1,81 @@
 "use client";
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { useLayoutPreference } from "@/hooks/use-layout-preference";
+import { useAuth } from "@/lib/auth";
+import { heroVariant } from "@/lib/dashboard";
 import { DashboardHero } from "@/components/dashboard/DashboardHero";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { StatCardSkeleton } from "@/components/dashboard/StatCardSkeleton";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { MetricsPanel } from "@/components/dashboard/MetricsPanel";
-import { SegmentControl } from "@/components/ui";
+
+function formatRoleLabel(role: string): string {
+  return role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export default function DashboardPage() {
   const { data, isLoading } = useDashboardData();
-  const [layout, setLayout] = useLayoutPreference();
+  const { user } = useAuth();
+  const variant = heroVariant(user?.role ?? "annotator");
+  const roleLabel = formatRoleLabel(user?.role ?? "annotator");
 
   return (
     <div
+      className="animate-fade-up"
       style={{
         display: "flex",
         flexDirection: "column",
         gap: 28,
-        padding: "28px 32px",
-        maxWidth: 1280,
+        padding: "28px 32px 60px",
+        maxWidth: 1240,
         width: "100%",
         margin: "0 auto",
       }}
     >
-      {/* Hero + layout toggle */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {data ? (
-            <DashboardHero
-              kicker={data.kicker}
-              title={data.title}
-              line={data.line}
-              layout={layout}
-            />
-          ) : (
-            <DashboardHero
-              kicker="Loading…"
-              title=""
-              line=""
-              layout={layout}
-            />
-          )}
-        </div>
-        <div style={{ flexShrink: 0 }}>
-          <SegmentControl
-            options={[
-              { label: "Editorial", value: "editorial" },
-              { label: "Command", value: "command" },
-            ]}
-            value={layout}
-            onChange={(v) => setLayout(v as "editorial" | "command")}
+      {/* Breadcrumb */}
+      <div
+        style={{
+          fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+          fontSize: 11,
+          color: "var(--color-text-secondary)",
+          letterSpacing: "0.06em",
+        }}
+      >
+        DASHBOARD ◦ {roleLabel}
+      </div>
+
+      {/* Hero */}
+      <div>
+        {data ? (
+          <DashboardHero
+            kicker={data.kicker}
+            title={data.title}
+            line={data.line}
+            variant={variant}
           />
-        </div>
+        ) : (
+          <DashboardHero
+            kicker="Loading…"
+            title=""
+            line=""
+            variant={variant}
+          />
+        )}
       </div>
 
       {/* Stat card strip */}
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
         {isLoading || !data
           ? Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
           : data.stats.map((stat, i) => <StatCard key={i} item={stat} />)}
       </div>
 
-      {/* Two-column panel grid */}
+      {/* Two-column panel grid: activity 1.5fr, metrics 1fr */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 14,
+          gridTemplateColumns: "1.5fr 1fr",
+          gap: 16,
         }}
       >
         {data ? (

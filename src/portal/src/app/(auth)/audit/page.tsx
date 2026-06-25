@@ -1,5 +1,5 @@
 import { PlaceholderScreen } from "@/components/ui";
 
 export default function AuditPage() {
-  return <PlaceholderScreen title="Audit Log" />;
+  return <div className="animate-fade-up"><PlaceholderScreen title="Audit Log" /></div>;
 }

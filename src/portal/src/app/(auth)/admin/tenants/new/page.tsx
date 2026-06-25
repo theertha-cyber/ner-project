@@ -45,7 +45,7 @@ export default function NewTenantPage() {
   };
 
   return (
-    <div className="mx-auto max-w-lg">
+    <div className="animate-fade-up mx-auto max-w-lg">
       <button
         onClick={() => router.push("/admin/tenants")}
         className="mb-4 text-sm text-brand-primary hover:text-brand-hover"

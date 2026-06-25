@@ -85,20 +85,31 @@ export function DocumentViewer({
   return (
     <div
       style={{
-        lineHeight: "2",
-        padding: "4px 0",
+        border: "1px solid var(--color-border)",
+        borderRadius: 16,
+        padding: "36px 40px",
+        boxShadow: "var(--shadow, 0 2px 12px rgba(0,0,0,0.08))",
+        maxWidth: 680,
+        margin: "0 auto",
       }}
     >
-      {tokenMap.map((entry, i) => (
-        <Token
-          key={i}
-          token={entry.token}
-          highlight={tokenHighlights[i]}
-          onClick={() => onTokenClick(i)}
-          onMouseDown={onTokenMouseDown ? () => onTokenMouseDown(i) : undefined}
-          onMouseEnter={onTokenMouseEnter ? () => onTokenMouseEnter(i) : undefined}
-        />
-      ))}
+      <div
+        style={{
+          lineHeight: "2.05",
+          padding: "4px 0",
+        }}
+      >
+        {tokenMap.map((entry, i) => (
+          <Token
+            key={i}
+            token={entry.token}
+            highlight={tokenHighlights[i]}
+            onClick={() => onTokenClick(i)}
+            onMouseDown={onTokenMouseDown ? () => onTokenMouseDown(i) : undefined}
+            onMouseEnter={onTokenMouseEnter ? () => onTokenMouseEnter(i) : undefined}
+          />
+        ))}
+      </div>
     </div>
   );
 }

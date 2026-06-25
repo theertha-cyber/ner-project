@@ -25,6 +25,7 @@ function resolveUrl(url: string): string {
     url.startsWith("/api/v1/auth") ||
     url.startsWith("/api/v1/tenants") ||
     url.startsWith("/api/v1/dashboard") ||
+    url.startsWith("/api/v1/analytics") ||
     url.startsWith("/api/v1/entity-type") ||
     url.startsWith("/api/v1/users")
   )

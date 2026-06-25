@@ -235,6 +235,23 @@ services:
       db-init:
         condition: service_completed_successfully
 
+  analytics_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn src.analytics_service.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8007:8000"
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_ANALYTICS_SERVICE_URL: "http://analytics_service:8000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+
   celery_worker_extraction:
     build:
       context: .

@@ -25,7 +25,7 @@ export default function JobsPage() {
   }, []);
 
   return (
-    <div>
+    <div className="animate-fade-up">
       <h1 className="mb-4 text-2xl font-bold text-gray-900">Training Jobs</h1>
 
       {loading ? (
