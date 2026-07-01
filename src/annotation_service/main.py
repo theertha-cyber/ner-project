@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
 from src.shared.config import settings
 from src.annotation_service.middleware.tenant_context import TenantContextMiddleware
-from src.annotation_service.api.v1 import spans, tasks, export
+from src.annotation_service.api.v1 import spans, tasks, export, import_
 
 
 def add_bearer_security(app: FastAPI):
@@ -66,6 +66,7 @@ async def app_error_handler(request: Request, exc: AppError):
 app.include_router(spans.router)
 app.include_router(tasks.router)
 app.include_router(export.router)
+app.include_router(import_.router)
 
 
 @app.get("/health")

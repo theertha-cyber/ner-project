@@ -26,6 +26,8 @@ const config: Config = {
         "status-rejected": "var(--color-status-rejected)",
         "status-cancelled": "var(--color-status-cancelled)",
         "status-promoted": "var(--color-status-promoted)",
+        "status-training": "var(--color-status-training)",
+        "status-archived": "var(--color-status-archived)",
         success: "var(--color-success)",
         warning: "var(--color-warning)",
         error: "var(--color-error)",

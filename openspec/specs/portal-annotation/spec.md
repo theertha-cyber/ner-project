@@ -115,6 +115,8 @@ Each task row SHALL display:
 
 The active (selected) task row SHALL be highlighted with a left border in the primary color and a soft primary-tinted background. Selecting a task SHALL load that document into the document viewer and reset span state.
 
+For `tenant_admin` users, the Task Queue panel header area SHALL include a "＋ Assign Task" button above the task list. Clicking this button SHALL open the inline task assignment form (see task-assignment-ui spec). The button SHALL NOT be rendered for `annotator` role users.
+
 #### Scenario: Task row shows filename and document metadata
 
 - **GIVEN** the task queue is populated and the active document is named "invoice-2026-00417.pdf" with status "processed" and 12 confirmed spans
@@ -148,6 +150,18 @@ The active (selected) task row SHALL be highlighted with a left border in the pr
 - **GIVEN** there are no annotation tasks for the current user
 - **WHEN** the annotation workspace loads
 - **THEN** the queue panel SHALL display "No tasks assigned" with a prompt to contact a tenant admin
+
+#### Scenario: Tenant admin sees Assign Task button
+
+- **GIVEN** an authenticated `tenant_admin` user is on the annotation workspace
+- **WHEN** the Task Queue panel renders
+- **THEN** a "＋ Assign Task" button SHALL appear above the task list in the Task Queue panel
+
+#### Scenario: Annotator does not see Assign Task button
+
+- **GIVEN** an authenticated `annotator` user is on the annotation workspace
+- **WHEN** the Task Queue panel renders
+- **THEN** the "＋ Assign Task" button SHALL NOT appear in the Task Queue panel
 
 ### Requirement: Document Viewer and Token Rendering
 

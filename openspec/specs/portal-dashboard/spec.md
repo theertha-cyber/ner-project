@@ -45,9 +45,9 @@ The system SHALL define a `DashboardData` TypeScript type that mirrors the mocku
 
 ### Requirement: Dashboard Summary Endpoint
 
-The gateway SHALL expose `GET /api/v1/dashboard/summary` (requires authentication). The endpoint SHALL return a role-appropriate `DashboardData` JSON object assembled from whichever downstream services are available. The response SHALL include a top-level `sources` object mapping each service name (`"tenants"`, `"training"`, `"documents"`, `"annotations"`, `"models"`) to `true` (data retrieved) or `false` (service unavailable or not applicable for this role).
+The gateway SHALL expose `GET /api/v1/dashboard/summary` (requires authentication). The endpoint SHALL return a role-appropriate `DashboardData` JSON object assembled from the tenant's database tables directly (gateway queries tenant schema tables rather than calling downstream services for MVP). The response SHALL include a top-level `sources` object mapping each data domain (`"tenants"`, `"training"`, `"documents"`, `"annotations"`, `"models"`, `"extraction"`) to `true` (data retrieved) or `false` (query failed or not applicable for this role).
 
-For MVP, all data sources SHALL be wired according to the caller's role: system_admin queries tenants and training services; tenant_admin queries documents, annotation, training, and models services; annotator queries annotation and documents services; business_user queries extraction and models services. Each service call uses independent timeouts and error handling.
+Each role handler SHALL accept the `db` session and `tenant_id` parameters and execute real SQL queries against the tenant's schema. Every query SHALL be wrapped in try/catch with independent error handling — a failed query SHALL set the affected fields to `null`, the corresponding `sources.*` flag to `false`, and SHALL NOT fail the entire request.
 
 #### Scenario: system_admin summary returns real data from wired sources
 
@@ -56,6 +56,39 @@ For MVP, all data sources SHALL be wired according to the caller's role: system_
 - **THEN** the response includes the real tenant count in `stats[0].value`
 - **AND** `sources.tenants` is `true`
 - **AND** training-dependent fields (pending approvals count, avg F1) are fetched from the training service
+
+#### Scenario: tenant_admin summary returns real data from wired sources
+
+- **GIVEN** the caller has role `tenant_admin` and the tenant has documents, annotations, model versions, and training jobs
+- **WHEN** `GET /api/v1/dashboard/summary` is called
+- **THEN** `stats[0].value` SHALL contain the real document count from the tenant's `documents` table
+- **AND** `stats[1].value` SHALL contain the annotation completion percentage
+- **AND** `stats[2].value` SHALL contain the promoted model's F1 score
+- **AND** `stats[3].value` SHALL contain the training job count
+
+#### Scenario: annotator summary returns real task data
+
+- **GIVEN** the caller has role `annotator` and has assigned annotation tasks
+- **WHEN** `GET /api/v1/dashboard/summary` is called
+- **THEN** `stats[0].value` SHALL contain the count of assigned tasks
+- **AND** `stats[1].value` SHALL contain the count of confirmed spans
+- **AND** `stats[3].value` SHALL contain the task completion percentage
+
+#### Scenario: business_user summary returns real extraction data
+
+- **GIVEN** the caller has role `business_user` and the tenant has extraction data
+- **WHEN** `GET /api/v1/dashboard/summary` is called
+- **THEN** `stats[0].value` SHALL contain the extracted document count
+- **AND** `stats[1].value` SHALL contain the total entity count
+- **AND** `stats[2].value` SHALL contain the average confidence score
+- **AND** `stats[3].value` SHALL contain the auto-cleared percentage
+
+#### Scenario: sources map includes all data domains
+
+- **GIVEN** the dashboard summary is generated for any role
+- **WHEN** the response is inspected
+- **THEN** the `sources` object SHALL contain keys for all data domains relevant to that role
+- **AND** each key SHALL be `true` if the query succeeded, `false` otherwise
 
 #### Scenario: unauthenticated request rejected
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useReducer, useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +16,7 @@ import { SuggestionPanel } from "./SuggestionPanel";
 import { AnnotationToolbar } from "./AnnotationToolbar";
 import { ArmedBanner } from "./ArmedBanner";
 import { FocusPalette } from "./FocusPalette";
+import { AssignTaskForm } from "./AssignTaskForm";
 
 type LayoutMode = "3pane" | "focus";
 
@@ -37,6 +38,7 @@ function buildEntityColors(entityTypes: EntityTypeItem[]): Record<string, string
 export function AnnotationPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [spanState, dispatch] = useReducer(spanReducer, initialSpanState);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("3pane");
   const [selectedTask, setSelectedTask] = useState<AnnotationTask | null>(null);
@@ -47,6 +49,9 @@ export function AnnotationPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartIndex, setDragStartIndex] = useState<number | null>(null);
   const [dragEndIndex, setDragEndIndex] = useState<number | null>(null);
+  // Task 3.1 — admin-only assign form state
+  const isAdmin = user?.role === "tenant_admin";
+  const [isAssignFormOpen, setIsAssignFormOpen] = useState(false);
 
   // Restore layout from localStorage on mount (CSS-only — no fullscreen)
   useEffect(() => {
@@ -73,16 +78,18 @@ export function AnnotationPage() {
   });
 
   const { data: entityTypesData } = useQuery({
-    queryKey: ["entity-types"],
+    queryKey: ["entity-types", user?.tenantSlug],
+    enabled: !!user?.tenantSlug,
     queryFn: async () => {
-      const res = await authFetch("/api/v1/entity-types");
+      const res = await authFetch(`/api/v1/tenants/${user!.tenantSlug}/entity-types`);
       if (!res.ok) throw new Error("Failed to load entity types");
       const data = await res.json();
       return (data.entity_types ?? []) as EntityTypeItem[];
     },
   });
 
-  const allTasks: AnnotationTask[] = tasksData ?? [];
+  const [locallyPrependedTasks, setLocallyPrependedTasks] = useState<AnnotationTask[]>([]);
+  const allTasks: AnnotationTask[] = [...locallyPrependedTasks, ...(tasksData ?? [])];
   const entityTypes: EntityTypeItem[] = entityTypesData ?? [];
 
   const filteredTasks = useMemo(() => {
@@ -105,6 +112,13 @@ export function AnnotationPage() {
     localStorage.setItem(LAYOUT_KEY, mode);
     // CSS-only focus mode — no fullscreen API
   }, []);
+
+  // Task 3.4 — prepend new task from assignment form and close it
+  const handleTaskAssigned = useCallback((newTask: AnnotationTask) => {
+    setLocallyPrependedTasks((prev) => [newTask, ...prev]);
+    setIsAssignFormOpen(false);
+    queryClient.invalidateQueries({ queryKey: ["annotation-tasks"] });
+  }, [queryClient]);
 
   const handleSelectTask = useCallback(
     async (task: AnnotationTask) => {
@@ -546,10 +560,41 @@ export function AnnotationPage() {
               textTransform: "uppercase",
               letterSpacing: "0.06em",
               borderBottom: "1px solid var(--color-border)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
             }}
           >
-            Task Queue
+            <span>Task Queue</span>
+            {/* Task 3.2 — admin-only Assign Task button */}
+            {isAdmin && (
+              <button
+                data-testid="assign-task-btn"
+                onClick={() => setIsAssignFormOpen(true)}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  background: "none",
+                  border: "1px solid var(--color-primary, #6366f1)",
+                  color: "var(--color-primary, #6366f1)",
+                  borderRadius: 4,
+                  padding: "2px 7px",
+                  cursor: "pointer",
+                  letterSpacing: 0,
+                  textTransform: "none",
+                }}
+              >
+                ＋ Assign Task
+              </button>
+            )}
           </div>
+          {/* Task 3.3 — inline assignment form */}
+          {isAdmin && isAssignFormOpen && (
+            <AssignTaskForm
+              onAssign={handleTaskAssigned}
+              onCancel={() => setIsAssignFormOpen(false)}
+            />
+          )}
           <div style={{ padding: "8px 6px", flex: 1, overflowY: "auto" }}>
             <TaskQueue
               tasks={filteredTasks}

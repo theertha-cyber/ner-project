@@ -56,19 +56,22 @@ export default function TrainingJobsPage() {
   );
 
   const tenantId = user?.tenantId ?? "";
+  const isTenantAdmin = user?.role === "tenant_admin";
 
   return (
     <div className="animate-fade-up flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-6 py-3">
         <h1 className="text-xl font-semibold text-gray-900">Training Jobs</h1>
-        <button
-          type="button"
-          onClick={() => setSubmitOpen(true)}
-          className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary/80"
-        >
-          + Submit Job
-        </button>
+        {isTenantAdmin && (
+          <button
+            type="button"
+            onClick={() => setSubmitOpen(true)}
+            className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary/80"
+          >
+            + Submit Job
+          </button>
+        )}
       </div>
 
       {/* Split panel */}
@@ -112,7 +115,7 @@ export default function TrainingJobsPage() {
       </div>
 
       {/* Submit Slide-over */}
-      <SubmitJobSlideover open={submitOpen} onClose={() => setSubmitOpen(false)} />
+      {isTenantAdmin && <SubmitJobSlideover open={submitOpen} onClose={() => setSubmitOpen(false)} />}
     </div>
   );
 }

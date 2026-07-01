@@ -88,6 +88,7 @@ services:
       NER_REDIS_URL: "redis://redis:6379/0"
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_DOCUMENT_SERVICE_URL: "http://document_service:8000"
+      NER_EXTRACTION_SERVICE_URL: "http://extraction_service:8000"
       NER_MODEL_SERVING_URL: "http://model_serving:8000"
       NER_CHAT_API_PORT: 8006
       NER_CHAT_API_URL: "http://host.docker.internal:8006"

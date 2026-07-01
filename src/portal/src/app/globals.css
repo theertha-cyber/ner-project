@@ -34,6 +34,8 @@
   --color-status-rejected: #dc2626;
   --color-status-cancelled: #6b7280;
   --color-status-promoted: #0ea5e9;
+  --color-status-training: #d97706;
+  --color-status-archived: #9ca3af;
 
   /* Feedback */
   --color-success: #16a34a;
@@ -110,6 +112,8 @@
   --color-status-rejected: #f87171;
   --color-status-cancelled: #9ca3af;
   --color-status-promoted: #38bdf8;
+  --color-status-training: #fbbf24;
+  --color-status-archived: #6b7280;
 
   /* Feedback */
   --color-success: #4ade80;

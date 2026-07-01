@@ -36,7 +36,7 @@ def require_tenant_admin(request: Request) -> str:
 
 
 def get_request_tenant_id(request: Request) -> str:
-    tenant_id = getattr(request.state, "tenant_id", None)
+    tenant_id = getattr(request.state, "tenant_id", None) or getattr(request.state, "token_tenant_id", None)
     if tenant_id is None:
         raise HTTPException(status_code=403, detail="Tenant context not available")
     return tenant_id

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { TaskQueue } from "./TaskQueue";
 import type { AnnotationTask } from "./TaskQueue";
@@ -86,6 +86,43 @@ describe("Scenario 5/7/8 — Task rows show document filename and metadata", () 
 
     expect(screen.getByText("fallback.pdf")).toBeInTheDocument();
     expect(screen.getByText("in progress")).toBeInTheDocument();
+  });
+});
+
+// ── Scenario 12: Active task row is highlighted ───────────────────────────────
+
+describe("Scenario 12 — Active task row is highlighted", () => {
+  it("selected row has primary left border; others do not", () => {
+    const { container } = render(
+      <TaskQueue
+        tasks={tasks}
+        selectedTaskId="t1"
+        taskStatuses={{}}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const buttons = container.querySelectorAll("button");
+    const activeBtn = buttons[0];
+    const inactiveBtn = buttons[1];
+
+    expect(activeBtn.style.borderLeft).toContain("3px solid");
+    expect(inactiveBtn.style.borderLeft).toBe("3px solid transparent");
+  });
+
+  it("calls onSelect with the clicked task", () => {
+    const onSelect = vi.fn();
+    render(
+      <TaskQueue
+        tasks={tasks}
+        selectedTaskId={null}
+        taskStatuses={{}}
+        onSelect={onSelect}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("invoice-2026-00417.pdf"));
+    expect(onSelect).toHaveBeenCalledWith(tasks[0]);
   });
 });
 

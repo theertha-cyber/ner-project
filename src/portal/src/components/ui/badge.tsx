@@ -10,7 +10,9 @@ export type BadgeVariant =
   | "queued"
   | "rejected"
   | "cancelled"
-  | "promoted";
+  | "promoted"
+  | "training"
+  | "archived";
 
 const variantClasses: Record<BadgeVariant, string> = {
   active: "bg-status-active text-white",
@@ -23,6 +25,8 @@ const variantClasses: Record<BadgeVariant, string> = {
   rejected: "bg-status-rejected text-white",
   cancelled: "bg-status-cancelled text-white",
   promoted: "bg-status-promoted text-white",
+  training: "bg-status-training text-white",
+  archived: "bg-status-archived text-white",
 };
 
 export interface BadgeProps {

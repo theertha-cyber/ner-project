@@ -71,6 +71,14 @@ vi.mock("./FocusPalette", () => ({
   FocusPalette: () => <div data-testid="mock-focus-palette" />,
 }));
 
+vi.mock("./AssignTaskForm", () => ({
+  AssignTaskForm: ({ onCancel }: { onCancel: () => void }) => (
+    <div data-testid="mock-assign-task-form">
+      <button data-testid="mock-cancel-btn" onClick={onCancel}>Cancel</button>
+    </div>
+  ),
+}));
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const mockTask: AnnotationTask = {
@@ -250,5 +258,32 @@ describe("Scenario 8 — Annotator sees only their assigned tasks", () => {
   it("renders task queue component", () => {
     renderPage();
     expect(screen.getByTestId("mock-task-queue")).toBeInTheDocument();
+  });
+});
+
+// ── Scenarios 1/16 — tenant_admin sees Assign Task button ────────────────────
+
+describe("Scenario 1/16 — tenant_admin sees Assign Task button", () => {
+  it("renders the Assign Task button when user is tenant_admin", () => {
+    renderPage();
+    expect(screen.getByTestId("assign-task-btn")).toBeInTheDocument();
+  });
+});
+
+// ── Scenario 3 — Clicking Assign Task opens inline form ──────────────────────
+
+describe("Scenario 3 — Clicking Assign Task button expands the inline form", () => {
+  it("shows the assign form when button is clicked", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("assign-task-btn"));
+    expect(screen.getByTestId("mock-assign-task-form")).toBeInTheDocument();
+  });
+
+  it("hides the form when Cancel is clicked inside the form", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("assign-task-btn"));
+    expect(screen.getByTestId("mock-assign-task-form")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("mock-cancel-btn"));
+    expect(screen.queryByTestId("mock-assign-task-form")).not.toBeInTheDocument();
   });
 });

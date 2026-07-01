@@ -92,18 +92,26 @@ async def extract_entities(
 @router.post("/extract-batch", response_model=BatchExtractResponse, status_code=202)
 async def trigger_batch_extraction(
     request: Request,
-    document_ids: str = Query(..., alias="documentIds", description="Comma-separated document IDs"),
+    document_ids: str | None = Query(None, alias="documentIds", description="Comma-separated document IDs; omit to process all eligible documents"),
     db: AsyncSession = Depends(get_db),
 ):
     tenant_id = _get_tenant_id(request)
 
     role = _get_role(request)
-    if role != "tenant_admin":
-        raise HTTPException(status_code=403, detail="Only tenant admins can trigger batch extraction")
+    if role not in ("tenant_admin", "business_user"):
+        raise HTTPException(status_code=403, detail="Only tenant admins and business users can trigger batch extraction")
 
-    doc_ids = [d.strip() for d in document_ids.split(",") if d.strip()]
+    if document_ids:
+        doc_ids = [d.strip() for d in document_ids.split(",") if d.strip()]
+    else:
+        schema = _schema(tenant_id)
+        result = await db.execute(
+            text(f"SELECT id FROM {schema}.documents WHERE status = 'processed'")
+        )
+        doc_ids = [row[0] for row in result.fetchall()]
+
     if not doc_ids:
-        raise HTTPException(status_code=422, detail="At least one documentId is required")
+        raise HTTPException(status_code=422, detail="No eligible documents found for batch extraction")
 
     run_id = str(uuid.uuid4())
     schema = _schema(tenant_id)

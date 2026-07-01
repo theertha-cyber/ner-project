@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose up *)",
+      "Bash(npx tsc *)",
+      "Bash(netstat -ano)"
+    ]
+  }
+}

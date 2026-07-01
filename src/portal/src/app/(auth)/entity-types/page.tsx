@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from "@/components/ui";
+import { EntityTypesPage } from "@/components/entity-types/EntityTypesPage";
 
-export default function EntityTypesPage() {
-  return <div className="animate-fade-up"><PlaceholderScreen title="Entity Types" /></div>;
+export default function EntityTypesRoute() {
+  return <EntityTypesPage />;
 }

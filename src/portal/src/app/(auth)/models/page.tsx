@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from "@/components/ui";
+import { ModelRegistryPage } from "@/components/model-registry/ModelRegistryPage";
 
 export default function ModelsPage() {
-  return <div className="animate-fade-up"><PlaceholderScreen title="Models" /></div>;
+  return <ModelRegistryPage />;
 }

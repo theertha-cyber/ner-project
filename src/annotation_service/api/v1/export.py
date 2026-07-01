@@ -1,3 +1,4 @@
+import json
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -89,64 +90,73 @@ async def export_annotations(
         text_by_doc[doc_id] += (r[1] or "")
 
     doc_ids = list(text_by_doc.keys())
-    if not doc_ids:
-        return PlainTextResponse("", media_type="application/jsonl")
-
-    spans_result = await session.execute(
-        text(f"SELECT document_id, entity_type, char_start, char_end, bio_tags FROM {schema}.spans WHERE document_id = ANY(:ids) ORDER BY document_id, char_start"),
-        {"ids": doc_ids},
-    )
-    spans_rows = spans_result.fetchall()
-
-    spans_by_doc: dict[str, list[dict]] = {}
-    for sr in spans_rows:
-        d_id = sr[0]
-        if d_id not in spans_by_doc:
-            spans_by_doc[d_id] = []
-        spans_by_doc[d_id].append({
-            "entity_type": sr[1],
-            "char_start": sr[2],
-            "char_end": sr[3],
-            "bio_tags": sr[4],
-        })
-
-    import json
 
     lines: list[str] = []
-    for d_id in doc_ids:
-        text_val = text_by_doc[d_id]
-        tokens = _tokenize(text_val)
-        doc_spans = spans_by_doc.get(d_id, [])
 
-        # Per-span counter tracking how many tokens of that span have been visited
-        span_token_counters: dict[int, int] = {}
-        tags = ["O"] * len(tokens)
-        char_offset = 0
-        for idx, token in enumerate(tokens):
-            token_start = char_offset
-            token_end = char_offset + len(token)
-            char_offset = token_end
-            if char_offset < len(text_val) and text_val[char_offset] == " ":
-                char_offset += 1
-            for span_idx, span in enumerate(doc_spans):
-                if type_filter_set and span["entity_type"] not in type_filter_set:
-                    continue
-                if not (token_end > span["char_start"] and token_start < span["char_end"]):
-                    continue
-                stored = span["bio_tags"]
-                if stored:
-                    counter = span_token_counters.get(span_idx, 0)
-                    if counter < len(stored):
-                        tags[idx] = stored[counter]
-                    span_token_counters[span_idx] = counter + 1
-                else:
-                    # Fallback for legacy spans with NULL bio_tags
-                    if token_start == span["char_start"]:
-                        tags[idx] = f"B-{span['entity_type']}"
-                    elif tags[idx] == "O":
-                        tags[idx] = f"I-{span['entity_type']}"
-                break
+    if doc_ids:
+        spans_result = await session.execute(
+            text(f"SELECT document_id, entity_type, char_start, char_end, bio_tags FROM {schema}.spans WHERE document_id = ANY(:ids) ORDER BY document_id, char_start"),
+            {"ids": doc_ids},
+        )
+        spans_rows = spans_result.fetchall()
 
+        spans_by_doc: dict[str, list[dict]] = {}
+        for sr in spans_rows:
+            d_id = sr[0]
+            if d_id not in spans_by_doc:
+                spans_by_doc[d_id] = []
+            spans_by_doc[d_id].append({
+                "entity_type": sr[1],
+                "char_start": sr[2],
+                "char_end": sr[3],
+                "bio_tags": sr[4],
+            })
+
+        for d_id in doc_ids:
+            text_val = text_by_doc[d_id]
+            tokens = _tokenize(text_val)
+            doc_spans = spans_by_doc.get(d_id, [])
+
+            span_token_counters: dict[int, int] = {}
+            tags = ["O"] * len(tokens)
+            char_offset = 0
+            for idx, token in enumerate(tokens):
+                token_start = char_offset
+                token_end = char_offset + len(token)
+                char_offset = token_end
+                if char_offset < len(text_val) and text_val[char_offset] == " ":
+                    char_offset += 1
+                for span_idx, span in enumerate(doc_spans):
+                    if type_filter_set and span["entity_type"] not in type_filter_set:
+                        continue
+                    if not (token_end > span["char_start"] and token_start < span["char_end"]):
+                        continue
+                    stored = span["bio_tags"]
+                    if stored:
+                        counter = span_token_counters.get(span_idx, 0)
+                        if counter < len(stored):
+                            tags[idx] = stored[counter]
+                        span_token_counters[span_idx] = counter + 1
+                    else:
+                        if token_start == span["char_start"]:
+                            tags[idx] = f"B-{span['entity_type']}"
+                        elif tags[idx] == "O":
+                            tags[idx] = f"I-{span['entity_type']}"
+                    break
+
+            lines.append(json.dumps({"tokens": tokens, "tags": tags}))
+
+    imported_result = await session.execute(
+        text(f"SELECT tokens, tags FROM {schema}.imported_annotations ORDER BY source_file, row_index"),
+    )
+    for ir in imported_result.fetchall():
+        tokens = list(ir[0])
+        tags = list(ir[1])
+        if type_filter_set:
+            tags = [
+                t if t == "O" or (t.startswith("B-") or t.startswith("I-")) and t[2:] in type_filter_set else "O"
+                for t in tags
+            ]
         lines.append(json.dumps({"tokens": tokens, "tags": tags}))
 
     return PlainTextResponse("\n".join(lines) + "\n", media_type="application/jsonl")
