@@ -2,8 +2,8 @@ import type { BatchRun, BatchRunStatus } from "@/types/extraction";
 
 const STATUS_STYLE: Record<BatchRunStatus, string> = {
   completed: "bg-status-completed text-white",
-  running: "bg-status-running text-white",
-  queued: "bg-status-queued text-white",
+  running: "bg-warning text-white",
+  queued: "bg-warning text-white",
   failed: "bg-status-failed text-white",
 };
 

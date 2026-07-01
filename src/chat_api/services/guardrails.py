@@ -1,6 +1,6 @@
 import re
 import logging
-from src.chat_api.api.v1.schemas import Source, ChatResponse
+from src.chat_api.api.v1.schemas import Source, Citation, ChatResponse
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class GuardrailService:
             return "cross_tenant"
         return self.check_blocked_question(message)
 
-    def enforce_sources(self, reply: str, sources: list[Source]) -> tuple[str, list[Source]]:
+    def enforce_sources(self, reply: str, sources: list[Source | Citation]) -> tuple[str, list[Source | Citation]]:
         if not sources:
             logger.warning("Guardrail: empty sources detected, returning fallback reply")
             return FALLBACK_REPLY, []

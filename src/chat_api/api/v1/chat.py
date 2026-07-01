@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
 from src.shared.exceptions import NotFoundError
-from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, ConversationSummary, ConversationDetail, MessageResponse
+from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator
 from src.chat_api.services.guardrails import GuardrailService
 from src.chat_api.services.rate_limiter import rate_limiter, INTERNAL_RATE_LIMIT, INTERNAL_WINDOW
@@ -105,6 +105,45 @@ async def chat(
             conversation_id=conversation_id,
             disclaimer=disclaimer,
         ).model_dump(),
+        headers=headers,
+    )
+
+
+@router.post("/conversations", status_code=201)
+async def create_conversation(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    tenant_id = getattr(request.state, "tenant_id", None)
+    user_id = getattr(request.state, "user_id", None)
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context not available")
+
+    allowed = rate_limiter.check(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
+    if not allowed[0]:
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "RATE_LIMIT_EXCEEDED", "message": "Rate limit exceeded", "retry_after": allowed[3]},
+            headers={"Retry-After": str(allowed[3]), "X-RateLimit-Limit": str(INTERNAL_RATE_LIMIT), "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": str(allowed[2])},
+        )
+
+    schema = _schema(tenant_id)
+    conversation_id = str(uuid.uuid4())
+    result = await session.execute(
+        text(f"INSERT INTO {schema}.conversations (id, tenant_id, user_id) VALUES (:id, :tid, :uid) RETURNING created_at"),
+        {"id": conversation_id, "tid": tenant_id, "uid": user_id},
+    )
+    created_at = result.fetchone()[0]
+    await session.commit()
+
+    headers = rate_limiter.get_headers(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
+    return JSONResponse(
+        content=ConversationCreateResponse(
+            id=conversation_id,
+            title=None,
+            created_at=str(created_at),
+        ).model_dump(),
+        status_code=201,
         headers=headers,
     )
 

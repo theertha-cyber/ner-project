@@ -1,6 +1,9 @@
 {
   "/login/page": "app/login/page.js",
-  "/(auth)/dashboard/page": "app/(auth)/dashboard/page.js",
   "/(auth)/extractions/page": "app/(auth)/extractions/page.js",
+  "/(auth)/annotation/page": "app/(auth)/annotation/page.js",
+  "/(auth)/chat/page": "app/(auth)/chat/page.js",
+  "/(auth)/models/page": "app/(auth)/models/page.js",
+  "/(auth)/entity-types/page": "app/(auth)/entity-types/page.js",
   "/(auth)/documents/page": "app/(auth)/documents/page.js"
 }

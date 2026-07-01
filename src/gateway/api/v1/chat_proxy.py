@@ -43,6 +43,11 @@ async def proxy_chat(request: Request):
     return await _proxy("POST", "/api/v1/chat", request)
 
 
+@router.post("/chat/conversations")
+async def proxy_create_conversation(request: Request):
+    return await _proxy("POST", "/api/v1/chat/conversations", request)
+
+
 @router.get("/chat/conversations")
 async def proxy_list_conversations(request: Request):
     return await _proxy("GET", "/api/v1/chat/conversations", request)

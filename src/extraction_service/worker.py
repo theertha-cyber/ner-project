@@ -52,9 +52,9 @@ def _get_active_model_version(tenant_id: str) -> str | None:
     with engine.connect() as conn:
         result = conn.execute(
             text(f"""
-                SELECT version_number FROM {schema}.model_versions
+                SELECT version FROM {schema}.model_versions
                 WHERE tenant_id = :tenant_id AND status = 'promoted'
-                ORDER BY version_number DESC
+                ORDER BY version DESC
                 LIMIT 1
             """),
             {"tenant_id": tenant_id},

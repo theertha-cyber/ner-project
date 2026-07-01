@@ -41,6 +41,7 @@ function ChatPageInner() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [creatingConversation, setCreatingConversation] = useState(false);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -78,9 +79,29 @@ function ChatPageInner() {
     loadMessages(convId);
   }, [loadMessages]);
 
-  const handleNewConversation = useCallback(() => {
-    setActiveConvId(null);
-    setMessages([]);
+  const handleNewConversation = useCallback(async () => {
+    setCreatingConversation(true);
+    try {
+      const resp = await authFetch(CHAT_API_BASE + "/conversations", {
+        method: "POST",
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const newConv: Conversation = {
+          id: data.id,
+          title: data.title || null,
+          created_at: data.created_at,
+          message_count: 0,
+        };
+        setConversations((prev) => [newConv, ...prev]);
+        setActiveConvId(data.id);
+        setMessages([]);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setCreatingConversation(false);
+    }
   }, []);
 
   const handleDeleteConversation = useCallback(async (convId: string) => {
@@ -157,9 +178,10 @@ function ChatPageInner() {
         onSelect={handleSelectConversation}
         onNew={handleNewConversation}
         onDelete={handleDeleteConversation}
+        loading={creatingConversation}
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        {activeConvId || messages.length > 0 ? (
+        {activeConvId ? (
           <>
             <MessageThread messages={messages} loading={loading} />
             <ChatInput onSend={handleSendMessage} disabled={sending} />

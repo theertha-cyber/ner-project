@@ -4,7 +4,7 @@ import asyncio
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
-from src.chat_api.api.v1.schemas import Source
+from src.chat_api.api.v1.schemas import Source, Citation
 from src.chat_api.services.sql_generator import SQLGenerator
 from src.chat_api.services.embedding_service import EmbeddingService
 from src.chat_api.services.ner_client import NERClient
@@ -39,7 +39,7 @@ class RAGOrchestrator:
             self.llm_model = "gpt-4o"
 
     async def execute(self, message: str, session: AsyncSession, schema: str, tenant_id: str,
-                      jwt_token: str | None = None, conversation_context: list[dict] | None = None) -> tuple[str, list[Source]]:
+                      jwt_token: str | None = None, conversation_context: list[dict] | None = None) -> tuple[str, list[Source | Citation]]:
         blocked_reason = self.guardrails.check_blocked_question_type(message, tenant_id)
         if blocked_reason:
             decline_messages = {
@@ -104,6 +104,8 @@ class RAGOrchestrator:
         sources.extend(vector_sources[:3])
         sources.extend(ner_sources[:5])
 
+        sources = await self._enrich_citations(sources, session, schema)
+
         context_parts = []
         if sql_results:
             context_parts.append(f"Entity data: {json.dumps(sql_results[:10], default=str)}")
@@ -151,3 +153,35 @@ class RAGOrchestrator:
         except Exception as e:
             logger.warning("Vector search failed: %s", str(e))
             return []
+
+    async def _enrich_citations(self, sources: list[Source], session: AsyncSession, schema: str) -> list[Source | Citation]:
+        if not sources:
+            return []
+
+        doc_ids = {s.document_id for s in sources if s.document_id}
+        doc_map: dict[str, str] = {}
+        if doc_ids:
+            try:
+                result = await session.execute(
+                    text(f"SELECT id, filename FROM {schema}.documents WHERE id = ANY(:ids)"),
+                    {"ids": list(doc_ids)},
+                )
+                for row in result.fetchall():
+                    doc_map[row[0]] = row[1]
+            except Exception as e:
+                logger.warning("Citation enrichment: document name resolution failed: %s", e)
+
+        enriched: list[Source | Citation] = []
+        for s in sources:
+            doc_name = doc_map.get(s.document_id) if s.document_id else None
+            context = s.chunk_text if s.source_type == "document_chunk" else None
+            enriched.append(Citation(
+                document_name=doc_name,
+                document_id=s.document_id,
+                entity_type=s.entity_type,
+                entity_value=s.value,
+                confidence=s.confidence,
+                context_snippet=context,
+                source_type=s.source_type,
+            ))
+        return enriched

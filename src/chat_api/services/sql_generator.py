@@ -49,6 +49,7 @@ Only use tables and columns from the whitelist below.
 Always include a LIMIT clause.
 Never use DDL, INSERT, UPDATE, DELETE, DROP, ALTER, or GRANT.
 Never use UNION, subqueries without whitelisted tables, or JOINs on non-whitelisted tables.
+When querying `extracted_entities`, you SHOULD JOIN with `documents` ON documents.id = extracted_entities.document_id and include `d.filename AS document_name` in the SELECT clause.
 
 Available tables and columns:
 {tables_desc}

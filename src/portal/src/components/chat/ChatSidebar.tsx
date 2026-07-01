@@ -13,9 +13,10 @@ interface ChatSidebarProps {
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  loading?: boolean;
 }
 
-export function ChatSidebar({ conversations, activeConvId, onSelect, onNew, onDelete }: ChatSidebarProps) {
+export function ChatSidebar({ conversations, activeConvId, onSelect, onNew, onDelete, loading }: ChatSidebarProps) {
   return (
     <div
       style={{
@@ -29,19 +30,20 @@ export function ChatSidebar({ conversations, activeConvId, onSelect, onNew, onDe
       <div style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>
         <button
           onClick={onNew}
+          disabled={loading}
           style={{
             width: "100%",
             padding: "10px 16px",
-            background: "#2563eb",
+            background: loading ? "#93c5fd" : "#2563eb",
             color: "white",
             border: "none",
             borderRadius: 8,
-            cursor: "pointer",
+            cursor: loading ? "not-allowed" : "pointer",
             fontWeight: 600,
             fontSize: 14,
           }}
         >
-          + New conversation
+          {loading ? "Creating..." : "+ New conversation"}
         </button>
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>

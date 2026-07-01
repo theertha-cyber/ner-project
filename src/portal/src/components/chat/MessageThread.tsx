@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { CitationCard } from "./CitationCard";
 
 interface Source {
   source_type: string;
@@ -13,11 +14,22 @@ interface Source {
   confidence?: number;
 }
 
+interface Citation {
+  document_name?: string | null;
+  document_id?: string | null;
+  entity_type?: string | null;
+  entity_value?: string | null;
+  confidence?: number | null;
+  context_snippet?: string | null;
+  page_number?: number | null;
+  source_type?: string;
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  sources?: Source[];
+  sources?: (Source | Citation)[];
   created_at: string;
 }
 
@@ -26,84 +38,23 @@ interface MessageThreadProps {
   loading: boolean;
 }
 
-function SourceCitation({ source }: { source: Source }) {
-  const [expanded, setExpanded] = useState(false);
+function isCitation(s: Source | Citation): s is Citation {
+  return "document_name" in s;
+}
 
+function SourceCitation({ source }: { source: Source }) {
   return (
-    <div
-      style={{
-        marginTop: 4,
-        fontSize: 12,
-        color: "#6b7280",
+    <CitationCard
+      citation={{
+        document_name: null,
+        document_id: source.document_id,
+        entity_type: source.entity_type,
+        entity_value: source.value,
+        confidence: source.confidence,
+        context_snippet: source.source_type === "document_chunk" ? source.chunk_text : null,
+        source_type: source.source_type,
       }}
-    >
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          background: "none",
-          border: "none",
-          color: "#2563eb",
-          cursor: "pointer",
-          padding: 0,
-          fontSize: 12,
-          textDecoration: "underline",
-        }}
-      >
-        {expanded ? "Hide" : "Show"} source: {source.source_type}
-        {source.document_id ? ` (${source.document_id.slice(0, 8)}...)` : ""}
-      </button>
-      {expanded && (
-        <div
-          style={{
-            marginTop: 4,
-            padding: "6px 8px",
-            background: "#f3f4f6",
-            borderRadius: 6,
-            fontSize: 12,
-            lineHeight: 1.4,
-          }}
-        >
-          {source.source_type === "document_chunk" && source.chunk_text && (
-            <div>
-              <strong>Text:</strong> {source.chunk_text.slice(0, 200)}
-              {source.chunk_text.length > 200 ? "..." : ""}
-              <br />
-              {source.relevance_score !== undefined && (
-                <span>
-                  <strong>Relevance:</strong> {(source.relevance_score * 100).toFixed(0)}%
-                </span>
-              )}
-            </div>
-          )}
-          {source.source_type === "sql" && source.value && (
-            <div>
-              <strong>Data:</strong> {source.value.slice(0, 200)}
-            </div>
-          )}
-          {source.source_type === "ner" && (
-            <div>
-              {source.entity_type && (
-                <span>
-                  <strong>Type:</strong> {source.entity_type}
-                  <br />
-                </span>
-              )}
-              {source.value && (
-                <span>
-                  <strong>Value:</strong> {source.value}
-                  <br />
-                </span>
-              )}
-              {source.confidence !== undefined && (
-                <span>
-                  <strong>Confidence:</strong> {(source.confidence * 100).toFixed(0)}%
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    />
   );
 }
 
@@ -114,10 +65,26 @@ export function MessageThread({ messages, loading }: MessageThreadProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const empty = messages.length === 0;
+
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
       {loading && (
         <div style={{ textAlign: "center", padding: 16, color: "#9ca3af" }}>Loading...</div>
+      )}
+      {empty && !loading && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            color: "#9ca3af",
+            fontSize: 14,
+          }}
+        >
+          Send a message to start
+        </div>
       )}
       {messages.map((msg) => (
         <div
@@ -145,9 +112,13 @@ export function MessageThread({ messages, loading }: MessageThreadProps) {
             </div>
             {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
               <div style={{ marginTop: 4 }}>
-                {msg.sources.map((source, i) => (
-                  <SourceCitation key={i} source={source} />
-                ))}
+                {msg.sources.map((source, i) =>
+                  isCitation(source) ? (
+                    <CitationCard key={i} citation={source} />
+                  ) : (
+                    <SourceCitation key={i} source={source} />
+                  )
+                )}
               </div>
             )}
           </div>

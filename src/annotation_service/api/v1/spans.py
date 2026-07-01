@@ -55,7 +55,7 @@ def _compute_bio_tags(doc_text: str, char_start: int, char_end: int, entity_type
 async def validate_entity_type(session: AsyncSession, tenant_id: str, entity_type: str) -> None:
     from fastapi import HTTPException
     result = await session.execute(
-        text("SELECT id FROM public.entity_definitions WHERE tenant_id = :tenant_id AND name = :name LIMIT 1"),
+        text("SELECT id FROM public.entity_definitions WHERE tenant_id = :tenant_id AND LOWER(name) = LOWER(:name) LIMIT 1"),
         {"tenant_id": tenant_id, "name": entity_type},
     )
     if not result.fetchone():

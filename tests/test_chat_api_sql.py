@@ -63,3 +63,13 @@ class TestSQLValidation:
         long_sql = "SELECT * FROM extracted_entities WHERE 1=1" + " AND x=1" * 1000 + " LIMIT 1"
         with pytest.raises(SQLValidationError):
             self.generator.validate_sql(long_sql)
+
+
+class TestSQLPrompt:
+    def test_prompt_includes_document_join_instruction(self):
+        import inspect
+        from src.chat_api.services import sql_generator as mod
+        source = inspect.getsource(mod)
+        assert "SHOULD" in source, "Prompt must use SHOULD for JOIN instruction"
+        assert "d.filename AS document_name" in source or "d.filename" in source
+        assert "documents" in source.lower()

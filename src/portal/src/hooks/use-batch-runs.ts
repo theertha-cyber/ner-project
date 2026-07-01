@@ -32,9 +32,22 @@ export function useBatchRuns() {
   }
 
   useEffect(() => {
+    authFetch("/api/v1/extract-batch")
+      .then((r) => r.json())
+      .then((data) => {
+        const loaded: BatchRun[] = data.runs ?? [];
+        setRuns(loaded);
+        loaded
+          .filter((r) => r.status === "running" || r.status === "queued")
+          .forEach((r) => startPolling(r.run_id));
+      })
+      .catch(() => {});
+
     return () => {
       Object.values(intervalsRef.current).forEach(clearInterval);
     };
+  // startPolling is stable (defined in module scope relative to the ref) — no dep needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const triggerBatch = useCallback(async () => {

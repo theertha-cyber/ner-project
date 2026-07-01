@@ -118,12 +118,13 @@ async def validate_entity_types(session: AsyncSession, tenant_id: str, rows: lis
     if not unique_types:
         return
 
+    lowered = [t.lower() for t in unique_types]
     result = await session.execute(
-        text("SELECT name FROM public.entity_definitions WHERE tenant_id = :tenant_id AND name = ANY(:names)"),
-        {"tenant_id": tenant_id, "names": list(unique_types)},
+        text("SELECT name FROM public.entity_definitions WHERE tenant_id = :tenant_id AND LOWER(name) = ANY(:lowered)"),
+        {"tenant_id": tenant_id, "lowered": lowered},
     )
-    known = {row[0] for row in result.fetchall()}
-    unknown = unique_types - known
+    known_lower = {row[0].lower() for row in result.fetchall()}
+    unknown = {t for t in unique_types if t.lower() not in known_lower}
     if unknown:
         raise HTTPException(
             status_code=422,
