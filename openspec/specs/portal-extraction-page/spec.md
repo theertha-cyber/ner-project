@@ -65,15 +65,22 @@ The Playground tab SHALL render a two-column grid layout (`grid-template-columns
 
 ### Requirement: Batch Runs Tab — Batch Extraction Management
 
-The Batch Runs tab SHALL render a two-column layout with a 340px-wide left column listing batch run cards and a right detail panel. Above the columns, the tab SHALL show a label "POST /api/v1/extract-batch · async via Celery" on the left and a "⊕ New batch run" primary button on the right. Each batch run card in the left list SHALL display: the run ID in JetBrains Mono, a status pill (completed / running / queued / failed), a progress bar showing processed/total percentage, and a footer row with "N% docs · model vM" and the start timestamp. The selected run card SHALL have a primary-colored border. The right detail panel SHALL display: the run ID, status pill, and model version label in a header row; a large percentage number showing processed%; a progress bar; and a 4-cell stats grid (TOTAL, PROCESSED, SKIPPED, FAILED) with color-coded values (`var(--good)` for PROCESSED, `var(--warn)` for SKIPPED, `var(--bad)` for FAILED). Clicking "New batch run" SHALL POST to `/api/v1/extract-batch` (without document IDs to process all eligible documents) and add the new run to the top of the list.
+The Batch Runs tab SHALL render a two-column layout with a 340px-wide left column listing batch run cards and a right detail panel. Above the columns, the tab SHALL show a label "POST /api/v1/extract-batch · async via Celery" on the left and a "⊕ New batch run" primary button on the right. Each batch run card in the left list SHALL display: the run ID in JetBrains Mono, a status pill (completed / running / queued / failed), a progress bar showing processed/total percentage, and a footer row with "N% docs · model vM" and the start timestamp. The selected run card SHALL have a primary-colored border. The right detail panel SHALL display: the run ID, status pill, and model version label in a header row; a large percentage number showing processed%; a progress bar; and a 4-cell stats grid (TOTAL, PROCESSED, SKIPPED, FAILED) with color-coded values (`var(--good)` for PROCESSED, `var(--warn)` for SKIPPED, `var(--bad)` for FAILED). Clicking "New batch run" SHALL POST to `/api/v1/extract-batch` (without document IDs to process all eligible documents) and add the new run to the top of the list. On mount, the tab SHALL fetch run history from `GET /api/v1/extract-batch` so that previously triggered runs remain visible across page reloads.
 
 #### Scenario: Batch Runs tab lists existing runs
 
-- **GIVEN** the user switches to the Batch Runs tab
+- **GIVEN** the user switches to the Batch Runs tab, or reloads the page while on it
 - **WHEN** the tab mounts
-- **THEN** a `GET /api/v1/extract-batch` request SHALL be sent (or the list SHALL be derived from available run data)
-- **AND** each batch run SHALL appear as a card showing ID, status, progress bar, and footer metadata
+- **THEN** a `GET /api/v1/extract-batch` request SHALL be sent
+- **AND** each run returned in the response's `runs` array SHALL appear as a card showing ID, status, progress bar, and footer metadata
 - **AND** the most recent run SHALL be selected by default and its detail shown in the right panel
+
+#### Scenario: Run history persists across page reload
+
+- **GIVEN** a batch run previously completed and the page is reloaded
+- **WHEN** the Batch Runs tab mounts after reload
+- **THEN** the completed run SHALL appear in the run list
+- **AND** the run list SHALL NOT show the empty state ("No batch runs yet")
 
 #### Scenario: Selecting a batch run shows detail
 
