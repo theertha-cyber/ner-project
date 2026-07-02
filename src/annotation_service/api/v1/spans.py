@@ -287,32 +287,33 @@ async def prelabel_document(
     doc_text = row[1] or ""
 
     result = await session.execute(
-        text("SELECT name, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tenant_id"),
+        text("SELECT name, examples, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tenant_id"),
         {"tenant_id": tenant_id},
     )
     entity_rows = result.fetchall()
 
-    label_mapping = {}
-    for er in entity_rows:
-        mapping = er[1]
-        if mapping and isinstance(mapping, dict):
-            for model_label, tenant_labels in mapping.items():
-                if isinstance(tenant_labels, list):
-                    for tl in tenant_labels:
-                        label_mapping[tl] = er[0]
-                elif isinstance(tenant_labels, str):
-                    label_mapping[tenant_labels] = er[0]
-
     import re
+    keyword_to_type = {}
+    for er in entity_rows:
+        entity_name = er[0]
+        examples = er[1]
+        if examples is None or not isinstance(examples, list) or len(examples) == 0:
+            continue
+        for ex in examples:
+            if ex is None or not isinstance(ex, str) or len(ex.strip()) < 3:
+                continue
+            keyword_to_type[ex.strip()] = entity_name
+
+    sorted_pairs = sorted(keyword_to_type.items(), key=lambda x: len(x[0]), reverse=True)
     suggested = []
-    seen_positions = set()
-    for keyword, ent_type in label_mapping.items():
-        for match in re.finditer(re.escape(keyword), doc_text):
+    kept_ranges = []
+    for keyword, ent_type in sorted_pairs:
+        for match in re.finditer(re.escape(keyword), doc_text, re.IGNORECASE):
             start = match.start()
             end = match.end()
-            if (start, end, ent_type) in seen_positions:
+            if any(start < existing_end and end > existing_start for existing_start, existing_end in kept_ranges):
                 continue
-            seen_positions.add((start, end, ent_type))
+            kept_ranges.append((start, end))
             suggested.append({
                 "id": generate_uuid(),
                 "entity_type": ent_type,

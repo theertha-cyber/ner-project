@@ -35,6 +35,14 @@ class BatchRunStatus(BaseModel):
     model_version: str | None = None
 
 
+class BatchRunListItem(BatchRunStatus):
+    run_id: str
+
+
+class BatchRunListResponse(BaseModel):
+    runs: list[BatchRunListItem]
+
+
 class EntityQueryParams(BaseModel):
     documentId: str | None = None
     type: str | None = None

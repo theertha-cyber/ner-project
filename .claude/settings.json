@@ -3,7 +3,8 @@
     "allow": [
       "Bash(docker-compose up *)",
       "Bash(npx tsc *)",
-      "Bash(netstat -ano)"
+      "Bash(netstat -ano)",
+      "Bash(docker compose *)"
     ]
   }
 }

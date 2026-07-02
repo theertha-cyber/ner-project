@@ -9,9 +9,11 @@ from src.extraction_service.api.v1.schemas import (
     ExtractedEntity,
     BatchExtractResponse,
     BatchRunStatus,
+    BatchRunListItem,
+    BatchRunListResponse,
 )
 from src.extraction_service.services.extraction_engine import infer
-from src.extraction_service.services.entity_store import get_extraction_run
+from src.extraction_service.services.entity_store import get_extraction_run, list_extraction_runs
 from src.extraction_service.dependencies import get_db
 from src.shared.config import settings
 
@@ -140,6 +142,33 @@ async def trigger_batch_extraction(
     )
 
     return BatchExtractResponse(run_id=run_id, status="queued")
+
+
+@router.get("/extract-batch", response_model=BatchRunListResponse)
+async def list_batch_runs(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = _get_tenant_id(request)
+    _get_role(request)
+
+    runs = await list_extraction_runs(db, tenant_id)
+    return BatchRunListResponse(
+        runs=[
+            BatchRunListItem(
+                run_id=run["id"],
+                status=run.get("status", "unknown"),
+                total_documents=run.get("total_documents"),
+                processed_count=run.get("processed_count"),
+                skipped_count=run.get("skipped_count"),
+                failed_count=run.get("failed_count"),
+                completed_at=run.get("completed_at"),
+                started_at=run.get("started_at"),
+                model_version=run.get("model_version"),
+            )
+            for run in runs
+        ]
+    )
 
 
 @router.get("/extract-batch/{run_id}", response_model=BatchRunStatus)

@@ -50,6 +50,23 @@ async def get_extraction_run(
     return dict(row._mapping)
 
 
+async def list_extraction_runs(
+    db: AsyncSession,
+    tenant_id: str,
+    limit: int = 50,
+) -> list[dict]:
+    schema = _schema(tenant_id)
+    result = await db.execute(
+        text(f"""
+            SELECT * FROM {schema}.extraction_runs
+            ORDER BY started_at DESC
+            LIMIT :limit
+        """),
+        {"limit": limit},
+    )
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
 async def find_existing_run(
     db: AsyncSession,
     tenant_id: str,

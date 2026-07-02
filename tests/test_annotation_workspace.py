@@ -178,10 +178,10 @@ async def seeded_entity_types(seeded_tenant):
     async with engine.begin() as conn:
         await conn.execute(
             text("""
-                INSERT INTO public.entity_definitions (id, tenant_id, name, base_label_mapping)
-                VALUES (:id1, :tid, 'PER', '{"PER": ["John Doe", "Alice"]}'),
-                       (:id2, :tid, 'ORG', '{"ORG": ["Acme Corp"]}'),
-                       (:id3, :tid, 'EMAIL', '{"EMAIL": ["test@example.com"]}')
+                INSERT INTO public.entity_definitions (id, tenant_id, name, examples, base_label_mapping)
+                VALUES (:id1, :tid, 'PER', '["John Doe", "Alice"]', '{"PER": ["John Doe", "Alice"]}'),
+                       (:id2, :tid, 'ORG', '["Acme Corp"]', '{"ORG": ["Acme Corp"]}'),
+                       (:id3, :tid, 'EMAIL', '["test@example.com"]', '{"EMAIL": ["test@example.com"]}')
             """),
             {"id1": str(uuid.uuid4()), "id2": str(uuid.uuid4()), "id3": str(uuid.uuid4()), "tid": tid},
         )
@@ -347,9 +347,136 @@ async def test_7_6_prelabel_generates_suggestions(seeded_document, client):
 
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) > 0
-    for s in data:
-        assert s["confidence"] < 1.0
+    assert len(data) >= 2
+    spans_by_type = {s["entity_type"]: s for s in data}
+    assert "PER" in spans_by_type
+    assert "ORG" in spans_by_type
+    assert spans_by_type["PER"]["text"] == "John Doe"
+    assert spans_by_type["PER"]["char_start"] == 0
+    assert spans_by_type["PER"]["char_end"] == 8
+    assert spans_by_type["PER"]["confidence"] == 0.85
+    assert spans_by_type["ORG"]["text"] == "Acme Corp"
+    assert spans_by_type["ORG"]["char_start"] == 18
+    assert spans_by_type["ORG"]["char_end"] == 27
+    assert spans_by_type["ORG"]["confidence"] == 0.85
+
+
+@pytest.mark.asyncio
+async def test_prelabel_case_insensitive(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    schema = seeded_tenant["schema"]
+    doc_id = str(uuid.uuid4())
+    token = make_token(tid)
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("""
+                INSERT INTO public.entity_definitions (id, tenant_id, name, examples, base_label_mapping)
+                VALUES (:id1, :tid, 'PER', '["John Doe", "Alice"]', '{"PER": ["John Doe", "Alice"]}'),
+                       (:id2, :tid, 'ORG', '["Acme Corp"]', '{"ORG": ["Acme Corp"]}')
+            """),
+            {"id1": str(uuid.uuid4()), "id2": str(uuid.uuid4()), "tid": tid},
+        )
+        await conn.execute(
+            text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status) VALUES (:id, :tid, 'test.txt', 'text/plain', 100, 'processed')"),
+            {"id": doc_id, "tid": tid},
+        )
+        await conn.execute(
+            text(f'INSERT INTO {schema}.document_text_spans (id, document_id, span_index, "text", char_start, char_end, page_number) VALUES (:sid, :doc_id, 0, :txt, 0, :length, 1)'),
+            {"sid": str(uuid.uuid4()), "doc_id": doc_id, "txt": "JOHN DOE works at ACME CORP", "length": 28},
+        )
+    await engine.dispose()
+
+    resp = await client.post(
+        f"/api/v1/documents/{doc_id}/prelabel",
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) >= 2
+    spans_by_type = {s["entity_type"]: s for s in data}
+    assert "PER" in spans_by_type
+    assert "ORG" in spans_by_type
+    assert spans_by_type["PER"]["text"] == "JOHN DOE"
+    assert spans_by_type["ORG"]["text"] == "ACME CORP"
+
+
+@pytest.mark.asyncio
+async def test_prelabel_longest_match_wins(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    schema = seeded_tenant["schema"]
+    doc_id = str(uuid.uuid4())
+    token = make_token(tid)
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("""
+                INSERT INTO public.entity_definitions (id, tenant_id, name, examples, base_label_mapping)
+                VALUES (:id1, :tid, 'organization', '["Apple Inc", "Apple"]', '{"ORG": ["Apple Inc", "Apple"]}')
+            """),
+            {"id1": str(uuid.uuid4()), "tid": tid},
+        )
+        await conn.execute(
+            text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status) VALUES (:id, :tid, 'test.txt', 'text/plain', 100, 'processed')"),
+            {"id": doc_id, "tid": tid},
+        )
+        await conn.execute(
+            text(f'INSERT INTO {schema}.document_text_spans (id, document_id, span_index, "text", char_start, char_end, page_number) VALUES (:sid, :doc_id, 0, :txt, 0, :length, 1)'),
+            {"sid": str(uuid.uuid4()), "doc_id": doc_id, "txt": "Apple Inc is based here", "length": 22},
+        )
+    await engine.dispose()
+
+    resp = await client.post(
+        f"/api/v1/documents/{doc_id}/prelabel",
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["text"] == "Apple Inc"
+    assert data[0]["char_start"] == 0
+    assert data[0]["char_end"] == 9
+
+
+@pytest.mark.asyncio
+async def test_prelabel_empty_examples_skipped(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    schema = seeded_tenant["schema"]
+    doc_id = str(uuid.uuid4())
+    token = make_token(tid)
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("""
+                INSERT INTO public.entity_definitions (id, tenant_id, name, examples, base_label_mapping)
+                VALUES (:id1, :tid, 'PER', '[]', '{"PER": ["John Doe"]}'),
+                       (:id2, :tid, 'ORG', NULL, '{"ORG": ["Acme Corp"]}')
+            """),
+            {"id1": str(uuid.uuid4()), "id2": str(uuid.uuid4()), "tid": tid},
+        )
+        await conn.execute(
+            text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status) VALUES (:id, :tid, 'test.txt', 'text/plain', 100, 'processed')"),
+            {"id": doc_id, "tid": tid},
+        )
+        await conn.execute(
+            text(f'INSERT INTO {schema}.document_text_spans (id, document_id, span_index, "text", char_start, char_end, page_number) VALUES (:sid, :doc_id, 0, :txt, 0, :length, 1)'),
+            {"sid": str(uuid.uuid4()), "doc_id": doc_id, "txt": "John Doe works at Acme Corp", "length": 27},
+        )
+    await engine.dispose()
+
+    resp = await client.post(
+        f"/api/v1/documents/{doc_id}/prelabel",
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 0
 
 
 @pytest.mark.asyncio
@@ -375,12 +502,16 @@ async def test_7_7_prelabel_replaces_existing(seeded_document, client):
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) > 0
+    for s in data:
+        assert not (s["char_start"] == 0 and s["char_end"] == 3 and s["text"] == "Joh"), "old suggestion should be gone"
 
     engine2 = create_async_engine(settings.database_url, poolclass=NullPool)
     async with engine2.connect() as conn:
         count = (await conn.execute(text(f"SELECT COUNT(*) FROM {schema}.suggested_spans WHERE document_id = :doc_id"), {"doc_id": doc_id})).scalar()
+        old_exists = (await conn.execute(text(f"SELECT COUNT(*) FROM {schema}.suggested_spans WHERE document_id = :doc_id AND char_start = 0 AND char_end = 3"), {"doc_id": doc_id})).scalar()
     await engine2.dispose()
     assert count == len(data)
+    assert old_exists == 0, "old suggestion should be deleted from database"
 
 
 @pytest.mark.asyncio

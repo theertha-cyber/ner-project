@@ -42,6 +42,11 @@ async def proxy_batch(request: Request):
     return await _proxy("POST", "/api/v1/extract-batch", request, body)
 
 
+@router.get("/extract-batch")
+async def proxy_batch_list(request: Request):
+    return await _proxy("GET", "/api/v1/extract-batch", request)
+
+
 @router.get("/extract-batch/{run_id}")
 async def proxy_batch_status(run_id: str, request: Request):
     return await _proxy("GET", f"/api/v1/extract-batch/{run_id}", request)
