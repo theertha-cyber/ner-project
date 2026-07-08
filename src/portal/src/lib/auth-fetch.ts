@@ -34,6 +34,7 @@ function resolveUrl(url: string): string {
   if (/^\/api\/v1\/documents\/[^/]+\/(spans|prelabel)/.test(url))
     return `${ANNOTATION_URL}${url}`;
   if (url.startsWith("/api/v1/annotation")) return `${ANNOTATION_URL}${url}`;
+  if (url.startsWith("/api/v1/imported-annotations")) return `${ANNOTATION_URL}${url}`;
   if (url.startsWith("/api/v1/document")) return `${DOCUMENT_URL}${url}`;
   if (url.startsWith("/api/v1/training") || url.startsWith("/api/v1/models"))
     return `${TRAINING_URL}${url}`;

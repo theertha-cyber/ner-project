@@ -24,6 +24,7 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "dashboard", icon: "⊞", label: "Dashboard", href: "/dashboard", roles: ["tenant_admin"] },
         { id: "documents", icon: "◻", label: "Documents", href: "/documents", roles: ["tenant_admin"] },
         { id: "annotation", icon: "✎", label: "Annotation", href: "/annotation", roles: ["tenant_admin"] },
+        { id: "imported-documents", icon: "⬌", label: "Imported Docs", href: "/imported-documents", roles: ["tenant_admin"] },
         { id: "entity-types", icon: "◇", label: "Entity Types", href: "/entity-types", roles: ["tenant_admin"] },
         { id: "training-jobs", icon: "↻", label: "Training Jobs", href: "/training-jobs", roles: ["tenant_admin"], badge: 1 },
         { id: "models", icon: "◈", label: "Model Registry", href: "/models", roles: ["tenant_admin"] },
@@ -36,6 +37,7 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
       return [
         { id: "dashboard", icon: "⊞", label: "My Work", href: "/dashboard", roles: ["annotator"] },
         { id: "annotation", icon: "✎", label: "Annotation", href: "/annotation", roles: ["annotator"], badge: 4 },
+        { id: "imported-documents", icon: "⬌", label: "Imported Docs", href: "/imported-documents", roles: ["annotator"] },
         { id: "documents", icon: "◻", label: "Documents", href: "/documents", roles: ["annotator"] },
       ];
     case "business_user":
@@ -57,6 +59,7 @@ export const SCREEN_TITLES: Record<string, [title: string, path: string]> = {
   "training-jobs": ["Training Jobs", "/training-jobs"],
   models: ["Models", "/models"],
   documents: ["Documents", "/documents"],
+  "imported-documents": ["Imported Documents", "/imported-documents"],
   "entity-types": ["Entity Types", "/entity-types"],
   users: ["Users", "/users"],
   extractions: ["Extractions", "/extractions"],

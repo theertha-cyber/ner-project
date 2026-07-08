@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir poetry && \
     poetry config virtualenvs.create false && \
     poetry install --no-root --without dev --no-interaction
 
+COPY tenant_schema_ddl.py .
 COPY src/ src/
 COPY alembic/ alembic/
 COPY alembic.ini .
