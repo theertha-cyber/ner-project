@@ -126,4 +126,28 @@ describe("JobActions", () => {
     fireEvent.click(screen.getByText("Cancel"));
     expect(mockFetch).not.toHaveBeenCalled();
   });
+
+  it("approves using the job's own tenant_id, not the viewer's tenant, when they differ", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { role: "system_admin", tenantId: "", userId: "u1", email: "a@b.com", tenantSlug: null },
+      getAccessToken: vi.fn(),
+      setAccessToken: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ id: "job-1", status: "queued" }), { status: 200 }),
+    );
+
+    render(
+      <JobActions jobId="job-1" status="pending_approval" tenantId="tenant-b-owns-this-job" />,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByText("Approve & queue"));
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    const callUrl = String(mockFetch.mock.calls[0][0]);
+    expect(callUrl).toContain("tenant_id=tenant-b-owns-this-job");
+  });
 });

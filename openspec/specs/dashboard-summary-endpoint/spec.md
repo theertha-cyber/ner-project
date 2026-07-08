@@ -15,6 +15,8 @@ The gateway SHALL expose `GET /api/v1/dashboard/summary` (requires authenticatio
 
 Each downstream call SHALL use a short timeout (5s connect, 10s read). If a service is unavailable or returns an error, its data fields SHALL be `null` and the response SHALL include a top-level `sources` object mapping each service name to `true` (data retrieved) or `false` (unavailable/not applicable).
 
+For `system_admin`, several stats are computed by iterating a raw SQL query across every active tenant's Postgres schema (e.g. pending-approval job counts, promoted model F1) on a single shared database session. If a query against one tenant's schema fails, the system SHALL recover the session (e.g. via rollback) before issuing the next query, so that a single tenant schema's failure SHALL NOT prevent queries against other tenant schemas, or other metrics computed later in the same request, from succeeding. A schema-level failure SHALL be excluded from the aggregate (as if that tenant contributed no data) rather than aborting the whole computation.
+
 The response SHALL conform to the `DashboardData` TypeScript type matching the mockup's `dashData(role)` shape:
 - `kicker` (string) — small-caps hero kicker
 - `title` (string) — hero heading
@@ -71,6 +73,15 @@ Numeric values that cannot be fetched SHALL be `null` (not omitted).
 - **GIVEN** the request carries no valid JWT
 - **WHEN** `GET /api/v1/dashboard/summary` is called
 - **THEN** the response is `401 Unauthorized`
+
+#### Scenario: one tenant schema failure does not blank out other tenants' stats
+
+- **GIVEN** the caller has role `system_admin`
+- **AND** one active tenant's schema is missing an expected table or column while all other active tenants' schemas are healthy
+- **WHEN** `GET /api/v1/dashboard/summary` is called
+- **THEN** the response SHALL have status 200
+- **AND** the pending-approvals and avg-model-F1 stats SHALL reflect the healthy tenants' data (not `null` and not silently zeroed solely because of the one failing tenant)
+- **AND** subsequent per-tenant queries in the same request SHALL NOT fail with an aborted-transaction error caused by the earlier failure
 
 ---
 

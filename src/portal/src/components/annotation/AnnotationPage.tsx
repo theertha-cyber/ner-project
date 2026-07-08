@@ -3,6 +3,7 @@
 import { useReducer, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { useEntityTypes } from "@/hooks/use-entity-types";
 import { authFetch } from "@/lib/auth-fetch";
 import { useToast } from "@/hooks/use-toast";
 import { buildTokenMap } from "@/lib/token-map";
@@ -17,6 +18,9 @@ import { AnnotationToolbar } from "./AnnotationToolbar";
 import { ArmedBanner } from "./ArmedBanner";
 import { FocusPalette } from "./FocusPalette";
 import { AssignTaskForm } from "./AssignTaskForm";
+import { AnnotationImportPreview } from "./AnnotationImportPreview";
+import { AnnotationImportResult } from "./AnnotationImportResult";
+import { useAnnotationImport } from "@/hooks/use-annotation-import";
 
 type LayoutMode = "3pane" | "focus";
 
@@ -53,6 +57,14 @@ export function AnnotationPage() {
   const isAdmin = user?.role === "tenant_admin";
   const [isAssignFormOpen, setIsAssignFormOpen] = useState(false);
 
+  // Import flow state
+  const canImport = user?.role === "annotator" || user?.role === "tenant_admin";
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isResultOpen, setIsResultOpen] = useState(false);
+  const { state: importState, importAnnotations, reset: resetImport } = useAnnotationImport();
+
   // Restore layout from localStorage on mount (CSS-only — no fullscreen)
   useEffect(() => {
     const saved = localStorage.getItem(LAYOUT_KEY);
@@ -77,20 +89,11 @@ export function AnnotationPage() {
     },
   });
 
-  const { data: entityTypesData } = useQuery({
-    queryKey: ["entity-types", user?.tenantSlug],
-    enabled: !!user?.tenantSlug,
-    queryFn: async () => {
-      const res = await authFetch(`/api/v1/tenants/${user!.tenantSlug}/entity-types`);
-      if (!res.ok) throw new Error("Failed to load entity types");
-      const data = await res.json();
-      return (data.entity_types ?? []) as EntityTypeItem[];
-    },
-  });
+  const { data: entityTypesData } = useEntityTypes();
 
   const [locallyPrependedTasks, setLocallyPrependedTasks] = useState<AnnotationTask[]>([]);
   const allTasks: AnnotationTask[] = [...locallyPrependedTasks, ...(tasksData ?? [])];
-  const entityTypes: EntityTypeItem[] = entityTypesData ?? [];
+  const entityTypes: EntityTypeItem[] = entityTypesData?.entity_types ?? [];
 
   const filteredTasks = useMemo(() => {
     if (!user) return allTasks;
@@ -539,6 +542,23 @@ export function AnnotationPage() {
         </div>
       )}
 
+      {/* Hidden file input for import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".txt,.json,.jsonl"
+        style={{ display: "none" }}
+        data-testid="import-file-input"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) {
+            setPreviewFile(f);
+            setIsPreviewOpen(true);
+          }
+          e.target.value = "";
+        }}
+      />
+
       {/* ── Left: Task Queue (3-pane only) ── */}
       {layoutMode === "3pane" && (
         <div
@@ -566,27 +586,50 @@ export function AnnotationPage() {
             }}
           >
             <span>Task Queue</span>
-            {/* Task 3.2 — admin-only Assign Task button */}
-            {isAdmin && (
-              <button
-                data-testid="assign-task-btn"
-                onClick={() => setIsAssignFormOpen(true)}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  background: "none",
-                  border: "1px solid var(--color-primary, #6366f1)",
-                  color: "var(--color-primary, #6366f1)",
-                  borderRadius: 4,
-                  padding: "2px 7px",
-                  cursor: "pointer",
-                  letterSpacing: 0,
-                  textTransform: "none",
-                }}
-              >
-                ＋ Assign Task
-              </button>
-            )}
+            <div style={{ display: "flex", gap: 4 }}>
+              {/* Import button — visible for annotator and tenant_admin */}
+              {canImport && (
+                <button
+                  data-testid="import-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background: "none",
+                    border: "1px solid var(--color-primary, #6366f1)",
+                    color: "var(--color-primary, #6366f1)",
+                    borderRadius: 4,
+                    padding: "2px 7px",
+                    cursor: "pointer",
+                    letterSpacing: 0,
+                    textTransform: "none",
+                  }}
+                >
+                  ＋ Import
+                </button>
+              )}
+              {/* Task 3.2 — admin-only Assign Task button */}
+              {isAdmin && (
+                <button
+                  data-testid="assign-task-btn"
+                  onClick={() => setIsAssignFormOpen(true)}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background: "none",
+                    border: "1px solid var(--color-primary, #6366f1)",
+                    color: "var(--color-primary, #6366f1)",
+                    borderRadius: 4,
+                    padding: "2px 7px",
+                    cursor: "pointer",
+                    letterSpacing: 0,
+                    textTransform: "none",
+                  }}
+                >
+                  ＋ Assign Task
+                </button>
+              )}
+            </div>
           </div>
           {/* Task 3.3 — inline assignment form */}
           {isAdmin && isAssignFormOpen && (
@@ -719,6 +762,31 @@ export function AnnotationPage() {
           onPrelabel={handlePrelabel}
         />
       )}
+
+      {/* Import preview slide-over */}
+      <AnnotationImportPreview
+        open={isPreviewOpen}
+        file={previewFile}
+        onConfirm={async (f) => {
+          setIsPreviewOpen(false);
+          setIsResultOpen(true);
+          await importAnnotations(f);
+        }}
+        onClose={() => {
+          setIsPreviewOpen(false);
+          setPreviewFile(null);
+        }}
+      />
+
+      {/* Import result slide-over */}
+      <AnnotationImportResult
+        open={isResultOpen}
+        state={importState}
+        onDone={() => {
+          setIsResultOpen(false);
+          resetImport();
+        }}
+      />
     </div>
   );
 }

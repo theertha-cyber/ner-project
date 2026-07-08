@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useDashboardWidgets, useAnalyticsQuery, useExportAnalytics, useRefreshDashboard } from "@/hooks/use-analytics-data";
 import { Spinner } from "@/components/ui/spinner";
 import type { AnalyticsFilters } from "@/types/analytics";
@@ -151,7 +151,13 @@ export default function AnalyticsPage() {
   const [entityTypeInput, setEntityTypeInput] = useState("");
   const [queryEnabled, setQueryEnabled] = useState(false);
 
-  const { data: queryResult, isLoading: queryLoading } = useAnalyticsQuery(filters, queryEnabled);
+  const { data: queryResult, isLoading: queryLoading, isError: queryError, error: queryErrorObj, refetch: refetchQuery } = useAnalyticsQuery(filters, queryEnabled);
+
+  useEffect(() => {
+    if (queryError) {
+      setErrorMessage(queryErrorObj instanceof Error ? queryErrorObj.message : "Query failed");
+    }
+  }, [queryError, queryErrorObj]);
   const exportMutation = useExportAnalytics();
   const refreshMutation = useRefreshDashboard();
 
@@ -169,8 +175,12 @@ export default function AnalyticsPage() {
   };
 
   const handleQuery = () => {
-    setQueryEnabled(true);
     setErrorMessage(null);
+    if (queryEnabled) {
+      refetchQuery();
+    } else {
+      setQueryEnabled(true);
+    }
   };
 
   const handleExport = (format: "csv" | "json") => {

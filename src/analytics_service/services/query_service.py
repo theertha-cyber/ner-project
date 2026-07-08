@@ -44,11 +44,11 @@ def build_where_clause(body: AnalyticsQueryRequest | AnalyticsExportRequest):
             params["conf_max"] = body.confidence["max"]
 
     if body.date_from:
-        conditions.append("r.started_at >= :date_from::date")
+        conditions.append("r.started_at >= CAST(:date_from AS date)")
         params["date_from"] = body.date_from
 
     if body.date_to:
-        conditions.append("r.started_at < :date_to::date + interval '1 day'")
+        conditions.append("r.started_at < CAST(:date_to AS date) + interval '1 day'")
         params["date_to"] = body.date_to
 
     where_clause = ""

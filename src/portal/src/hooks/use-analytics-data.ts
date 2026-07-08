@@ -34,7 +34,11 @@ export function useAnalyticsQuery(filters: AnalyticsFilters, enabled: boolean) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`Query failed: ${res.status}`);
+      if (!res.ok) {
+        let detail = `Query failed: ${res.status}`;
+        try { const b = await res.json(); if (b.detail) detail = b.detail; } catch {}
+        throw new Error(detail);
+      }
       return res.json();
     },
     enabled,

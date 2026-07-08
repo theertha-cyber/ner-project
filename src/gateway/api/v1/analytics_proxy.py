@@ -1,3 +1,4 @@
+import json
 import httpx
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -14,18 +15,26 @@ async def _proxy(method: str, path: str, request: Request, body: dict | None = N
     headers.pop("host", None)
     headers.pop("content-length", None)
 
-    async with httpx.AsyncClient(timeout=60) as client:
-        if method == "GET":
-            resp = await client.get(url, headers=headers, params=dict(request.query_params))
-        elif method == "POST":
-            resp = await client.post(url, headers=headers, json=body or {})
-        else:
-            raise HTTPException(status_code=405, detail="Method not allowed")
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            if method == "GET":
+                resp = await client.get(url, headers=headers, params=dict(request.query_params))
+            elif method == "POST":
+                resp = await client.post(url, headers=headers, json=body or {})
+            else:
+                raise HTTPException(status_code=405, detail="Method not allowed")
 
-        return JSONResponse(
-            status_code=resp.status_code,
-            content=resp.json() if resp.text else {},
-        )
+            try:
+                content = resp.json() if resp.text else {}
+            except json.JSONDecodeError:
+                content = {}
+
+            return JSONResponse(
+                status_code=resp.status_code,
+                content=content,
+            )
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Analytics service unavailable")
 
 
 @router.post("/analytics/query")

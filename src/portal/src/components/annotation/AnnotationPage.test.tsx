@@ -20,6 +20,9 @@ const mockAuthFetch = vi.fn();
 vi.mock("@/lib/auth-fetch", () => ({ authFetch: (...args: unknown[]) => mockAuthFetch(...args) }));
 
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/hooks/use-entity-types", () => ({
+  useEntityTypes: () => ({ data: { entity_types: [{ name: "PER" }, { name: "ORG" }, { name: "LOC" }] } }),
+}));
 
 vi.mock("@/lib/token-map", () => ({ buildTokenMap: () => [] }));
 
@@ -217,7 +220,6 @@ describe("Scenario 25 — SuggestionPanel renders in right entity panel, not cen
         ok: true,
         json: () => Promise.resolve([mockTask]),
       })
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ text: "hello world" }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) })
       .mockResolvedValueOnce({

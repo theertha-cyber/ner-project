@@ -1,9 +1,11 @@
+import logging
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from src.gateway.dependencies import get_db, require_tenant_role, get_request_tenant_id
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
@@ -120,7 +122,8 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
                     r = await db.execute(text(f"SELECT COUNT(*) FROM {s}.documents"))
                     total_docs += r.scalar() or 0
                 except Exception:
-                    pass
+                    logger.exception("system_admin dashboard: documents count failed for schema %s", s)
+                    await db.rollback()
             doc_count_all = str(total_docs)
             sources["documents"] = True
         except Exception:
@@ -135,7 +138,8 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
                     )
                     total_pending += r.scalar() or 0
                 except Exception:
-                    pass
+                    logger.exception("system_admin dashboard: pending-approval count failed for schema %s", s)
+                    await db.rollback()
             pending_approvals = str(total_pending)
         except Exception:
             pass
@@ -151,7 +155,8 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
                     if val is not None:
                         f1_values.append(float(val))
                 except Exception:
-                    pass
+                    logger.exception("system_admin dashboard: model F1 lookup failed for schema %s", s)
+                    await db.rollback()
             if f1_values:
                 avg_f1 = f"{(sum(f1_values) / len(f1_values)) * 100:.1f}"
                 sources["models"] = True

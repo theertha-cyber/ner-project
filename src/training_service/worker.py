@@ -20,7 +20,7 @@ TRAINING_DEVICE = os.getenv("NER_TRAINING_DEVICE", settings.training_device)
 BASE_MODEL = "dslim/bert-base-NER"
 ANNOTATION_SERVICE_URL = os.getenv(
     "ANNOTATION_SERVICE_URL",
-    "http://annotation_service:8002",
+    "http://annotation_service:8000",
 )
 
 
@@ -282,7 +282,6 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
             train_dataset=split_dataset["train"],
             eval_dataset=split_dataset["test"],
             data_collator=data_collator,
-            tokenizer=tokenizer,
             compute_metrics=compute_metrics,
             callbacks=[MLflowCallback(experiment_name, mlflow_run_id)],
         )

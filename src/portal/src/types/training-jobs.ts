@@ -16,6 +16,7 @@ export interface Hyperparams {
 
 export interface TrainingJob {
   id: string;
+  tenant_id: string;
   status: JobStatus;
   hyperparams: Hyperparams | null;
   current_epoch: number | null;

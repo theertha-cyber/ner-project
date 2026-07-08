@@ -320,16 +320,25 @@ async def test_import_jsonl_201(seeded_entity_types, client):
     assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
     data = resp.json()
     assert data["imported_count"] == 2
+    assert data["skipped_count"] == 0
+    assert data["warnings"] == []
+    assert "entity_type_counts" in data
+    assert data["entity_type_counts"].get("PER") == 1
+    assert data["entity_type_counts"].get("ORG") == 1
 
 
-# ── 4.3 Integration test: unknown entity type returns 422 ────────────────
+# ── 4.3 Integration test: partial import skips unknown entity type rows ───
 
 
 @pytest.mark.asyncio
-async def test_import_unknown_entity_422(seeded_entity_types, client):
+async def test_import_partial_skip_unknown(seeded_entity_types, client):
     tid = seeded_entity_types["tid"]
     token = make_token(tid)
-    content = '{"tokens": ["bad"], "tags": ["B-PRODUCT"]}\n'
+    content = (
+        '{"tokens": ["John", "lives"], "tags": ["B-PER", "O"]}\n'
+        '{"tokens": ["bad"], "tags": ["B-PRODUCT"]}\n'
+        '{"tokens": ["Google", "inc"], "tags": ["B-ORG", "O"]}\n'
+    )
 
     resp = await client.post(
         "/api/v1/annotation-import",
@@ -337,9 +346,81 @@ async def test_import_unknown_entity_422(seeded_entity_types, client):
         headers=auth_header(token),
     )
 
-    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
+    assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
     data = resp.json()
-    assert "PRODUCT" in data["detail"]["message"]
+    assert data["imported_count"] == 2
+    assert data["skipped_count"] == 1
+    assert len(data["warnings"]) == 1
+    assert data["warnings"][0]["row_index"] == 1
+    assert "PRODUCT" in data["warnings"][0]["message"]
+    assert "entity_type_counts" in data
+
+
+# ── Backward-compatible: existing caller reads imported_count ────────────────
+
+
+@pytest.mark.asyncio
+async def test_import_backward_compatible_imported_count(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    token = make_token(tid)
+    content = '{"tokens": ["John", "lives"], "tags": ["B-PER", "O"]}\n'
+
+    resp = await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("test.jsonl", content, "application/jsonl")},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["imported_count"] == 1
+
+
+# ── All rows unknown returns imported_count: 0 ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_import_all_rows_unknown(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    token = make_token(tid)
+    content = (
+        '{"tokens": ["bad"], "tags": ["B-PRODUCT"]}\n'
+        '{"tokens": ["worse"], "tags": ["B-FOO"]}\n'
+    )
+
+    resp = await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("test.jsonl", content, "application/jsonl")},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["imported_count"] == 0
+    assert data["skipped_count"] == 2
+    assert len(data["warnings"]) == 2
+
+
+# ── Entity type breakdown in response ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_import_entity_type_breakdown(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    token = make_token(tid)
+    content = (
+        '{"tokens": ["John", "works", "at", "Google", "in", "NYC"], "tags": ["B-PER", "O", "O", "B-ORG", "O", "B-LOC"]}\n'
+    )
+
+    resp = await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("test.jsonl", content, "application/jsonl")},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["entity_type_counts"] == {"PER": 1, "ORG": 1, "LOC": 1}
 
 
 # ── 4.7 Integration test: file exceeding 50MB returns 413 ────────────────
@@ -360,6 +441,26 @@ async def test_import_file_too_large_413(seeded_entity_types, client):
     assert resp.status_code == 413, f"Expected 413, got {resp.status_code}: {resp.text}"
 
 
+# ── Unsupported MIME type returns 415 ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_import_unsupported_mime_415(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    token = make_token(tid)
+    content = "some binary content"
+
+    resp = await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("test.pdf", content, "application/pdf")},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 415, f"Expected 415, got {resp.status_code}: {resp.text}"
+    data = resp.json()
+    assert "UNSUPPORTED_MEDIA_TYPE" in data["detail"]["code"]
+
+
 # ── 4.8 Integration test: upload CoNLL file ──────────────────────────────
 
 
@@ -378,6 +479,9 @@ async def test_import_conll_201(seeded_entity_types, client):
     assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
     data = resp.json()
     assert data["imported_count"] == 1
+    assert data["skipped_count"] == 0
+    assert data["warnings"] == []
+    assert "entity_type_counts" in data
 
 
 # ── 4.5 Integration test: export merge ───────────────────────────────────

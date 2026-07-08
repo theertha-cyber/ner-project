@@ -39,6 +39,12 @@ def strip_bio_prefix(tag: str) -> str:
     return tag
 
 
+def _strip_null_bytes(value: str) -> str:
+    # Postgres text columns reject 0x00 regardless of encoding; source files
+    # (e.g. PDF-to-text extractions) sometimes embed stray null bytes.
+    return value.replace("\x00", "")
+
+
 def parse_jsonl(content: str) -> list[dict]:
     rows: list[dict] = []
     for i, line in enumerate(content.split("\n"), start=1):
@@ -69,6 +75,7 @@ def parse_jsonl(content: str) -> list[dict]:
                 status_code=422,
                 detail={"code": "VALIDATION_ERROR", "message": f"Line {i}: 'tokens' and 'tags' must have equal length"},
             )
+        tokens = [_strip_null_bytes(t) if isinstance(t, str) else t for t in tokens]
         rows.append({"tokens": tokens, "tags": tags})
     if not rows:
         raise HTTPException(
@@ -96,7 +103,7 @@ def parse_conll(content: str) -> list[dict]:
                     status_code=422,
                     detail={"code": "PARSE_ERROR", "message": f"CoNLL line {line_idx} in sentence {sent_idx}: expected token and tag separated by tab"},
                 )
-            tokens.append(parts[0].strip())
+            tokens.append(_strip_null_bytes(parts[0].strip()))
             tags.append(parts[1].strip())
         if tokens:
             rows.append({"tokens": tokens, "tags": tags})
@@ -108,32 +115,25 @@ def parse_conll(content: str) -> list[dict]:
     return rows
 
 
-async def validate_entity_types(session: AsyncSession, tenant_id: str, rows: list[dict]) -> None:
-    unique_types: set[str] = set()
+async def get_known_entity_types_lower(session: AsyncSession, tenant_id: str) -> set[str]:
+    result = await session.execute(
+        text("SELECT LOWER(name) FROM public.entity_definitions WHERE tenant_id = :tenant_id"),
+        {"tenant_id": tenant_id},
+    )
+    return {row[0] for row in result.fetchall()}
+
+
+def compute_entity_type_counts(rows: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
     for row in rows:
+        seen_in_row: set[str] = set()
         for tag in row["tags"]:
             if tag != "O":
-                unique_types.add(strip_bio_prefix(tag))
-
-    if not unique_types:
-        return
-
-    lowered = [t.lower() for t in unique_types]
-    result = await session.execute(
-        text("SELECT name FROM public.entity_definitions WHERE tenant_id = :tenant_id AND LOWER(name) = ANY(:lowered)"),
-        {"tenant_id": tenant_id, "lowered": lowered},
-    )
-    known_lower = {row[0].lower() for row in result.fetchall()}
-    unknown = {t for t in unique_types if t.lower() not in known_lower}
-    if unknown:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "UNKNOWN_ENTITY_TYPES",
-                "message": f"Unrecognized entity type(s): {', '.join(sorted(unknown))}",
-                "unknown_types": sorted(unknown),
-            },
-        )
+                base = strip_bio_prefix(tag)
+                if base not in seen_in_row:
+                    seen_in_row.add(base)
+                    counts[base] = counts.get(base, 0) + 1
+    return counts
 
 
 ACCEPTED_MIME_TYPES = {
@@ -178,9 +178,26 @@ async def import_annotations(
     else:
         rows = parse_jsonl(content)
 
-    await validate_entity_types(session, tenant_id, rows)
+    known_lower = await get_known_entity_types_lower(session, tenant_id)
 
+    valid_rows: list[dict] = []
+    warnings: list[dict] = []
     for idx, row in enumerate(rows):
+        invalid_types: set[str] = set()
+        for tag in row["tags"]:
+            if tag != "O":
+                base = strip_bio_prefix(tag)
+                if base.lower() not in known_lower:
+                    invalid_types.add(base)
+        if invalid_types:
+            warnings.append({
+                "row_index": idx,
+                "message": f"Unknown entity type(s): {', '.join(sorted(invalid_types))}",
+            })
+        else:
+            valid_rows.append(row)
+
+    for idx, row in enumerate(valid_rows):
         await session.execute(
             text(f"""
                 INSERT INTO {schema}.imported_annotations (id, tokens, tags, source_file, row_index)
@@ -197,4 +214,11 @@ async def import_annotations(
 
     await session.commit()
 
-    return {"imported_count": len(rows)}
+    entity_type_counts = compute_entity_type_counts(valid_rows)
+
+    return {
+        "imported_count": len(valid_rows),
+        "skipped_count": len(warnings),
+        "warnings": warnings,
+        "entity_type_counts": entity_type_counts,
+    }

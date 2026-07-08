@@ -5,109 +5,66 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import text
 from src.shared.auth import hash_password
 
-_TENANT_TABLES_SQL = """
-CREATE TABLE IF NOT EXISTS {schema}.documents (
-    id VARCHAR PRIMARY KEY,
-    tenant_id VARCHAR NOT NULL,
-    filename VARCHAR(255) NOT NULL,
-    mime_type VARCHAR(100),
-    file_size_bytes BIGINT,
-    checksum VARCHAR(64),
-    storage_uri VARCHAR(500),
-    status VARCHAR(20) DEFAULT 'uploaded',
-    ocr_applied_flag BOOLEAN DEFAULT false,
-    error_message TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE TABLE IF NOT EXISTS {schema}.document_text_spans (
-    id VARCHAR PRIMARY KEY,
-    document_id VARCHAR NOT NULL REFERENCES {schema}.documents(id) ON DELETE CASCADE,
-    page_no INTEGER,
-    block_no INTEGER,
-    text TEXT,
-    start_offset INTEGER,
-    end_offset INTEGER,
-    ocr_confidence FLOAT
-);
-CREATE TABLE IF NOT EXISTS {schema}.annotation_tasks (
-    id VARCHAR PRIMARY KEY,
-    document_id VARCHAR NOT NULL REFERENCES {schema}.documents(id) ON DELETE CASCADE,
-    annotator_user_id VARCHAR,
-    assignee VARCHAR,
-    status VARCHAR(20) DEFAULT 'unannotated',
-    reviewer VARCHAR,
-    dataset_version INTEGER,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE TABLE IF NOT EXISTS {schema}.spans (
-    id VARCHAR PRIMARY KEY,
-    document_id VARCHAR NOT NULL REFERENCES {schema}.documents(id) ON DELETE CASCADE,
-    entity_type VARCHAR(255) NOT NULL,
-    char_start INTEGER NOT NULL,
-    char_end INTEGER NOT NULL,
-    text_content VARCHAR NOT NULL,
-    confidence FLOAT NOT NULL DEFAULT 1.0,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ
-);
-CREATE TABLE IF NOT EXISTS {schema}.suggested_spans (
-    id VARCHAR PRIMARY KEY,
-    document_id VARCHAR NOT NULL REFERENCES {schema}.documents(id) ON DELETE CASCADE,
-    entity_type VARCHAR(255) NOT NULL,
-    char_start INTEGER NOT NULL,
-    char_end INTEGER NOT NULL,
-    text_content VARCHAR NOT NULL,
-    confidence FLOAT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE TABLE IF NOT EXISTS {schema}.training_jobs (
-    id VARCHAR PRIMARY KEY,
-    tenant_id VARCHAR NOT NULL,
-    dataset_version INTEGER,
-    base_model VARCHAR(255),
-    hyperparameters JSONB,
-    status VARCHAR(20) DEFAULT 'queued',
-    metrics_uri VARCHAR(500),
-    started_at TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ
-);
-CREATE TABLE IF NOT EXISTS {schema}.model_versions (
-    id VARCHAR PRIMARY KEY,
-    tenant_id VARCHAR NOT NULL,
-    version INTEGER NOT NULL,
-    artifact_uri VARCHAR(500),
-    training_job_id VARCHAR,
-    metrics JSONB,
-    status VARCHAR(20) DEFAULT 'candidate',
-    active_flag BOOLEAN DEFAULT false,
-    promoted_by VARCHAR,
-    promoted_at TIMESTAMPTZ
-);
-CREATE TABLE IF NOT EXISTS {schema}.extraction_runs (
-    id VARCHAR PRIMARY KEY,
-    tenant_id VARCHAR NOT NULL,
-    document_id VARCHAR,
-    model_version VARCHAR,
-    status VARCHAR(20) DEFAULT 'queued',
-    started_at TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ
-);
-CREATE TABLE IF NOT EXISTS {schema}.extracted_entities (
-    id VARCHAR PRIMARY KEY,
-    run_id VARCHAR NOT NULL REFERENCES {schema}.extraction_runs(id) ON DELETE CASCADE,
-    entity_id VARCHAR NOT NULL,
-    value TEXT,
-    confidence FLOAT,
-    normalized_value TEXT,
-    source_span_id VARCHAR,
-    review_status VARCHAR(20) DEFAULT 'unreviewed',
-    corrected_value TEXT,
-    corrected_by VARCHAR,
-    correction_notes TEXT,
-    document_id VARCHAR
-);
-"""
+_TENANT_MVS_SQL = """
+CREATE MATERIALIZED VIEW IF NOT EXISTS {schema}.mv_entity_coverage AS
+SELECT
+    e.entity_id AS entity_type,
+    COUNT(DISTINCT e.document_id)::float / NULLIF(COUNT(DISTINCT d.id), 0) * 100 AS coverage_pct
+FROM {schema}.extracted_entities e
+CROSS JOIN {schema}.documents d
+GROUP BY e.entity_id
+WITH DATA;
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_entity_coverage_type
+ON {schema}.mv_entity_coverage (entity_type);
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {schema}.mv_confidence_distribution AS
+SELECT
+    CASE
+        WHEN confidence >= 0.0 AND confidence < 0.2 THEN '0.0-0.2'
+        WHEN confidence >= 0.2 AND confidence < 0.4 THEN '0.2-0.4'
+        WHEN confidence >= 0.4 AND confidence < 0.6 THEN '0.4-0.6'
+        WHEN confidence >= 0.6 AND confidence < 0.8 THEN '0.6-0.8'
+        WHEN confidence >= 0.8 AND confidence <= 1.0 THEN '0.8-1.0'
+    END AS bucket,
+    COUNT(*) AS count
+FROM {schema}.extracted_entities
+GROUP BY bucket
+ORDER BY bucket
+WITH DATA;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_confidence_distribution_bucket
+ON {schema}.mv_confidence_distribution (bucket);
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {schema}.mv_extraction_volume AS
+SELECT
+    DATE(r.started_at) AS extraction_date,
+    COUNT(*) AS count
+FROM {schema}.extracted_entities e
+JOIN {schema}.extraction_runs r ON r.id = e.run_id
+WHERE r.started_at >= NOW() - INTERVAL '30 days'
+GROUP BY DATE(r.started_at)
+ORDER BY extraction_date
+WITH DATA;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_extraction_volume_date
+ON {schema}.mv_extraction_volume (extraction_date);
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {schema}.mv_document_entity_counts AS
+SELECT
+    e.entity_id AS entity_type,
+    AVG(entity_count)::float AS avg_per_document
+FROM (
+    SELECT entity_id, document_id, COUNT(*) AS entity_count
+    FROM {schema}.extracted_entities
+    GROUP BY entity_id, document_id
+) e
+GROUP BY e.entity_id
+WITH DATA;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_document_entity_counts_type
+ON {schema}.mv_document_entity_counts (entity_type);
+"""
 
 async def seed():
     from src.shared.config import settings
@@ -240,7 +197,16 @@ async def seed():
 
     async with session_factory() as db:
         await db.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema_name}"))
-        for stmt in _TENANT_TABLES_SQL.split(";"):
+        tables = await db.execute(
+            text("SELECT tablename FROM pg_tables WHERE schemaname = 'tenant_template'")
+        )
+        for row in tables.fetchall():
+            table_name = row[0]
+            await db.execute(text(
+                f"CREATE TABLE IF NOT EXISTS {schema_name}.{table_name} "
+                f"(LIKE tenant_template.{table_name} INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)"
+            ))
+        for stmt in _TENANT_MVS_SQL.split(";"):
             s = stmt.strip().format(schema=schema_name)
             if s:
                 await db.execute(text(s + ";"))
@@ -391,6 +357,17 @@ async def seed():
         print("Seeded 4 extraction runs with entities")
 
         await db.commit()
+
+    async with session_factory() as db:
+        for mv_name in [
+            "mv_entity_coverage",
+            "mv_confidence_distribution",
+            "mv_extraction_volume",
+            "mv_document_entity_counts",
+        ]:
+            await db.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {schema_name}.{mv_name}"))
+        await db.commit()
+        print("Refreshed analytics materialized views")
 
     await engine.dispose()
     print("Seed complete")

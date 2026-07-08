@@ -1,0 +1,105 @@
+Sree Aishwar M K
+� linkedin.com/in/aishwar790
+� github.com/sreeaishwar
+� +91 7907319732
+� sreeaishwar1996@gmail.com
+� Naloth House, Kannur
+� Kerala, India
+
+
+
+Machine Learning Digital Associate with 10 months of experience in Data Science Domain , 1 Year of full fledged Data Science Study
+and 7 months of experience in Android Application development. Experienced at building Machine Learning models, Exploratory
+Data Analysis,Data Visualization,Text Mining, Risk Management to deliver insights and implement action-oriented solutions to
+complex business problems.
+
+
+� COMPETENCIES
+
+ Programming Skills        Python, Basic Java, C/C++, XML
+    Python Libraries       Pandas, Numpy, Keras, Scikit
+          Framework        Android Studio
+            Database       SQL, SQLite, MYSQL
+  Visualization Tools      Matplotlib
+ Development Tools         Jupyter Notebook, Google Colab
+  Operating Systems        Windows, Linux
+
+
+
+� CERTIFICATIONS
+
+        2020    Python for Data Science and Machine Learning Bootcamp, Udemy
+                 Machine Learning | Regression | Classification | Clustering | Recommender Systems
+                https://www.udemy.com/certificate/UC-37c498a6-81bb-4735-a0d9-6bec79d8afea
+ 2020 – 2021    Applied Data Science with Python, Data Science Academy
+                 Machine Learning | Deep Learning | Data Analysis | IoT | Predictive Analytics | Time Series Fore-
+                casting | Text Mining
+                 Algorithms : SVM, Neural Network, Decision Trees, Random Forest, Linear Regression, Logistic
+                Regression etc.
+                 Tools : Python (Numpy, Pandas, Scikit-Learn, Tensorflow, Keras, PyTorch, NLP, BeautifulSoup,
+                OpenCV)
+        2018    Android Application Development, iROID Technologies
+                Android Studio | Java | XML | SQLite |
+
+
+� EXPERIENCE
+
+August 2020 - Present          Digital Associate - Amazon inc.
+                        Responsibilities, ,
+          Ongoing         ∠ Collect ground truth data for the product development.
+                          ∠ Cleanse the Data from errors performed by Machine Learning Algorithm.
+                          ∠ The Data is annotated using StarScream in a way suitable for the Machine Learning Algorithm to work
+                            upon.
+                          ∠ Errors are audited and Reverted.
+                          ∠ Communicating and coordinating effectively with project managers, software engineers, and other
+                            team members
+                        StarScream   Word   Excel   Firefox   Chrome
+August 2020 - February 2021              CURVELOGICS ADVANCED TECHNOLOGY SOLUTIONS PVT LTD (Data Science
+Intern)
+                        Responsibilities, ,
+          Completed       ∠ Assisting in Data Analysis using pandas and numpy.
+                          ∠ Conducting exploratory Data Analysis to extract insights and undercover important groups,
+                            trends,and relationships in data.
+                          ∠ Developing functional prototypes of data products incorporating analytics, visualization, machine
+                            learning, natural language processing, and graph analytics.
+                          ∠ Drafting content related to the projects working on , including reports, blog posts, and proposals.
+                          ∠ Communicating and coordinating effectively with project managers, software engineers, and other
+                            team members.
+                         Pandas   Deep learning    Machine learning   Numpy   Python   Keras
+
+
+
+
+July 2018 - January 2019              IROID Technologies (Internship)
+                        Responsibilities, ,
+          Completed       ∠ Worked as an intern Android application developer.
+                          ∠ Actively involved in developing parts of applications of many live projects.
+                          ∠ As part of my project, I developed an android application, TransFlow. This application helps the pump
+                            attendant of a private company to check which employee (driver) of the company is currently about
+                            to deliver goods and enter data in correspondence to the driver’s journey..
+                         XML   Java   Android Studio    JSON    SQLite
+
+
+
+
+� PROJECTS
+ MOVIE GENRE PREDICTOR
+
+ Developed Machine Learning Model Based on CNN algorithm to predict movie genre based on poster of the movie
+  Keras    Pandas   Python   Conv2D   TensorFlow    Google Colab
+
+
+
+
+� EDUCATION
+
+               2018     Computer Science and Engineering, Sree Narayana Gurukulam College of Engineering, MGU
+               2014     Board of Higher Secondary, Chinmaya Vidyalaya, CBSE
+               2012     Secondary School Leaving Certificate (SSLC), Chinmaya Vidyalaya, CBSE
+
+
+� LANGUAGES
+             English    ○ ○ ○ ○ ○
+               Hindi    ○ ○ ○ ○ �
+          Malayalam     ○ ○ ○ ○ ○
+

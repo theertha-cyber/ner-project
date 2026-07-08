@@ -36,6 +36,10 @@ const mockQueryResponse = {
 };
 
 let mockDashboardError = false;
+let mockQueryError = false;
+let mockQueryLoading = false;
+const mockRefetchQuery = vi.fn();
+const mockQueryErrorObj = new Error("Query failed: 500");
 
 vi.mock("@/hooks/use-analytics-data", () => ({
   useDashboardWidgets: vi.fn(() => ({
@@ -45,8 +49,11 @@ vi.mock("@/hooks/use-analytics-data", () => ({
     refetch: vi.fn(),
   })),
   useAnalyticsQuery: vi.fn(() => ({
-    data: mockQueryResponse,
-    isLoading: false,
+    data: mockQueryError ? undefined : mockQueryResponse,
+    isLoading: mockQueryLoading,
+    isError: mockQueryError,
+    error: mockQueryError ? mockQueryErrorObj : null,
+    refetch: mockRefetchQuery,
   })),
   useExportAnalytics: vi.fn(() => ({
     mutate: vi.fn(),
@@ -62,6 +69,9 @@ vi.mock("@/hooks/use-analytics-data", () => ({
 describe("AnalyticsPage", () => {
   beforeEach(() => {
     mockDashboardError = false;
+    mockQueryError = false;
+    mockQueryLoading = false;
+    mockRefetchQuery.mockClear();
     vi.clearAllMocks();
   });
 
@@ -80,7 +90,7 @@ describe("AnalyticsPage", () => {
 
   it("shows entity coverage data", () => {
     render(<AnalyticsPage />);
-    expect(screen.getByText("PERSON")).toBeInTheDocument();
+    expect(screen.getAllByText("PERSON").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("80.0%")).toBeInTheDocument();
   });
 
@@ -116,5 +126,41 @@ describe("AnalyticsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Query Results")).toBeInTheDocument();
     });
+  });
+
+  it("shows an error banner when the query fails", async () => {
+    mockQueryError = true;
+    render(<AnalyticsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Query failed: 500")).toBeInTheDocument();
+    });
+  });
+
+  it("clears the query error banner when Dismiss is clicked", async () => {
+    mockQueryError = true;
+    render(<AnalyticsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Query failed: 500")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText("Dismiss"));
+    expect(screen.queryByText("Query failed: 500")).not.toBeInTheDocument();
+  });
+
+  it("sends a new request when Query is clicked again after an error", async () => {
+    mockQueryError = true;
+    render(<AnalyticsPage />);
+    await userEvent.click(screen.getByText("Query Data"));
+    await userEvent.click(screen.getByText("Query")); // first click: enables the query
+    expect(mockRefetchQuery).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByText("Query")); // second click: query already enabled, must refetch
+    expect(mockRefetchQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a spinner and disables the Query button while a query is in flight", async () => {
+    mockQueryLoading = true;
+    render(<AnalyticsPage />);
+    await userEvent.click(screen.getByText("Query Data"));
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Loading" })).toBeDisabled();
   });
 });

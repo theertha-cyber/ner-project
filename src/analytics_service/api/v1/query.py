@@ -1,9 +1,11 @@
 import json
 import csv
 import io
+import asyncio
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.analytics_service.api.v1.schemas import (
     AnalyticsQueryRequest,
@@ -52,8 +54,14 @@ async def analytics_query(
         )
         rows_result = await db.execute(text(sql), params)
         rows = rows_result.fetchall()
-    except Exception:
+    except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="Query timed out")
+    except OperationalError:
+        raise HTTPException(status_code=502, detail="Database error occurred")
+    except ProgrammingError:
+        raise HTTPException(status_code=500, detail="Internal query error")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Query failed")
 
     has_more = len(rows) > limit
     if has_more:
@@ -109,8 +117,14 @@ async def analytics_export(
         )
         rows_result = await db.execute(text(sql), params)
         rows = rows_result.fetchall()
-    except Exception:
+    except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="Export query timed out")
+    except OperationalError:
+        raise HTTPException(status_code=502, detail="Database error occurred during export")
+    except ProgrammingError:
+        raise HTTPException(status_code=500, detail="Internal export query error")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Export failed")
 
     truncated = len(rows) > MAX_EXPORT_ROWS
     if truncated:

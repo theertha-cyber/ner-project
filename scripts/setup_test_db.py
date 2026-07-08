@@ -41,7 +41,8 @@ TABLES = [
         review_status VARCHAR NOT NULL DEFAULT 'unreviewed',
         corrected_value VARCHAR,
         corrected_by VARCHAR,
-        correction_notes VARCHAR
+        correction_notes VARCHAR,
+        document_id VARCHAR
     )
     """,
 ]

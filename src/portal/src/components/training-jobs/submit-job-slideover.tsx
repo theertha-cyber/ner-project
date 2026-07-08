@@ -98,8 +98,7 @@ export function SubmitJobSlideover({ open, onClose }: SubmitJobSlideoverProps) {
     });
   }
 
-  const meetsThreshold = spanCount !== null && spanCount >= 500;
-  const canSubmit = meetsThreshold && Object.keys(errors).length === 0;
+  const canSubmit = Object.keys(errors).length === 0;
 
   return (
     <SlideOver open={open} onClose={onClose} width={440}>
@@ -117,25 +116,13 @@ export function SubmitJobSlideover({ open, onClose }: SubmitJobSlideoverProps) {
 
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
           {/* Span preflight */}
-          <div
-            className={`rounded-lg border p-3 text-sm ${
-              spanLoading
-                ? "border-gray-200 bg-gray-50"
-                : meetsThreshold
-                  ? "border-status-completed/30 bg-status-completed/5 text-status-completed"
-                  : spanCount !== null
-                    ? "border-status-failed/30 bg-status-failed/5 text-status-failed"
-                    : "border-gray-200 bg-gray-50 text-gray-500"
-            }`}
-          >
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
             {spanLoading ? (
               <span className="flex items-center gap-2">
                 <Spinner size="sm" /> Checking annotated entities...
               </span>
             ) : spanCount !== null ? (
-              meetsThreshold
-                ? `${spanCount} confirmed spans  ·  meets the 500-span minimum`
-                : `${spanCount} confirmed spans  ·  requires 500 minimum`
+              `${spanCount} confirmed spans`
             ) : (
               "Unable to check span count"
             )}

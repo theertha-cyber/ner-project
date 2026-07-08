@@ -63,18 +63,18 @@ async def proxy_delete_conversation(conv_id: str, request: Request):
     return await _proxy("DELETE", f"/api/v1/chat/conversations/{conv_id}", request)
 
 
-@router.post("/widget-keys")
-async def proxy_create_widget_key(request: Request):
+@router.post("/tenants/{tenant_slug}/widget-keys")
+async def proxy_create_widget_key(tenant_slug: str, request: Request):
     return await _proxy("POST", "/api/v1/widget-keys", request)
 
 
-@router.get("/widget-keys")
-async def proxy_list_widget_keys(request: Request):
+@router.get("/tenants/{tenant_slug}/widget-keys")
+async def proxy_list_widget_keys(tenant_slug: str, request: Request):
     return await _proxy("GET", "/api/v1/widget-keys", request)
 
 
-@router.delete("/widget-keys/{key_id}")
-async def proxy_revoke_widget_key(key_id: str, request: Request):
+@router.delete("/tenants/{tenant_slug}/widget-keys/{key_id}")
+async def proxy_revoke_widget_key(tenant_slug: str, key_id: str, request: Request):
     return await _proxy("DELETE", f"/api/v1/widget-keys/{key_id}", request)
 
 

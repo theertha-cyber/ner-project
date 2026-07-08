@@ -41,6 +41,18 @@ The analytics service SHALL provide a `POST /api/v1/tenants/{tenant_id}/analytic
 - **WHEN** the query exceeds the 5-second timeout
 - **THEN** the endpoint SHALL return HTTP 504 with an error indicating the query timed out
 
+#### Scenario: Database error returns HTTP 502
+
+- **GIVEN** the database is unreachable or a query fails due to a database error
+- **WHEN** a POST request is sent
+- **THEN** the endpoint SHALL return HTTP 502 with an error detail indicating a database error
+
+#### Scenario: Schema or SQL error returns HTTP 500
+
+- **GIVEN** an internal error such as a missing table or SQL syntax issue
+- **WHEN** a POST request is sent
+- **THEN** the endpoint SHALL return HTTP 500 with a generic error message
+
 ### Requirement: Query Parameter Validation
 
 The analytics service SHALL validate all query filter parameters before execution and reject invalid values with HTTP 422.

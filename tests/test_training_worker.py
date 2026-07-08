@@ -93,6 +93,33 @@ class TestTokenizeAlignment:
         assert result["labels"][0] != -100
 
 
+class TestAnnotationServiceURL:
+
+    def test_default_url_used_when_env_var_unset(self, monkeypatch):
+        import src.training_service.worker as worker
+        monkeypatch.setattr(worker, "ANNOTATION_SERVICE_URL", "http://annotation_service:8000")
+        captured = []
+        def mock_get(url, *args, **kwargs):
+            captured.append(url)
+            raise Exception("_stop_")
+        monkeypatch.setattr(worker.requests, "get", mock_get)
+        with pytest.raises(Exception, match="_stop_"):
+            worker._load_annotated_dataset("test-tenant-id")
+        assert captured[0] == "http://annotation_service:8000/api/v1/annotation-export"
+
+    def test_override_url_via_env_var(self, monkeypatch):
+        import src.training_service.worker as worker
+        monkeypatch.setattr(worker, "ANNOTATION_SERVICE_URL", "http://custom-host:9999")
+        captured = []
+        def mock_get(url, *args, **kwargs):
+            captured.append(url)
+            raise Exception("_stop_")
+        monkeypatch.setattr(worker.requests, "get", mock_get)
+        with pytest.raises(Exception, match="_stop_"):
+            worker._load_annotated_dataset("test-tenant-id")
+        assert captured[0] == "http://custom-host:9999/api/v1/annotation-export"
+
+
 class TestLabelMapping:
 
     def test_label2id_mapping(self):

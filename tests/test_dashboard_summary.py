@@ -369,3 +369,79 @@ class TestRouteDispatch:
         sources = body["sources"]
         for key in ("documents", "annotations", "training", "models"):
             assert key in sources
+
+
+@pytest.mark.asyncio
+class TestSystemAdminSchemaFailureRecovery:
+    async def test_one_bad_tenant_schema_does_not_blank_out_others(self, engine, setup_database):
+        # setup_database already registers several "active" tenants (test-tenant, tenant-b,
+        # no-model, no-model-tenant) with no schema ever created for them here, so every one
+        # of those per-schema queries already fails before this test's own healthy tenant is
+        # reached in the enumeration. This reproduces the real incident shape: several bad
+        # schemas failing in a row, followed by a healthy one, on a single shared session.
+        healthy_tid = "healthy-schema-tenant"
+        healthy_schema = f"tenant_{healthy_tid.replace('-', '_')}"
+
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO public.tenants (id, name, slug, status, max_users, max_documents, max_storage_gb, max_model_versions) "
+                    "VALUES (:id, :name, :slug, 'active', 10, 1000, 5, 10) ON CONFLICT (id) DO NOTHING"
+                ),
+                {"id": healthy_tid, "name": "Healthy Tenant", "slug": healthy_tid},
+            )
+            await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {healthy_schema}"))
+            await conn.execute(
+                text(f"""
+                    CREATE TABLE IF NOT EXISTS {healthy_schema}.training_jobs (
+                        id VARCHAR PRIMARY KEY,
+                        tenant_id VARCHAR NOT NULL,
+                        status VARCHAR(20) NOT NULL DEFAULT 'queued',
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+            )
+            await conn.execute(
+                text(f"""
+                    CREATE TABLE IF NOT EXISTS {healthy_schema}.model_versions (
+                        id VARCHAR PRIMARY KEY,
+                        tenant_id VARCHAR NOT NULL,
+                        version INTEGER NOT NULL,
+                        metrics JSONB,
+                        status VARCHAR(20) DEFAULT 'candidate',
+                        promoted_at TIMESTAMPTZ
+                    )
+                """)
+            )
+            await conn.execute(
+                text(f"""
+                    INSERT INTO {healthy_schema}.training_jobs (id, tenant_id, status, created_at)
+                    VALUES ('tj-healthy-1', :tid, 'pending_approval', NOW())
+                    ON CONFLICT (id) DO NOTHING
+                """),
+                {"tid": healthy_tid},
+            )
+            await conn.execute(
+                text(f"""
+                    INSERT INTO {healthy_schema}.model_versions (id, tenant_id, version, metrics, status, promoted_at)
+                    VALUES ('mv-healthy-1', :tid, 1, :met, 'promoted', NOW())
+                    ON CONFLICT (id) DO NOTHING
+                """),
+                {"tid": healthy_tid, "met": '{"f1": 0.9}'},
+            )
+
+        try:
+            status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+            assert status == 200
+            s = body["data"]["stats"]
+            sources = body["sources"]
+
+            pending_approvals = s[2]
+            avg_f1 = s[3]
+            assert pending_approvals["value"] == "1"
+            assert avg_f1["value"] == "90.0"
+            assert sources["models"] is True
+        finally:
+            async with engine.begin() as conn:
+                await conn.execute(text(f"DROP SCHEMA IF EXISTS {healthy_schema} CASCADE"))
+                await conn.execute(text("DELETE FROM public.tenants WHERE id = :id"), {"id": healthy_tid})

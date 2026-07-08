@@ -14,6 +14,8 @@ The system SHALL provide an `AuthProvider` React component and `useAuth()` hook 
 
 The `AuthUser` interface SHALL contain: `userId: string`, `tenantId: string`, `role: "system_admin" | "tenant_admin" | "annotator" | "business_user"`, `email: string`, `tenantSlug: string | null` (null for system_admin).
 
+On logout, the provider SHALL clear all cached query data (e.g. via the shared React Query `QueryClient`) in addition to clearing the user state and access token, so that no data fetched during a prior session (potentially a different role or tenant) can be read from cache after the session ends.
+
 #### Scenario: Successful login sets user and stores token in memory
 
 - **GIVEN** no user is authenticated
@@ -29,6 +31,13 @@ The `AuthUser` interface SHALL contain: `userId: string`, `tenantId: string`, `r
 - **THEN** `POST /api/v1/auth/logout` SHALL be called with the `Authorization: Bearer <token>` header
 - **AND** `useAuth().user` SHALL be set to `null`
 - **AND** the access token ref SHALL be cleared
+
+#### Scenario: Logout clears cached query data
+
+- **GIVEN** a user is authenticated and has triggered queries whose results are cached (e.g. a training jobs list or detail fetch)
+- **WHEN** `logout()` is called
+- **THEN** the shared query cache SHALL be cleared
+- **AND** a subsequent login (as the same or a different user, in the same browser tab) SHALL trigger fresh fetches rather than rendering any data cached from the prior session
 
 #### Scenario: On-mount refresh restores session from cookie
 

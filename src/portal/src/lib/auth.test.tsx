@@ -1,6 +1,7 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./auth";
 
 vi.mock("next/navigation", () => ({
@@ -11,7 +12,13 @@ vi.mock("./auth-fetch", () => ({
   initAuthFetch: vi.fn(),
 }));
 
-const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+let queryClient!: QueryClient;
+
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={queryClient}>
+    <AuthProvider>{children}</AuthProvider>
+  </QueryClientProvider>
+);
 
 const MOCK_RAW_USER = {
   id: "user-1",
@@ -37,6 +44,7 @@ describe("useAuth — outside provider", () => {
 
 describe("AuthProvider", () => {
   beforeEach(() => {
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 401 }));
   });
 
@@ -121,6 +129,33 @@ describe("AuthProvider", () => {
 
     expect(result.current.user).toBeNull();
     expect(result.current.getAccessToken()).toBeNull();
+  });
+
+  it("logout clears cached query data", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify(MOCK_RESPONSE), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "ok" }), { status: 200 }));
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.user).not.toBeNull();
+    });
+
+    queryClient.setQueryData(["training-jobs", "all"], {
+      items: [{ id: "job-1" }],
+      total: 1,
+      page: 1,
+      per_page: 50,
+    });
+    expect(queryClient.getQueryData(["training-jobs", "all"])).toBeDefined();
+
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    expect(queryClient.getQueryData(["training-jobs", "all"])).toBeUndefined();
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
   });
 
   it("setAccessToken updates subsequent getAccessToken reads", () => {

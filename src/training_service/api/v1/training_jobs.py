@@ -1,5 +1,7 @@
+import logging
 import os
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -8,6 +10,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.training_service.api.v1.schemas import TrainingJobCreate, TrainingJobResponse, TrainingJobListResponse, RejectJobRequest
 from src.training_service.infra.repository import TrainingJobRepository, ModelVersionRepository
 from src.training_service.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/training-jobs", tags=["training-jobs"])
 
@@ -47,6 +51,7 @@ def require_system_admin(request: Request) -> None:
 def _row_to_response(row: dict) -> TrainingJobResponse:
     return TrainingJobResponse(
         id=row["id"],
+        tenant_id=row["tenant_id"],
         status=row["status"],
         hyperparams=row.get("hyperparams"),
         current_epoch=row.get("current_epoch"),
@@ -95,6 +100,26 @@ async def create_training_job(
     return _row_to_response(created)
 
 
+async def _all_active_tenant_ids(session: AsyncSession) -> list[str]:
+    result = await session.execute(text("SELECT id FROM public.tenants WHERE status = 'active'"))
+    return [str(row[0]) for row in result.fetchall()]
+
+
+async def _list_aggregated_across_tenants(session: AsyncSession, status_filter: str) -> list[dict]:
+    tenant_ids = await _all_active_tenant_ids(session)
+    all_rows: list[dict] = []
+    for tid in tenant_ids:
+        try:
+            rows, _ = await TrainingJobRepository.list_by_tenant(session, tid, status_filter, page=1, per_page=1_000_000)
+            all_rows.extend(rows)
+        except Exception:
+            logger.exception("system_admin training-jobs aggregation: query failed for tenant %s", tid)
+            await session.rollback()
+    epoch = datetime.min.replace(tzinfo=timezone.utc)
+    all_rows.sort(key=lambda r: r.get("created_at") or epoch, reverse=True)
+    return all_rows
+
+
 @router.get("", response_model=TrainingJobListResponse)
 async def list_training_jobs(
     request: Request,
@@ -106,11 +131,21 @@ async def list_training_jobs(
 ):
     role = getattr(request.state, "role", None)
     if role == "system_admin":
-        if not tenant_id:
-            return TrainingJobListResponse(items=[], total=0, page=page, per_page=per_page)
-    else:
-        tenant_id = get_tenant_id(request)
+        if tenant_id:
+            rows, total = await TrainingJobRepository.list_by_tenant(session, tenant_id, status, page, per_page)
+        else:
+            all_rows = await _list_aggregated_across_tenants(session, status or "pending_approval")
+            total = len(all_rows)
+            offset = (page - 1) * per_page
+            rows = all_rows[offset : offset + per_page]
+        return TrainingJobListResponse(
+            items=[_row_to_response(r) for r in rows],
+            total=total,
+            page=page,
+            per_page=per_page,
+        )
 
+    tenant_id = get_tenant_id(request)
     rows, total = await TrainingJobRepository.list_by_tenant(session, tenant_id, status, page, per_page)
     return TrainingJobListResponse(
         items=[_row_to_response(r) for r in rows],

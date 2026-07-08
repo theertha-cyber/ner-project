@@ -10,6 +10,7 @@ import {
   ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { GATEWAY_URL } from "@/lib/api";
 import { initAuthFetch } from "@/lib/auth-fetch";
 
@@ -51,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const accessTokenRef = useRef<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const getAccessToken = useCallback(() => accessTokenRef.current, []);
   const setAccessToken = useCallback((t: string) => {
@@ -105,7 +107,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).catch(() => {});
     accessTokenRef.current = null;
     setUser(null);
-  }, []);
+    queryClient.clear();
+  }, [queryClient]);
 
   return (
     <AuthContext.Provider value={{ user, getAccessToken, setAccessToken, login, logout }}>

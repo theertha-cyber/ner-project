@@ -92,6 +92,7 @@ services:
       NER_MODEL_SERVING_URL: "http://model_serving:8000"
       NER_CHAT_API_PORT: 8006
       NER_CHAT_API_URL: "http://host.docker.internal:8006"
+      NER_ANALYTICS_SERVICE_URL: "http://analytics_service:8000"
     depends_on:
       postgres-test:
         condition: service_healthy
@@ -203,6 +204,7 @@ services:
       NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
+      ANNOTATION_SERVICE_URL: "http://annotation_service:8000"
     depends_on:
       postgres-test:
         condition: service_healthy
@@ -226,6 +228,7 @@ services:
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_TRAINING_DEVICE: "cpu"
       NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
+      ANNOTATION_SERVICE_URL: "http://annotation_service:8000"
     volumes:
       - .:/app
     depends_on:

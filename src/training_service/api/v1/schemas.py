@@ -12,6 +12,7 @@ class TrainingJobCreate(BaseModel):
 
 class TrainingJobResponse(BaseModel):
     id: str
+    tenant_id: str
     status: str
     hyperparams: dict | None = None
     current_epoch: int | None = None

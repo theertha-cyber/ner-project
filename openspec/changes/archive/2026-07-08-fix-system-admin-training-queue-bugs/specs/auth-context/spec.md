@@ -1,0 +1,53 @@
+## MODIFIED Requirements
+
+### Requirement: Auth Context Provider
+
+The system SHALL provide an `AuthProvider` React component and `useAuth()` hook that manage authenticated user state. The provider SHALL store the access token exclusively in a `useRef` (never in `localStorage`, `sessionStorage`, or any cookie). The provider SHALL expose a `user: AuthUser | null` state value (in `useState`) that reflects the current authentication state and triggers re-renders when it changes. On mount, the provider SHALL call `POST /api/v1/auth/refresh` to silently restore an active session from the `httpOnly` cookie if one is present; if the refresh fails, `user` SHALL remain `null`. The `useAuth()` hook SHALL throw `"useAuth must be used within AuthProvider"` when called outside the provider.
+
+The `AuthUser` interface SHALL contain: `userId: string`, `tenantId: string`, `role: "system_admin" | "tenant_admin" | "annotator" | "business_user"`, `email: string`, `tenantSlug: string | null` (null for system_admin).
+
+On logout, the provider SHALL clear all cached query data (e.g. via the shared React Query `QueryClient`) in addition to clearing the user state and access token, so that no data fetched during a prior session (potentially a different role or tenant) can be read from cache after the session ends.
+
+#### Scenario: Successful login sets user and stores token in memory
+
+- **GIVEN** no user is authenticated
+- **WHEN** `login("user@acme.com", "password")` is called and the API returns a 200 with `access_token`, `refresh_token`, and user claims
+- **THEN** `useAuth().user` SHALL be set to the decoded `AuthUser` object
+- **AND** the access token SHALL be accessible to `authFetch` via the context ref
+- **AND** neither the access token nor the refresh token SHALL appear in `localStorage`, `sessionStorage`, or any readable cookie
+
+#### Scenario: Logout clears user and calls logout endpoint
+
+- **GIVEN** a user is authenticated with a valid access token
+- **WHEN** `logout()` is called
+- **THEN** `POST /api/v1/auth/logout` SHALL be called with the `Authorization: Bearer <token>` header
+- **AND** `useAuth().user` SHALL be set to `null`
+- **AND** the access token ref SHALL be cleared
+
+#### Scenario: Logout clears cached query data
+
+- **GIVEN** a user is authenticated and has triggered queries whose results are cached (e.g. a training jobs list or detail fetch)
+- **WHEN** `logout()` is called
+- **THEN** the shared query cache SHALL be cleared
+- **AND** a subsequent login (as the same or a different user, in the same browser tab) SHALL trigger fresh fetches rather than rendering any data cached from the prior session
+
+#### Scenario: On-mount refresh restores session from cookie
+
+- **GIVEN** the browser holds a valid `refresh_token` httpOnly cookie from a previous session
+- **WHEN** `AuthProvider` mounts (e.g. on page reload)
+- **THEN** `POST /api/v1/auth/refresh` SHALL be called automatically (no user action)
+- **AND** on success, `useAuth().user` SHALL be populated with the refreshed user claims
+- **AND** the new access token SHALL be stored in the context ref
+
+#### Scenario: On-mount refresh failure leaves user as null
+
+- **GIVEN** no valid `refresh_token` cookie exists (expired or absent)
+- **WHEN** `AuthProvider` mounts
+- **THEN** the `POST /api/v1/auth/refresh` call SHALL receive a 401
+- **AND** `useAuth().user` SHALL remain `null` after the failed attempt
+
+#### Scenario: useAuth throws when called outside AuthProvider
+
+- **GIVEN** a React component that calls `useAuth()` without being wrapped in `AuthProvider`
+- **WHEN** the component renders
+- **THEN** an error SHALL be thrown with message `"useAuth must be used within AuthProvider"`

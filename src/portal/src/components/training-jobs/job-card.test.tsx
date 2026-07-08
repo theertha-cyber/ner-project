@@ -5,6 +5,7 @@ import type { TrainingJob } from "@/types/training-jobs";
 
 const baseJob: TrainingJob = {
   id: "job-1",
+  tenant_id: "t1",
   status: "pending_approval",
   hyperparams: null,
   current_epoch: null,

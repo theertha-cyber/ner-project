@@ -29,8 +29,11 @@ export default function TrainingJobsPage() {
     currentTab === "all" ? undefined : currentTab,
   );
 
+  const selectedRowTenantId =
+    listData?.items.find((job) => job.id === selectedJobId)?.tenant_id ?? null;
+
   const { data: selectedJob, isLoading: detailLoading, isError: detailError } =
-    useTrainingJob(selectedJobId);
+    useTrainingJob(selectedJobId, user?.role, selectedRowTenantId);
 
   const handleTabChange = useCallback(
     (tab: FilterTab) => {
@@ -55,7 +58,6 @@ export default function TrainingJobsPage() {
     [searchParams, router],
   );
 
-  const tenantId = user?.tenantId ?? "";
   const isTenantAdmin = user?.role === "tenant_admin";
 
   return (
@@ -107,7 +109,7 @@ export default function TrainingJobsPage() {
               <JobActions
                 jobId={selectedJob.id}
                 status={selectedJob.status}
-                tenantId={tenantId}
+                tenantId={selectedJob.tenant_id}
               />
             </div>
           )}

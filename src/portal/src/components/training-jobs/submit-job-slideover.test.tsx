@@ -32,7 +32,7 @@ describe("SubmitJobSlideover", () => {
     });
   });
 
-  it("shows warning for insufficient spans", async () => {
+  it("enables submit with span count below 500", async () => {
     mockFetch.mockResolvedValue(
       new Response("span1\nspan2\n", { status: 200 }),
     );
@@ -43,11 +43,13 @@ describe("SubmitJobSlideover", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/requires 500 minimum/)).toBeDefined();
+      expect(screen.getByText(/2 confirmed spans/)).toBeDefined();
     });
+    expect(screen.queryByText(/minimum/)).toBeNull();
+    expect(screen.getByRole("button", { name: /submit training job/i })).not.toBeDisabled();
   });
 
-  it("shows field-level validation for negative epochs", async () => {
+  it("shows plain span count with no threshold language when count is high", async () => {
     mockFetch.mockResolvedValue(
       new Response(new Array(600).fill("x").join("\n"), { status: 200 }),
     );
@@ -58,13 +60,55 @@ describe("SubmitJobSlideover", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/meets the 500-span minimum/)).toBeDefined();
+      expect(screen.getByText(/600 confirmed spans/)).toBeDefined();
     });
+    expect(screen.queryByText(/minimum/)).toBeNull();
+  });
+
+  it("keeps submit enabled when span count fetch fails", async () => {
+    mockFetch.mockResolvedValue(new Response("", { status: 500 }));
+
+    render(
+      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/unable to check span count/i)).toBeDefined();
+    });
+    expect(screen.getByRole("button", { name: /submit training job/i })).not.toBeDisabled();
+  });
+
+  it("surfaces server error and keeps form open on 422 insufficient entities", async () => {
+    mockFetch
+      .mockResolvedValueOnce(new Response("span1\nspan2\n", { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ detail: "Insufficient annotated entities: 2. Minimum 500 required." }),
+          { status: 422 },
+        ),
+      );
+
+    render(
+      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /submit training job/i })).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /submit training job/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Insufficient annotated entities: 2\. Minimum 500 required\./)).toBeDefined();
+    });
+    expect(screen.getByRole("button", { name: /submit training job/i })).toBeDefined();
   });
 
   it("calls onClose after successful submission", async () => {
     mockFetch
-      .mockResolvedValueOnce(new Response(new Array(600).fill("x").join("\n"), { status: 200 }))
+      .mockResolvedValueOnce(new Response("span1\nspan2\n", { status: 200 }))
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ id: "new-job", status: "pending_approval" }), { status: 201 }),
       );

@@ -7,14 +7,12 @@ import { GATEWAY_URL } from "@/lib/api";
 
 interface WidgetKey {
   id: string;
-  name: string;
-  value: string;
+  key_prefix: string;
   created_at: string;
-  status: "active" | "revoked";
+  last_used_at: string | null;
 }
 
-function StatusBadge({ status }: { status: "active" | "revoked" }) {
-  const isActive = status === "active";
+function StatusBadge({ active }: { active: boolean }) {
   return (
     <span
       style={{
@@ -23,11 +21,11 @@ function StatusBadge({ status }: { status: "active" | "revoked" }) {
         fontWeight: 600,
         padding: "2px 8px",
         borderRadius: 20,
-        background: isActive ? "rgba(34,197,94,0.1)" : "rgba(107,114,128,0.1)",
-        color: isActive ? "#16a34a" : "var(--ink-3)",
+        background: active ? "rgba(34,197,94,0.1)" : "rgba(107,114,128,0.1)",
+        color: active ? "#16a34a" : "var(--ink-3)",
       }}
     >
-      {status}
+      {active ? "active" : "revoked"}
     </span>
   );
 }
@@ -45,6 +43,8 @@ export default function WidgetKeysPage() {
   const [keys, setKeys] = useState<WidgetKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newKey, setNewKey] = useState<{ id: string; raw_key: string; key_prefix: string } | null>(null);
 
   useEffect(() => {
     if (!user?.tenantSlug) {
@@ -59,10 +59,29 @@ export default function WidgetKeysPage() {
   }, [user?.tenantSlug]);
 
   function handleCopy(key: WidgetKey) {
-    navigator.clipboard.writeText(key.value).then(() => {
+    navigator.clipboard.writeText(key.key_prefix).then(() => {
       setCopiedId(key.id);
       setTimeout(() => setCopiedId(null), 1500);
     });
+  }
+
+  async function handleCreate() {
+    if (!user?.tenantSlug || creating) return;
+    setCreating(true);
+    try {
+      const res = await authFetch(`${GATEWAY_URL}/api/v1/tenants/${user.tenantSlug}/widget-keys`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNewKey(data);
+        setKeys((prev) => [{ id: data.id, key_prefix: data.key_prefix, created_at: new Date().toISOString(), last_used_at: null }, ...prev]);
+      }
+    } catch {
+      // silent
+    } finally {
+      setCreating(false);
+    }
   }
 
   const slug = user?.tenantSlug ?? "{slug}";
@@ -111,7 +130,8 @@ export default function WidgetKeysPage() {
       {/* Toolbar row */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
         <button
-          onClick={() => console.log("Create Key — not implemented")}
+          onClick={handleCreate}
+          disabled={creating}
           style={{
             fontFamily: "var(--font-display, sans-serif)",
             fontSize: 13,
@@ -121,12 +141,98 @@ export default function WidgetKeysPage() {
             border: "1px solid var(--line)",
             background: "var(--surface-3)",
             color: "var(--ink)",
-            cursor: "pointer",
+            cursor: creating ? "not-allowed" : "pointer",
+            opacity: creating ? 0.6 : 1,
           }}
         >
-          + Create Key
+          {creating ? "Creating…" : "+ Create Key"}
         </button>
       </div>
+
+      {/* New key reveal banner */}
+      {newKey && (
+        <div
+          style={{
+            background: "rgba(34,197,94,0.08)",
+            border: "1px solid rgba(34,197,94,0.3)",
+            borderRadius: 12,
+            padding: "16px 20px",
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-display, sans-serif)",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#16a34a",
+              marginBottom: 8,
+            }}
+          >
+            Key created — copy it now, it won't be shown again.
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <code
+              style={{
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: 13,
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+                borderRadius: 6,
+                padding: "6px 12px",
+                color: "var(--ink)",
+                flex: 1,
+                overflowX: "auto",
+              }}
+            >
+              {newKey.raw_key}
+            </code>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(newKey.raw_key);
+                setCopiedId(newKey.id);
+                setTimeout(() => setCopiedId(null), 1500);
+              }}
+              style={{
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "6px 14px",
+                borderRadius: 6,
+                border: "1px solid var(--line)",
+                background: copiedId === newKey.id ? "var(--primary-soft)" : "transparent",
+                color: copiedId === newKey.id ? "var(--primary)" : "var(--ink-3)",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {copiedId === newKey.id ? "Copied!" : "Copy"}
+            </button>
+            <button
+              onClick={() => setNewKey(null)}
+              style={{
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: "1px solid var(--line)",
+                background: "transparent",
+                color: "var(--ink-3)",
+                cursor: "pointer",
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Keys table or empty state */}
       {loading ? (
@@ -186,7 +292,8 @@ export default function WidgetKeysPage() {
             Create a key to start embedding the NER widget in your application.
           </p>
           <button
-            onClick={() => console.log("Create Key — not implemented")}
+            onClick={handleCreate}
+            disabled={creating}
             style={{
               fontFamily: "var(--font-display, sans-serif)",
               fontSize: 13,
@@ -196,10 +303,11 @@ export default function WidgetKeysPage() {
               border: "1px solid var(--primary-line)",
               background: "var(--primary-soft)",
               color: "var(--primary)",
-              cursor: "pointer",
+              cursor: creating ? "not-allowed" : "pointer",
+              opacity: creating ? 0.6 : 1,
             }}
           >
-            Create Key
+            {creating ? "Creating…" : "Create Key"}
           </button>
         </div>
       ) : (
@@ -220,7 +328,7 @@ export default function WidgetKeysPage() {
                   borderBottom: "1px solid var(--line)",
                 }}
               >
-                {["Name", "Key Prefix", "Created", "Status", ""].map((h) => (
+                {["Key Prefix", "Created", "Last Used", ""].map((h) => (
                   <th
                     key={h}
                     style={{
@@ -250,23 +358,12 @@ export default function WidgetKeysPage() {
                   <td
                     style={{
                       padding: "12px 16px",
-                      fontFamily: "var(--font-display, sans-serif)",
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: "var(--ink)",
-                    }}
-                  >
-                    {key.name}
-                  </td>
-                  <td
-                    style={{
-                      padding: "12px 16px",
                       fontFamily: "var(--font-mono, monospace)",
                       fontSize: 12,
                       color: "var(--ink-2)",
                     }}
                   >
-                    {key.value.slice(0, 8)}…
+                    {key.key_prefix}…
                   </td>
                   <td
                     style={{
@@ -278,8 +375,15 @@ export default function WidgetKeysPage() {
                   >
                     {formatDate(key.created_at)}
                   </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <StatusBadge status={key.status} />
+                  <td
+                    style={{
+                      padding: "12px 16px",
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontSize: 11,
+                      color: "var(--ink-3)",
+                    }}
+                  >
+                    {key.last_used_at ? formatDate(key.last_used_at) : "—"}
                   </td>
                   <td style={{ padding: "12px 16px", textAlign: "right" }}>
                     <button

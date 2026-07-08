@@ -18,6 +18,9 @@ vi.mock("@/lib/auth", () => ({
 const mockAuthFetch = vi.fn();
 vi.mock("@/lib/auth-fetch", () => ({ authFetch: (...args: unknown[]) => mockAuthFetch(...args) }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/hooks/use-entity-types", () => ({
+  useEntityTypes: () => ({ data: { entity_types: [{ name: "PER" }, { name: "ORG" }, { name: "LOC" }] } }),
+}));
 vi.mock("@/lib/token-map", () => ({ buildTokenMap: () => [] }));
 
 vi.mock("./TaskQueue", () => ({
