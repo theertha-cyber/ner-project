@@ -174,6 +174,26 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
     batch_size = hyperparams.get("batch_size", 8)
     max_seq_length = hyperparams.get("max_seq_length", 128)
 
+    engine = _get_sync_engine()
+    schema = _schema(tenant_id)
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(f"SELECT status FROM {schema}.training_jobs WHERE id = :id"),
+            {"id": job_id},
+        ).fetchone()
+        if row is not None:
+            status = row[0]
+            if status in ("completed", "failed", "cancelled"):
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning("Job %s already %s, skipping", job_id, status)
+                return
+        elif row is None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning("Job %s not found in database, skipping", job_id)
+            return
+
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     experiment_name = f"tenant_{tenant_id}"
     experiment = mlflow.get_experiment_by_name(experiment_name)
@@ -303,6 +323,33 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
         trainer.save_model(model_dir)
         tokenizer.save_pretrained(model_dir)
 
+        onnx_model = trainer.model
+        onnx_model.eval()
+        dummy_inputs = tokenizer(
+            "dummy input text for onnx export tracing",
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=max_seq_length,
+        )
+        onnx_path = os.path.join(model_dir, "model.onnx")
+        torch.onnx.export(
+            onnx_model,
+            (dummy_inputs["input_ids"], dummy_inputs["attention_mask"]),
+            onnx_path,
+            input_names=["input_ids", "attention_mask"],
+            output_names=["logits"],
+            dynamic_axes={
+                "input_ids": {0: "batch", 1: "sequence"},
+                "attention_mask": {0: "batch", 1: "sequence"},
+                "logits": {0: "batch", 1: "sequence"},
+            },
+            opset_version=14,
+            # torch>=2.9 defaults to the dynamo exporter, which requires the
+            # onnxscript package; dynamic_axes needs the legacy exporter.
+            dynamo=False,
+        )
+
         metrics = {
             "eval_loss": eval_results.get("eval_loss", 0),
             "eval_precision": eval_results.get("eval_precision", 0),
@@ -318,6 +365,7 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
             transformers_model={"model": model, "tokenizer": tokenizer},
             artifact_path="model",
             registered_model_name=registered_model_name,
+            pip_requirements=["torch"],
         )
 
         mlflow_run_url = f"{settings.mlflow_tracking_uri}/#/experiments/{experiment_id}/runs/{mlflow_run_id}"
@@ -353,7 +401,7 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
         _update_job_progress(
             tenant_id, job_id,
             status="completed",
-            metrics=metrics,
+            metrics=json.dumps(metrics),
             model_version_id=version_id,
             mlflow_run_id=mlflow_run_id,
             mlflow_run_url=mlflow_run_url,
