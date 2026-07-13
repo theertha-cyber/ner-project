@@ -34,7 +34,7 @@ def _resolve_active_version(tenant_id: str) -> tuple[str, int]:
     from src.shared.auth import create_access_token
 
     token = create_access_token(tenant_id=tenant_id, user_id="model-serving", role="system_admin")
-    registry_url = f"http://training_service:8003/api/v1/models/active"
+    registry_url = f"{settings.training_service_url.rstrip('/')}/api/v1/models/active"
     try:
         resp = requests.get(
             registry_url,
@@ -49,13 +49,13 @@ def _resolve_active_version(tenant_id: str) -> tuple[str, int]:
         return "base", 0
 
 
-def _load_model_for_tenant(tenant_id: str, version_number: int) -> bool:
+def _load_model_for_tenant(tenant_id: str, version_number: int, artifact_path: str) -> bool:
     model_id = f"{tenant_id}_v{version_number}"
     cached = model_cache.get(model_id)
     if cached is not None:
         return True
 
-    local_dir = download_model_artifacts(tenant_id, version_number)
+    local_dir = download_model_artifacts(tenant_id, version_number, artifact_path)
     memory = estimate_model_memory(local_dir)
 
     onnx_path = None
@@ -87,7 +87,7 @@ def _infer_with_onnx(tokens: list[str], tenant_id: str) -> list[dict]:
     if cached is not None:
         session = cached.model["session"]
     else:
-        loaded = _load_model_for_tenant(tenant_id, version_number)
+        loaded = _load_model_for_tenant(tenant_id, version_number, artifact_path)
         if loaded:
             cached = model_cache.get(model_id)
             if cached is not None:
@@ -109,8 +109,9 @@ def _infer_with_onnx(tokens: list[str], tenant_id: str) -> list[dict]:
     attention_mask = encoding["attention_mask"].astype(np.int64)
     token_type_ids = encoding.get("token_type_ids", None)
 
+    session_input_names = {inp.name for inp in session.get_inputs()}
     inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
-    if token_type_ids is not None:
+    if token_type_ids is not None and "token_type_ids" in session_input_names:
         inputs["token_type_ids"] = token_type_ids.astype(np.int64)
 
     outputs = session.run(None, inputs)
@@ -191,7 +192,7 @@ def _resolve_label_list(tenant_id: str) -> list[str]:
     from src.shared.auth import create_access_token
 
     token = create_access_token(tenant_id=tenant_id, user_id="model-serving", role="system_admin")
-    registry_url = f"http://training_service:8003/api/v1/models/active"
+    registry_url = f"{settings.training_service_url.rstrip('/')}/api/v1/models/active"
     try:
         resp = requests.get(
             registry_url,

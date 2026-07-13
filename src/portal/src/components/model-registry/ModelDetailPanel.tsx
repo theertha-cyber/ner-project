@@ -140,7 +140,7 @@ export function ModelDetailPanel({ model, role }: ModelDetailPanelProps) {
             {perEntityKeys.map((key) => (
               <div key={key} className="rounded bg-gray-50 p-2">
                 <span className="text-gray-500">{key}</span>
-                <p className="font-medium text-gray-900">{metrics![key].toFixed(4)}</p>
+                <p className="font-medium text-gray-900">{typeof metrics![key] === "number" ? metrics![key].toFixed(4) : String(metrics![key])}</p>
               </div>
             ))}
           </div>

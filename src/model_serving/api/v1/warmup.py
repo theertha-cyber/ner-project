@@ -15,18 +15,22 @@ async def warmup_endpoint(
         raise HTTPException(status_code=403, detail="Tenant context not available")
 
     if body.version_number is not None:
+        version_info = _resolve_active_version(tenant_id)
         version_number = body.version_number
+        artifact_path = version_info[0] if version_info else None
+        if not artifact_path or artifact_path == "base":
+            raise HTTPException(status_code=404, detail="No custom model found for this tenant")
     else:
         version_info = _resolve_active_version(tenant_id)
         if version_info is None:
             raise HTTPException(status_code=404, detail="No active model version found for this tenant")
-        version_number = version_info[1]
+        artifact_path, version_number = version_info
 
     if version_number == 0:
         _get_base_pipeline()
         return {"status": "ok", "version_number": 0}
 
-    success = _load_model_for_tenant(tenant_id, version_number)
+    success = _load_model_for_tenant(tenant_id, version_number, artifact_path)
     if not success:
         raise HTTPException(status_code=404, detail=f"Model version v{version_number} could not be loaded")
 

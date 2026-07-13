@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     model_serving_url: str = "http://localhost:8004"
     extraction_service_url: str = "http://localhost:8002"
     document_service_url: str = "http://localhost:8001"
+    training_service_url: str = "http://localhost:8003"
     openai_api_key: str
     chat_api_port: int = 8006
     chat_api_url: str = "http://localhost:8006"
@@ -40,7 +41,7 @@ class Settings(BaseSettings):
     cors_origin_regex: str = r"http://(localhost|127\.0\.0\.1)(:\d+)?"
     cors_allow_private_network: bool = True
 
-    model_config = {"env_prefix": "NER_", "env_file": ".env"}
+    model_config = {"env_prefix": "NER_", "env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()

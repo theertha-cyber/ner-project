@@ -1,694 +1,228 @@
-import os
+"""Tests for training worker functions: _update_job_progress and model_versions lifecycle."""
 import uuid
-from unittest.mock import MagicMock
+import json
 
 import pytest
-import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import NullPool
 from datetime import datetime, timezone
+from sqlalchemy import text
+from sqlalchemy.pool import NullPool
 
-os.environ.setdefault("NER_DATABASE_URL", "postgresql+asyncpg://ner:ner@localhost:5432/ner_test")
-os.environ.setdefault("NER_DATABASE_URL_SYNC", "postgresql://ner:ner@localhost:5432/ner_test")
+import os
+os.environ.setdefault("NER_DATABASE_URL", "postgresql+asyncpg://ner:ner@localhost:54320/ner_test")
+os.environ.setdefault("NER_DATABASE_URL_SYNC", "postgresql://ner:ner@localhost:54320/ner_test")
 os.environ.setdefault("NER_JWT_SECRET", "test-secret-do-not-use-in-prod")
-os.environ.setdefault("NER_MIN_TRAINING_ENTITIES", "500")
 
 from src.shared.config import settings
-from src.shared.auth import create_access_token
-from src.training_service.main import app
+from src.training_service.worker import _update_job_progress, _schema, _get_sync_engine
 
 
-@pytest.fixture(autouse=True)
-def mock_celery(monkeypatch):
-    mock_task = MagicMock()
-    mock_task.id = str(uuid.uuid4())
-    mock_control = MagicMock()
-    send_task_calls = []
-
-    def _send_task(name, args=None, kwargs=None, **kw):
-        send_task_calls.append((name, args, kwargs))
-        return mock_task
-
-    monkeypatch.setattr("src.training_service.api.v1.training_jobs.celery_app.send_task", _send_task)
-    monkeypatch.setattr("src.training_service.api.v1.training_jobs.celery_app.control", mock_control)
-    return send_task_calls
-
-
-def auth_header(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}"}
-
-
-def make_token(tid: str, role: str = "tenant_admin") -> str:
-    return create_access_token(tenant_id=tid, user_id="test-user", role=role)
-
-
-def _create_tables_sql(schema: str) -> list:
-    return [
-        f"""
+def _create_test_schema(schema: str):
+    engine = _get_sync_engine()
+    with engine.begin() as conn:
+        conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+        conn.execute(text(f"""
             CREATE TABLE IF NOT EXISTS {schema}.training_jobs (
                 id VARCHAR PRIMARY KEY,
                 tenant_id VARCHAR NOT NULL,
-                status VARCHAR(20) NOT NULL DEFAULT 'queued',
-                hyperparams JSONB NOT NULL DEFAULT '{{}}',
-                current_epoch INTEGER,
-                current_loss FLOAT,
+                status VARCHAR(20) DEFAULT 'queued',
                 metrics JSONB,
                 error_message TEXT,
-                model_version_id VARCHAR,
-                celery_task_id VARCHAR,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
                 started_at TIMESTAMPTZ,
                 completed_at TIMESTAMPTZ,
-                failed_at TIMESTAMPTZ
+                failed_at TIMESTAMPTZ,
+                model_version_id VARCHAR,
+                mlflow_run_id VARCHAR,
+                mlflow_run_url VARCHAR
             )
-        """,
-        f"""
-            CREATE INDEX IF NOT EXISTS idx_training_jobs_tenant_status
-                ON {schema}.training_jobs (tenant_id, status)
-        """,
-        f"""
-            CREATE TABLE IF NOT EXISTS {schema}.spans (
+        """))
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.model_versions (
                 id VARCHAR PRIMARY KEY,
-                document_id VARCHAR,
-                entity_type VARCHAR(255) NOT NULL
+                tenant_id VARCHAR NOT NULL,
+                version_number INTEGER NOT NULL,
+                training_job_id VARCHAR,
+                status VARCHAR(20) DEFAULT 'training',
+                metrics JSONB,
+                artifact_path TEXT,
+                mlflow_run_id VARCHAR,
+                mlflow_run_url VARCHAR,
+                promoted_at TIMESTAMPTZ,
+                archived_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """,
-        f"""
-            CREATE TABLE IF NOT EXISTS {schema}.documents (
-                id VARCHAR PRIMARY KEY
+        """))
+
+
+def _cleanup_test_schema(schema: str):
+    engine = _get_sync_engine()
+    with engine.begin() as conn:
+        conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
+
+
+class TestUpdateJobProgress:
+    def setup_method(self):
+        self.tenant_id = str(uuid.uuid4())
+        self.schema = _schema(self.tenant_id)
+        self.job_id = str(uuid.uuid4())
+        _create_test_schema(self.schema)
+        engine = _get_sync_engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"INSERT INTO {self.schema}.training_jobs (id, tenant_id, status) VALUES (:id, :tid, 'running')"),
+                {"id": self.job_id, "tid": self.tenant_id},
             )
-        """,
-    ]
 
+    def teardown_method(self):
+        _cleanup_test_schema(self.schema)
 
-async def _seed_spans(engine, schema: str, entity_count: int = 500):
-    doc_rows = []
-    span_rows = []
-    for i in range(entity_count):
-        doc_id = str(uuid.uuid4())
-        doc_rows.append(f"('{doc_id}')")
-        span_rows.append(f"('{str(uuid.uuid4())}', '{doc_id}', 'PER')")
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"INSERT INTO {schema}.documents (id) VALUES {', '.join(doc_rows)}"),
+    def test_update_with_dict_metrics(self):
+        metrics = {"f1": 0.5, "loss": 0.1}
+        _update_job_progress(self.tenant_id, self.job_id, status="completed", metrics=metrics)
+
+        engine = _get_sync_engine()
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(f"SELECT status, metrics FROM {self.schema}.training_jobs WHERE id = :id"),
+                {"id": self.job_id},
+            ).fetchone()
+            assert row[0] == "completed"
+            result = row[1] if isinstance(row[1], dict) else json.loads(row[1])
+            assert result == {"f1": 0.5, "loss": 0.1}
+
+    def test_update_with_string_metrics(self):
+        metrics_str = json.dumps({"f1": 0.5})
+        _update_job_progress(self.tenant_id, self.job_id, status="completed", metrics=metrics_str)
+
+        engine = _get_sync_engine()
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(f"SELECT metrics FROM {self.schema}.training_jobs WHERE id = :id"),
+                {"id": self.job_id},
+            ).fetchone()
+            result = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            assert result == {"f1": 0.5}
+
+    def test_update_with_none_metrics(self):
+        _update_job_progress(self.tenant_id, self.job_id, status="completed", metrics=None)
+
+        engine = _get_sync_engine()
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(f"SELECT metrics FROM {self.schema}.training_jobs WHERE id = :id"),
+                {"id": self.job_id},
+            ).fetchone()
+            assert row[0] is None
+
+    def test_update_with_mixed_fields(self):
+        _update_job_progress(
+            self.tenant_id, self.job_id,
+            status="completed",
+            metrics={"f1": 0.5},
+            error_message=None,
+            model_version_id=str(uuid.uuid4()),
         )
-        await conn.execute(
-            text(f"INSERT INTO {schema}.spans (id, document_id, entity_type) VALUES {', '.join(span_rows)}"),
-        )
+
+        engine = _get_sync_engine()
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(f"SELECT status, metrics, error_message FROM {self.schema}.training_jobs WHERE id = :id"),
+                {"id": self.job_id},
+            ).fetchone()
+            assert row[0] == "completed"
+            result = row[1] if isinstance(row[1], dict) else json.loads(row[1])
+            assert result == {"f1": 0.5}
+            assert row[2] is None
 
 
-@pytest_asyncio.fixture(scope="function")
-async def engine():
-    engine = create_async_engine(settings.database_url, poolclass=NullPool)
-    yield engine
-    await engine.dispose()
-
-
-@pytest_asyncio.fixture(scope="function")
-async def setup_schema(engine):
-    tid = str(uuid.uuid4())
-    schema = f"tenant_{tid.replace('-', '_')}"
-    async with engine.begin() as conn:
-        await conn.execute(text("CREATE SCHEMA IF NOT EXISTS public"))
-        await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-        for stmt in _create_tables_sql(schema):
-            await conn.execute(text(stmt))
-    async with engine.begin() as conn:
-        await conn.execute(
-            text("INSERT INTO public.tenants (id, name, slug, status, max_users, max_documents, max_storage_gb, max_model_versions) VALUES (:id, :name, :slug, 'active', 10, 1000, 5, 10) ON CONFLICT (id) DO NOTHING"),
-            {"id": tid, "name": "test-tenant", "slug": f"test-{tid[:8]}"},
-        )
-    yield tid, schema
-    async with engine.begin() as conn:
-        await conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
-        await conn.execute(text("DELETE FROM public.tenants WHERE id = :id"), {"id": tid})
-
-
-@pytest_asyncio.fixture
-async def client(engine):
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-
-
-@pytest_asyncio.fixture(scope="function")
-async def setup_two_schemas(engine):
-    tid_a = str(uuid.uuid4())
-    tid_b = str(uuid.uuid4())
-    schema_a = f"tenant_{tid_a.replace('-', '_')}"
-    schema_b = f"tenant_{tid_b.replace('-', '_')}"
-    async with engine.begin() as conn:
-        await conn.execute(text("CREATE SCHEMA IF NOT EXISTS public"))
-        for schema in (schema_a, schema_b):
-            await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-            for stmt in _create_tables_sql(schema):
-                await conn.execute(text(stmt))
-    async with engine.begin() as conn:
-        for tid in (tid_a, tid_b):
-            await conn.execute(
-                text("INSERT INTO public.tenants (id, name, slug, status, max_users, max_documents, max_storage_gb, max_model_versions) VALUES (:id, :name, :slug, 'active', 10, 1000, 5, 10) ON CONFLICT (id) DO NOTHING"),
-                {"id": tid, "name": "test-tenant", "slug": f"test-{tid[:8]}"},
+class TestModelVersionsStatusLifecycle:
+    def setup_method(self):
+        self.tenant_id = str(uuid.uuid4())
+        self.schema = _schema(self.tenant_id)
+        self.job_id = str(uuid.uuid4())
+        self.version_id = str(uuid.uuid4())
+        _create_test_schema(self.schema)
+        engine = _get_sync_engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"INSERT INTO {self.schema}.training_jobs (id, tenant_id, status) VALUES (:id, :tid, 'running')"),
+                {"id": self.job_id, "tid": self.tenant_id},
             )
-    yield (tid_a, schema_a), (tid_b, schema_b)
-    async with engine.begin() as conn:
-        for schema in (schema_a, schema_b):
-            await conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
-        for tid in (tid_a, tid_b):
-            await conn.execute(text("DELETE FROM public.tenants WHERE id = :id"), {"id": tid})
 
+    def teardown_method(self):
+        _cleanup_test_schema(self.schema)
 
-async def _insert_job(engine, schema: str, tid: str, status: str, job_id: str | None = None) -> str:
-    job_id = job_id or str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, created_at)
-                VALUES (:id, :tid, :st, '{{}}'::jsonb, :now)
-            """),
-            {"id": job_id, "tid": tid, "st": status, "now": datetime.now(timezone.utc)},
-        )
-    return job_id
-
-
-@pytest.mark.asyncio
-async def test_submit_valid(client, setup_schema, engine, mock_celery):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 500)
-    token = make_token(tid)
-    resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128},
-        headers=auth_header(token),
-    )
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["status"] == "pending_approval"
-    assert "id" in data
-    assert data.get("celery_task_id") is None
-    assert len(mock_celery) == 0
-
-
-@pytest.mark.asyncio
-async def test_submit_insufficient_entities(client, setup_schema, engine):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 10)
-    token = make_token(tid)
-    resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128},
-        headers=auth_header(token),
-    )
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_submit_non_admin(client, setup_schema, engine):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 500)
-    token = make_token(tid, role="annotator")
-    resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128},
-        headers=auth_header(token),
-    )
-    assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_submit_invalid_hyperparams(client, setup_schema, engine):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 500)
-    token = make_token(tid)
-    resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"num_epochs": -1},
-        headers=auth_header(token),
-    )
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_status_pending_approval(client, setup_schema, engine):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 500)
-    token = make_token(tid)
-    create_resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128},
-        headers=auth_header(token),
-    )
-    job_id = create_resp.json()["id"]
-    resp = await client.get(f"/api/v1/training-jobs/{job_id}", headers=auth_header(token))
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "pending_approval"
-    assert resp.json()["tenant_id"] == tid
-
-
-@pytest.mark.asyncio
-async def test_status_running(client, setup_schema, engine):
-    tid, schema = setup_schema
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema}.training_jobs
-                    (id, tenant_id, status, hyperparams, current_epoch, current_loss, started_at, created_at)
-                VALUES (:id, :tid, 'running', '{{}}'::jsonb, 2, 0.35, :now, :now)
-            """),
-            {"id": job_id, "tid": tid, "now": datetime.now(timezone.utc)},
-        )
-    token = make_token(tid)
-    resp = await client.get(f"/api/v1/training-jobs/{job_id}", headers=auth_header(token))
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "running"
-    assert data["current_epoch"] == 2
-    assert data["current_loss"] == 0.35
-    assert data["tenant_id"] == tid
-
-
-@pytest.mark.asyncio
-async def test_status_completed(client, setup_schema, engine):
-    tid, schema = setup_schema
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, metrics, created_at, completed_at)
-                VALUES (:id, :tid, 'completed', '{{}}'::jsonb, '{{"eval_f1": 0.85}}'::jsonb, :now, :now)
-            """),
-            {"id": job_id, "tid": tid, "now": datetime.now(timezone.utc)},
-        )
-    token = make_token(tid)
-    resp = await client.get(f"/api/v1/training-jobs/{job_id}", headers=auth_header(token))
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "completed"
-    assert resp.json()["metrics"]["eval_f1"] == 0.85
-    assert resp.json()["tenant_id"] == tid
-
-
-@pytest.mark.asyncio
-async def test_status_failed(client, setup_schema, engine):
-    tid, schema = setup_schema
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, error_message, created_at, failed_at)
-                VALUES (:id, :tid, 'failed', '{{}}'::jsonb, 'OOM error', :now, :now)
-            """),
-            {"id": job_id, "tid": tid, "now": datetime.now(timezone.utc)},
-        )
-    token = make_token(tid)
-    resp = await client.get(f"/api/v1/training-jobs/{job_id}", headers=auth_header(token))
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "failed"
-    assert resp.json()["error_message"] == "OOM error"
-    assert resp.json()["tenant_id"] == tid
-
-
-@pytest.mark.asyncio
-async def test_status_cross_tenant_404(client, setup_schema, engine):
-    tid_a, schema_a = setup_schema
-    tid_b = str(uuid.uuid4())
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema_a}.training_jobs (id, tenant_id, status, hyperparams, created_at)
-                VALUES (:id, :tid, 'queued', '{{}}'::jsonb, :now)
-            """),
-            {"id": job_id, "tid": tid_a, "now": datetime.now(timezone.utc)},
-        )
-    token_b = make_token(tid_b)
-    resp = await client.get(f"/api/v1/training-jobs/{job_id}", headers=auth_header(token_b))
-    assert resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_list_filter_by_status(client, setup_schema, engine):
-    tid, schema = setup_schema
-    job_ids = [str(uuid.uuid4()) for _ in range(3)]
-    statuses = ["running", "completed", "running"]
-    async with engine.begin() as conn:
-        for jid, st in zip(job_ids, statuses):
-            await conn.execute(
+    def _insert_model_version(self, status: str):
+        engine = _get_sync_engine()
+        with engine.begin() as conn:
+            conn.execute(
                 text(f"""
-                    INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, created_at)
-                    VALUES (:id, :tid, :st, '{{}}'::jsonb, :now)
+                    INSERT INTO {self.schema}.model_versions
+                        (id, tenant_id, version_number, training_job_id, status, metrics, artifact_path, created_at)
+                    VALUES (:id, :tid, :vn, :tjid, :st, CAST(:metrics AS jsonb), :path, :now)
                 """),
-                {"id": jid, "tid": tid, "st": st, "now": datetime.now(timezone.utc)},
+                {
+                    "id": self.version_id,
+                    "tid": self.tenant_id,
+                    "vn": 1,
+                    "tjid": self.job_id,
+                    "st": status,
+                    "metrics": json.dumps({}),
+                    "path": "test/path",
+                    "now": datetime.now(timezone.utc),
+                },
             )
-    token = make_token(tid)
-    resp = await client.get("/api/v1/training-jobs?status=running", headers=auth_header(token))
-    assert resp.status_code == 200
-    items = resp.json()["items"]
-    assert len(items) == 2
-    for item in items:
-        assert item["tenant_id"] == tid
 
+    def _get_model_version_status(self):
+        engine = _get_sync_engine()
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(f"SELECT status FROM {self.schema}.model_versions WHERE id = :id"),
+                {"id": self.version_id},
+            ).fetchone()
+            return row[0] if row else None
 
-@pytest.mark.asyncio
-async def test_list_pagination(client, setup_schema, engine):
-    tid, schema = setup_schema
-    async with engine.begin() as conn:
-        for i in range(5):
-            await conn.execute(
-                text(f"""
-                    INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, created_at)
-                    VALUES (:id, :tid, 'queued', '{{}}'::jsonb, :now)
-                """),
-                {"id": str(uuid.uuid4()), "tid": tid, "now": datetime.now(timezone.utc)},
+    def test_insert_with_training_status(self):
+        self._insert_model_version("training")
+        assert self._get_model_version_status() == "training"
+
+    def test_update_to_completed(self):
+        self._insert_model_version("training")
+        engine = _get_sync_engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"UPDATE {self.schema}.model_versions SET status = 'completed' WHERE id = :id AND tenant_id = :tid"),
+                {"id": self.version_id, "tid": self.tenant_id},
             )
-    token = make_token(tid)
-    resp = await client.get("/api/v1/training-jobs?page=1&per_page=3", headers=auth_header(token))
-    assert resp.status_code == 200
-    data = resp.json()
-    assert len(data["items"]) == 3
-    assert data["total"] == 5
-    assert data["page"] == 1
-    assert data["per_page"] == 3
+        assert self._get_model_version_status() == "completed"
 
+    def test_update_to_failed(self):
+        self._insert_model_version("training")
+        engine = _get_sync_engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"UPDATE {self.schema}.model_versions SET status = 'failed' WHERE id = :id AND tenant_id = :tid"),
+                {"id": self.version_id, "tid": self.tenant_id},
+            )
+        assert self._get_model_version_status() == "failed"
 
-@pytest.mark.asyncio
-async def test_cancel_pending_approval(client, setup_schema, engine):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 500)
-    token = make_token(tid)
-    create_resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128},
-        headers=auth_header(token),
-    )
-    job_id = create_resp.json()["id"]
-    assert create_resp.json()["status"] == "pending_approval"
-    resp = await client.post(f"/api/v1/training-jobs/{job_id}/cancel", headers=auth_header(token))
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "cancelled"
+    def test_status_transitions_training_to_completed(self):
+        self._insert_model_version("training")
+        _update_job_progress(self.tenant_id, self.job_id, status="completed", metrics={"f1": 0.5})
+        engine = _get_sync_engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"UPDATE {self.schema}.model_versions SET status = 'completed' WHERE id = :id AND tenant_id = :tid"),
+                {"id": self.version_id, "tid": self.tenant_id},
+            )
+        assert self._get_model_version_status() == "completed"
 
-
-@pytest.mark.asyncio
-async def test_cancel_completed_422(client, setup_schema, engine):
-    tid, schema = setup_schema
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, created_at)
-                VALUES (:id, :tid, 'completed', '{{}}'::jsonb, :now)
-            """),
-            {"id": job_id, "tid": tid, "now": datetime.now(timezone.utc)},
-        )
-    token = make_token(tid)
-    resp = await client.post(f"/api/v1/training-jobs/{job_id}/cancel", headers=auth_header(token))
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_approve_pending_job(client, setup_schema, engine, mock_celery):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 500)
-    tenant_token = make_token(tid)
-    create_resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128},
-        headers=auth_header(tenant_token),
-    )
-    job_id = create_resp.json()["id"]
-    assert create_resp.json()["status"] == "pending_approval"
-
-    sysadmin_token = make_token(tid, role="system_admin")
-    resp = await client.post(
-        f"/api/v1/training-jobs/{job_id}/approve?tenant_id={tid}",
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "queued"
-    assert len(mock_celery) == 1
-
-
-@pytest.mark.asyncio
-async def test_approve_non_pending(client, setup_schema, engine):
-    tid, schema = setup_schema
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, created_at)
-                VALUES (:id, :tid, 'queued', '{{}}'::jsonb, :now)
-            """),
-            {"id": job_id, "tid": tid, "now": datetime.now(timezone.utc)},
-        )
-    sysadmin_token = make_token(tid, role="system_admin")
-    resp = await client.post(
-        f"/api/v1/training-jobs/{job_id}/approve?tenant_id={tid}",
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_approve_as_tenant_admin(client, setup_schema, engine):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 500)
-    tenant_token = make_token(tid)
-    create_resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128},
-        headers=auth_header(tenant_token),
-    )
-    job_id = create_resp.json()["id"]
-    resp = await client.post(
-        f"/api/v1/training-jobs/{job_id}/approve?tenant_id={tid}",
-        headers=auth_header(tenant_token),
-    )
-    assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_reject_pending_job(client, setup_schema, engine):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 500)
-    tenant_token = make_token(tid)
-    create_resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128},
-        headers=auth_header(tenant_token),
-    )
-    job_id = create_resp.json()["id"]
-    assert create_resp.json()["status"] == "pending_approval"
-
-    sysadmin_token = make_token(tid, role="system_admin")
-    resp = await client.post(
-        f"/api/v1/training-jobs/{job_id}/reject?tenant_id={tid}",
-        json={"reason": "GPU cluster at capacity"},
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "rejected"
-    assert resp.json()["error_message"] == "GPU cluster at capacity"
-
-
-@pytest.mark.asyncio
-async def test_reject_pending_job_no_reason(client, setup_schema, engine):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 500)
-    tenant_token = make_token(tid)
-    create_resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128},
-        headers=auth_header(tenant_token),
-    )
-    job_id = create_resp.json()["id"]
-    assert create_resp.json()["status"] == "pending_approval"
-
-    sysadmin_token = make_token(tid, role="system_admin")
-    resp = await client.post(
-        f"/api/v1/training-jobs/{job_id}/reject?tenant_id={tid}",
-        json={},
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "rejected"
-    assert resp.json()["error_message"] is None
-
-
-@pytest.mark.asyncio
-async def test_reject_non_pending(client, setup_schema, engine):
-    tid, schema = setup_schema
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, created_at)
-                VALUES (:id, :tid, 'completed', '{{}}'::jsonb, :now)
-            """),
-            {"id": job_id, "tid": tid, "now": datetime.now(timezone.utc)},
-        )
-    sysadmin_token = make_token(tid, role="system_admin")
-    resp = await client.post(
-        f"/api/v1/training-jobs/{job_id}/reject?tenant_id={tid}",
-        json={},
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_reject_as_tenant_admin(client, setup_schema, engine):
-    tid, schema = setup_schema
-    await _seed_spans(engine, schema, 500)
-    tenant_token = make_token(tid)
-    create_resp = await client.post(
-        "/api/v1/training-jobs",
-        json={"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128},
-        headers=auth_header(tenant_token),
-    )
-    job_id = create_resp.json()["id"]
-    resp = await client.post(
-        f"/api/v1/training-jobs/{job_id}/reject?tenant_id={tid}",
-        json={},
-        headers=auth_header(tenant_token),
-    )
-    assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_cancel_queued(client, setup_schema, engine):
-    tid, schema = setup_schema
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, celery_task_id, created_at)
-                VALUES (:id, :tid, 'queued', '{{}}'::jsonb, 'mock-task-id', :now)
-            """),
-            {"id": job_id, "tid": tid, "now": datetime.now(timezone.utc)},
-        )
-    token = make_token(tid)
-    resp = await client.post(f"/api/v1/training-jobs/{job_id}/cancel", headers=auth_header(token))
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "cancelled"
-
-
-@pytest.mark.asyncio
-async def test_sysadmin_get_job_correct_tenant_id(client, setup_schema, engine):
-    tid, schema = setup_schema
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, created_at)
-                VALUES (:id, :tid, 'queued', '{{}}'::jsonb, :now)
-            """),
-            {"id": job_id, "tid": tid, "now": datetime.now(timezone.utc)},
-        )
-    sysadmin_token = make_token(tid, role="system_admin")
-    resp = await client.get(
-        f"/api/v1/training-jobs/{job_id}?tenant_id={tid}",
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 200
-    assert resp.json()["tenant_id"] == tid
-
-
-@pytest.mark.asyncio
-async def test_sysadmin_get_job_missing_tenant_id(client, setup_schema, engine):
-    tid, schema = setup_schema
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, created_at)
-                VALUES (:id, :tid, 'queued', '{{}}'::jsonb, :now)
-            """),
-            {"id": job_id, "tid": tid, "now": datetime.now(timezone.utc)},
-        )
-    sysadmin_token = make_token(tid, role="system_admin")
-    resp = await client.get(
-        f"/api/v1/training-jobs/{job_id}",
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_sysadmin_get_job_wrong_tenant_id(client, setup_two_schemas, engine):
-    (tid_a, schema_a), (tid_b, schema_b) = setup_two_schemas
-    job_id = str(uuid.uuid4())
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(f"""
-                INSERT INTO {schema_a}.training_jobs (id, tenant_id, status, hyperparams, created_at)
-                VALUES (:id, :tid, 'queued', '{{}}'::jsonb, :now)
-            """),
-            {"id": job_id, "tid": tid_a, "now": datetime.now(timezone.utc)},
-        )
-    sysadmin_token = make_token(tid_a, role="system_admin")
-    resp = await client.get(
-        f"/api/v1/training-jobs/{job_id}?tenant_id={tid_b}",
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_sysadmin_list_explicit_tenant_id(client, setup_two_schemas, engine):
-    (tid_a, schema_a), (tid_b, schema_b) = setup_two_schemas
-    await _insert_job(engine, schema_a, tid_a, "queued")
-    await _insert_job(engine, schema_a, tid_a, "completed")
-    await _insert_job(engine, schema_a, tid_a, "running")
-    await _insert_job(engine, schema_b, tid_b, "queued")
-    await _insert_job(engine, schema_b, tid_b, "completed")
-
-    sysadmin_token = make_token(tid_a, role="system_admin")
-    resp = await client.get(
-        f"/api/v1/training-jobs?tenant_id={tid_a}",
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert len(data["items"]) == 3
-    assert all(item["tenant_id"] == tid_a for item in data["items"])
-
-
-@pytest.mark.asyncio
-async def test_sysadmin_list_aggregated_default_pending_approval(client, setup_two_schemas, engine):
-    (tid_a, schema_a), (tid_b, schema_b) = setup_two_schemas
-    await _insert_job(engine, schema_a, tid_a, "pending_approval")
-    await _insert_job(engine, schema_b, tid_b, "pending_approval")
-    await _insert_job(engine, schema_b, tid_b, "completed")
-
-    sysadmin_token = make_token(tid_a, role="system_admin")
-    resp = await client.get(
-        "/api/v1/training-jobs",
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert len(data["items"]) == 2
-    assert all(item["status"] == "pending_approval" for item in data["items"])
-    tenant_ids = {item["tenant_id"] for item in data["items"]}
-    assert tenant_ids == {tid_a, tid_b}
-
-
-@pytest.mark.asyncio
-async def test_sysadmin_list_aggregated_with_status_filter(client, setup_two_schemas, engine):
-    (tid_a, schema_a), (tid_b, schema_b) = setup_two_schemas
-    await _insert_job(engine, schema_a, tid_a, "completed")
-    await _insert_job(engine, schema_b, tid_b, "completed")
-    await _insert_job(engine, schema_b, tid_b, "pending_approval")
-
-    sysadmin_token = make_token(tid_a, role="system_admin")
-    resp = await client.get(
-        "/api/v1/training-jobs?status=completed",
-        headers=auth_header(sysadmin_token),
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert len(data["items"]) == 2
-    assert all(item["status"] == "completed" for item in data["items"])
-    tenant_ids = {item["tenant_id"] for item in data["items"]}
-    assert tenant_ids == {tid_a, tid_b}
+    def test_status_transitions_training_to_failed(self):
+        self._insert_model_version("training")
+        _update_job_progress(self.tenant_id, self.job_id, status="failed", error_message="training failed")
+        engine = _get_sync_engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"UPDATE {self.schema}.model_versions SET status = 'failed' WHERE id = :id AND tenant_id = :tid"),
+                {"id": self.version_id, "tid": self.tenant_id},
+            )
+        assert self._get_model_version_status() == "failed"

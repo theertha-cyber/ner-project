@@ -62,19 +62,20 @@ def require_tenant_admin(request: Request) -> None:
 
 
 def _row_to_response(row: dict) -> ModelVersionResponse:
+    metrics = row.get("metrics") or {}
     return ModelVersionResponse(
         id=str(row["version_number"]),
         version_number=row["version_number"],
         training_job_id=row.get("training_job_id"),
         status=row["status"],
-        metrics=row.get("metrics"),
+        metrics=metrics,
         artifact_path=row.get("artifact_path"),
         mlflow_run_id=row.get("mlflow_run_id"),
         mlflow_run_url=row.get("mlflow_run_url"),
         created_at=row.get("created_at"),
         promoted_at=row.get("promoted_at"),
         archived_at=row.get("archived_at"),
-        label_list=row.get("label_list"),
+        label_list=metrics.get("label_list"),
     )
 
 
@@ -118,11 +119,24 @@ async def get_active_model(
 
 
 def _get_version_or_404(tenant_id: str, version_number: int) -> dict:
-    versions = _read_cache_model_versions(tenant_id)
+    try:
+        versions = _read_cache_model_versions(tenant_id)
+    except Exception:
+        versions = []
     matching = [v for v in versions if v["version_number"] == version_number]
-    if not matching:
+    if matching:
+        return matching[0]
+    from src.training_service.infra.mlflow_registry import _get_client, _registered_model_name
+    try:
+        client = _get_client()
+        mv = client.get_model_version(_registered_model_name(tenant_id), str(version_number))
+        return {
+            "version_number": version_number,
+            "status": "completed",
+            "mlflow_run_id": mv.run_id,
+        }
+    except Exception:
         raise HTTPException(status_code=404, detail="Model version not found")
-    return matching[0]
 
 
 @router.post("/{version_id}/promote", response_model=ModelVersionResponse)
@@ -160,7 +174,7 @@ async def _warmup_model(tenant_id: str, version_number: int, request: Request | 
         if auth:
             headers["Authorization"] = auth
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=90) as client:
             resp = await client.post(url, json={"version_number": version_number}, headers=headers)
             if resp.status_code == 200:
                 logger.info("Model warmup succeeded for tenant=%s version=%d", tenant_id, version_number)

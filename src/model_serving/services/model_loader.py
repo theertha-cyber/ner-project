@@ -15,8 +15,7 @@ def _get_s3_client():
     )
 
 
-def download_model_artifacts(tenant_id: str, version_number: int) -> str:
-    artifact_path = f"tenants/{tenant_id}/models/v{version_number}/"
+def download_model_artifacts(tenant_id: str, version_number: int, artifact_path: str) -> str:
     s3 = _get_s3_client()
     bucket = settings.minio_bucket
 

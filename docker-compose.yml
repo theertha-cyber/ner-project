@@ -172,6 +172,7 @@ services:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
+      NER_TRAINING_SERVICE_URL: "http://training_service:8000"
 
   annotation_service:
     build:
@@ -205,6 +206,7 @@ services:
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
       ANNOTATION_SERVICE_URL: "http://annotation_service:8000"
+      NER_MODEL_SERVING_URL: "http://model_serving:8000"
     depends_on:
       postgres-test:
         condition: service_healthy

@@ -21,6 +21,26 @@
       "static/chunks/main-app.js",
       "static/chunks/app/(auth)/layout.js"
     ],
+    "/(auth)/extractions/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(auth)/extractions/page.js"
+    ],
+    "/(auth)/models/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(auth)/models/page.js"
+    ],
+    "/(auth)/documents/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(auth)/documents/page.js"
+    ],
+    "/(auth)/documents/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(auth)/documents/layout.js"
+    ],
     "/(auth)/training-jobs/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -36,10 +56,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/(auth)/imported-documents/page.js"
     ],
-    "/(auth)/models/page": [
+    "/(auth)/annotation/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(auth)/models/page.js"
+      "static/chunks/app/(auth)/annotation/page.js"
     ]
   }
 }

@@ -355,6 +355,101 @@ class TestMlflowModelLogging:
             pass
 
 
+@pytest.mark.slow
+class TestLabelListPersistedInMetrics:
+
+    def test_label_list_added_to_metrics_before_insert(self, monkeypatch):
+        from unittest.mock import MagicMock
+        import src.training_service.worker as worker_module
+
+        status_row = MagicMock()
+        status_row.fetchone.return_value = ("approved",)
+
+        version_row = MagicMock()
+        version_row.fetchone.return_value = (1,)
+
+        captured = {}
+
+        class FakeConn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, stmt, params=None):
+                sql = str(stmt)
+                if "SELECT status FROM" in sql and "training_jobs" in sql:
+                    return status_row
+                if "COALESCE(MAX(version_number)" in sql:
+                    return version_row
+                if "INSERT INTO" in sql and "model_versions" in sql:
+                    captured["insert_params"] = params
+                return MagicMock()
+
+        class FakeEngine:
+            def connect(self):
+                return FakeConn()
+
+            def begin(self):
+                return FakeConn()
+
+        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda: FakeEngine())
+        monkeypatch.setattr(worker_module, "_update_job_progress", lambda *a, **k: None)
+
+        records = [
+            {"tokens": ["Acme", "Corp"], "tags": ["B-company", "I-company"]},
+            {"tokens": ["reach", "us", "now"], "tags": ["B-contact_details", "O", "O"]},
+            {"tokens": ["call", "them"], "tags": ["O", "O"]},
+            {"tokens": ["Acme", "hires"], "tags": ["B-company", "O"]},
+            {"tokens": ["email", "me"], "tags": ["B-contact_details", "O"]},
+            {"tokens": ["no", "entities"], "tags": ["O", "O"]},
+            {"tokens": ["Beta", "Inc"], "tags": ["B-company", "I-company"]},
+            {"tokens": ["call", "us"], "tags": ["B-contact_details", "O"]},
+            {"tokens": ["another", "sentence"], "tags": ["O", "O"]},
+            {"tokens": ["Gamma", "Corp"], "tags": ["B-company", "I-company"]},
+        ]
+        monkeypatch.setattr(worker_module, "_load_annotated_dataset", lambda tenant_id: records)
+
+        # Uses the real local MLflow tracking server (settings.mlflow_tracking_uri
+        # defaults to http://localhost:5000, matching the dev docker-compose stack).
+        fake_s3 = MagicMock()
+        monkeypatch.setattr(worker_module.boto3, "client", lambda *a, **k: fake_s3)
+        monkeypatch.setattr("torch.onnx.export", lambda *a, **k: None)
+
+        import uuid
+        import mlflow as mlflow_module
+        tenant_id = f"tenant-label-test-{uuid.uuid4().hex[:8]}"
+        registered_model_name = f"tenant_{tenant_id}_ner_model"
+        experiment_name = f"tenant_{tenant_id}"
+
+        try:
+            worker_module.fine_tune_model(
+                tenant_id,
+                "job-label-test",
+                {"learning_rate": 5e-5, "num_epochs": 1, "batch_size": 2, "max_seq_length": 16},
+            )
+
+            assert "insert_params" in captured, "model_versions INSERT was never executed"
+            metrics = json.loads(captured["insert_params"]["metrics"])
+            assert "label_list" in metrics
+            assert metrics["label_list"] == [
+                "O", "B-company", "B-contact_details", "I-company",
+            ]
+        finally:
+            mlflow_module.set_tracking_uri(worker_module.settings.mlflow_tracking_uri)
+            try:
+                mlflow_module.MlflowClient().delete_registered_model(registered_model_name)
+            except Exception:
+                pass
+            try:
+                experiment = mlflow_module.get_experiment_by_name(experiment_name)
+                if experiment:
+                    mlflow_module.delete_experiment(experiment.experiment_id)
+            except Exception:
+                pass
+
+
 class TestLabelMapping:
 
     def test_label2id_mapping(self):

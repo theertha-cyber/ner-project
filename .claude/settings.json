@@ -4,7 +4,11 @@
       "Bash(docker-compose up *)",
       "Bash(npx tsc *)",
       "Bash(netstat -ano)",
-      "Bash(docker compose *)"
+      "Bash(docker compose *)",
+      "Bash(docker exec *)",
+      "Bash(node -e ' *)",
+      "Bash(docker stats *)",
+      "Bash(docker exec ner-project-training_service-1 python -c ' *)"
     ]
   }
 }

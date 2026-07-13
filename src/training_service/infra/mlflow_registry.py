@@ -29,6 +29,17 @@ def _mlflow_run_url(run_id: str) -> str:
     return f"{settings.mlflow_tracking_uri}/#/runs/{run_id}"
 
 
+def _metrics_with_label_list(run_metrics: dict, run_params: dict) -> dict:
+    metrics = dict(run_metrics)
+    raw_label_list = run_params.get("label_list")
+    if raw_label_list:
+        try:
+            metrics["label_list"] = json.loads(raw_label_list)
+        except (TypeError, ValueError):
+            pass
+    return metrics
+
+
 def _get_client() -> MlflowClient:
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     return MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
@@ -105,13 +116,10 @@ def list_model_versions(tenant_id: str) -> tuple[list[dict], str | None]:
     try:
         client = _get_client()
         registered_model = _registered_model_name(tenant_id)
-        try:
-            mv = client.get_registered_model(registered_model)
-        except mlflow.exceptions.RestException:
-            return [], None
+        all_versions = client.search_model_versions(f"name='{registered_model}'")
 
         versions = []
-        for version in mv.latest_versions:
+        for version in all_versions:
             run = client.get_run(version.run_id)
             run_metrics = run.data.metrics
             run_params = run.data.params
@@ -121,15 +129,18 @@ def list_model_versions(tenant_id: str) -> tuple[list[dict], str | None]:
                 "version_number": int(version.version),
                 "training_job_id": run_params.get("training_job_id"),
                 "status": status,
-                "metrics": dict(run_metrics),
+                "metrics": _metrics_with_label_list(run_metrics, run_params),
                 "artifact_path": run_params.get("artifact_path"),
                 "mlflow_run_id": version.run_id,
                 "mlflow_run_url": _mlflow_run_url(version.run_id),
                 "created_at": datetime.fromtimestamp(int(version.creation_timestamp) / 1000, tz=timezone.utc) if version.creation_timestamp else None,
             })
 
-        for v in versions:
-            _cache_model_version(tenant_id, v)
+        try:
+            for v in versions:
+                _cache_model_version(tenant_id, v)
+        except Exception:
+            pass
 
         return sorted(versions, key=lambda v: v["version_number"], reverse=True), None
 
@@ -162,13 +173,16 @@ def get_active_model(tenant_id: str) -> tuple[dict | None, str | None]:
             "version_number": int(version.version),
             "training_job_id": run_params.get("training_job_id"),
             "status": "promoted",
-            "metrics": dict(run_metrics),
+            "metrics": _metrics_with_label_list(run_metrics, run_params),
             "artifact_path": run_params.get("artifact_path"),
             "mlflow_run_id": version.run_id,
             "mlflow_run_url": _mlflow_run_url(version.run_id),
             "created_at": datetime.fromtimestamp(int(version.creation_timestamp) / 1000, tz=timezone.utc) if version.creation_timestamp else None,
         }
-        _cache_model_version(tenant_id, result)
+        try:
+            _cache_model_version(tenant_id, result)
+        except Exception:
+            pass
         return result, None
 
     except Exception:
@@ -211,13 +225,16 @@ def promote_model_version(tenant_id: str, version_number: int) -> dict | None:
         "version_number": int(version.version),
         "training_job_id": run_params.get("training_job_id"),
         "status": "promoted",
-        "metrics": dict(run_metrics),
+        "metrics": _metrics_with_label_list(run_metrics, run_params),
         "artifact_path": run_params.get("artifact_path"),
         "mlflow_run_id": version.run_id,
         "mlflow_run_url": _mlflow_run_url(version.run_id),
         "created_at": datetime.fromtimestamp(int(version.creation_timestamp) / 1000, tz=timezone.utc) if version.creation_timestamp else None,
     }
-    _cache_model_version(tenant_id, result)
+    try:
+        _cache_model_version(tenant_id, result)
+    except Exception:
+        pass
     return result
 
 
@@ -245,11 +262,14 @@ def demote_model_version(tenant_id: str, version_number: int) -> dict | None:
         "version_number": int(version.version),
         "training_job_id": run_params.get("training_job_id"),
         "status": "completed",
-        "metrics": dict(run_metrics),
+        "metrics": _metrics_with_label_list(run_metrics, run_params),
         "artifact_path": run_params.get("artifact_path"),
         "mlflow_run_id": version.run_id,
         "mlflow_run_url": _mlflow_run_url(version.run_id),
         "created_at": datetime.fromtimestamp(int(version.creation_timestamp) / 1000, tz=timezone.utc) if version.creation_timestamp else None,
     }
-    _cache_model_version(tenant_id, result)
+    try:
+        _cache_model_version(tenant_id, result)
+    except Exception:
+        pass
     return result

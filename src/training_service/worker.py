@@ -123,6 +123,8 @@ def _update_job_progress(tenant_id: str, job_id: str, **fields):
     set_clauses = []
     params = {"id": job_id}
     for key, val in fields.items():
+        if isinstance(val, dict):
+            val = json.dumps(val)
         set_clauses.append(f"{key} = :{key}")
         params[key] = val
     set_sql = ", ".join(set_clauses)
@@ -133,8 +135,8 @@ def _update_job_progress(tenant_id: str, job_id: str, **fields):
         )
 
 
-def _save_artifacts(tenant_id: str, version_id: str, model_dir: str) -> str:
-    artifact_path = f"tenants/{tenant_id}/models/v1/{version_id}/"
+def _save_artifacts(tenant_id: str, version_number: int, model_dir: str) -> str:
+    artifact_path = f"tenants/{tenant_id}/models/v{version_number}/"
     s3 = boto3.client(
         "s3",
         endpoint_url=f"http://{settings.minio_endpoint}",
@@ -355,10 +357,18 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
             "eval_precision": eval_results.get("eval_precision", 0),
             "eval_recall": eval_results.get("eval_recall", 0),
             "eval_f1": eval_results.get("eval_f1", 0),
+            "label_list": label_list,
         }
 
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(f"SELECT COALESCE(MAX(version_number), 0) + 1 FROM {schema}.model_versions WHERE tenant_id = :tenant_id"),
+                {"tenant_id": tenant_id},
+            ).fetchone()
+            version_number = row[0]
+
         version_id = str(uuid.uuid4())
-        artifact_path = _save_artifacts(tenant_id, version_id, model_dir)
+        artifact_path = _save_artifacts(tenant_id, version_number, model_dir)
 
         registered_model_name = f"tenant_{tenant_id}_ner_model"
         mlflow.transformers.log_model(
@@ -371,6 +381,7 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
         mlflow_run_url = f"{settings.mlflow_tracking_uri}/#/experiments/{experiment_id}/runs/{mlflow_run_id}"
         mlflow.log_param("artifact_path", artifact_path)
         mlflow.log_param("model_version_id", version_id)
+        mlflow.log_param("label_list", json.dumps(label_list))
 
         shutil.rmtree(model_dir)
         shutil.rmtree(output_dir)
@@ -382,14 +393,13 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
                 text(f"""
                     INSERT INTO {schema}.model_versions
                         (id, tenant_id, version_number, training_job_id, status, metrics, artifact_path, created_at, mlflow_run_id)
-                    VALUES (:id, :tenant_id,
-                        (SELECT COALESCE(MAX(version_number), 0) + 1 FROM {schema}.model_versions WHERE tenant_id = :tenant_id2),
-                        :training_job_id, 'completed', CAST(:metrics AS jsonb), :artifact_path, :now, :mlflow_run_id)
+                    VALUES (:id, :tenant_id, :version_number,
+                        :training_job_id, 'training', CAST(:metrics AS jsonb), :artifact_path, :now, :mlflow_run_id)
                 """),
                 {
                     "id": version_id,
                     "tenant_id": tenant_id,
-                    "tenant_id2": tenant_id,
+                    "version_number": version_number,
                     "training_job_id": job_id,
                     "metrics": json.dumps(metrics),
                     "artifact_path": artifact_path,
@@ -408,6 +418,12 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
             completed_at=datetime.now(timezone.utc),
         )
 
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"UPDATE {schema}.model_versions SET status = 'completed' WHERE id = :id AND tenant_id = :tenant_id"),
+                {"id": version_id, "tenant_id": tenant_id},
+            )
+
         mlflow.end_run(status="FINISHED")
 
     except Exception as exc:
@@ -419,4 +435,12 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
             error_message=str(exc),
             failed_at=datetime.now(timezone.utc),
         )
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(f"UPDATE {schema}.model_versions SET status = 'failed' WHERE id = :id AND tenant_id = :tenant_id"),
+                    {"id": version_id, "tenant_id": tenant_id},
+                )
+        except Exception:
+            pass
         raise

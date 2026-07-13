@@ -47,6 +47,9 @@ class TestListModelVersions:
                 def get_registered_model(self, name):
                     raise RestException({"message": "not found", "error_code": "RESOURCE_DOES_NOT_EXIST"})
 
+                def search_model_versions(self, filter_string):
+                    return []
+
                 def get_run(self, run_id):
                     pass
 
@@ -56,6 +59,44 @@ class TestListModelVersions:
         result, warning = list_model_versions("tenant-x")
         assert result == []
         assert warning is None
+
+    def test_list_returns_all_versions_when_multiple_in_same_stage(self, monkeypatch):
+        class FakeVersion:
+            def __init__(self, version, run_id):
+                self.version = version
+                self.current_stage = "None"
+                self.run_id = run_id
+                self.creation_timestamp = 1700000000000
+
+        class FakeRun:
+            def __init__(self, run_id):
+                self.data = type('obj', (object,), {
+                    'metrics': {},
+                    'params': {"training_job_id": f"job-{run_id}", "artifact_path": f"path/{run_id}"},
+                })()
+
+        versions = [FakeVersion(str(i), f"run-{i}") for i in range(1, 4)]
+
+        def mock_client(*args, **kwargs):
+            class MockMlflowClient:
+                def search_model_versions(self, filter_string):
+                    return versions
+
+                def get_run(self, run_id):
+                    return FakeRun(run_id)
+
+            return MockMlflowClient()
+
+        monkeypatch.setattr("src.training_service.infra.mlflow_registry.MlflowClient", mock_client)
+        monkeypatch.setattr("src.training_service.infra.mlflow_registry._cache_model_version", lambda *args: None)
+
+        result, warning = list_model_versions("tenant-x")
+        assert len(result) == 3
+        for v in result:
+            assert "version_number" in v
+            assert "status" in v
+            assert "mlflow_run_id" in v
+            assert "mlflow_run_url" in v
 
     def test_list_returns_cached_on_exception(self, monkeypatch):
         def mock_client(*args, **kwargs):
