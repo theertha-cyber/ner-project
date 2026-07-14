@@ -45,15 +45,57 @@ describe("TrainingJobsPage", () => {
     expect(screen.getByText("Training Jobs")).toBeDefined();
   });
 
+  it("renders the h1 heading in font-display at weight >= 700", async () => {
+    render(<TrainingJobsPage />, { wrapper: createWrapper() });
+    const heading = screen.getByRole("heading", { level: 1, name: "Training Jobs" });
+    expect(heading.className).toContain("font-display");
+    expect(heading.className).toMatch(/font-(bold|extrabold|black)/);
+  });
+
   it("renders submit job button", async () => {
     render(<TrainingJobsPage />, { wrapper: createWrapper() });
-    expect(screen.getByText("+ Submit Job")).toBeDefined();
+    expect(screen.getByText("+ Submit job")).toBeDefined();
+  });
+
+  it("renders the API-path breadcrumb above the heading", async () => {
+    render(<TrainingJobsPage />, { wrapper: createWrapper() });
+    expect(screen.getByText("/api/v1/training-jobs")).toBeDefined();
   });
 
   it("renders filter tabs", async () => {
     render(<TrainingJobsPage />, { wrapper: createWrapper() });
-    expect(screen.getByText("All")).toBeDefined();
-    expect(screen.getByText("Running")).toBeDefined();
+    expect(screen.getByText("all")).toBeDefined();
+    expect(screen.getByText("running")).toBeDefined();
+  });
+
+  it("auto-selects the first (most recent) job when the list loads with nothing selected", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (String(url).includes("/training-jobs/job-abc")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ id: "job-abc", tenant_id: "t1", status: "completed" }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [{ id: "job-abc", tenant_id: "t1", status: "completed" }],
+            total: 1,
+            page: 1,
+            per_page: 50,
+          }),
+          { status: 200 },
+        ),
+      );
+    });
+
+    render(<TrainingJobsPage />, { wrapper: createWrapper() });
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining("selected=job-abc"));
+    });
   });
 
   describe("system_admin cross-tenant selection", () => {

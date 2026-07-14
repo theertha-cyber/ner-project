@@ -88,14 +88,29 @@ The worker SHALL load `dslim/bert-base-NER`, configure the HuggingFace `Trainer`
 
 ### Requirement: Save model artifacts
 
-The worker SHALL persist model artifacts (config.json, model.safetensors, tokenizer files, training_args.json, and model.onnx) to blob storage after training completes. The artifact path SHALL follow `tenants/{tid}/models/v{version}/` convention.
+The worker SHALL persist model artifacts (config.json, model.safetensors, tokenizer files, training_args.json, and model.onnx) to blob storage after training completes. The artifact path SHALL follow `tenants/{tid}/models/v{version}/` convention. The worker SHALL include the trained model's `label_list` (the ordered list of BIO labels used during training, e.g., `["O", "B-company", "B-contact_details", ...]`) in the `model_versions.metrics` JSONB column under the key `label_list`.
 
 #### Scenario: Artifacts are stored after training
 
 - **GIVEN** a completed training run
 - **WHEN** the worker saves the model and tokenizer
 - **THEN** `model.safetensors`, `config.json`, `tokenizer.json`, `vocab.txt`, `training_args.json`, `metrics.json`, and `model.onnx` SHALL exist at the artifact path
-- **AND** the `model_versions` table SHALL have a new row with `version_number`, `status`: "completed", and `artifact_path`
+- **AND** the `model_versions` table SHALL have a new row with `version_number`, `status`: `"training"`, and `artifact_path`
+- **AND** after job progress is persisted, `model_versions.status` SHALL be `"completed"`
+
+#### Scenario: label_list is persisted in model version metrics
+
+- **GIVEN** a completed training run with entity types ["company", "contact_details", "programming_language"]
+- **WHEN** the worker writes the model_versions row
+- **THEN** `metrics.label_list` SHALL contain `["O", "B-company", "I-company", "B-contact_details", "I-contact_details", "B-programming_language", "I-programming_language"]`
+- **AND** the label_list SHALL include all BIO tags extracted from the annotated dataset
+
+#### Scenario: Artifact path uses version number not UUID
+
+- **GIVEN** a training run that produces version_number 5 for tenant `abc-123`
+- **WHEN** the worker saves artifacts to blob storage
+- **THEN** the artifact path SHALL be `tenants/abc-123/models/v5/`
+- **AND** the path SHALL NOT contain a UUID subdirectory
 
 ### Requirement: Handle training failure
 
@@ -109,9 +124,17 @@ The worker SHALL catch exceptions during training, update the job status to "fai
 - **AND** `error_message` SHALL contain the exception details
 - **AND** no partial model artifacts SHALL be persisted to the model registry
 
+#### Scenario: Failed job sets model_versions to failed
+
+- **GIVEN** a training run where artifacts were saved and a `model_versions` row was created with `status='training'`
+- **WHEN** `_update_job_progress` or `mlflow.end_run` fails
+- **THEN** the worker's exception handler SHALL update `model_versions.status` to `"failed"`
+- **AND** `training_jobs.status` SHALL be `"failed"`
+- **AND** the MLflow run status SHALL be `FAILED`
+
 ### Requirement: Update job progress during training
 
-The worker SHALL periodically report training progress (current epoch, current loss) to the Celery result backend and persist it to the `training_jobs` table so the status endpoint can return live progress.
+The worker SHALL periodically report training progress (current epoch, current loss) to the Celery result backend and persist it to the `training_jobs` table so the status endpoint can return live progress. `_update_job_progress` SHALL JSON-serialize any Python dict values in its `**fields` before passing them to the SQL UPDATE statement, to prevent `psycopg2.ProgrammingError: can't adapt type 'dict'` when `metrics` or similar nested fields are passed.
 
 #### Scenario: Progress is reported during training
 

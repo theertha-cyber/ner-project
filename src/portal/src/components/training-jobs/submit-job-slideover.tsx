@@ -102,13 +102,18 @@ export function SubmitJobSlideover({ open, onClose }: SubmitJobSlideoverProps) {
 
   return (
     <SlideOver open={open} onClose={onClose} width={440}>
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-lg font-semibold text-gray-900">Submit Training Job</h2>
+      <div className="flex flex-col h-full" style={{ background: "var(--surface-2)" }}>
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: "1px solid var(--line)" }}
+        >
+          <h2 className="font-display text-lg font-semibold" style={{ color: "var(--ink)" }}>
+            Submit Training Job
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            style={{ color: "var(--ink-3)" }}
           >
             ✕
           </button>
@@ -116,7 +121,10 @@ export function SubmitJobSlideover({ open, onClose }: SubmitJobSlideoverProps) {
 
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
           {/* Span preflight */}
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+          <div
+            className="rounded-lg p-3 font-body text-sm"
+            style={{ background: "var(--surface-3)", border: "1px solid var(--line)", color: "var(--ink-2)" }}
+          >
             {spanLoading ? (
               <span className="flex items-center gap-2">
                 <Spinner size="sm" /> Checking annotated entities...
@@ -130,23 +138,28 @@ export function SubmitJobSlideover({ open, onClose }: SubmitJobSlideoverProps) {
 
           {/* Learning Rate */}
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Learning Rate</label>
+            <label className="mb-1 block font-body text-xs font-medium" style={{ color: "var(--ink-2)" }}>
+              Learning Rate
+            </label>
             <input
               type="text"
               value={learningRate}
               onChange={(e) => setLearningRate(e.target.value)}
-              className={`w-full rounded border px-2 py-1.5 text-sm ${
-                errors.learning_rate ? "border-status-failed" : "border-border"
-              }`}
+              className="w-full rounded px-2 py-1.5 font-mono text-sm"
+              style={{
+                border: `1px solid ${errors.learning_rate ? "var(--bad)" : "var(--line)"}`,
+                background: "var(--surface-2)",
+                color: "var(--ink)",
+              }}
             />
             {errors.learning_rate && (
-              <p className="mt-0.5 text-xs text-status-failed">{errors.learning_rate}</p>
+              <p className="mt-0.5 font-body text-xs" style={{ color: "var(--bad)" }}>{errors.learning_rate}</p>
             )}
           </div>
 
           {/* Num Epochs */}
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
+            <label className="mb-1 block font-body text-xs font-medium" style={{ color: "var(--ink-2)" }}>
               Epochs: {numEpochs}
             </label>
             <input
@@ -158,51 +171,64 @@ export function SubmitJobSlideover({ open, onClose }: SubmitJobSlideoverProps) {
               className="w-full accent-brand-primary"
             />
             {errors.num_epochs && (
-              <p className="mt-0.5 text-xs text-status-failed">{errors.num_epochs}</p>
+              <p className="mt-0.5 font-body text-xs" style={{ color: "var(--bad)" }}>{errors.num_epochs}</p>
             )}
           </div>
 
           {/* Batch Size */}
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Batch Size</label>
+            <label className="mb-1 block font-body text-xs font-medium" style={{ color: "var(--ink-2)" }}>
+              Batch Size
+            </label>
             <select
               value={batchSize}
               onChange={(e) => setBatchSize(Number(e.target.value))}
-              className={`w-full rounded border px-2 py-1.5 text-sm ${
-                errors.batch_size ? "border-status-failed" : "border-border"
-              }`}
+              className="w-full rounded px-2 py-1.5 font-mono text-sm"
+              style={{
+                border: `1px solid ${errors.batch_size ? "var(--bad)" : "var(--line)"}`,
+                background: "var(--surface-2)",
+                color: "var(--ink)",
+              }}
             >
               {BATCH_OPTIONS.map((v) => (
                 <option key={v} value={v}>{v}</option>
               ))}
             </select>
             {errors.batch_size && (
-              <p className="mt-0.5 text-xs text-status-failed">{errors.batch_size}</p>
+              <p className="mt-0.5 font-body text-xs" style={{ color: "var(--bad)" }}>{errors.batch_size}</p>
             )}
           </div>
 
           {/* Max Seq Length */}
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Max Seq Length</label>
+            <label className="mb-1 block font-body text-xs font-medium" style={{ color: "var(--ink-2)" }}>
+              Max Seq Length
+            </label>
             <select
               value={maxSeqLength}
               onChange={(e) => setMaxSeqLength(Number(e.target.value))}
-              className={`w-full rounded border px-2 py-1.5 text-sm ${
-                errors.max_seq_length ? "border-status-failed" : "border-border"
-              }`}
+              className="w-full rounded px-2 py-1.5 font-mono text-sm"
+              style={{
+                border: `1px solid ${errors.max_seq_length ? "var(--bad)" : "var(--line)"}`,
+                background: "var(--surface-2)",
+                color: "var(--ink)",
+              }}
             >
               {SEQ_OPTIONS.map((v) => (
                 <option key={v} value={v}>{v}</option>
               ))}
             </select>
             {errors.max_seq_length && (
-              <p className="mt-0.5 text-xs text-status-failed">{errors.max_seq_length}</p>
+              <p className="mt-0.5 font-body text-xs" style={{ color: "var(--bad)" }}>{errors.max_seq_length}</p>
             )}
           </div>
 
           {/* Server error */}
           {serverError && (
-            <div className="rounded-lg border border-status-failed/30 bg-status-failed/5 p-3 text-sm text-status-failed">
+            <div
+              className="rounded-lg p-3 font-body text-sm"
+              style={{ background: "var(--bad-soft)", border: "1px solid var(--bad)", color: "var(--bad)" }}
+            >
               {serverError}
             </div>
           )}
@@ -212,7 +238,7 @@ export function SubmitJobSlideover({ open, onClose }: SubmitJobSlideoverProps) {
             <button
               type="submit"
               disabled={!canSubmit || submitMutation.isPending}
-              className="w-full rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-lg bg-brand-primary px-4 py-2 font-body text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitMutation.isPending ? "Submitting..." : "Submit Training Job"}
             </button>

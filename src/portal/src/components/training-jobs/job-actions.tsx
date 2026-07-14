@@ -57,7 +57,8 @@ export function JobActions({ jobId, status, tenantId }: JobActionsProps) {
           type="button"
           onClick={handleCancel}
           disabled={cancelMutation.isPending}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="rounded-lg px-3 py-1.5 font-body text-sm font-medium disabled:opacity-50"
+          style={{ border: "1px solid var(--line)", color: "var(--ink-2)" }}
         >
           {cancelMutation.isPending ? "Cancelling..." : "Cancel"}
         </button>
@@ -68,7 +69,7 @@ export function JobActions({ jobId, status, tenantId }: JobActionsProps) {
           type="button"
           onClick={handleApprove}
           disabled={approveMutation.isPending}
-          className="rounded-lg bg-status-completed px-3 py-1.5 text-sm font-medium text-white hover:bg-status-completed/80 disabled:opacity-50"
+          className="rounded-lg bg-status-completed px-3 py-1.5 font-body text-sm font-medium text-white hover:bg-status-completed/80 disabled:opacity-50"
         >
           {approveMutation.isPending ? "Approving..." : "Approve & queue"}
         </button>
@@ -78,7 +79,7 @@ export function JobActions({ jobId, status, tenantId }: JobActionsProps) {
         <button
           type="button"
           onClick={() => setShowRejectReason(true)}
-          className="rounded-lg border border-status-failed px-3 py-1.5 text-sm font-medium text-status-failed hover:bg-status-failed/5"
+          className="rounded-lg border border-status-failed px-3 py-1.5 font-body text-sm font-medium text-status-failed hover:bg-status-failed/5"
         >
           Reject
         </button>
@@ -91,14 +92,15 @@ export function JobActions({ jobId, status, tenantId }: JobActionsProps) {
             onChange={(e) => setRejectReason(e.target.value)}
             placeholder="Optional rejection reason..."
             rows={2}
-            className="w-full rounded border border-border px-2 py-1.5 text-sm"
+            className="w-full rounded px-2 py-1.5 font-body text-sm"
+            style={{ border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
           />
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleReject}
               disabled={rejectMutation.isPending}
-              className="rounded-lg bg-status-failed px-3 py-1.5 text-sm font-medium text-white hover:bg-status-failed/80 disabled:opacity-50"
+              className="rounded-lg bg-status-failed px-3 py-1.5 font-body text-sm font-medium text-white hover:bg-status-failed/80 disabled:opacity-50"
             >
               {rejectMutation.isPending ? "Rejecting..." : "Confirm Reject"}
             </button>
@@ -108,7 +110,8 @@ export function JobActions({ jobId, status, tenantId }: JobActionsProps) {
                 setShowRejectReason(false);
                 setRejectReason("");
               }}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg px-3 py-1.5 font-body text-sm font-medium"
+              style={{ border: "1px solid var(--line)", color: "var(--ink-2)" }}
             >
               Cancel
             </button>

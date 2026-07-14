@@ -219,6 +219,49 @@ async def test_list_versions_annotator(client, engine, setup_schema):
 
 
 @pytest.mark.asyncio
+async def test_list_versions_system_admin_requires_tenant_id(client, engine, setup_schema):
+    tid, schema = setup_schema
+    await _seed_versions(engine, schema, tid, [
+        {"version_number": 1, "status": "completed", "metrics": {}},
+    ])
+    token = make_token(tid, role="system_admin")
+    resp = await client.get("/api/v1/models", headers=auth_header(token))
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_list_versions_system_admin_with_tenant_id_override(client, engine, setup_schema):
+    tid, schema = setup_schema
+    await _seed_versions(engine, schema, tid, [
+        {"version_number": 1, "status": "completed", "metrics": {}},
+    ])
+    token = make_token(tid, role="system_admin")
+    resp = await client.get("/api/v1/models", params={"tenant_id": tid}, headers=auth_header(token))
+    assert resp.status_code == 200
+    assert len(resp.json()["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_active_system_admin_requires_tenant_id(client, engine, setup_schema):
+    tid, _schema = setup_schema
+    token = make_token(tid, role="system_admin")
+    resp = await client.get("/api/v1/models/active", headers=auth_header(token))
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_get_active_system_admin_with_tenant_id_override(client, engine, setup_schema):
+    tid, schema = setup_schema
+    await _seed_versions(engine, schema, tid, [
+        {"version_number": 1, "status": "promoted", "metrics": {"eval_f1": 0.85}, "promoted_at": datetime.now(timezone.utc)},
+    ])
+    token = make_token(tid, role="system_admin")
+    resp = await client.get("/api/v1/models/active", params={"tenant_id": tid}, headers=auth_header(token))
+    assert resp.status_code == 200
+    assert resp.json()["version_number"] == 1
+
+
+@pytest.mark.asyncio
 async def test_promote_completed(client, engine, setup_schema):
     tid, schema = setup_schema
     await _seed_versions(engine, schema, tid, [

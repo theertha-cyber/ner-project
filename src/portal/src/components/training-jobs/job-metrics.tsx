@@ -2,39 +2,53 @@ export interface JobMetricsProps {
   metrics: Record<string, number>;
 }
 
-const F1_THRESHOLD = 0.7;
-
-function barColor(value: number): string {
-  return value >= F1_THRESHOLD ? "bg-status-completed" : "bg-status-failed";
-}
+const STAT_KEYS = [
+  { key: "eval_f1", label: "f1" },
+  { key: "eval_precision", label: "precision" },
+  { key: "eval_recall", label: "recall" },
+] as const;
 
 export function JobMetrics({ metrics }: JobMetricsProps) {
-  const entries = Object.entries(metrics).filter(
-    ([key]) => !key.startsWith("eval_"),
-  );
+  const statEntries = STAT_KEYS.filter(({ key }) => typeof metrics[key] === "number");
+  const evalLoss = metrics.eval_loss;
 
-  if (entries.length === 0) return null;
+  if (statEntries.length === 0 && typeof evalLoss !== "number") return null;
 
   return (
-    <div className="space-y-2">
-      <h4 className="text-sm font-medium text-gray-700">Evaluation Metrics</h4>
-      {entries.map(([key, value]) => {
-        const pct = Math.min(Math.max(value * 100, 0), 100);
-        return (
-          <div key={key}>
-            <div className="flex items-center justify-between text-xs text-gray-600">
-              <span>{key}</span>
-              <span>{(value * 100).toFixed(1)}%</span>
-            </div>
-            <div className="mt-0.5 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+    <div>
+      <h4 className="mb-2 font-body text-sm font-medium" style={{ color: "var(--ink-2)" }}>
+        Evaluation Metrics
+      </h4>
+      <div className="grid grid-cols-3 gap-3">
+        {statEntries.map(({ key, label }) => {
+          const value = metrics[key];
+          const pct = Math.min(Math.max(value * 100, 0), 100);
+          return (
+            <div key={key}>
+              <p className="font-mono text-2xl font-semibold" style={{ color: "var(--ink)" }}>
+                {value.toFixed(2)}
+              </p>
+              <p className="font-body text-xs uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>
+                {label}
+              </p>
               <div
-                className={`h-full rounded-full transition-all ${barColor(value)}`}
-                style={{ width: `${pct}%` }}
-              />
+                className="mt-1 h-1.5 w-full overflow-hidden rounded-full"
+                style={{ background: "var(--surface-3)" }}
+              >
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${pct}%`, background: "var(--primary)" }}
+                />
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      {typeof evalLoss === "number" && (
+        <p className="mt-3 font-mono text-xs" style={{ color: "var(--ink-2)" }}>
+          eval_loss {evalLoss.toFixed(3)}
+        </p>
+      )}
     </div>
   );
 }

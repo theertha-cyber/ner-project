@@ -1,36 +1,33 @@
-export type FilterTab = "all" | "pending_approval" | "running" | "completed" | "failed";
+export type FilterTab = "all" | "running" | "pending_approval" | "completed" | "failed";
 
 export interface JobFilterTabsProps {
   selected: FilterTab;
   onChange: (tab: FilterTab) => void;
 }
 
-const TABS: { value: FilterTab; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "pending_approval", label: "Pending Approval" },
-  { value: "running", label: "Running" },
-  { value: "completed", label: "Completed" },
-  { value: "failed", label: "Failed" },
-];
+const TABS: FilterTab[] = ["all", "running", "pending_approval", "completed", "failed"];
 
 export function JobFilterTabs({ selected, onChange }: JobFilterTabsProps) {
   return (
-    <div className="flex gap-1 border-b border-border pb-2">
-      {TABS.map((tab) => (
-        <button
-          key={tab.value}
-          type="button"
-          onClick={() => onChange(tab.value)}
-          className={[
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-            selected === tab.value
-              ? "bg-brand-primary text-white"
-              : "text-gray-600 hover:bg-gray-100",
-          ].join(" ")}
-        >
-          {tab.label}
-        </button>
-      ))}
+    <div className="flex flex-wrap gap-1.5 font-body">
+      {TABS.map((tab) => {
+        const active = tab === selected;
+        return (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => onChange(tab)}
+            className="rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors"
+            style={{
+              background: active ? "var(--ink)" : "var(--surface-2)",
+              color: active ? "var(--surface-2)" : "var(--ink-2)",
+              border: "1px solid var(--line)",
+            }}
+          >
+            {tab.replace("_", " ")}
+          </button>
+        );
+      })}
     </div>
   );
 }

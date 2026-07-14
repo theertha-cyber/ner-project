@@ -20,7 +20,7 @@ export function JobList({ jobs, selectedId, onSelect, isLoading }: JobListProps)
 
   if (jobs.length === 0) {
     return (
-      <p className="py-12 text-center text-sm text-gray-500">
+      <p className="py-12 text-center text-sm font-body" style={{ color: "var(--ink-3)" }}>
         No training jobs found.
       </p>
     );

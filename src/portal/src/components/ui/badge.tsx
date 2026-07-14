@@ -14,7 +14,7 @@ export type BadgeVariant =
   | "training"
   | "archived";
 
-const variantClasses: Record<BadgeVariant, string> = {
+export const badgeVariantClasses: Record<BadgeVariant, string> = {
   active: "bg-status-active text-white",
   inactive: "bg-status-inactive text-white",
   running: "bg-status-running text-white",
@@ -38,9 +38,14 @@ export function Badge({ variant, label }: BadgeProps) {
   const text = label ?? variant.replace(/_/g, " ");
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${variantClasses[variant]}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badgeVariantClasses[variant]}`}
     >
       {text}
     </span>
   );
+}
+
+export function badgeDotClass(variant: BadgeVariant): string {
+  const bgClass = badgeVariantClasses[variant].split(" ").find((c) => c.startsWith("bg-"));
+  return bgClass ?? "bg-status-inactive";
 }

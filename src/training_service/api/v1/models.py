@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -82,8 +82,15 @@ def _row_to_response(row: dict) -> ModelVersionResponse:
 @router.get("", response_model=ModelVersionListResponse)
 async def list_model_versions(
     request: Request,
+    tenant_id: str | None = Query(None, description="Tenant ID (system admin only — overrides JWT tenant)"),
 ):
-    tenant_id = get_tenant_id(request)
+    role = getattr(request.state, "role", None)
+    if role == "system_admin":
+        if not tenant_id:
+            raise HTTPException(status_code=400, detail="System admin must provide tenant_id query parameter")
+    else:
+        tenant_id = get_tenant_id(request)
+
     rows, warning = mlflow_list(tenant_id)
     result = ModelVersionListResponse(items=[_row_to_response(r) for r in rows])
     if warning:
@@ -98,8 +105,15 @@ async def list_model_versions(
 @router.get("/active", response_model=ModelVersionResponse)
 async def get_active_model(
     request: Request,
+    tenant_id: str | None = Query(None, description="Tenant ID (system admin only — overrides JWT tenant)"),
 ):
-    tenant_id = get_tenant_id(request)
+    role = getattr(request.state, "role", None)
+    if role == "system_admin":
+        if not tenant_id:
+            raise HTTPException(status_code=400, detail="System admin must provide tenant_id query parameter")
+    else:
+        tenant_id = get_tenant_id(request)
+
     row, warning = mlflow_get_active(tenant_id)
     if not row:
         base = _base_model_metadata()

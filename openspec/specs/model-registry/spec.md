@@ -35,6 +35,13 @@ The system SHALL list all model versions for a tenant, ordered by version number
 - **AND** the response SHALL have status 200
 - **AND** the response SHALL include a warning header `X-Info: mlflow-unavailable`
 
+#### Scenario: List all versions when multiple exist in same MLflow stage
+
+- **GIVEN** a tenant with 3 registered model versions, all in MLflow stage `None`
+- **WHEN** a Tenant Admin GETs `/api/v1/models`
+- **THEN** the response SHALL contain all 3 versions
+- **AND** each version SHALL include `version_number`, `status`, `training_job_id`, `created_at`, `metrics`, `mlflow_run_id`, and `mlflow_run_url`
+
 ### Requirement: Promote model version
 
 The system SHALL allow a Tenant Admin to promote a model version with "completed" status (MLflow Staging stage) to "promoted" (MLflow Production stage). The previously promoted version SHALL be transitioned to MLflow Archived stage. Only one model version per tenant SHALL be in Production stage at any time. After promoting, the system SHALL trigger model-serving cache warmup for the newly promoted version. If warmup fails, the promotion SHALL still succeed (graceful degradation).
@@ -103,14 +110,15 @@ The system SHALL allow a Tenant Admin to demote the currently promoted model ver
 
 ### Requirement: Get active model version
 
-The system SHALL expose an endpoint to query the tenant's currently promoted model version. This endpoint SHALL query the MLflow Model Registry for the Production stage version and fall back to the local cache if the MLflow server is unavailable. SM-05 uses this endpoint to determine which model to load for extraction.
+The system SHALL expose an endpoint to query the tenant's currently promoted model version. This endpoint SHALL query the MLflow Model Registry for the Production stage version and fall back to the local cache if the MLflow server is unavailable. SM-05 uses this endpoint to determine which model to load for extraction. The response SHALL include the `label_list` from the model version's `metrics` JSONB column, enabling the inference service to map ONNX output indices to the tenant's custom entity labels.
 
 #### Scenario: Get active model from MLflow when one is promoted
 
-- **GIVEN** a tenant with model v2 in "promoted" status (MLflow Production stage)
+- **GIVEN** a tenant with model v2 in "promoted" status (MLflow Production stage) and `metrics.label_list`: `["O", "B-company", "I-company"]`
 - **WHEN** a Tenant Admin GETs `/api/v1/models/active`
 - **THEN** the response SHALL have status 200
 - **AND** the response SHALL contain the promoted model's version number, artifact path, metrics, and MLflow run URL
+- **AND** the response SHALL contain `label_list` with the tenant's custom entity labels
 
 #### Scenario: Get active model when MLflow is unavailable
 

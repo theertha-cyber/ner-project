@@ -1,5 +1,5 @@
 import type { TrainingJob } from "@/types/training-jobs";
-import { Badge } from "@/components/ui";
+import { Badge, badgeDotClass } from "@/components/ui";
 
 export interface JobCardProps {
   job: TrainingJob;
@@ -7,37 +7,51 @@ export interface JobCardProps {
   onClick: () => void;
 }
 
+function formatHyperparams(job: TrainingJob): string | null {
+  const hp = job.hyperparams;
+  if (!hp) return null;
+  return `lr ${hp.learning_rate} · ${hp.num_epochs}ep · bs ${hp.batch_size}`;
+}
+
+function formatF1(job: TrainingJob): string {
+  const f1 = job.metrics?.eval_f1;
+  return typeof f1 === "number" ? f1.toFixed(2) : "—";
+}
+
 export function JobCard({ job, isSelected, onClick }: JobCardProps) {
   const isRunning = job.status === "running";
-  const dateStr = job.created_at
-    ? new Date(job.created_at).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "";
+  const hyperparamLine = formatHyperparams(job);
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={[
-        "w-full rounded-lg border p-3 text-left transition-colors",
-        isSelected
-          ? "border-brand-primary bg-brand-primary/5"
-          : "border-border hover:border-brand-primary/50",
-      ].join(" ")}
+      className="w-full rounded-lg p-3 text-left transition-colors"
+      style={{
+        border: `1px solid ${isSelected ? "var(--primary-line)" : "var(--line)"}`,
+        background: isSelected ? "var(--primary-soft)" : "var(--surface-2)",
+      }}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span
+          className={`inline-block h-2 w-2 shrink-0 rounded-full ${badgeDotClass(job.status)} ${isRunning ? "animate-pulse" : ""}`}
+        />
+        <span className="font-mono text-xs font-semibold" style={{ color: "var(--ink)" }}>
+          {job.id}
+        </span>
+        <div className="flex-1" />
         <Badge variant={job.status} />
-        {isRunning && (
-          <span className="inline-block h-2 w-2 rounded-full bg-status-running animate-pulse" />
-        )}
       </div>
-      {dateStr && (
-        <p className="mt-1 text-xs text-gray-500">{dateStr}</p>
-      )}
+      <div className="flex items-center justify-between">
+        {hyperparamLine && (
+          <p className="font-mono text-xs" style={{ color: "var(--ink-3)" }}>
+            {hyperparamLine}
+          </p>
+        )}
+        <p className="font-mono text-xs" style={{ color: "var(--ink-2)" }}>
+          F1 {formatF1(job)}
+        </p>
+      </div>
     </button>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useTrainingJobs } from "@/hooks/use-training-jobs";
@@ -58,20 +58,52 @@ export default function TrainingJobsPage() {
     [searchParams, router],
   );
 
+  useEffect(() => {
+    if (!listLoading && !selectedJobId && listData?.items.length) {
+      handleSelect(listData.items[0].id);
+    }
+  }, [listLoading, selectedJobId, listData, handleSelect]);
+
   const isTenantAdmin = user?.role === "tenant_admin";
 
   return (
     <div className="animate-fade-up flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-6 py-3">
-        <h1 className="text-xl font-semibold text-gray-900">Training Jobs</h1>
+      <div
+        className="flex items-center justify-between px-6 py-3"
+        style={{ borderBottom: "1px solid var(--line)" }}
+      >
+        <div>
+          <p
+            className="font-mono"
+            style={{ fontSize: 11, letterSpacing: "0.06em", color: "var(--ink-3)", marginBottom: 8 }}
+          >
+            /api/v1/training-jobs
+          </p>
+          <h1
+            className="font-display font-extrabold"
+            style={{ fontSize: 34, letterSpacing: "-0.03em", color: "var(--ink)" }}
+          >
+            Training Jobs
+          </h1>
+        </div>
         {isTenantAdmin && (
           <button
             type="button"
             onClick={() => setSubmitOpen(true)}
-            className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary/80"
+            className="font-display font-bold text-white"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "11px 17px",
+              borderRadius: 12,
+              background: "var(--primary)",
+              fontSize: 14,
+              boxShadow: "0 8px 20px -8px var(--primary)",
+            }}
           >
-            + Submit Job
+            + Submit job
           </button>
         )}
       </div>
@@ -79,7 +111,7 @@ export default function TrainingJobsPage() {
       {/* Split panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: List */}
-        <div className="flex w-80 flex-col border-r border-border">
+        <div className="flex w-80 flex-col" style={{ borderRight: "1px solid var(--line)" }}>
           <div className="p-3">
             <JobFilterTabs selected={currentTab} onChange={handleTabChange} />
           </div>
@@ -100,12 +132,14 @@ export default function TrainingJobsPage() {
               job={selectedJob}
               isLoading={detailLoading}
               isError={detailError}
+              hasSelection={!!selectedJobId}
+              viewerRole={user?.role}
             />
           </div>
 
           {/* Actions */}
           {selectedJob && (
-            <div className="border-t border-border px-6 py-3">
+            <div className="px-6 py-3" style={{ borderTop: "1px solid var(--line)" }}>
               <JobActions
                 jobId={selectedJob.id}
                 status={selectedJob.status}

@@ -131,4 +131,25 @@ describe("SubmitJobSlideover", () => {
       expect(onClose).toHaveBeenCalled();
     });
   });
+
+  it("keeps the epoch control a range slider and batch/seq as dropdowns with unchanged option sets", async () => {
+    const { container } = render(
+      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 confirmed spans/)).toBeDefined();
+    });
+
+    const rangeInput = container.querySelector('input[type="range"]');
+    expect(rangeInput).not.toBeNull();
+
+    const selects = container.querySelectorAll("select");
+    expect(selects).toHaveLength(2);
+    const batchOptions = Array.from(selects[0].options).map((o) => o.value);
+    const seqOptions = Array.from(selects[1].options).map((o) => o.value);
+    expect(batchOptions).toEqual(["4", "8", "16", "32"]);
+    expect(seqOptions).toEqual(["64", "128", "256"]);
+  });
 });
