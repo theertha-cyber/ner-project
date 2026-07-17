@@ -32,7 +32,8 @@ export function ModelRegistryPage() {
   const role = user?.role ?? "business_user";
 
   const displayedModels = useMemo<ModelVersion[]>(() => {
-    const fineTuned = isLoading ? [] : [...(data ?? [])].sort((a, b) => b.version_number - a.version_number);
+    if (isLoading) return [];
+    const fineTuned = [...(data ?? [])].sort((a, b) => b.version_number - a.version_number);
     return [...fineTuned, buildBaseModelEntry(activeModel)];
   }, [data, isLoading, activeModel]);
 

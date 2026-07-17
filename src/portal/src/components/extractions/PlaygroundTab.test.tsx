@@ -19,7 +19,7 @@ describe("PlaygroundTab", () => {
     mockAuthFetch.mockReset();
   });
 
-  it("Test 3: calls POST /api/v1/extract, disables button during request, renders entity rows on 200", async () => {
+  it("calls POST /api/v1/extract, disables button during request, renders grouped entities on 200", async () => {
     const entities = [
       { entity_type: "B-ORG", value: "Acme", confidence: 0.99, start_offset: 0, end_offset: 4 },
     ];
@@ -42,11 +42,63 @@ describe("PlaygroundTab", () => {
     resolveRequest!(makeExtractResponse(entities));
 
     await waitFor(() => expect(screen.getByText("Acme")).toBeDefined());
-    expect(screen.getByText("B-ORG")).toBeDefined();
+    expect(screen.getByText("ORG")).toBeDefined();
+    expect(screen.getByText("1 entities · 1 types")).toBeDefined();
     expect(button.hasAttribute("disabled")).toBe(false);
   });
 
-  it("Test 4: spinner visible in results panel during in-flight; no previous results shown", async () => {
+  it("merges multi-token entities with average confidence", async () => {
+    const entities = [
+      { entity_type: "B-PER", value: "Steve", confidence: 0.98, start_offset: 0, end_offset: 5 },
+      { entity_type: "I-PER", value: "Jobs", confidence: 0.97, start_offset: 6, end_offset: 10 },
+    ];
+    mockAuthFetch.mockResolvedValue(makeExtractResponse(entities));
+
+    render(<PlaygroundTab />);
+    fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
+
+    await waitFor(() => expect(screen.getByText("Steve Jobs")).toBeDefined());
+    expect(screen.getByText("0.975")).toBeDefined();
+    expect(screen.getByText("PER")).toBeDefined();
+  });
+
+  it("renders groups in alphabetical order", async () => {
+    const entities = [
+      { entity_type: "B-PER", value: "Alice", confidence: 0.95, start_offset: 0, end_offset: 5 },
+      { entity_type: "B-ORG", value: "Acme", confidence: 0.99, start_offset: 10, end_offset: 14 },
+      { entity_type: "B-LOC", value: "Paris", confidence: 0.90, start_offset: 20, end_offset: 25 },
+    ];
+    mockAuthFetch.mockResolvedValue(makeExtractResponse(entities));
+
+    render(<PlaygroundTab />);
+    fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
+
+    await waitFor(() => expect(screen.getByText("Alice")).toBeDefined());
+
+    const headings = screen.getAllByText(/^(LOC|ORG|PER)$/);
+    expect(headings[0].textContent).toBe("LOC");
+    expect(headings[1].textContent).toBe("ORG");
+    expect(headings[2].textContent).toBe("PER");
+  });
+
+  it("orders entities within a group by start_offset", async () => {
+    const entities = [
+      { entity_type: "B-ORG", value: "ZCorp", confidence: 0.90, start_offset: 20, end_offset: 25 },
+      { entity_type: "B-ORG", value: "Acme", confidence: 0.99, start_offset: 0, end_offset: 4 },
+    ];
+    mockAuthFetch.mockResolvedValue(makeExtractResponse(entities));
+
+    render(<PlaygroundTab />);
+    fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
+
+    await waitFor(() => {
+      const items = screen.getAllByText(/^(ZCorp|Acme)$/);
+      expect(items[0].textContent).toBe("Acme");
+      expect(items[1].textContent).toBe("ZCorp");
+    });
+  });
+
+  it("shows spinner in results panel during in-flight; no previous results shown", async () => {
     const entities = [
       { entity_type: "B-PER", value: "Alice", confidence: 0.95, start_offset: 0, end_offset: 5 },
     ];
@@ -58,7 +110,6 @@ describe("PlaygroundTab", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
 
-    // Spinner should appear while request is pending
     await waitFor(() => {
       const spinners = screen.queryAllByRole("status");
       expect(spinners.length).toBeGreaterThan(0);
@@ -69,7 +120,7 @@ describe("PlaygroundTab", () => {
     await waitFor(() => expect(screen.getByText("Alice")).toBeDefined());
   });
 
-  it("Test 5: model version label updates from response", async () => {
+  it("updates model version label from response", async () => {
     mockAuthFetch.mockResolvedValueOnce(makeExtractResponse([], "3"));
     render(<PlaygroundTab />);
 
@@ -78,7 +129,7 @@ describe("PlaygroundTab", () => {
     await waitFor(() => expect(screen.getByText("model v3 · serving")).toBeDefined());
   });
 
-  it("Test 6: no API call when textarea is empty", async () => {
+  it("prevents API call when textarea is empty", async () => {
     render(<PlaygroundTab />);
     const textarea = screen.getByRole("textbox");
     fireEvent.change(textarea, { target: { value: "   " } });
@@ -87,5 +138,18 @@ describe("PlaygroundTab", () => {
     fireEvent.click(button);
 
     expect(mockAuthFetch).not.toHaveBeenCalled();
+  });
+
+  it("shows entity count and type count summary", async () => {
+    const entities = [
+      { entity_type: "B-PER", value: "Alice", confidence: 0.95, start_offset: 0, end_offset: 5 },
+      { entity_type: "B-ORG", value: "Acme", confidence: 0.99, start_offset: 10, end_offset: 14 },
+    ];
+    mockAuthFetch.mockResolvedValue(makeExtractResponse(entities));
+
+    render(<PlaygroundTab />);
+    fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
+
+    await waitFor(() => expect(screen.getByText("2 entities · 2 types")).toBeDefined());
   });
 });

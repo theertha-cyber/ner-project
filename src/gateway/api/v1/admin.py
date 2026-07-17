@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.gateway.services.tenant_service import TenantService
 from src.gateway.services.user_service import UserService
+from src.gateway.services.audit_service import AuditService
 from src.gateway.dependencies import get_db, require_system_admin
+from src.gateway.models import AuditEventKind
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -22,11 +24,14 @@ class CreateTenantRequest(BaseModel):
 @router.post("/tenants", status_code=201)
 async def create_tenant(
     payload: CreateTenantRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: str = Depends(require_system_admin),
 ):
     service = TenantService(db)
-    return await service.create_tenant(payload.model_dump())
+    actor_email = getattr(request.state, "user_email", "")
+    actor_role = getattr(request.state, "role", "")
+    return await service.create_tenant(payload.model_dump(), actor_email=actor_email, actor_role=actor_role)
 
 
 @router.get("/tenants")
@@ -65,11 +70,18 @@ async def update_tenant(
 @router.post("/tenants/{tenant_id}/deactivate")
 async def deactivate_tenant(
     tenant_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: str = Depends(require_system_admin),
 ):
     service = TenantService(db)
-    return await service.deactivate_tenant(tenant_id)
+    actor_email = getattr(request.state, "user_email", "")
+    actor_role = getattr(request.state, "role", "")
+    return await service.deactivate_tenant(
+        tenant_id,
+        actor_email=actor_email,
+        actor_role=actor_role,
+    )
 
 
 @router.get("/tenants/{tenant_id}/users")
@@ -82,4 +94,15 @@ async def list_tenant_users(
     await tenant_service.get_tenant(tenant_id)
     user_service = UserService(db)
     return await user_service.list_users(tenant_id)
+
+
+@router.get("/audit-log")
+async def list_audit_log(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_system_admin),
+):
+    service = AuditService(db)
+    return await service.list_events(page=page, per_page=per_page)
 

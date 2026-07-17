@@ -112,13 +112,17 @@ export function MessageThread({ messages, loading }: MessageThreadProps) {
             </div>
             {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
               <div style={{ marginTop: 4 }}>
-                {msg.sources.map((source, i) =>
-                  isCitation(source) ? (
-                    <CitationCard key={i} citation={source} />
-                  ) : (
-                    <SourceCitation key={i} source={source} />
-                  )
-                )}
+                <ol style={{ margin: 0, paddingLeft: 20, listStyle: "decimal" }}>
+                  {msg.sources.map((source, i) => (
+                    <li key={i} style={{ marginBottom: 4 }}>
+                      {isCitation(source) ? (
+                        <CitationCard citation={source} />
+                      ) : (
+                        <SourceCitation source={source} />
+                      )}
+                    </li>
+                  ))}
+                </ol>
               </div>
             )}
           </div>

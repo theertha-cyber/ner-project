@@ -294,19 +294,25 @@ async def seed():
             )
         print("Seeded 20 suggested spans")
 
-        model_id = str(uuid.uuid4())
-        await db.execute(
-            text(f"""
-                INSERT INTO {schema_name}.model_versions (id, tenant_id, version, metrics, status, promoted_at)
-                VALUES (:id, :tid, 3, :met, 'promoted', NOW() - interval '2 days')
-                ON CONFLICT (id) DO NOTHING
-            """),
-            {
-                "id": model_id, "tid": demo_tenant_id,
-                "met": '{"f1": 0.872, "precision": 0.91, "recall": 0.85, "loss": 0.12}',
-            },
+        existing_promoted = await db.execute(
+            text(f"SELECT id FROM {schema_name}.model_versions WHERE tenant_id = :tid AND status = 'promoted'"),
+            {"tid": demo_tenant_id},
         )
-        print("Seeded promoted model (F1=87.2)")
+        if not existing_promoted.fetchone():
+            model_id = str(uuid.uuid4())
+            await db.execute(
+                text(f"""
+                    INSERT INTO {schema_name}.model_versions (id, tenant_id, version, metrics, status, promoted_at)
+                    VALUES (:id, :tid, 3, :met, 'promoted', NOW() - interval '2 days')
+                """),
+                {
+                    "id": model_id, "tid": demo_tenant_id,
+                    "met": '{"f1": 0.872, "precision": 0.91, "recall": 0.85, "loss": 0.12}',
+                },
+            )
+            print("Seeded promoted model (F1=87.2)")
+        else:
+            print("Promoted model already exists, skipping")
 
         training_statuses = [
             ("completed", 3),

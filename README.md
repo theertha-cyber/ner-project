@@ -107,16 +107,30 @@ Created by migration `002`, extended by `003` and `004`. When a tenant is provis
 ## Prerequisites
 
 ```bash
+poetry install                                    # Install Python dependencies (this project uses Poetry, not pip/requirements.txt)
+cp .env.example .env                              # Then fill in the REQUIRED values (JWT secret, MinIO/AWS creds, OpenAI key)
 docker compose up -d postgres-test minio redis    # Start PostgreSQL 16, MinIO S3, Redis
 docker compose up -d mlflow                       # Start MLflow Tracking Server (PostgreSQL backend + MinIO artifact store)
-pip install -r requirements.txt                   # or poetry install
 alembic upgrade head                              # Run migrations
 python -m src.gateway.seed                        # Create bootstrap admin
 ```
 
+Required values in `.env` (see comments in `.env.example` for details):
+- `NER_JWT_SECRET` — generate with `openssl rand -hex 32`
+- `NER_MINIO_ACCESS_KEY` / `NER_MINIO_SECRET_KEY` and matching `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — set equal to the MinIO credentials above (MLflow uses these to talk to MinIO as S3)
+- `NER_OPENAI_API_KEY` — needed to run the Chat API service
+
+### Portal (Next.js frontend)
+
+```bash
+npm install                                       # Root workspace covers src/portal
+cp src/portal/.env.local.example src/portal/.env.local
+```
+
 ## Starting the Servers
 
-The platform runs three services that can be started independently:
+The platform runs several services that can be started independently:
 
 ### Gateway (Auth, Tenants, Users, Entity Types)
 
@@ -133,7 +147,7 @@ uvicorn src.document_service.main:app --port 8001 --reload   # http://localhost:
 ### Annotation Service
 
 ```bash
-uvicorn src.annotation_service.main:app --port 8002 --reload   # http://localhost:8002/docs
+uvicorn src.annotation_service.main:app --port 8005 --reload   # http://localhost:8005/docs
 ```
 
 ### Training Service
@@ -156,8 +170,22 @@ uvicorn src.model_serving.main:app --port 8004 --reload   # http://localhost:800
 ### Extraction Service
 
 ```bash
-uvicorn src.extraction_service.main:app --port 8005 --reload   # http://localhost:8005/docs
+uvicorn src.extraction_service.main:app --port 8002 --reload   # http://localhost:8002/docs
 ```
+
+### Chat API (RAG Chatbot)
+
+```bash
+uvicorn src.chat_api.main:app --port 8006 --reload   # http://localhost:8006/docs
+```
+Requires `NER_OPENAI_API_KEY` (or Azure OpenAI config) in `.env`. See "Chat API — RAG Chatbot" below for endpoint details.
+
+### Portal (Next.js frontend)
+
+```bash
+npm run dev --workspace=src/portal   # http://localhost:3000
+```
+Requires `src/portal/.env.local` to be set up first (see Prerequisites above).
 
 ---
 
@@ -733,8 +761,8 @@ Soft-delete a document. Sets `status: "deleted"`. The blob remains in MinIO.
 
 ### Annotation Workspace (`/api/v1/documents/{doc_id}/spans`, `/api/v1/annotation-tasks`, `/api/v1/annotation-export`)
 
-**Service:** `src.annotation_service.main:app` — port 8002
-**Swagger UI:** `http://localhost:8002/docs`
+**Service:** `src.annotation_service.main:app` — port 8005
+**Swagger UI:** `http://localhost:8005/docs`
 
 Requires `Authorization: Bearer <token>` with any valid tenant-scoped role. The tenant is resolved from the JWT — no slug in the URL.
 
@@ -1259,8 +1287,8 @@ Reject a training job. Requires `role: system_admin`. Accepts a `tenant_id` quer
 
 ### Extraction Service API (`/api/v1/extract`)
 
-**Service:** `src.extraction_service.main:app` — port 8005
-**Swagger UI:** `http://localhost:8005/docs`
+**Service:** `src.extraction_service.main:app` — port 8002
+**Swagger UI:** `http://localhost:8002/docs`
 
 Requires `Authorization: Bearer <token>` with `role: tenant_admin` or `role: business_user` for single extraction; batch extraction requires `role: tenant_admin`. The tenant is resolved from the JWT — no `{tid}` in the URL.
 

@@ -19,9 +19,12 @@ describe("StatCard (dashboard)", () => {
     expect(screen.getByText("\u2014")).toBeInTheDocument();
   });
 
-  it("renders delta pill with coloured background for warn direction", () => {
+  it("renders delta as coloured text for warn direction", () => {
     render(<StatCard item={makeStat({ dir: "warn", delta: "now" })} />);
-    expect(screen.getByText("now")).toBeInTheDocument();
+    const delta = screen.getByText("now");
+    expect(delta).toBeInTheDocument();
+    expect(delta.style.background).toBe("");
+    expect(delta.style.color).toContain("--color-delta-warn");
   });
 
   it("renders sub text in JetBrains Mono", () => {
@@ -29,7 +32,7 @@ describe("StatCard (dashboard)", () => {
     expect(screen.getByText("test sub")).toBeInTheDocument();
   });
 
-  it("delta pill appears inline with label on same row (label+delta top row)", () => {
+  it("delta appears inline with label on same row (label+delta top row)", () => {
     const { container } = render(<StatCard item={makeStat({ delta: "+12", dir: "up" })} />);
     const firstChild = container.firstChild as HTMLElement;
     const topRow = firstChild.firstChild as HTMLElement;

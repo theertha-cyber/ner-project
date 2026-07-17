@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from src.gateway.models import Tenant, slugify, generate_uuid
+from src.gateway.models import Tenant, slugify, generate_uuid, AuditEventKind
+from src.gateway.services.audit_service import AuditService
 from src.shared.auth import hash_password, validate_password
 from src.shared.exceptions import NotFoundError, ConflictError, ValidationError
 
@@ -9,7 +10,7 @@ class TenantService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create_tenant(self, payload: dict) -> dict:
+    async def create_tenant(self, payload: dict, actor_email: str = "", actor_role: str = "") -> dict:
         name = payload["name"]
         slug = payload.get("slug", slugify(name))
         admin_email = payload["admin_email"]
@@ -71,7 +72,14 @@ class TenantService:
             },
         )
 
-        await self.db.commit()
+        audit = AuditService(self.db)
+        await audit.record(
+            actor=actor_email,
+            role=actor_role,
+            action="tenant.create",
+            target=slug,
+            kind=AuditEventKind.create,
+        )
 
         tenant_data = await self._get_by_id(tenant_id)
         return {
@@ -150,7 +158,7 @@ class TenantService:
         data = await self._get_by_id(tenant_id)
         return {"tenant": data}
 
-    async def deactivate_tenant(self, tenant_id: str) -> dict:
+    async def deactivate_tenant(self, tenant_id: str, actor_email: str = "", actor_role: str = "") -> dict:
         existing = await self._get_by_id(tenant_id)
         if not existing:
             raise NotFoundError("Tenant", tenant_id)
@@ -159,7 +167,15 @@ class TenantService:
             text("UPDATE public.tenants SET status = 'inactive' WHERE id = :id"),
             {"id": tenant_id},
         )
-        await self.db.commit()
+
+        audit = AuditService(self.db)
+        await audit.record(
+            actor=actor_email,
+            role=actor_role,
+            action="tenant.deactivate",
+            target=existing["slug"],
+            kind=AuditEventKind.reject,
+        )
 
         data = await self._get_by_id(tenant_id)
         return {"tenant": data}

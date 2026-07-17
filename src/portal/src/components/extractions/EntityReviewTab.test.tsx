@@ -31,7 +31,7 @@ describe("EntityReviewTab", () => {
     mockAuthFetch.mockResolvedValue(makeEntityListResponse([]));
   });
 
-  it("Test 12: GET /api/v1/entities called without reviewStatus param on mount; 'all' pill active", async () => {
+  it("GET /api/v1/entities called without reviewStatus param on mount; 'all' pill active", async () => {
     mockAuthFetch.mockResolvedValue(makeEntityListResponse([]));
     render(<EntityReviewTab />);
 
@@ -44,7 +44,7 @@ describe("EntityReviewTab", () => {
     expect(allBtn.hasAttribute("aria-pressed") || allBtn.style.background !== "").toBeTruthy();
   });
 
-  it("Test 13: clicking 'unreviewed' pill triggers GET with reviewStatus=unreviewed", async () => {
+  it("clicking 'unreviewed' pill triggers GET with reviewStatus=unreviewed", async () => {
     render(<EntityReviewTab />);
     await waitFor(() => expect(mockAuthFetch).toHaveBeenCalled());
 
@@ -58,19 +58,48 @@ describe("EntityReviewTab", () => {
     expect(callUrl).toContain("reviewStatus=unreviewed");
   });
 
-  it("Test 14: renders entity fixture with all four columns correct", async () => {
+  it("renders entities in grouped layout with BIO prefix stripped from group heading", async () => {
     mockAuthFetch.mockResolvedValue(makeEntityListResponse([ENTITY_FIXTURE]));
     render(<EntityReviewTab />);
 
     await waitFor(() => expect(screen.getByText("Acme Corp")).toBeDefined());
 
-    expect(screen.getByText("B-ORG")).toBeDefined();
+    expect(screen.getByText("ORG")).toBeDefined();
+    expect(screen.queryByText("B-ORG")).toBeNull();
     expect(screen.getByText("invoice-2026-00417.pdf")).toBeDefined();
     expect(screen.getByText("0.998")).toBeDefined();
     expect(screen.getAllByText("unreviewed")[0]).toBeDefined();
   });
 
-  it("Test 15: confirm button sends PATCH with review_status confirmed, updates optimistically", async () => {
+  it("shows entity and type count in summary", async () => {
+    const entities: EntityItem[] = [
+      ENTITY_FIXTURE,
+      { ...ENTITY_FIXTURE, id: "ent-002", entity_id: "B-PER", value: "Alice" },
+    ];
+    mockAuthFetch.mockResolvedValue(makeEntityListResponse(entities));
+    render(<EntityReviewTab />);
+
+    await waitFor(() => expect(screen.getByText("2 entities · 2 types · GET /entities")).toBeDefined());
+  });
+
+  it("renders groups in alphabetical order", async () => {
+    const entities: EntityItem[] = [
+      { ...ENTITY_FIXTURE, id: "ent-001", entity_id: "B-PER", value: "Alice" },
+      { ...ENTITY_FIXTURE, id: "ent-002", entity_id: "B-ORG", value: "Acme" },
+      { ...ENTITY_FIXTURE, id: "ent-003", entity_id: "B-LOC", value: "Paris" },
+    ];
+    mockAuthFetch.mockResolvedValue(makeEntityListResponse(entities));
+    render(<EntityReviewTab />);
+
+    await waitFor(() => {
+      const headings = screen.getAllByText(/^(LOC|ORG|PER)$/);
+      expect(headings[0].textContent).toBe("LOC");
+      expect(headings[1].textContent).toBe("ORG");
+      expect(headings[2].textContent).toBe("PER");
+    });
+  });
+
+  it("confirm button sends PATCH with review_status confirmed, updates optimistically", async () => {
     mockAuthFetch.mockResolvedValue(makeEntityListResponse([ENTITY_FIXTURE]));
     render(<EntityReviewTab />);
 
@@ -92,7 +121,7 @@ describe("EntityReviewTab", () => {
     expect(body.review_status).toBe("confirmed");
   });
 
-  it("Test 16: reject button sends PATCH with review_status rejected, updates optimistically", async () => {
+  it("reject button sends PATCH with review_status rejected, updates optimistically", async () => {
     mockAuthFetch.mockResolvedValue(makeEntityListResponse([ENTITY_FIXTURE]));
     render(<EntityReviewTab />);
 
@@ -114,7 +143,7 @@ describe("EntityReviewTab", () => {
     expect(body.review_status).toBe("rejected");
   });
 
-  it("Test 17: confidence colors — 0.94 good, 0.75 warn, 0.62 bad, 0.90 good (boundary)", async () => {
+  it("confidence colors — 0.94 good, 0.75 warn, 0.62 bad, 0.90 good (boundary)", async () => {
     const entities: EntityItem[] = [
       { ...ENTITY_FIXTURE, id: "e1", value: "Alpha", confidence: 0.94 },
       { ...ENTITY_FIXTURE, id: "e2", value: "Beta", confidence: 0.75 },
@@ -139,7 +168,7 @@ describe("EntityReviewTab", () => {
     expect(conf090.className).toContain("text-success");
   });
 
-  it("Test 18: empty entity list shows empty state message", async () => {
+  it("empty entity list shows empty state message", async () => {
     mockAuthFetch.mockResolvedValue(makeEntityListResponse([]));
     render(<EntityReviewTab />);
 

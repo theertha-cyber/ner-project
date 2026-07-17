@@ -104,7 +104,7 @@ class RAGOrchestrator:
         sources.extend(vector_sources[:3])
         sources.extend(ner_sources[:5])
 
-        sources = await self._enrich_citations(sources, session, schema)
+        sources = await self._enrich_citations(sources, session, schema, tenant_id)
 
         context_parts = []
         if sql_results:
@@ -154,7 +154,7 @@ class RAGOrchestrator:
             logger.warning("Vector search failed: %s", str(e))
             return []
 
-    async def _enrich_citations(self, sources: list[Source], session: AsyncSession, schema: str) -> list[Source | Citation]:
+    async def _enrich_citations(self, sources: list[Source], session: AsyncSession, schema: str, tenant_id: str) -> list[Source | Citation]:
         if not sources:
             return []
 
@@ -171,14 +171,35 @@ class RAGOrchestrator:
             except Exception as e:
                 logger.warning("Citation enrichment: document name resolution failed: %s", e)
 
+        conll_types = {s.entity_type for s in sources if s.entity_type and s.source_type == "ner"}
+        conll_to_name: dict[str, str] = {}
+        if conll_types:
+            try:
+                result = await session.execute(
+                    text("SELECT name, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tid"),
+                    {"tid": tenant_id},
+                )
+                for row in result.fetchall():
+                    mapping = row[1]
+                    if isinstance(mapping, str):
+                        import json
+                        mapping = json.loads(mapping)
+                    if isinstance(mapping, dict):
+                        for conll_label in conll_types:
+                            if conll_label in mapping:
+                                conll_to_name[conll_label] = row[0]
+            except Exception as e:
+                logger.warning("Citation enrichment: entity type name resolution failed: %s", e)
+
         enriched: list[Source | Citation] = []
         for s in sources:
             doc_name = doc_map.get(s.document_id) if s.document_id else None
+            entity_type_name = conll_to_name.get(s.entity_type) if s.entity_type and s.source_type == "ner" else None
             context = s.chunk_text if s.source_type == "document_chunk" else None
             enriched.append(Citation(
                 document_name=doc_name,
                 document_id=s.document_id,
-                entity_type=s.entity_type,
+                entity_type=entity_type_name or s.entity_type,
                 entity_value=s.value,
                 confidence=s.confidence,
                 context_snippet=context,

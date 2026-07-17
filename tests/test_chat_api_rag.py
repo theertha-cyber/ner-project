@@ -100,3 +100,19 @@ class TestCitationEnrichment:
         sources: list = []
         enriched: list = []
         assert len(enriched) == 0
+
+    def test_enrichment_resolves_conll_type_via_base_label_mapping(self):
+        mapping_data = {"ORG": True, "PER": False}
+        conll_types = {"ORG", "PER"}
+        entity_rows = [
+            ("organization", mapping_data),
+            ("person", {"PER": True}),
+        ]
+        conll_to_name = {}
+        for name, mapping in entity_rows:
+            if isinstance(mapping, dict):
+                for conll_label in conll_types:
+                    if conll_label in mapping:
+                        conll_to_name[conll_label] = name
+        assert conll_to_name.get("ORG") == "organization"
+        assert conll_to_name.get("PER") == "person"

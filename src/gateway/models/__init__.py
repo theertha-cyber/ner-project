@@ -91,6 +91,30 @@ class EntityDefinition(Base):
     tenant = relationship("Tenant", backref="entity_definitions")
 
 
+class AuditEventKind(str, enum.Enum):
+    create = "create"
+    approve = "approve"
+    promote = "promote"
+    complete = "complete"
+    run = "run"
+    reject = "reject"
+    update = "update"
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+    __table_args__ = {"schema": "public"}
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    actor = Column(String(255), nullable=False)
+    role = Column(String(50), nullable=False)
+    action = Column(String(255), nullable=False)
+    target = Column(String(255), nullable=False)
+    kind = Column(SAEnum(AuditEventKind), nullable=False)
+    tenant_id = Column(String, ForeignKey("public.tenants.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
 VALID_BASE_LABELS = {"PER", "ORG", "LOC", "MISC"}
 
 

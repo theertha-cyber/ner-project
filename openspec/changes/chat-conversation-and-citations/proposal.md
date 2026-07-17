@@ -6,9 +6,11 @@ The chatbot UI has a critical UX bug: clicking "New conversation" hides the mess
 
 - **Fix "New conversation" button**: The button will immediately create a conversation via a new backend endpoint and show the input ready for typing, instead of clearing local state and hiding the input.
 - **Unified citations**: Replace the three-way source-type display (`sql`, `ner`, `document_chunk`) with a single `Citation` model that always includes `document_name`, `entity_type`, `entity_value`, `confidence`, and optional context snippet. The frontend renders all citations uniformly.
-- **Citation enrichment layer**: A new post-processing step in the RAG orchestrator that resolves `document_id → filename` for all sources via a batch query, so every citation has a document name.
-- **SQL generator prompt update**: Instruct the LLM to include `d.filename` when generating queries against `extracted_entities`.
+- **Citation enrichment layer**: A new post-processing step in the RAG orchestrator that resolves `document_id → filename` and `entity_id → entity_type_name` for all sources via batch queries, so every citation has a document name and a human-readable entity type.
+- **SQL generator prompt update**: Instruct the LLM to include `d.filename` when generating queries against `extracted_entities`, using proper table aliasing (`documents AS d`).
 - **Always-visible input**: The chat input will always be rendered when a conversation is active (including newly created empty conversations).
+- **Error toast on new conversation failure**: If the `POST /api/v1/chat/conversations` API call fails, show a visible error message to the user instead of silently swallowing the error.
+- **Numbered citation cards**: Citations in the message thread will be displayed as a numbered list for readability.
 
 ## Capabilities
 
@@ -27,13 +29,14 @@ The chatbot UI has a critical UX bug: clicking "New conversation" hides the mess
 |---|---|
 | `src/chat_api/api/v1/schemas.py` | Add `Citation` model, deprecate `Source.source_type` display fields |
 | `src/chat_api/api/v1/chat.py` | Add `POST /api/v1/chat/conversations` endpoint |
-| `src/chat_api/services/sql_generator.py` | Update LLM prompt to include `d.filename` in entity queries |
-| `src/chat_api/services/rag_orchestrator.py` | Add citation enrichment step after source collection |
-| `src/portal/src/components/chat/MessageThread.tsx` | Replace `SourceCitation` with `CitationCard` |
+| `src/chat_api/services/sql_generator.py` | Update LLM prompt to include `d.filename` in entity queries with proper `AS d` alias |
+| `src/chat_api/services/rag_orchestrator.py` | Add citation enrichment step after source collection; include `entity_definitions` cross-schema JOIN |
+| `src/portal/src/components/chat/MessageThread.tsx` | Replace `SourceCitation` with `CitationCard`; add numbering to citations |
 | `src/portal/src/components/chat/ChatSidebar.tsx` | Add loading state for new conversation creation |
-| `src/portal/src/app/(auth)/chat/page.tsx` | Wire button to API call, always show input when active |
+| `src/portal/src/app/(auth)/chat/page.tsx` | Wire button to API call, always show input when active; add error toast |
 | `tests/test_chat_api_conversations.py` | Add tests for new endpoint and Citation model |
-| `tests/test_chat_api_rag.py` | Update for citation enrichment |
+| `tests/test_chat_api_rag.py` | Update for citation enrichment (document_name + entity_type_name) |
+| `tests/test_chat_api_sql.py` | Update prompt assertion for correct alias syntax |
 | ADR-007 | No changes needed — citations were already mandated |
 
 ## Open Questions

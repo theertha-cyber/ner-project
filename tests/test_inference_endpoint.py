@@ -79,7 +79,7 @@ class TestResolveActiveVersionUsesConfiguredRegistryUrl:
             def json(self):
                 return {"artifact_path": "tenants/t1/models/v3/", "version_number": 3}
 
-        def fake_get(url, headers=None, timeout=None):
+        def fake_get(url, headers=None, timeout=None, **kwargs):
             captured["url"] = url
             return FakeResponse()
 
@@ -105,7 +105,7 @@ class TestResolveActiveVersionUsesConfiguredRegistryUrl:
             def json(self):
                 return {"artifact_path": "tenants/t1/models/v1/", "version_number": 1}
 
-        def fake_get(url, headers=None, timeout=None):
+        def fake_get(url, headers=None, timeout=None, **kwargs):
             captured["url"] = url
             return FakeResponse()
 
@@ -122,7 +122,7 @@ class TestResolveActiveVersionUsesConfiguredRegistryUrl:
 
         monkeypatch.setattr(settings, "training_service_url", "http://unreachable-host:1")
 
-        def fake_get(url, headers=None, timeout=None):
+        def fake_get(url, headers=None, timeout=None, **kwargs):
             raise requests_module.ConnectionError("All connection attempts failed")
 
         monkeypatch.setattr(requests_module, "get", fake_get)

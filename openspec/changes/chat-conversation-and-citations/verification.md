@@ -2,7 +2,7 @@
 
 **Change:** chat-conversation-and-citations
 **Generated:** 2026-06-30
-**Status:** 🔴 Incomplete — Evidence Log and Audit Record must be filled by a human reviewer before archive.
+**Status:** 🟡 Remediation tasks complete — Evidence Log and Audit Record must be filled by a human reviewer before archive.
 
 ---
 
@@ -14,12 +14,12 @@
 |---|-----------|-------------|----------|---------------------|-----------------------|--------|
 | 1 | chat-api | Conversation creation endpoint | Create new empty conversation | Given authenticated user, when POST /api/v1/chat/conversations, then 201 + id + null title | `test_chat_api_conversations.py::test_conversation_create_response` | ✅ |
 | 2 | chat-api | Conversation creation endpoint | Create conversation without authentication | Given no JWT, when POST /api/v1/chat/conversations, then 401 | (requires API integration test) | ⏳ |
-| 3 | chat-api | Citation model with document names | Chat response includes citations with document names | Given extracted entities in documents, when user asks about entities, then each source has document_name + entity_type + entity_value + confidence | `test_chat_api_conversations.py::test_chat_response_with_citation_sources` | ✅ |
+| 3 | chat-api | Citation model with document names | Chat response includes citations with document names | Given extracted entities in documents, when user asks about entities, then each source has document_name + entity_type (human-readable) + entity_value + confidence | `test_chat_api_conversations.py::test_chat_response_with_citation_sources` + `test_chat_api_rag.py::test_enrichment_resolves_conll_type_via_base_label_mapping` | ✅ Enrichment resolves CoNLL types to human-readable names via base_label_mapping |
 | 4 | chat-api | Citation model with document names | SQL aggregate query still returns citations | Given ORG entities across 5 docs, when user asks count, then reply includes count AND citations reference documents | (requires live DB + LLM) | ⏳ |
 | 5 | chat-api | RAG chat endpoint (modified) | Chat with simple entity count query | Given extracted ORG entities, when POST /chat with "How many organizations?", then 200 + reply + sources with document_name + conversation_id | (requires live DB + LLM) | ⏳ |
 | 6 | chat-api | RAG chat endpoint (modified) | Chat with document context query | Given document chunks, when user asks about content, then sources include document_id + document_name + chunk_index + relevance_score | `test_chat_api_rag.py::test_citation_from_document_chunk_source` | ✅ |
-| 7 | chat-api | RAG chat endpoint (modified) | Chat with NER query | Given promoted NER model, when user asks about entities in snippet, then sources include entity_type + entity_value + confidence + document_name | `test_chat_api_rag.py::test_citation_created_from_ner_source` | ✅ |
-| 8 | chat-api | SQL query generation and validation (modified) | Valid SQL query includes document name | Given question about org entities, when SQL generated, then it SHOULD JOIN documents and include d.filename | `test_chat_api_sql.py::test_prompt_includes_document_join_instruction` | ✅ |
+| 7 | chat-api | RAG chat endpoint (modified) | Chat with NER query | Given promoted NER model, when user asks about entities in snippet, then sources include entity_type (human-readable) + entity_value + confidence + document_name | `test_chat_api_rag.py::test_citation_created_from_ner_source` + enrichment resolution | ✅ Enrichment now resolves entity_type via base_label_mapping |
+| 8 | chat-api | SQL query generation and validation (modified) | Valid SQL query includes document name with correct alias | Given question about org entities, when SQL generated, then it SHOULD JOIN documents with correct alias and include d.filename | `test_chat_api_sql.py::test_prompt_includes_document_join_instruction` | ✅ Prompt now uses `documents AS d` with correct alias binding |
 | 9 | chat-ui | Citation card display | Assistant message shows citation cards | Given assistant message with 3 citations, when rendered, then each shows document_name + entity details as unified card | `CitationCard.test.tsx` renders document name | ✅ |
 | 10 | chat-ui | Citation card display | Citation card expands to show context | Given citation with context_snippet, when user clicks toggle, then snippet revealed | `CitationCard.test.tsx` expand toggle | ✅ |
 | 11 | chat-ui | Citation card display | Citation card without context snippet | Given citation without context_snippet, when rendered, then no expand toggle shown | `CitationCard.test.tsx` no context | ✅ |
@@ -41,6 +41,9 @@
 | 4 | New conversation loading state | AI may omit the disabled/loading state on the button during API call, leaving the user able to click multiple times creating duplicate conversations | Verify button has `disabled` prop bound to loading state; verify test for rapid double-click |
 | 5 | SQL prompt update | AI may over-constrain the SQL prompt, causing the LLM to always JOIN documents even for non-entity queries (e.g., "list my documents"), potentially breaking queries | Verify prompt says "SHOULD" not "MUST" for the JOIN; verify non-entity queries still work |
 | 6 | Empty conversation edge case | AI may not handle the case where conversation is created but user navigates away before sending a message — stale empty conversations accumulate | Verify there's a background job or admin mechanism to prune empty conversations (or design.md explicitly defers this) |
+| 7 | SQL alias inconsistency | AI prompt references `d.filename` but never creates the alias `d` — any generated SQL will fail at runtime | Verify prompt uses `documents AS d` or `documents d` syntax |
+| 8 | Entity type not resolved | AI may skip the `entity_definitions` lookup, leaving raw CoNLL types in `entity_type` instead of human-readable names | Verify enrichment layer queries `public.entity_definitions` |
+| 9 | Error silently swallowed | AI may leave the catch block empty on new conversation failure, violating the spec requirement for visible error messages | Verify page.tsx displays error toast on API failure |
 
 ---
 
@@ -61,14 +64,17 @@
 - [x] Test: `test_chat_response_with_citation_sources` — ChatResponse accepts Citation in sources (covers #3)
 - [x] Test: `test_citation_from_document_chunk_source` — Document chunk source maps to Citation with context_snippet (covers #6)
 - [x] Test: `test_citation_created_from_ner_source` — NER source maps to Citation with entity details (covers #7)
-- [x] Test: `test_prompt_includes_document_join_instruction` — SQL prompt uses SHOULD + d.filename (covers #8)
-- [x] Test: `CitationCard.test.tsx` renders document name — CitationCard shows document_name as heading (covers #9)
+- [x] Test: `test_prompt_includes_document_join_instruction` — SQL prompt uses SHOULD + d.filename (covers #8) ⚠️ Missing alias check
+- [x] Test: `CitationCard.test.tsx` renders document name — CitationCard shows document_name as heading (covers #9) ⚠️ Missing numbered list check
 - [x] Test: `CitationCard.test.tsx` expand toggle — Clicking reveals context_snippet (covers #10)
 - [x] Test: `CitationCard.test.tsx` no context — Citation without context_snippet shows no toggle (covers #11)
 - [x] Test: `test_new_conversation_loading_state` — ChatSidebar button disabled during loading (covers #14)
 - [ ] Test: `test_new_conversation_api_flow` — E2E: Clicking new creates conversation via API + shows input (covers #12, #16 — requires live backend)
-- [ ] Test: `test_new_conversation_api_error` — E2E: API error shows error + keeps current convo (covers #13)
+- [ ] Test: `test_new_conversation_api_error` — E2E: API error shows error + keeps current convo (covers #13) ⚠️ Also requires fix: error is silently swallowed, not shown
 - [ ] Test: `test_send_message_to_empty_conversation` — E2E: First message works with new API-created conversation (covers #15)
+- [ ] Test: `test_enrichment_resolves_entity_type_name` — entity_definitions query resolves human-readable entity type (covers #3, #7)
+- [ ] Test: `test_sql_prompt_correct_alias` — Prompt uses `documents AS d` or `documents d` alias (covers #8)
+- [ ] Test: `test_new_conversation_error_toast` — Error toast appears on API failure (covers #13)
 
 ### Structural Evidence
 
@@ -77,7 +83,10 @@
 - [x] No undocumented architectural patterns introduced
 - [x] No AI-invented requirements present in generated code (cross-checked against spec files)
 - [x] `Source` model unchanged in `schemas.py` — widget API backwards compatible
-- [x] Citation enrichment query uses schema-qualified table names for cross-schema JOIN
+- [x] Citation enrichment query includes lookup against `public.entity_definitions` via base_label_mapping for entity type resolution
+- [x] Citation enrichment query uses schema-qualified table names for `{schema}.documents`
+- [x] SQL generator prompt uses correct alias syntax (`documents AS d`)
+- [x] New conversation API error displays visible error message via toast in page.tsx
 
 ### Edge Case Evidence
 
@@ -87,6 +96,9 @@
 - [x] Risk 4: Double-click on new conversation button doesn't create duplicates (button disabled during API call)
 - [x] Risk 5: Non-entity SQL queries (e.g., "list my documents") still work after prompt update (uses SHOULD not MUST)
 - [x] Risk 6: Stale empty conversations are handled (or deferred in design.md) — deferred to future
+- [x] Risk 7: SQL prompt alias `documents AS d` verified in generated prompt
+- [x] Risk 8: entity_definitions query added to enrichment layer
+- [x] Risk 9: Error toast displayed on new conversation API failure
 
 ---
 

@@ -33,8 +33,8 @@ class AuthService:
 
         tenant_id = str(row.tenant_id)
         user_id = str(row.id)
-        access_token = create_access_token(tenant_id, user_id, row.role)
-        refresh_token = create_refresh_token(tenant_id, user_id, row.role)
+        access_token = create_access_token(tenant_id, user_id, row.role, email)
+        refresh_token = create_refresh_token(tenant_id, user_id, row.role, email)
 
         return {
             "access_token": access_token,
@@ -69,8 +69,9 @@ class AuthService:
         )
         row = result.fetchone()
 
-        new_access = create_access_token(tenant_id, user_id, role)
-        new_refresh = create_refresh_token(tenant_id, user_id, role)
+        email = row.email if row else ""
+        new_access = create_access_token(tenant_id, user_id, role, email)
+        new_refresh = create_refresh_token(tenant_id, user_id, role, email)
 
         return {
             "access_token": new_access,

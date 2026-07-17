@@ -20,9 +20,9 @@ The system SHALL expose a `POST /api/v1/chat/conversations` endpoint that create
 - **WHEN** a POST request is sent to `/api/v1/chat/conversations`
 - **THEN** the response SHALL have status 401
 
-### Requirement: Citation model with document names
+### Requirement: Citation model with document names and entity type names
 
-The system SHALL include a `Citation` model in chat responses with fields: `document_name`, `document_id`, `entity_type`, `entity_value`, `confidence`, `context_snippet`, `page_number`. Every citation SHALL have at minimum a `document_name` when the source references a specific document. The existing `Source` model SHALL be retained for widget API compatibility, but the internal chat API (`ChatResponse`) SHALL return `Citation[]` as the `sources` field.
+The system SHALL include a `Citation` model in chat responses with fields: `document_name`, `document_id`, `entity_type`, `entity_value`, `confidence`, `context_snippet`, `page_number`. Every citation SHALL have at minimum a `document_name` when the source references a specific document. The `entity_type` field SHALL contain a human-readable name (e.g. "organization" not "ORG") resolved from the `entity_definitions` table during enrichment. The existing `Source` model SHALL be retained for widget API compatibility, but the internal chat API (`ChatResponse`) SHALL return `Citation[]` as the `sources` field.
 
 #### Scenario: Chat response includes citations with document names
 
@@ -74,11 +74,23 @@ The system SHALL expose a chat endpoint that accepts a natural language message 
 
 ### Requirement: SQL query generation and validation
 
-The system SHALL generate SQL queries from natural language questions, validate them against a whitelist-based SQL validation layer, and execute them in read-only transactions with a 10-second timeout. The SQL validation layer SHALL restrict queries to SELECT only, limit to whitelisted table names and column names, enforce a LIMIT clause, and reject UNION, subqueries on non-whitelisted relations, and JOINs on non-whitelisted tables. When generating queries against `extracted_entities`, the system SHOULD include a JOIN with `documents` to return `d.filename` as `document_name`.
+The system SHALL generate SQL queries from natural language questions, validate them against a whitelist-based SQL validation layer, and execute them in read-only transactions with a 10-second timeout. The SQL validation layer SHALL restrict queries to SELECT only, limit to whitelisted table names and column names, enforce a LIMIT clause, and reject UNION, subqueries on non-whitelisted relations, and JOINs on non-whitelisted tables. When generating queries against `extracted_entities`, the system SHOULD include a JOIN with `documents AS d` to return `d.filename` as `document_name`.
 
 #### Scenario: Valid SQL query includes document name
 
 - **GIVEN** a natural language question about organization entities
 - **WHEN** the SQL generation produces a query
 - **THEN** the query SHOULD join `extracted_entities` with `documents`
+- **AND** the query SHOULD use `documents AS d` or `documents d` alias syntax
 - **AND** the query SHOULD include `d.filename` as `document_name` in the SELECT clause
+
+### Requirement: Citation enrichment with entity type resolution
+
+The citation enrichment layer SHALL resolve both `document_id → document_name` and `entity_id → entity_type_name` via batch queries before returning citations. Document names SHALL be resolved from `{tenant_schema}.documents`. Entity type names SHALL be resolved from `public.entity_definitions` via schema-qualified JOIN. If a source has a null `document_id` or `entity_id`, the corresponding enrichment step SHALL be skipped for that source and the field SHALL remain null on the Citation.
+
+#### Scenario: Citation enrichment resolves entity type names
+
+- **GIVEN** a source with `entity_id` referencing `entity_definitions.id`
+- **WHEN** the enrichment layer processes the source
+- **THEN** the resulting Citation SHALL have `entity_type` set to the human-readable name from `entity_definitions.name`
+- **AND** the enrichment query SHALL use schema-qualified `public.entity_definitions` for cross-schema access

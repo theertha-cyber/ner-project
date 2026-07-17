@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { RequireAuth } from "@/components/require-auth";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { MessageThread } from "@/components/chat/MessageThread";
@@ -42,6 +42,8 @@ function ChatPageInner() {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [creatingConversation, setCreatingConversation] = useState(false);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -79,6 +81,12 @@ function ChatPageInner() {
     loadMessages(convId);
   }, [loadMessages]);
 
+  const showError = useCallback((msg: string) => {
+    setErrorToast(msg);
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    errorTimerRef.current = setTimeout(() => setErrorToast(null), 5000);
+  }, []);
+
   const handleNewConversation = useCallback(async () => {
     setCreatingConversation(true);
     try {
@@ -96,13 +104,16 @@ function ChatPageInner() {
         setConversations((prev) => [newConv, ...prev]);
         setActiveConvId(data.id);
         setMessages([]);
+        setErrorToast(null);
+      } else {
+        showError("Failed to create conversation. Please try again.");
       }
     } catch {
-      /* ignore */
+      showError("Network error. Please check your connection and try again.");
     } finally {
       setCreatingConversation(false);
     }
-  }, []);
+  }, [showError]);
 
   const handleDeleteConversation = useCallback(async (convId: string) => {
     try {
@@ -171,7 +182,29 @@ function ChatPageInner() {
   }, [activeConvId, loadConversations]);
 
   return (
-    <div className="animate-fade-up" style={{ display: "flex", height: "calc(100vh - 60px)", overflow: "hidden" }}>
+    <div className="animate-fade-up" style={{ display: "flex", height: "calc(100vh - 60px)", overflow: "hidden", position: "relative" }}>
+      {errorToast && (
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 100,
+            background: "#fef2f2",
+            color: "#991b1b",
+            border: "1px solid #fecaca",
+            borderRadius: 8,
+            padding: "10px 20px",
+            fontSize: 13,
+            fontWeight: 500,
+            maxWidth: 400,
+            textAlign: "center",
+          }}
+        >
+          {errorToast}
+        </div>
+      )}
       <ChatSidebar
         conversations={conversations}
         activeConvId={activeConvId}

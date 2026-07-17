@@ -6,14 +6,14 @@ interface StatCardProps {
   item: StatItem;
 }
 
-const deltaPill: Record<string, { bg: string; fg: string }> = {
-  up: { bg: "var(--good-soft, rgba(21,128,61,0.10))", fg: "var(--color-delta-up, #16a34a)" },
-  warn: { bg: "var(--warn-soft, rgba(180,83,9,0.10))", fg: "var(--color-delta-warn, #d97706)" },
+const deltaColor: Record<string, string> = {
+  up: "var(--color-delta-up, #15803d)",
+  warn: "var(--color-delta-warn, #b45309)",
 };
 
 export function StatCard({ item }: StatCardProps) {
   const displayValue = item.value === null ? "\u2014" : String(item.value);
-  const pill = item.dir ? deltaPill[item.dir] : null;
+  const deltaFg = item.dir ? deltaColor[item.dir] : null;
 
   return (
     <div
@@ -39,38 +39,21 @@ export function StatCard({ item }: StatCardProps) {
             fontSize: 12,
             fontWeight: 500,
             color: "var(--color-text-secondary)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
           }}
         >
           {item.label}
         </span>
         {item.delta && (
-          pill ? (
-            <span
-              style={{
-                fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-                fontSize: 10,
-                fontWeight: 600,
-                padding: "2px 7px",
-                borderRadius: 20,
-                background: pill.bg,
-                color: pill.fg,
-              }}
-            >
-              {item.delta}
-            </span>
-          ) : (
-            <span
-              style={{
-                fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-                fontSize: 10,
-                color: "var(--color-text-secondary)",
-              }}
-            >
-              {item.delta}
-            </span>
-          )
+          <span
+            style={{
+              fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+              fontSize: 10,
+              fontWeight: 600,
+              color: deltaFg ?? "var(--color-text-secondary)",
+            }}
+          >
+            {item.delta}
+          </span>
         )}
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
@@ -101,7 +84,7 @@ export function StatCard({ item }: StatCardProps) {
         style={{
           fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
           fontSize: 10.5,
-          color: "var(--color-text-secondary)",
+          color: "var(--color-text-tertiary, #94a3b8)",
         }}
       >
         {item.sub}

@@ -13,7 +13,7 @@ async def infer(tenant_id: str, tokens: list[str], request: Request) -> dict | N
     auth_header = request.headers.get("Authorization")
     headers = {"Authorization": auth_header} if auth_header else {}
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=90) as client:
             resp = await client.post(url, json={"tokens": tokens}, headers=headers)
             if resp.status_code == 404:
                 return None

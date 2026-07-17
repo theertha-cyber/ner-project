@@ -11,6 +11,36 @@ from src.training_service.api.v1.schemas import TrainingJobCreate, TrainingJobRe
 from src.training_service.infra.repository import TrainingJobRepository, ModelVersionRepository
 from src.training_service.celery_app import celery_app
 
+
+async def _record_audit(
+    session: AsyncSession,
+    actor: str,
+    role: str,
+    action: str,
+    target: str,
+    kind: str,
+    tenant_id: str | None = None,
+) -> None:
+    event_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    await session.execute(
+        text("""
+            INSERT INTO public.audit_events (id, actor, role, action, target, kind, tenant_id, created_at)
+            VALUES (:id, :actor, :role, :action, :target, :kind, :tenant_id, :created_at)
+        """),
+        {
+            "id": event_id,
+            "actor": actor,
+            "role": role,
+            "action": action,
+            "target": target,
+            "kind": kind,
+            "tenant_id": tenant_id,
+            "created_at": now,
+        },
+    )
+    await session.commit()
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/training-jobs", tags=["training-jobs"])
@@ -96,6 +126,15 @@ async def create_training_job(
     job_id = str(uuid.uuid4())
 
     await TrainingJobRepository.create(session, tenant_id, job_id, body.model_dump(), celery_task_id=None)
+    await _record_audit(
+        session,
+        actor=getattr(request.state, "user_email", ""),
+        role=getattr(request.state, "role", ""),
+        action="training_job.submit",
+        target=job_id,
+        kind="create",
+        tenant_id=tenant_id,
+    )
     created = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
     return _row_to_response(created)
 
@@ -198,6 +237,15 @@ async def approve_training_job(
         session, tenant_id, job_id, "queued",
         celery_task_id=task.id,
     )
+    await _record_audit(
+        session,
+        actor=getattr(request.state, "user_email", ""),
+        role=getattr(request.state, "role", ""),
+        action="training_job.approve",
+        target=job_id,
+        kind="approve",
+        tenant_id=tenant_id,
+    )
     updated = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
     return _row_to_response(updated)
 
@@ -224,6 +272,15 @@ async def reject_training_job(
     await TrainingJobRepository.update_status(
         session, tenant_id, job_id, "rejected",
         error_message=body.reason,
+    )
+    await _record_audit(
+        session,
+        actor=getattr(request.state, "user_email", ""),
+        role=getattr(request.state, "role", ""),
+        action="training_job.reject",
+        target=job_id,
+        kind="reject",
+        tenant_id=tenant_id,
     )
     updated = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
     return _row_to_response(updated)

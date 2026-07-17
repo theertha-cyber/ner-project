@@ -27,12 +27,13 @@ def validate_password(password: str) -> str | None:
     return None
 
 
-def create_access_token(tenant_id: str, user_id: str, role: str) -> str:
+def create_access_token(tenant_id: str, user_id: str, role: str, email: str = "") -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": f"{tenant_id}:{user_id}",
         "tenant_id": tenant_id,
         "user_id": user_id,
+        "email": email,
         "role": role,
         "iat": now,
         "exp": now + timedelta(minutes=settings.access_token_ttl_minutes),
@@ -41,12 +42,13 @@ def create_access_token(tenant_id: str, user_id: str, role: str) -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def create_refresh_token(tenant_id: str, user_id: str, role: str) -> str:
+def create_refresh_token(tenant_id: str, user_id: str, role: str, email: str = "") -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": f"{tenant_id}:{user_id}",
         "tenant_id": tenant_id,
         "user_id": user_id,
+        "email": email,
         "role": role,
         "iat": now,
         "exp": now + timedelta(days=settings.refresh_token_ttl_days),

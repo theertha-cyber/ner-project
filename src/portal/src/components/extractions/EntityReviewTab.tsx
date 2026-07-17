@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useEntities, type ReviewFilter } from "@/hooks/use-entities";
 import { EntityRow } from "./EntityRow";
 import { Spinner } from "@/components/ui";
@@ -13,9 +13,30 @@ const FILTERS: { value: ReviewFilter; label: string }[] = [
   { value: "rejected", label: "rejected" },
 ];
 
+function cleanEntityType(label: string): string {
+  return label.replace(/^[BI]-/, "");
+}
+
+function groupEntities(entities: { entity_id: string; [key: string]: unknown }[]): Map<string, typeof entities> {
+  const groups = new Map<string, typeof entities>();
+  for (const entity of entities) {
+    const type = cleanEntityType(entity.entity_id);
+    if (!groups.has(type)) groups.set(type, []);
+    groups.get(type)!.push(entity);
+  }
+  return groups;
+}
+
 export function EntityReviewTab() {
   const [filter, setFilter] = useState<ReviewFilter>("all");
   const { entities, total, isLoading, confirm, reject } = useEntities(filter);
+
+  const groups = useMemo(() => groupEntities(entities), [entities]);
+  const sortedTypeKeys = useMemo(
+    () => [...groups.keys()].sort((a, b) => a.localeCompare(b)),
+    [groups]
+  );
+  const typeCount = groups.size;
 
   return (
     <div className="flex flex-col gap-4">
@@ -43,25 +64,12 @@ export function EntityReviewTab() {
           })}
         </div>
         <span className="ml-auto font-mono text-xs text-text-secondary">
-          {total} entities · GET /entities
+          {total} entities · {typeCount} types · GET /entities
         </span>
       </div>
 
-      {/* Entity table */}
-      <div className="rounded-xl border border-border bg-surface-raised overflow-hidden"
-        style={{ boxShadow: "var(--shadow-card)" }}>
-        {/* Table header */}
-        <div
-          className="grid gap-4 px-4 py-2 bg-surface border-b border-border"
-          style={{ gridTemplateColumns: "140px 1fr 90px 110px 80px" }}
-        >
-          {["TYPE", "VALUE", "CONFIDENCE", "REVIEW", ""].map((col) => (
-            <span key={col} className="font-mono text-[10px] font-semibold text-text-secondary tracking-widest uppercase">
-              {col}
-            </span>
-          ))}
-        </div>
-
+      {/* Entity groups */}
+      <div className="flex flex-col gap-5">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <Spinner />
@@ -71,16 +79,34 @@ export function EntityReviewTab() {
             No entities found for this filter.
           </p>
         ) : (
-          <div>
-            {entities.map((entity) => (
-              <EntityRow
-                key={entity.id}
-                entity={entity}
-                onConfirm={confirm}
-                onReject={reject}
-              />
-            ))}
-          </div>
+          sortedTypeKeys.map((type) => {
+            const items = groups.get(type)!;
+            return (
+              <div key={type}>
+                <div className="flex items-center gap-2 mb-1 px-1">
+                  <span className="text-xs font-semibold text-text-primary tracking-wider uppercase">
+                    {type}
+                  </span>
+                  <span className="text-[10px] text-text-secondary font-mono">
+                    {items.length}
+                  </span>
+                </div>
+                <div className="rounded-xl border border-border bg-surface-raised overflow-hidden"
+                  style={{ boxShadow: "var(--shadow-card)" }}>
+                  <div>
+                    {items.map((entity) => (
+                      <EntityRow
+                        key={entity.id}
+                        entity={entity}
+                        onConfirm={confirm}
+                        onReject={reject}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>

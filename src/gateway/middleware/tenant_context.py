@@ -42,6 +42,7 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
             )
 
         request.state.user_id = payload.get("user_id")
+        request.state.user_email = payload.get("email", payload.get("user_id", ""))
         request.state.role = payload.get("role")
         request.state.token_tenant_id = payload.get("tenant_id")
 

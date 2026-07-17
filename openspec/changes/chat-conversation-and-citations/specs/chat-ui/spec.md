@@ -2,7 +2,7 @@
 
 ### Requirement: Citation card display
 
-The chat message area SHALL display source citations as compact inline cards below each assistant message. Each citation card SHALL prominently show the `document_name` as a clickable heading, followed by `entity_type`, `entity_value`, and `confidence` on a single line. An optional expandable section SHALL reveal the `context_snippet`. The old source-type-specific expandable sections (`source_type: "sql"` / `"ner"` / `"document_chunk"`) SHALL be replaced by this unified card.
+The chat message area SHALL display source citations as compact inline cards below each assistant message. Citations SHALL be rendered as a numbered list for readability. Each citation card SHALL prominently show the `document_name` as a clickable heading, followed by `entity_type`, `entity_value`, and `confidence` on a single line. An optional expandable section SHALL reveal the `context_snippet`. The old source-type-specific expandable sections (`source_type: "sql"` / `"ner"` / `"document_chunk"`) SHALL be replaced by this unified card.
 
 #### Scenario: Assistant message shows citation cards
 

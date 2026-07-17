@@ -1,7 +1,10 @@
+import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Request, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy import text
 from src.shared.database import get_engine
 from src.shared.config import settings
 from src.training_service.api.v1.schemas import ModelVersionResponse, ModelVersionListResponse
@@ -174,6 +177,28 @@ async def promote_model(
         raise HTTPException(status_code=404, detail="Model version not found in MLflow Registry")
 
     await _warmup_model(tenant_id, version_number, request)
+
+    engine = get_engine()
+    async with async_sessionmaker(engine)() as session:
+        event_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
+        await session.execute(
+            text("""
+                INSERT INTO public.audit_events (id, actor, role, action, target, kind, tenant_id, created_at)
+                VALUES (:id, :actor, :role, :action, :target, :kind, :tenant_id, :created_at)
+            """),
+            {
+                "id": event_id,
+                "actor": getattr(request.state, "user_email", ""),
+                "role": getattr(request.state, "role", ""),
+                "action": "model_version.promote",
+                "target": version_id,
+                "kind": "promote",
+                "tenant_id": tenant_id,
+                "created_at": now,
+            },
+        )
+        await session.commit()
 
     return _row_to_response(result)
 

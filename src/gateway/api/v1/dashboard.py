@@ -210,43 +210,123 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
     model_f1: str | None = None
     training_count: str | None = None
 
+    # Documents: total count + delta (added in last 24h) + quota subtext
+    doc_sub = "service unavailable"
+    doc_delta = "\u2014"
+    doc_dir: str | None = None
+    doc_total = 0
     try:
         result = await db.execute(
             text(f"SELECT COUNT(*) FROM {schema}.documents WHERE status != 'error'")
         )
-        doc_count = str(result.scalar())
+        doc_total = result.scalar() or 0
+        doc_count = str(doc_total)
         sources["documents"] = True
+        try:
+            r = await db.execute(
+                text(f"SELECT COUNT(*) FROM {schema}.documents WHERE status != 'error' AND created_at >= NOW() - INTERVAL '24 hours'")
+            )
+            added = r.scalar() or 0
+            if added > 0:
+                doc_delta = f"+{added}"
+                doc_dir = "up"
+        except Exception:
+            await db.rollback()
+        try:
+            r = await db.execute(
+                text("SELECT max_documents FROM public.tenants WHERE id = :tid"),
+                {"tid": tenant_id},
+            )
+            max_docs = r.scalar()
+            if max_docs:
+                doc_sub = f"{round(doc_total / max_docs * 100)}% of quota"
+            else:
+                doc_sub = "active"
+        except Exception:
+            await db.rollback()
+            doc_sub = "active"
     except Exception:
         pass
 
+    # Annotation: completion % + docs remaining subtext + tasks completed in 24h delta
+    ann_sub = "service unavailable"
+    ann_delta = "\u2014"
+    ann_dir: str | None = None
     try:
         result = await db.execute(
-            text(f"SELECT (COUNT(DISTINCT document_id) FILTER (WHERE status = 'completed'))::float / NULLIF(COUNT(DISTINCT document_id), 0) * 100 FROM {schema}.annotation_tasks")
+            text(f"""
+                SELECT
+                    (COUNT(DISTINCT document_id) FILTER (WHERE status = 'completed'))::float
+                        / NULLIF(COUNT(DISTINCT document_id), 0) * 100 AS pct,
+                    COUNT(DISTINCT document_id) FILTER (WHERE status != 'completed') AS remaining
+                FROM {schema}.annotation_tasks
+            """)
         )
-        val = result.scalar()
-        ann_pct = f"{val:.0f}" if val is not None else None
-        if val is not None:
+        row = result.fetchone()
+        if row and row.pct is not None:
+            ann_pct = f"{row.pct:.0f}"
+            ann_sub = f"{int(row.remaining or 0)} docs left"
             sources["annotations"] = True
+        try:
+            r = await db.execute(
+                text(f"SELECT COUNT(*) FROM {schema}.annotation_tasks WHERE status = 'completed' AND updated_at >= NOW() - INTERVAL '24 hours'")
+            )
+            done = r.scalar() or 0
+            if done > 0:
+                ann_delta = f"+{done}"
+                ann_dir = "up"
+        except Exception:
+            await db.rollback()
     except Exception:
         pass
 
+    # Active model: promoted F1 + version subtext + improvement over previous version delta
+    model_sub = "service unavailable"
+    model_delta = "\u2014"
+    model_dir: str | None = None
     try:
         result = await db.execute(
-            text(f"SELECT metrics->>'f1' FROM {schema}.model_versions WHERE status = 'promoted' ORDER BY promoted_at DESC LIMIT 1")
+            text(f"SELECT version, metrics->>'f1' FROM {schema}.model_versions WHERE status = 'promoted' ORDER BY promoted_at DESC LIMIT 2")
         )
-        f1_raw = result.scalar()
-        if f1_raw is not None:
-            model_f1 = f"{float(f1_raw) * 100:.1f}"
+        rows = result.fetchall()
+        if rows and rows[0][1] is not None:
+            current_f1 = float(rows[0][1])
+            model_f1 = f"{current_f1 * 100:.1f}"
+            model_sub = f"v{rows[0][0]} promoted"
             sources["models"] = True
+            if len(rows) > 1 and rows[1][1] is not None:
+                diff = current_f1 - float(rows[1][1])
+                if abs(diff) >= 0.0005:
+                    model_delta = f"{'+' if diff >= 0 else '-'}{abs(diff):.2f}".replace("0.", ".")
+                    model_dir = "up" if diff >= 0 else "warn"
     except Exception:
         pass
 
+    # Training: jobs active in the last 24h (value unchanged), with a running-now
+    # badge derived from a separate live-status count.
+    train_sub = "service unavailable"
+    train_delta = "\u2014"
+    train_dir: str | None = None
     try:
         result = await db.execute(
             text(f"SELECT COUNT(*) FROM {schema}.training_jobs WHERE started_at >= NOW() - INTERVAL '24 hours'")
         )
         training_count = str(result.scalar())
         sources["training"] = True
+        running = 0
+        try:
+            r = await db.execute(
+                text(f"SELECT COUNT(*) FROM {schema}.training_jobs WHERE status = 'running'")
+            )
+            running = r.scalar() or 0
+        except Exception:
+            await db.rollback()
+        if running > 0:
+            train_sub = "running now"
+            train_delta = "live"
+            train_dir = "warn"
+        else:
+            train_sub = "idle"
     except Exception:
         pass
 
@@ -261,13 +341,13 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
             ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="documents"),
         ]
 
-    side_metrics, big_val, side_rows = await _tenant_side_panel(db, schema)
+    side_metrics, big_val, side_rows = await _tenant_side_panel(db, schema, tenant_id)
 
     stats = [
-        _stat("Documents", doc_count, "", "active" if doc_count is not None else "service unavailable", "\u2014"),
-        _stat("Annotation", ann_pct, "%", "active" if ann_pct is not None else "service unavailable", "\u2014"),
-        _stat("Active model", model_f1, "F1", "active" if model_f1 is not None else "service unavailable", "\u2014"),
-        _stat("Training", training_count, "", "active" if training_count is not None else "service unavailable", "\u2014", "warn" if training_count is not None else None),
+        _stat("Documents", doc_count, "", doc_sub, doc_delta, doc_dir),
+        _stat("Annotation", ann_pct, "%", ann_sub, ann_delta, ann_dir),
+        _stat("Active model", model_f1, "F1", model_sub, model_delta, model_dir),
+        _stat("Training", training_count, "", train_sub, train_delta, train_dir),
     ]
 
     data = DashboardData(
@@ -339,7 +419,7 @@ def _activity_tag_colour(status: str) -> str:
     return mapping.get(status.lower(), "queued")
 
 
-async def _tenant_side_panel(db: AsyncSession, schema: str) -> tuple[list[SideMetric], str, list[SideRow]]:
+async def _tenant_side_panel(db: AsyncSession, schema: str, tenant_id: str) -> tuple[list[SideMetric], str, list[SideRow]]:
     side_metrics: list[SideMetric] = [
         SideMetric(k="prec", v="\u2014"),
         SideMetric(k="rec", v="\u2014"),
@@ -367,7 +447,68 @@ async def _tenant_side_panel(db: AsyncSession, schema: str) -> tuple[list[SideMe
     except Exception:
         pass
 
+    side_rows = await _tenant_quota_rows(db, schema, tenant_id)
+
     return side_metrics, big_val, side_rows
+
+
+async def _tenant_quota_rows(db: AsyncSession, schema: str, tenant_id: str) -> list[SideRow]:
+    """Build the Quota usage panel rows: documents, storage, and model versions
+    against the tenant's configured plan limits."""
+    limits = {"max_documents": None, "max_storage_gb": None, "max_model_versions": None}
+    try:
+        result = await db.execute(
+            text("SELECT max_documents, max_storage_gb, max_model_versions FROM public.tenants WHERE id = :tid"),
+            {"tid": tenant_id},
+        )
+        row = result.fetchone()
+        if row:
+            limits["max_documents"] = row[0]
+            limits["max_storage_gb"] = row[1]
+            limits["max_model_versions"] = row[2]
+    except Exception:
+        await db.rollback()
+        return []
+
+    rows: list[SideRow] = []
+
+    def _bar_colour(pct: float) -> str:
+        if pct >= 90:
+            return "var(--color-delta-warn, #b45309)"
+        return "var(--color-brand-primary, #d64818)"
+
+    # Documents used vs quota
+    if limits["max_documents"]:
+        try:
+            r = await db.execute(text(f"SELECT COUNT(*) FROM {schema}.documents WHERE status != 'error'"))
+            used = r.scalar() or 0
+            pct = round(min(used / limits["max_documents"] * 100, 100), 1)
+            rows.append(SideRow(label="Documents", val=f"{used} / {limits['max_documents']}", pct=pct, c=_bar_colour(pct)))
+        except Exception:
+            await db.rollback()
+
+    # Storage used vs quota (bytes -> GB)
+    if limits["max_storage_gb"]:
+        try:
+            r = await db.execute(text(f"SELECT COALESCE(SUM(file_size_bytes), 0) FROM {schema}.documents"))
+            used_bytes = r.scalar() or 0
+            used_gb = used_bytes / (1024 ** 3)
+            pct = round(min(used_gb / limits["max_storage_gb"] * 100, 100), 1)
+            rows.append(SideRow(label="Storage", val=f"{used_gb:.1f} / {limits['max_storage_gb']} GB", pct=pct, c=_bar_colour(pct)))
+        except Exception:
+            await db.rollback()
+
+    # Model versions used vs quota
+    if limits["max_model_versions"]:
+        try:
+            r = await db.execute(text(f"SELECT COUNT(*) FROM {schema}.model_versions"))
+            used = r.scalar() or 0
+            pct = round(min(used / limits["max_model_versions"] * 100, 100), 1)
+            rows.append(SideRow(label="Model versions", val=f"{used} / {limits['max_model_versions']}", pct=pct, c=_bar_colour(pct)))
+        except Exception:
+            await db.rollback()
+
+    return rows
 
 
 async def _annotator_data(db: AsyncSession, tenant_id: str, user_id: str) -> tuple[DashboardData, dict[str, bool]]:

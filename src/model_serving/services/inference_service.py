@@ -39,6 +39,7 @@ def _resolve_active_version(tenant_id: str) -> tuple[str, int]:
         resp = requests.get(
             registry_url,
             headers={"Authorization": f"Bearer {token}"},
+            params={"tenant_id": tenant_id},
             timeout=10,
         )
         if resp.status_code != 200:
@@ -197,6 +198,7 @@ def _resolve_label_list(tenant_id: str) -> list[str]:
         resp = requests.get(
             registry_url,
             headers={"Authorization": f"Bearer {token}"},
+            params={"tenant_id": tenant_id},
             timeout=10,
         )
         if resp.status_code != 200:

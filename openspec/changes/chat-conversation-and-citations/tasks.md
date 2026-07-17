@@ -10,13 +10,13 @@
 
 ## 3. Backend: Citation enrichment layer
 
-- [x] 3.1 Add `_enrich_citations()` method to `RAGOrchestrator` that collects all `document_id` values from sources, runs a single batch query joining `documents` and `entity_definitions` to resolve `document_name` and `entity_type_name`, and attaches them to each source.
+- [x] 3.1 Add `_enrich_citations()` method to `RAGOrchestrator` that collects all `document_id` and `entity_id` values from sources, runs batch queries joining `documents` (tenant schema) and `entity_definitions` (public schema) to resolve `document_name` and `entity_type_name`, and attaches them to each source.
 - [x] 3.2 Wire `_enrich_citations()` into `execute()` after collecting all three source types but before building LLM context.
 - [x] 3.3 Ensure enrichment handles edge cases: null document_id, missing entity_definitions row, empty sources list.
 
 ## 4. Backend: SQL generator prompt enhancement
 
-- [x] 4.1 Update SQL generator system prompt in `src/chat_api/services/sql_generator.py` to instruct the LLM that when querying `extracted_entities`, it SHOULD JOIN with `documents` and return `d.filename AS document_name`.
+- [x] 4.1 Update SQL generator system prompt in `src/chat_api/services/sql_generator.py` to instruct the LLM that when querying `extracted_entities`, it SHOULD JOIN with `documents` and return `d.filename AS document_name`, using correct alias syntax `documents AS d`.
 - [x] 4.2 Verify the JOIN instruction uses SHOULD (not MUST) so non-entity queries remain unaffected.
 
 ## 5. Frontend: Unified CitationCard component
@@ -24,11 +24,13 @@
 - [x] 5.1 Create `CitationCard` component in `src/portal/src/components/chat/CitationCard.tsx` that renders document_name as the primary heading, followed by entity_type / entity_value / confidence on a single line, with an optional expandable `context_snippet`.
 - [x] 5.2 Replace `SourceCitation` in `MessageThread.tsx` with `CitationCard` — conditionally render `CitationCard` for `Citation` objects and fall back to old `SourceCitation` for legacy `Source` objects.
 - [x] 5.3 Add loading/empty states to the citation area.
+- [x] 5.4 Add numbered list rendering to citation cards in MessageThread.tsx — wrap citations in an `<ol>` or add leading numbers so each citation is numbered for readability.
 
 ## 6. Frontend: New conversation button API integration
 
 - [x] 6.1 Update `ChatSidebar.tsx` to call `onNew` asynchronously — add `loading` prop for disabled state during API call.
 - [x] 6.2 Add `handleNewConversation` in `chat/page.tsx` that calls `POST /api/v1/chat/conversations`, appends result to conversation list, sets it active, and handles errors.
+- [x] 6.3 Add error toast / inline error banner in page.tsx that shows when new conversation creation fails. Clear on next successful action or after 5s timeout.
 
 ## 7. Frontend: Chat page input visibility fix
 
@@ -53,3 +55,13 @@
 - [x] 9.4 Confirm all ADR compliance steps in verification.md § Pattern & ADR Compliance.
 - [ ] 9.5 Complete Audit Record sign-off in verification.md § Audit Record ⚠️ (human reviewer required — this task cannot be marked complete by an agent).
 - [x] 9.6 Run `openspec validate chat-conversation-and-citations --type change --strict` and confirm it exits clean before archive.
+
+## 10. Remediation tasks (gaps from initial implementation)
+
+- [x] 10.1 Add `entity_definitions` batch query to `_enrich_citations()` in `rag_orchestrator.py` — collect all `entity_id` values from sources, query `public.entity_definitions` to resolve human-readable type name, and attach to Citation.entity_type.
+- [x] 10.2 Fix SQL generator prompt alias in `sql_generator.py` — change `JOIN with \`documents\`` to `\`documents\` AS d` so the alias `d` is properly bound.
+- [x] 10.3 Add error toast state to `chat/page.tsx` — catch new conversation API errors and show a visible error message instead of silently swallowing.
+- [x] 10.4 Add numbered list wrapper to citations in `MessageThread.tsx` — wrap CitationCard renders in `<ol>` with list styling.
+- [x] 10.5 Add test for enrichment resolving entity type from `entity_definitions` — `test_chat_api_rag.py`.
+- [x] 10.6 Add test for SQL prompt using correct alias syntax (`documents AS d` or `documents d`) — `test_chat_api_sql.py`.
+- [x] 10.7 Add component test for error toast display on new conversation failure — `ChatSidebar.test.tsx` or page-level test.

@@ -71,5 +71,6 @@ class TestSQLPrompt:
         from src.chat_api.services import sql_generator as mod
         source = inspect.getsource(mod)
         assert "SHOULD" in source, "Prompt must use SHOULD for JOIN instruction"
+        assert "AS d" in source or "as d" in source, "Prompt must alias documents as d"
         assert "d.filename AS document_name" in source or "d.filename" in source
         assert "documents" in source.lower()

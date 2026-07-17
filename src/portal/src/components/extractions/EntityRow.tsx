@@ -1,14 +1,14 @@
 import type { EntityItem } from "@/types/extraction";
 
+function cleanEntityType(label: string): string {
+  return label.replace(/^[BI]-/, "");
+}
+
 const ENTITY_COLORS: Record<string, string> = {
-  "B-PER": "#6366f1",
-  "I-PER": "#6366f1",
-  "B-ORG": "#f59e0b",
-  "I-ORG": "#f59e0b",
-  "B-LOC": "#10b981",
-  "I-LOC": "#10b981",
-  "B-MISC": "#8b5cf6",
-  "I-MISC": "#8b5cf6",
+  PER: "#6366f1",
+  ORG: "#f59e0b",
+  LOC: "#10b981",
+  MISC: "#8b5cf6",
 };
 
 function entityDotColor(type: string): string {
@@ -39,19 +39,9 @@ export function EntityRow({ entity, onConfirm, onReject }: EntityRowProps) {
     entity.review_status === "confirmed" || entity.review_status === "rejected";
 
   return (
-    <div className="grid items-center gap-4 px-4 py-3 border-b border-border last:border-0"
-      style={{ gridTemplateColumns: "140px 1fr 90px 110px 80px" }}>
-      {/* TYPE */}
-      <span className="flex items-center gap-1.5 font-mono text-xs">
-        <span
-          className="inline-block h-2 w-2 rounded-full flex-shrink-0"
-          style={{ background: entityDotColor(entity.entity_id) }}
-        />
-        {entity.entity_id}
-      </span>
-
-      {/* VALUE */}
-      <div className="flex flex-col min-w-0">
+    <div className="flex items-center gap-3 px-3 py-2">
+      {/* VALUE + filename */}
+      <div className="flex flex-col min-w-0 flex-1">
         <span className="font-semibold text-sm text-text-primary truncate">{entity.value}</span>
         {entity.document_filename && (
           <span className="text-xs text-text-secondary truncate">{entity.document_filename}</span>

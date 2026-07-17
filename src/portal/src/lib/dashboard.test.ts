@@ -2,23 +2,14 @@ import { describe, it, expect } from "vitest";
 import { heroVariant } from "./dashboard";
 
 describe("heroVariant", () => {
-  it("returns 'b' for system_admin", () => {
+  it("returns 'b' (dark gradient hero) for every role", () => {
     expect(heroVariant("system_admin")).toBe("b");
+    expect(heroVariant("annotator")).toBe("b");
+    expect(heroVariant("tenant_admin")).toBe("b");
+    expect(heroVariant("business_user")).toBe("b");
   });
 
-  it("returns 'a' for annotator", () => {
-    expect(heroVariant("annotator")).toBe("a");
-  });
-
-  it("returns 'a' for tenant_admin", () => {
-    expect(heroVariant("tenant_admin")).toBe("a");
-  });
-
-  it("returns 'a' for business_user", () => {
-    expect(heroVariant("business_user")).toBe("a");
-  });
-
-  it("returns 'a' for any unknown role", () => {
-    expect(heroVariant("unknown_role")).toBe("a");
+  it("returns 'b' for any unknown role", () => {
+    expect(heroVariant("unknown_role")).toBe("b");
   });
 });

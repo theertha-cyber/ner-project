@@ -59,4 +59,11 @@ describe("ChatSidebar", () => {
     const item = screen.getByText("Active Chat");
     expect(item).toBeInTheDocument();
   });
+
+  it("re-enables button after error via loading prop toggle", () => {
+    const { rerender } = render(<ChatSidebar {...defaultProps} loading={true} />);
+    expect(screen.getByRole("button", { name: /creating/i })).toBeDisabled();
+    rerender(<ChatSidebar {...defaultProps} loading={false} />);
+    expect(screen.getByRole("button", { name: /new conversation/i })).not.toBeDisabled();
+  });
 });

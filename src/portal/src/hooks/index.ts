@@ -16,3 +16,5 @@ export { useExtract } from "./use-extract";
 export { useBatchRuns } from "./use-batch-runs";
 export { useEntities } from "./use-entities";
 export type { ReviewFilter } from "./use-entities";
+export { useAuditLog } from "./use-audit-log";
+export type { AuditEvent, AuditLogResponse } from "./use-audit-log";
