@@ -20,7 +20,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "alembic upgrade head && python -m src.gateway.seed"
+    command: sh -c "python -m src.gateway.ensure_mlflow_db && alembic upgrade head && python -m src.gateway.seed"
     restart: "no"
     env_file: .env
     environment:
