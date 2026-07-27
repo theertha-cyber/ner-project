@@ -1,8 +1,12 @@
+import logging
 from typing import Protocol
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
 from src.shared.retrieval.models import RetrievalResult
+from src.shared.retrieval.reranker import Reranker
+
+logger = logging.getLogger(__name__)
 
 
 class Retriever(Protocol):
@@ -150,3 +154,38 @@ class HybridRetriever:
             chunks_by_key[key].model_copy(update={"similarity_score": rrf_scores[key]})
             for key in ranked_keys
         ]
+
+
+class RerankingRetriever:
+    """Wraps a Retriever with a Reranker (decorator pattern). Implements the Retriever
+    protocol itself so callers need no change beyond which instance they hold."""
+
+    def __init__(self, retriever: "Retriever", reranker: Reranker):
+        self.retriever = retriever
+        self.reranker = reranker
+
+    async def retrieve(
+        self,
+        query: str,
+        session: AsyncSession,
+        schema: str,
+        top_k: int | None = None,
+        metadata_filter: dict | None = None,
+        jwt_token: str | None = None,
+    ) -> list[RetrievalResult]:
+        top_k = top_k if top_k is not None else settings.retrieval_top_k
+
+        if not settings.reranker_enabled:
+            return await self.retriever.retrieve(query, session, schema, top_k=top_k, metadata_filter=metadata_filter)
+
+        candidates = await self.retriever.retrieve(
+            query, session, schema, top_k=settings.rerank_candidate_count, metadata_filter=metadata_filter
+        )
+        reranked = await self.reranker.rerank(query, candidates, top_k=top_k, jwt_token=jwt_token)
+        if reranked is None:
+            logger.warning(
+                "Reranker fallback: reranking failed or unavailable, returning unranked candidates truncated to top_k=%d",
+                top_k,
+            )
+            return candidates[:top_k]
+        return reranked[:top_k]

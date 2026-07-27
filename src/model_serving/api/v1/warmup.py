@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException
 from src.model_serving.api.v1.schemas import WarmupRequest
 from src.model_serving.services.inference_service import _resolve_active_version, _load_model_for_tenant, _get_base_pipeline
+from src.model_serving.services.rerank_service import _get_reranker
 
 router = APIRouter(prefix="/internal/v1", tags=["warmup"])
 
@@ -13,6 +14,8 @@ async def warmup_endpoint(
     tenant_id = getattr(request.state, "tenant_id", None)
     if tenant_id is None:
         raise HTTPException(status_code=403, detail="Tenant context not available")
+
+    _get_reranker()
 
     if body.version_number is not None:
         version_info = _resolve_active_version(tenant_id)

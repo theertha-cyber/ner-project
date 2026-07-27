@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
 from src.shared.config import settings
 from src.model_serving.middleware.tenant_context import TenantContextMiddleware
-from src.model_serving.api.v1 import inference, warmup
+from src.model_serving.api.v1 import inference, warmup, rerank
 
 
 @asynccontextmanager
@@ -65,6 +65,7 @@ async def app_error_handler(request: Request, exc: AppError):
 
 app.include_router(inference.router)
 app.include_router(warmup.router)
+app.include_router(rerank.router)
 
 
 @app.get("/health")

@@ -5,29 +5,25 @@ from openai import AsyncOpenAI, AsyncAzureOpenAI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
-from src.shared.retrieval import DenseRetriever, SparseRetriever, HybridRetriever, RetrievalResult
+from src.shared.retrieval import DenseRetriever, SparseRetriever, HybridRetriever, RerankingRetriever, CrossEncoderReranker, RetrievalResult
 from src.chat_api.api.v1.schemas import Source, Citation
 from src.chat_api.services.sql_generator import SQLGenerator
 from src.chat_api.services.embedding_service import EmbeddingService
 from src.chat_api.services.ner_client import NERClient
 from src.chat_api.services.guardrails import GuardrailService
+from src.chat_api.graph.builder import build_chat_graph
+from src.chat_api.graph.state import ChatState
+from src.chat_api.services.context_assembler import ContextAssembler
 
 logger = logging.getLogger(__name__)
-
-SYSTEM_PROMPT = """You are a helpful chatbot for a multi-tenant Named Entity Recognition (NER) platform.
-You have access to the tenant's extracted entity data, document context, and live NER analysis.
-Always answer based on the provided context data. Do not make up information.
-When citing sources, reference the specific document or entity source.
-If you cannot find relevant information, say so clearly.
-Never reveal data from other tenants.
-Format your response naturally and conversationally."""
 
 
 class RAGOrchestrator:
     def __init__(self):
         self.sql_generator = SQLGenerator()
         self.embedding_service = EmbeddingService()
-        self.retriever = HybridRetriever(DenseRetriever(self.embedding_service), SparseRetriever())
+        base_retriever = HybridRetriever(DenseRetriever(self.embedding_service), SparseRetriever())
+        self.retriever = RerankingRetriever(base_retriever, CrossEncoderReranker())
         self.ner_client = NERClient()
         self.guardrails = GuardrailService()
         if settings.azure_openai_endpoint:
@@ -43,6 +39,25 @@ class RAGOrchestrator:
 
     async def execute(self, message: str, session: AsyncSession, schema: str, tenant_id: str,
                       jwt_token: str | None = None, conversation_context: list[dict] | None = None) -> tuple[str, list[Source | Citation]]:
+        if not settings.chat_use_graph:
+            return await self._execute_legacy(message, session, schema, tenant_id, jwt_token, conversation_context)
+
+        if getattr(self, "_graph", None) is None:
+            self._graph = build_chat_graph(self)
+
+        state: ChatState = {
+            "message": message,
+            "tenant_id": tenant_id,
+            "schema": schema,
+            "jwt_token": jwt_token,
+            "conversation_context": conversation_context,
+            "session": session,
+        }
+        result = await self._graph.ainvoke(state)
+        return result["reply"], result.get("sources", [])
+
+    async def _execute_legacy(self, message: str, session: AsyncSession, schema: str, tenant_id: str,
+                              jwt_token: str | None = None, conversation_context: list[dict] | None = None) -> tuple[str, list[Source | Citation]]:
         blocked_reason = self.guardrails.check_blocked_question_type(message, tenant_id)
         if blocked_reason:
             decline_messages = {
@@ -60,7 +75,7 @@ class RAGOrchestrator:
             return "That question requires multiple lookups. Please simplify and ask one thing at a time.", []
 
         sql_task = self._sql_source(message, session, schema, conversation_context)
-        vector_task = self._vector_source(message, session, schema)
+        vector_task = self._vector_source(message, session, schema, jwt_token)
 
         sql_results, vector_results = await asyncio.gather(sql_task, vector_task, return_exceptions=True)
 
@@ -108,30 +123,18 @@ class RAGOrchestrator:
         sources.extend(vector_sources[:3])
         sources.extend(ner_sources[:5])
 
-        sources = await self._enrich_citations(sources, session, schema, tenant_id)
+        document_names = await self._resolve_document_names(sources, session, schema)
+        sources = await self._enrich_citations(sources, session, schema, tenant_id, document_names=document_names)
 
-        context_parts = []
-        if sql_results:
-            context_parts.append(f"Entity data: {json.dumps(sql_results[:10], default=str)}")
-        if vector_results:
-            for v in vector_results[:3]:
-                context_parts.append(f"Document context (from {v.document_id}): {v.chunk_text[:500]}")
-        if ner_sources:
-            context_parts.append(f"NER entities: {json.dumps([{'type': s.entity_type, 'value': s.value, 'confidence': s.confidence} for s in ner_sources[:5]])}")
-
-        context_str = "\n\n".join(context_parts) if context_parts else "No relevant data found."
-
-        conv_history = ""
-        if conversation_context:
-            for msg in conversation_context[-5:]:
-                conv_history += f"{msg['role']}: {msg['content']}\n"
-
-        llm_messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+        ner_entities_for_context = [
+            {"entity_type": s.entity_type, "value": s.value, "confidence": s.confidence}
+            for s in ner_sources
         ]
-        if conv_history:
-            llm_messages.append({"role": "system", "content": f"Conversation history:\n{conv_history}"})
-        llm_messages.append({"role": "user", "content": f"Context data:\n{context_str}\n\nQuestion: {message}"})
+        sql_results_for_context = sql_results if isinstance(sql_results, list) else None
+        vector_results_for_context = vector_results if isinstance(vector_results, list) else []
+        llm_messages = ContextAssembler().assemble(
+            message, sql_results_for_context, vector_results_for_context, ner_entities_for_context, document_names, conversation_context,
+        )
 
         response = await self.llm_client.chat.completions.create(
             model=self.llm_model,
@@ -151,17 +154,16 @@ class RAGOrchestrator:
             conv_text = "\n".join(f"{m['role']}: {m['content']}" for m in conversation_context[-3:])
         return await self.sql_generator.generate_and_execute(message, session, schema, conv_text)
 
-    async def _vector_source(self, message: str, session: AsyncSession, schema: str) -> list[RetrievalResult]:
+    async def _vector_source(self, message: str, session: AsyncSession, schema: str, jwt_token: str | None = None) -> list[RetrievalResult]:
         try:
+            if isinstance(self.retriever, RerankingRetriever):
+                return await self.retriever.retrieve(message, session, schema, top_k=settings.retrieval_top_k, jwt_token=jwt_token)
             return await self.retriever.retrieve(message, session, schema, top_k=settings.retrieval_top_k)
         except Exception as e:
             logger.warning("Vector search failed: %s", str(e))
             return []
 
-    async def _enrich_citations(self, sources: list[Source], session: AsyncSession, schema: str, tenant_id: str) -> list[Source | Citation]:
-        if not sources:
-            return []
-
+    async def _resolve_document_names(self, sources: list[Source], session: AsyncSession, schema: str) -> dict[str, str]:
         doc_ids = {s.document_id for s in sources if s.document_id}
         doc_map: dict[str, str] = {}
         if doc_ids:
@@ -174,6 +176,14 @@ class RAGOrchestrator:
                     doc_map[row[0]] = row[1]
             except Exception as e:
                 logger.warning("Citation enrichment: document name resolution failed: %s", e)
+        return doc_map
+
+    async def _enrich_citations(self, sources: list[Source], session: AsyncSession, schema: str, tenant_id: str,
+                                document_names: dict[str, str] | None = None) -> list[Source | Citation]:
+        if not sources:
+            return []
+
+        doc_map = document_names if document_names is not None else await self._resolve_document_names(sources, session, schema)
 
         conll_types = {s.entity_type for s in sources if s.entity_type and s.source_type == "ner"}
         conll_to_name: dict[str, str] = {}

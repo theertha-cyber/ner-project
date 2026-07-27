@@ -18,3 +18,18 @@ class InferResponse(BaseModel):
 
 class WarmupRequest(BaseModel):
     version_number: int | None = None
+
+
+class RerankRequest(BaseModel):
+    query: str
+    documents: list[str]
+    top_k: int | None = None
+
+
+class RerankResult(BaseModel):
+    index: int
+    score: float
+
+
+class RerankResponse(BaseModel):
+    results: list[RerankResult]

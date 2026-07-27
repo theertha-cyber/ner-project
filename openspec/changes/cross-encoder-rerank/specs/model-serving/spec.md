@@ -34,8 +34,8 @@ The model-serving layer SHALL expose an internal reranking endpoint that accepts
 - **THEN** the reranker model SHALL NOT be present as a cache entry
 - **AND** loading tenant models to the point of LRU eviction SHALL NOT evict the reranker
 
-#### Scenario: Rerank returns 403 when JWT is missing
+#### Scenario: Rerank returns 401 when JWT is missing
 
 - **GIVEN** no JWT token
 - **WHEN** POST to `/internal/v1/rerank` with a valid body
-- **THEN** the response SHALL have status 403
+- **THEN** the response SHALL have status 401, matching the existing `TenantContextMiddleware` convention applied to every other `model_serving` endpoint

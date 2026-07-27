@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     embedding_model: str = "text-embedding-3-small"
 
+    reranker_enabled: bool = True
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    rerank_candidate_count: int = 20
+
+    chat_use_graph: bool = True
+
+    context_token_budget: int = 6000
+    context_max_chunks: int | None = None
+    conversation_history_turns: int = 5
+
     environment: str = "development"
     cors_origins: list[str] = ["http://localhost:3000"]
     cors_origin_regex: str = r"http://(localhost|127\.0\.0\.1)(:\d+)?"

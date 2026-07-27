@@ -15,7 +15,11 @@ The gateway SHALL expose `GET /api/v1/dashboard/summary` (requires authenticatio
 
 Each downstream call SHALL use a short timeout (5s connect, 10s read). If a service is unavailable or returns an error, its data fields SHALL be `null` and the response SHALL include a top-level `sources` object mapping each service name to `true` (data retrieved) or `false` (unavailable/not applicable).
 
-For `system_admin`, several stats are computed by iterating a raw SQL query across every active tenant's Postgres schema (e.g. pending-approval job counts, promoted model F1) on a single shared database session. If a query against one tenant's schema fails, the system SHALL recover the session (e.g. via rollback) before issuing the next query, so that a single tenant schema's failure SHALL NOT prevent queries against other tenant schemas, or other metrics computed later in the same request, from succeeding. A schema-level failure SHALL be excluded from the aggregate (as if that tenant contributed no data) rather than aborting the whole computation.
+For `system_admin`, several stats are computed by iterating a raw SQL query across tenant Postgres schemas (e.g. pending-approval job counts, promoted model F1) on a single shared database session. The set of schemas iterated SHALL be derived from the schemas that actually exist in the database, not from `public.tenants` rows: a tenant row SHALL only contribute a schema to the iteration if a schema of the corresponding name exists. Tenant rows that have no backing schema — including the virtual `system` tenant and any test-fixture tenant rows — SHALL be excluded before any query is issued, and SHALL NOT produce an error, a logged exception, or a session rollback.
+
+If a query against one tenant's schema fails, the system SHALL recover the session (e.g. via rollback) before issuing the next query, so that a single tenant schema's failure SHALL NOT prevent queries against other tenant schemas, or other metrics computed later in the same request, from succeeding. A schema-level failure SHALL be excluded from the aggregate (as if that tenant contributed no data) rather than aborting the whole computation.
+
+When a tenant's schema exists but a query against it fails, the affected aggregate SHALL NOT be reported as a complete figure. The corresponding `sources` entry SHALL be `false` so the caller can distinguish a true total from a partial one.
 
 The response SHALL conform to the `DashboardData` TypeScript type matching the mockup's `dashData(role)` shape:
 - `kicker` (string) — small-caps hero kicker
@@ -82,6 +86,31 @@ Numeric values that cannot be fetched SHALL be `null` (not omitted).
 - **THEN** the response SHALL have status 200
 - **AND** the pending-approvals and avg-model-F1 stats SHALL reflect the healthy tenants' data (not `null` and not silently zeroed solely because of the one failing tenant)
 - **AND** subsequent per-tenant queries in the same request SHALL NOT fail with an aborted-transaction error caused by the earlier failure
+
+#### Scenario: The virtual system tenant is excluded from schema iteration
+
+- **GIVEN** the caller has role `system_admin`
+- **AND** `public.tenants` contains the row `id = 'system'`, for which no `tenant_system` schema exists
+- **WHEN** `GET /api/v1/dashboard/summary` is called
+- **THEN** no query SHALL be issued against `tenant_system`
+- **AND** no exception SHALL be logged for `tenant_system`
+- **AND** the response SHALL have status 200
+
+#### Scenario: Tenant rows without a backing schema are excluded from aggregates
+
+- **GIVEN** the caller has role `system_admin`
+- **AND** `public.tenants` contains active rows for which no corresponding schema exists
+- **WHEN** `GET /api/v1/dashboard/summary` is called
+- **THEN** those rows SHALL contribute nothing to the document, pending-approval, and model-F1 aggregates
+- **AND** the number of logged exceptions attributable to missing schemas SHALL be zero
+
+#### Scenario: A partial aggregate is not reported as a complete total
+
+- **GIVEN** the caller has role `system_admin`
+- **AND** one tenant schema exists but its `documents` query fails
+- **WHEN** `GET /api/v1/dashboard/summary` is called
+- **THEN** the "Documents (all)" stat SHALL NOT be presented as a complete platform total
+- **AND** `sources.documents` SHALL be `false`
 
 ---
 

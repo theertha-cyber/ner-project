@@ -93,3 +93,62 @@ def test_settings_fail_without_minio_secret_key():
             Settings(_env_file=None)
     finally:
         os.environ.update(backup)
+
+
+def test_reranking_defaults_with_no_env_overrides():
+    """Covers scenario 12: task 1.2."""
+    env_vars = [k for k in os.environ if k.startswith("NER_RERANK")]
+    backup = {k: os.environ.pop(k) for k in env_vars}
+
+    try:
+        os.environ["NER_JWT_SECRET"] = "test-jwt-secret"
+        os.environ["NER_MINIO_ACCESS_KEY"] = "test-minio-user"
+        os.environ["NER_MINIO_SECRET_KEY"] = "test-minio-pass"
+        os.environ["NER_OPENAI_API_KEY"] = "test-openai-key"
+
+        settings = Settings(_env_file=None)
+
+        assert settings.reranker_enabled is True
+        assert settings.rerank_candidate_count == 20
+        assert settings.reranker_model == "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    finally:
+        os.environ.update(backup)
+
+
+def test_context_assembly_defaults_with_no_env_overrides():
+    """Covers scenario 15: task 1.2."""
+    env_vars = [k for k in os.environ if k.startswith("NER_CONTEXT") or k.startswith("NER_CONVERSATION")]
+    backup = {k: os.environ.pop(k) for k in env_vars}
+
+    try:
+        os.environ["NER_JWT_SECRET"] = "test-jwt-secret"
+        os.environ["NER_MINIO_ACCESS_KEY"] = "test-minio-user"
+        os.environ["NER_MINIO_SECRET_KEY"] = "test-minio-pass"
+        os.environ["NER_OPENAI_API_KEY"] = "test-openai-key"
+
+        settings = Settings(_env_file=None)
+
+        assert settings.context_token_budget == 6000
+        assert settings.context_max_chunks is None
+        assert settings.conversation_history_turns == 5
+    finally:
+        os.environ.update(backup)
+
+
+def test_reranker_enabled_false_via_env_var():
+    """Covers scenario 13: task 1.3."""
+    env_vars = [k for k in os.environ if k.startswith("NER_RERANK")]
+    backup = {k: os.environ.pop(k) for k in env_vars}
+
+    try:
+        os.environ["NER_JWT_SECRET"] = "test-jwt-secret"
+        os.environ["NER_MINIO_ACCESS_KEY"] = "test-minio-user"
+        os.environ["NER_MINIO_SECRET_KEY"] = "test-minio-pass"
+        os.environ["NER_OPENAI_API_KEY"] = "test-openai-key"
+        os.environ["NER_RERANKER_ENABLED"] = "false"
+
+        settings = Settings(_env_file=None)
+
+        assert settings.reranker_enabled is False
+    finally:
+        os.environ.update(backup)
