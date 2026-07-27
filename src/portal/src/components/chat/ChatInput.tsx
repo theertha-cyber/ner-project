@@ -25,11 +25,11 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   return (
     <div
       style={{
-        borderTop: "1px solid #e5e7eb",
+        borderTop: "1px solid var(--line)",
         padding: "12px 16px",
         display: "flex",
         gap: 8,
-        background: "#f9fafb",
+        background: "var(--surface-3)",
       }}
     >
       <input
@@ -47,19 +47,21 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         disabled={disabled}
         style={{
           flex: 1,
-          border: "1px solid #d1d5db",
+          border: "1px solid var(--line)",
           borderRadius: 8,
           padding: "10px 12px",
           fontSize: 14,
           outline: "none",
+          background: "var(--surface-2)",
+          color: "var(--ink)",
         }}
       />
       <button
         onClick={handleSubmit}
         disabled={disabled || !text.trim()}
         style={{
-          background: disabled || !text.trim() ? "#9ca3af" : "#2563eb",
-          color: "white",
+          background: disabled || !text.trim() ? "var(--ink-3)" : "var(--primary)",
+          color: "#fff",
           border: "none",
           borderRadius: 8,
           padding: "10px 20px",

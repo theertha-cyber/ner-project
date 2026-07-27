@@ -2,8 +2,10 @@ import json
 import logging
 import asyncio
 from openai import AsyncOpenAI, AsyncAzureOpenAI
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
+from src.shared.retrieval import DenseRetriever, SparseRetriever, HybridRetriever, RetrievalResult
 from src.chat_api.api.v1.schemas import Source, Citation
 from src.chat_api.services.sql_generator import SQLGenerator
 from src.chat_api.services.embedding_service import EmbeddingService
@@ -25,6 +27,7 @@ class RAGOrchestrator:
     def __init__(self):
         self.sql_generator = SQLGenerator()
         self.embedding_service = EmbeddingService()
+        self.retriever = HybridRetriever(DenseRetriever(self.embedding_service), SparseRetriever())
         self.ner_client = NERClient()
         self.guardrails = GuardrailService()
         if settings.azure_openai_endpoint:
@@ -77,12 +80,13 @@ class RAGOrchestrator:
             for v in vector_results:
                 vector_sources.append(Source(
                     source_type="document_chunk",
-                    document_id=v["document_id"],
-                    chunk_index=v["chunk_index"],
-                    chunk_text=v["chunk_text"],
-                    relevance_score=v["similarity_score"],
+                    document_id=v.document_id,
+                    chunk_index=v.chunk_index,
+                    chunk_text=v.chunk_text,
+                    relevance_score=v.similarity_score,
+                    page_number=v.page_number,
                 ))
-                chunks_for_ner.append(v["chunk_text"])
+                chunks_for_ner.append(v.chunk_text)
 
         ner_sources = []
         if chunks_for_ner:
@@ -111,7 +115,7 @@ class RAGOrchestrator:
             context_parts.append(f"Entity data: {json.dumps(sql_results[:10], default=str)}")
         if vector_results:
             for v in vector_results[:3]:
-                context_parts.append(f"Document context (from {v['document_id']}): {v['chunk_text'][:500]}")
+                context_parts.append(f"Document context (from {v.document_id}): {v.chunk_text[:500]}")
         if ner_sources:
             context_parts.append(f"NER entities: {json.dumps([{'type': s.entity_type, 'value': s.value, 'confidence': s.confidence} for s in ner_sources[:5]])}")
 
@@ -147,9 +151,9 @@ class RAGOrchestrator:
             conv_text = "\n".join(f"{m['role']}: {m['content']}" for m in conversation_context[-3:])
         return await self.sql_generator.generate_and_execute(message, session, schema, conv_text)
 
-    async def _vector_source(self, message: str, session: AsyncSession, schema: str) -> list[dict]:
+    async def _vector_source(self, message: str, session: AsyncSession, schema: str) -> list[RetrievalResult]:
         try:
-            return await self.embedding_service.similarity_search(message, session, schema)
+            return await self.retriever.retrieve(message, session, schema, top_k=settings.retrieval_top_k)
         except Exception as e:
             logger.warning("Vector search failed: %s", str(e))
             return []
@@ -203,6 +207,7 @@ class RAGOrchestrator:
                 entity_value=s.value,
                 confidence=s.confidence,
                 context_snippet=context,
+                page_number=s.page_number,
                 source_type=s.source_type,
             ))
         return enriched

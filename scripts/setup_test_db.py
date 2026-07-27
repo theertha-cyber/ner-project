@@ -1,10 +1,39 @@
 """Create extraction service tables in ner_test database."""
 import asyncio
 import os
+import sys
+from urllib.parse import urlparse
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
 DATABASE_URL = os.environ.get("NER_DATABASE_URL", "postgresql+asyncpg://ner:ner@localhost:54320/ner_test")
+
+ALLOW_NONSTANDARD_TEST_DB_ENV = "NER_ALLOW_NONSTANDARD_TEST_DB"
+
+
+def _assert_test_database(url: str) -> None:
+    db_name = urlparse(url).path.lstrip("/")
+    if db_name.endswith("_test"):
+        return
+
+    override = os.environ.get(ALLOW_NONSTANDARD_TEST_DB_ENV, "").lower() in ("1", "true", "yes")
+    if override:
+        print(
+            f"WARNING: '{db_name}' does not end in '_test', but "
+            f"{ALLOW_NONSTANDARD_TEST_DB_ENV} is set — proceeding anyway.",
+            file=sys.stderr,
+        )
+        return
+
+    print(
+        f"Refusing to run against database '{db_name}' — its name doesn't end in "
+        "'_test'. This script creates and mutates fixture schemas and tenant rows; "
+        "pointing it at a real dev/prod database will corrupt it. Set NER_DATABASE_URL "
+        f"to a database whose name ends in '_test', or set {ALLOW_NONSTANDARD_TEST_DB_ENV}=1 "
+        "to override for a deliberately non-standard test database name.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 SCHEMAS = [
     "tenant_test_tenant",
@@ -88,6 +117,7 @@ PUBLIC_TABLES = [
 
 
 async def main():
+    _assert_test_database(DATABASE_URL)
     engine = create_async_engine(DATABASE_URL)
     async with engine.connect() as conn:
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS public"))

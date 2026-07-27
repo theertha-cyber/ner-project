@@ -138,6 +138,72 @@ class TestGetRunStatusNotFound:
 
 
 @pytest.mark.asyncio
+class TestBatchExtractionPurposeScoping:
+    """Covers scenarios 25-26: default batch extraction excludes training-purpose
+    documents; explicit documentIds bypasses purpose filtering."""
+
+    async def _add_documents_table(self, engine, schema):
+        async with engine.begin() as conn:
+            await conn.execute(text(f"""
+                CREATE TABLE IF NOT EXISTS "{schema}".documents (
+                    id VARCHAR PRIMARY KEY,
+                    tenant_id VARCHAR NOT NULL,
+                    filename VARCHAR(255) NOT NULL,
+                    status VARCHAR(20) DEFAULT 'pending',
+                    purpose VARCHAR(20) NOT NULL DEFAULT 'query'
+                )
+            """))
+
+    async def test_default_batch_excludes_training_purpose_documents(self, isolated_tenant_schemas, engine):
+        tid = "purpose-scope-default-tenant"
+        schema = await isolated_tenant_schemas(tid)
+        await self._add_documents_table(engine, schema)
+
+        async with engine.begin() as conn:
+            for i in range(2):
+                await conn.execute(
+                    text(f'INSERT INTO "{schema}".documents (id, tenant_id, filename, status, purpose) VALUES (:id, :tid, :fn, \'processed\', \'query\')'),
+                    {"id": f"q-doc-{i}", "tid": tid, "fn": f"q{i}.pdf"},
+                )
+            await conn.execute(
+                text(f'INSERT INTO "{schema}".documents (id, tenant_id, filename, status, purpose) VALUES (:id, :tid, \'train.pdf\', \'processed\', \'training\')'),
+                {"id": "train-doc-1", "tid": tid},
+            )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/api/v1/extract-batch", headers=auth_header(tid))
+            assert resp.status_code == 202
+            run_id = resp.json()["run_id"]
+
+            status_resp = await client.get(f"/api/v1/extract-batch/{run_id}", headers=auth_header(tid))
+            assert status_resp.json()["total_documents"] == 2
+
+    async def test_explicit_document_ids_bypasses_purpose_filtering(self, isolated_tenant_schemas, engine):
+        tid = "purpose-scope-explicit-tenant"
+        schema = await isolated_tenant_schemas(tid)
+        await self._add_documents_table(engine, schema)
+
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(f'INSERT INTO "{schema}".documents (id, tenant_id, filename, status, purpose) VALUES (:id, :tid, \'train.pdf\', \'processed\', \'training\')'),
+                {"id": "train-doc-explicit", "tid": tid},
+            )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/extract-batch?documentIds=train-doc-explicit",
+                headers=auth_header(tid),
+            )
+            assert resp.status_code == 202
+            run_id = resp.json()["run_id"]
+
+            status_resp = await client.get(f"/api/v1/extract-batch/{run_id}", headers=auth_header(tid))
+            assert status_resp.json()["total_documents"] == 1
+
+
+@pytest.mark.asyncio
 class TestListBatchRuns:
     async def test_list_batch_runs_returns_all_fields(self, isolated_tenant_schemas):
         tid = "list-fields-tenant"

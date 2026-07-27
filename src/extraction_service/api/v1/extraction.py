@@ -108,7 +108,7 @@ async def trigger_batch_extraction(
     else:
         schema = _schema(tenant_id)
         result = await db.execute(
-            text(f"SELECT id FROM {schema}.documents WHERE status = 'processed'")
+            text(f"SELECT id FROM {schema}.documents WHERE status = 'processed' AND purpose = 'query'")
         )
         doc_ids = [row[0] for row in result.fetchall()]
 

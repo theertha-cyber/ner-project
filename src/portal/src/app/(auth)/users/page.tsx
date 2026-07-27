@@ -116,7 +116,7 @@ export default function UsersPage() {
   return (
     <div className="animate-fade-up">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Users</h1>
+        <h1 className="text-2xl font-bold" style={{ color: "var(--ink)" }}>Users</h1>
         <button
           onClick={() => { setShowCreate((v) => !v); setCreateError(""); }}
           className="rounded-md bg-brand-primary px-4 py-2 text-sm text-white hover:bg-brand-hover"
@@ -126,36 +126,39 @@ export default function UsersPage() {
       </div>
 
       {showCreate && (
-        <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-medium text-gray-900">New User</h2>
+        <div className="mb-6 rounded-lg border p-4 shadow-sm" style={{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--ink)" }}>New User</h2>
           <form onSubmit={handleCreate} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <label className="block text-xs text-gray-700">Email</label>
+              <label className="block text-xs" style={{ color: "var(--ink-2)" }}>Email</label>
               <input
                 type="email"
                 required
                 value={createForm.email}
                 onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+                className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
+                style={{ border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-700">Password</label>
+              <label className="block text-xs" style={{ color: "var(--ink-2)" }}>Password</label>
               <input
                 type="password"
                 required
                 value={createForm.password}
                 onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
                 placeholder="Min 8 characters"
-                className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+                className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
+                style={{ border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-700">Role</label>
+              <label className="block text-xs" style={{ color: "var(--ink-2)" }}>Role</label>
               <select
                 value={createForm.role}
                 onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as Role })}
-                className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+                className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
+                style={{ border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
               >
                 {ROLES.map((r) => (
                   <option key={r} value={r}>{r}</option>
@@ -163,7 +166,7 @@ export default function UsersPage() {
               </select>
             </div>
             {createError && (
-              <p className="col-span-full text-sm text-red-600">{createError}</p>
+              <p className="col-span-full text-sm" style={{ color: "var(--bad)" }}>{createError}</p>
             )}
             <div className="col-span-full">
               <button
@@ -179,11 +182,12 @@ export default function UsersPage() {
       )}
 
       <div className="mb-4 flex items-center gap-3">
-        <label className="text-sm text-gray-600">Filter by role:</label>
+        <label className="text-sm" style={{ color: "var(--ink-2)" }}>Filter by role:</label>
         <select
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
-          className="rounded-md border px-3 py-1.5 text-sm"
+          className="rounded-md px-3 py-1.5 text-sm"
+          style={{ border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
         >
           <option value="">All roles</option>
           {ROLES.map((r) => (
@@ -193,32 +197,38 @@ export default function UsersPage() {
       </div>
 
       {loading ? (
-        <p className="text-gray-500">Loading...</p>
+        <p style={{ color: "var(--ink-3)" }}>Loading...</p>
       ) : users.length === 0 ? (
-        <p className="text-gray-500">No users found.</p>
+        <p style={{ color: "var(--ink-3)" }}>No users found.</p>
       ) : (
-        <div className="overflow-hidden rounded-lg bg-white shadow">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="overflow-hidden rounded-lg shadow" style={{ background: "var(--surface-2)" }}>
+          <table className="min-w-full" style={{ borderCollapse: "collapse" }}>
+            <thead style={{ background: "var(--surface-3)" }}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Email</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Created</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Email</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Role</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Created</th>
                 <th className="px-6 py-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody>
               {users.map((u) => (
-                <tr key={u.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">{u.email}</td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                <tr
+                  key={u.id}
+                  style={{ borderBottom: "1px solid var(--line)" }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface-3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                >
+                  <td className="whitespace-nowrap px-6 py-4 text-sm" style={{ color: "var(--ink)" }}>{u.email}</td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm" style={{ color: "var(--ink-3)" }}>
                     {editingId === u.id ? (
                       <div className="flex items-center gap-2">
                         <select
                           value={editRole}
                           onChange={(e) => setEditRole(e.target.value as Role)}
-                          className="rounded border px-2 py-1 text-sm"
+                          className="rounded px-2 py-1 text-sm"
+                          style={{ border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
                         >
                           {ROLES.map((r) => (
                             <option key={r} value={r}>{r}</option>
@@ -232,7 +242,8 @@ export default function UsersPage() {
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
-                          className="rounded bg-gray-200 px-2 py-1 text-xs hover:bg-gray-300"
+                          className="rounded px-2 py-1 text-xs"
+                          style={{ background: "var(--surface-3)" }}
                         >
                           Cancel
                         </button>
@@ -251,21 +262,21 @@ export default function UsersPage() {
                     <span
                       className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
                         u.status === "active"
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
+                          ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                          : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
                       }`}
                     >
                       {u.status}
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <td className="whitespace-nowrap px-6 py-4 text-sm" style={{ color: "var(--ink-3)" }}>
                     {new Date(u.created_at).toLocaleDateString()}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-right text-sm">
                     {u.status === "active" && editingId !== u.id && (
                       <button
                         onClick={() => handleDeactivate(u.id)}
-                        className="text-red-600 hover:text-red-800"
+                        className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
                       >
                         Deactivate
                       </button>

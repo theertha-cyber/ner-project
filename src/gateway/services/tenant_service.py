@@ -28,49 +28,58 @@ class TenantService:
             raise ConflictError("Tenant", "slug", slug)
 
         tenant_id = generate_uuid()
-        await self.db.execute(
-            text("""
-                INSERT INTO public.tenants (id, name, slug, status, max_users, max_documents, max_storage_gb, max_model_versions)
-                VALUES (:id, :name, :slug, 'active', :max_users, :max_docs, :max_storage, :max_models)
-            """),
-            {
-                "id": tenant_id,
-                "name": name,
-                "slug": slug,
-                "max_users": payload.get("max_users", 10),
-                "max_docs": payload.get("max_documents", 1000),
-                "max_storage": payload.get("max_storage_gb", 5),
-                "max_models": payload.get("max_model_versions", 10),
-            },
-        )
-
-        schema_name = f"tenant_{tenant_id}".replace("-", "_")
-        await self.db.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema_name}"))
-
-        tables = await self.db.execute(
-            text("SELECT tablename FROM pg_tables WHERE schemaname = 'tenant_template'")
-        )
-        for row in tables.fetchall():
-            table_name = row[0]
-            await self.db.execute(text(
-                f"CREATE TABLE {schema_name}.{table_name} "
-                f"(LIKE tenant_template.{table_name} INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)"
-            ))
-
-        # Create the initial tenant admin in the same transaction
         admin_id = generate_uuid()
-        await self.db.execute(
-            text("""
-                INSERT INTO public.tenant_users (id, tenant_id, email, password_hash, role, status)
-                VALUES (:id, :tid, :email, :pwd_hash, 'tenant_admin', 'active')
-            """),
-            {
-                "id": admin_id,
-                "tid": tenant_id,
-                "email": admin_email,
-                "pwd_hash": hash_password(admin_password),
-            },
-        )
+        try:
+            await self.db.execute(
+                text("""
+                    INSERT INTO public.tenants (id, name, slug, status, max_users, max_documents, max_storage_gb, max_model_versions)
+                    VALUES (:id, :name, :slug, 'active', :max_users, :max_docs, :max_storage, :max_models)
+                """),
+                {
+                    "id": tenant_id,
+                    "name": name,
+                    "slug": slug,
+                    "max_users": payload.get("max_users", 10),
+                    "max_docs": payload.get("max_documents", 1000),
+                    "max_storage": payload.get("max_storage_gb", 5),
+                    "max_models": payload.get("max_model_versions", 10),
+                },
+            )
+
+            schema_name = f"tenant_{tenant_id}".replace("-", "_")
+            await self.db.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema_name}"))
+
+            tables = await self.db.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = 'tenant_template'")
+            )
+            for row in tables.fetchall():
+                table_name = row[0]
+                await self.db.execute(text(
+                    f"CREATE TABLE {schema_name}.{table_name} "
+                    f"(LIKE tenant_template.{table_name} INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)"
+                ))
+
+            # Create the initial tenant admin in the same transaction
+            await self.db.execute(
+                text("""
+                    INSERT INTO public.tenant_users (id, tenant_id, email, password_hash, role, status)
+                    VALUES (:id, :tid, :email, :pwd_hash, 'tenant_admin', 'active')
+                """),
+                {
+                    "id": admin_id,
+                    "tid": tenant_id,
+                    "email": admin_email,
+                    "pwd_hash": hash_password(admin_password),
+                },
+            )
+        except Exception:
+            # Provisioning is all-or-nothing: a failure at any step (tenant row,
+            # schema, table clone, or admin user) must not leave a partially
+            # provisioned tenant behind. Nothing here is committed until the
+            # audit record below, but the rollback is made explicit rather than
+            # relying on that as an incidental side effect.
+            await self.db.rollback()
+            raise
 
         audit = AuditService(self.db)
         await audit.record(

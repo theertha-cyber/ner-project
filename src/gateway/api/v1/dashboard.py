@@ -89,7 +89,12 @@ def _tenant_schema(tenant_id: str) -> str:
 
 async def _all_tenant_schemas(db: AsyncSession) -> list[str]:
     result = await db.execute(
-        text("SELECT id FROM public.tenants WHERE status = 'active'")
+        text("""
+            SELECT t.id
+            FROM public.tenants t
+            JOIN pg_namespace n ON n.nspname = 'tenant_' || replace(t.id, '-', '_')
+            WHERE t.status = 'active'
+        """)
     )
     return [_tenant_schema(row[0]) for row in result.fetchall()]
 
@@ -116,6 +121,7 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
 
     if schemas:
         total_docs = 0
+        docs_complete = True
         try:
             for s in schemas:
                 try:
@@ -124,8 +130,9 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
                 except Exception:
                     logger.exception("system_admin dashboard: documents count failed for schema %s", s)
                     await db.rollback()
+                    docs_complete = False
             doc_count_all = str(total_docs)
-            sources["documents"] = True
+            sources["documents"] = docs_complete
         except Exception:
             pass
 

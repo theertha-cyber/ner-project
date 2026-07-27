@@ -115,6 +115,10 @@ alembic upgrade head                              # Run migrations
 python -m src.gateway.seed                        # Create bootstrap admin
 ```
 
+If your local database has drifted from the migration chain (schema errors,
+`db-init` failing verification), see
+[docs/local-dev.md](docs/local-dev.md) for the clean-rebuild procedure.
+
 Required values in `.env` (see comments in `.env.example` for details):
 - `NER_JWT_SECRET` — generate with `openssl rand -hex 32`
 - `NER_MINIO_ACCESS_KEY` / `NER_MINIO_SECRET_KEY` and matching `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`

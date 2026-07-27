@@ -18,7 +18,7 @@ const TABS: { value: FilterTab; label: string }[] = [
 
 export function StatusFilterTabs({ selected, onChange, counts }: StatusFilterTabsProps) {
   return (
-    <div className="flex gap-1 border-b border-border pb-2">
+    <div className="flex gap-1 border-b pb-2" style={{ borderColor: "var(--line)" }}>
       {TABS.map((tab) => (
         <button
           key={tab.value}
@@ -28,8 +28,9 @@ export function StatusFilterTabs({ selected, onChange, counts }: StatusFilterTab
             "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
             selected === tab.value
               ? "bg-brand-primary text-white"
-              : "text-gray-600 hover:bg-gray-100",
+              : "",
           ].join(" ")}
+          style={selected !== tab.value ? { color: "var(--ink-2)" } : undefined}
         >
           {tab.label}
           {counts && (
@@ -38,8 +39,9 @@ export function StatusFilterTabs({ selected, onChange, counts }: StatusFilterTab
                 "inline-flex size-5 items-center justify-center rounded-full text-xs",
                 selected === tab.value
                   ? "bg-white/20 text-white"
-                  : "bg-gray-200 text-gray-600",
+                  : "",
               ].join(" ")}
+              style={selected !== tab.value ? { background: "var(--surface-3)", color: "var(--ink-2)" } : undefined}
             >
               {counts[tab.value]}
             </span>

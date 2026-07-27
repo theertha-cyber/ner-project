@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, Query, Request, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, Query, Request, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from src.shared.database import get_engine
@@ -10,6 +10,7 @@ from src.document_service.services.storage import MinioStorageClient
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+VALID_PURPOSES = {"query", "training"}
 
 
 def _schema(tenant_id: str) -> str:
@@ -40,9 +41,16 @@ def generate_uuid():
 @router.post("", status_code=201)
 async def upload_document(
     file: UploadFile = File(...),
+    purpose: str = Form("query"),
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
+    if purpose not in VALID_PURPOSES:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "VALIDATION_ERROR", "message": "purpose must be 'query' or 'training'"},
+        )
+
     if not is_allowed_file(file.filename or ""):
         raise HTTPException(
             status_code=422,
@@ -66,8 +74,8 @@ async def upload_document(
 
     await session.execute(
         text(f"""
-            INSERT INTO {_schema(tenant_id)}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path)
-            VALUES (:id, :tid, :filename, :content_type, :file_size, 'pending', :blob_path)
+            INSERT INTO {_schema(tenant_id)}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose)
+            VALUES (:id, :tid, :filename, :content_type, :file_size, 'pending', :blob_path, :purpose)
         """),
         {
             "id": doc_id,
@@ -76,6 +84,7 @@ async def upload_document(
             "content_type": file.content_type or "application/octet-stream",
             "file_size": len(file_data),
             "blob_path": blob_path,
+            "purpose": purpose,
         },
     )
     await session.commit()
@@ -94,6 +103,7 @@ async def upload_document(
 @router.get("")
 async def list_documents(
     status_filter: str | None = Query(None, alias="status"),
+    purpose: str | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     request: Request = None,
@@ -106,6 +116,10 @@ async def list_documents(
     if status_filter:
         conditions.append("status = :status")
         params["status"] = status_filter
+
+    if purpose:
+        conditions.append("purpose = :purpose")
+        params["purpose"] = purpose
 
     where = " AND ".join(conditions)
     offset = (page - 1) * per_page
@@ -204,6 +218,14 @@ async def delete_document(
     if not row:
         raise NotFoundError("Document", doc_id)
 
+    await session.execute(
+        text(f"DELETE FROM {_schema(tenant_id)}.document_chunks WHERE document_id = :id"),
+        {"id": doc_id},
+    )
+    await session.execute(
+        text(f"DELETE FROM {_schema(tenant_id)}.document_text_spans WHERE document_id = :id"),
+        {"id": doc_id},
+    )
     await session.execute(
         text(f"UPDATE {_schema(tenant_id)}.documents SET status = 'deleted' WHERE id = :id"),
         {"id": doc_id},

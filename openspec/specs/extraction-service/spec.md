@@ -40,7 +40,7 @@ The system SHALL expose a real-time extraction endpoint that accepts a text para
 
 ### Requirement: Batch extraction
 
-The system SHALL support batch extraction on existing documents. Batch extraction SHALL process documents in `processed` status and SHALL skip documents already extracted with the current active model version (idempotent). When no promoted model exists, batch extraction SHALL use version 0 (base model). Each batch run SHALL record the model version used. Idempotency SHALL be determined by checking `extracted_entities` for existing rows with matching `document_id` and `model_version` — NOT by querying `extraction_runs.document_id`, which is NULL for batch runs. Batch extraction SHALL run asynchronously via a Celery task. The system SHALL persist a batch extraction run record in the database before processing begins, and the run SHALL be immediately queryable via the status endpoint after dispatch. For each successfully processed document the worker SHALL persist predicted entities to the `extracted_entities` table with their `run_id`, `document_id`, `entity_id`, `value`, and `confidence`.
+The system SHALL support batch extraction on existing documents. Batch extraction SHALL process documents in `processed` status and SHALL skip documents already extracted with the current active model version (idempotent). When no promoted model exists, batch extraction SHALL use version 0 (base model). Each batch run SHALL record the model version used. Idempotency SHALL be determined by checking `extracted_entities` for existing rows with matching `document_id` and `model_version` — NOT by querying `extraction_runs.document_id`, which is NULL for batch runs. Batch extraction SHALL run asynchronously via a Celery task. The system SHALL persist a batch extraction run record in the database before processing begins, and the run SHALL be immediately queryable via the status endpoint after dispatch. For each successfully processed document the worker SHALL persist predicted entities to the `extracted_entities` table with their `run_id`, `document_id`, `entity_id`, `value`, and `confidence`. When no explicit `documentIds` are provided, batch extraction SHALL only consider documents with `purpose='query'`; when explicit `documentIds` are provided, no `purpose` filtering SHALL be applied.
 
 #### Scenario: Trigger batch extraction
 
@@ -87,6 +87,20 @@ The system SHALL support batch extraction on existing documents. Batch extractio
 - **WHEN** batch extraction is triggered
 - **THEN** the extraction SHALL proceed using version 0 (base model)
 - **AND** the extraction run SHALL record model_version as "0"
+
+#### Scenario: Default batch extraction excludes training-purpose documents
+
+- **GIVEN** a tenant with 2 `processed` documents with `purpose='query'` and 1 `processed` document with `purpose='training'`
+- **WHEN** a Tenant Admin POSTs to `/api/v1/extract-batch` with no `documentIds` query parameter
+- **THEN** the batch run's `total_documents` SHALL be `2`
+- **AND** the `purpose='training'` document SHALL NOT be processed
+
+#### Scenario: Explicit documentIds bypasses purpose filtering
+
+- **GIVEN** a tenant with a `processed` document with `purpose='training'`
+- **WHEN** a Tenant Admin POSTs to `/api/v1/extract-batch?documentIds=<that document's id>`
+- **THEN** the response SHALL have status 202
+- **AND** that document SHALL be included in the batch run
 
 ### Requirement: Get extraction run status
 

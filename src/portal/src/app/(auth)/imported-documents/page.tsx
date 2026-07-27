@@ -92,27 +92,30 @@ function ImportedDocumentsList({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-6 py-3">
-        <h1 className="text-xl font-semibold text-gray-900">Imported Documents</h1>
+      <div className="flex items-center justify-between border-b px-6 py-3" style={{ borderColor: "var(--line)" }}>
+        <h1 className="text-xl font-semibold" style={{ color: "var(--ink)" }}>Imported Documents</h1>
       </div>
 
-      <div className="flex items-center gap-3 border-b border-border px-6 py-3">
+      <div className="flex items-center gap-3 border-b px-6 py-3" style={{ borderColor: "var(--line)" }}>
         <input
           placeholder="Filter by source file"
           value={sourceFileFilter}
           onChange={(e) => { setSourceFileFilter(e.target.value); setPage(1); }}
-          className="rounded border border-border px-3 py-1.5 text-sm"
+          className="rounded border px-3 py-1.5 text-sm"
+          style={{ borderColor: "var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
         />
         <input
           placeholder="Filter by entity type"
           value={entityTypeFilter}
           onChange={(e) => { setEntityTypeFilter(e.target.value); setPage(1); }}
-          className="rounded border border-border px-3 py-1.5 text-sm"
+          className="rounded border px-3 py-1.5 text-sm"
+          style={{ borderColor: "var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
         />
         <select
           value={reviewedFilter}
           onChange={(e) => { setReviewedFilter(e.target.value); setPage(1); }}
-          className="rounded border border-border px-3 py-1.5 text-sm"
+          className="rounded border px-3 py-1.5 text-sm"
+          style={{ borderColor: "var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
         >
           <option value="">All</option>
           <option value="true">Reviewed</option>
@@ -122,13 +125,13 @@ function ImportedDocumentsList({
 
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
-          <div className="text-sm text-gray-500">Loading...</div>
+          <div className="text-sm" style={{ color: "var(--ink-3)" }}>Loading...</div>
         ) : !data || data.items.length === 0 ? (
-          <div className="text-sm text-gray-500">No imported documents found.</div>
+          <div className="text-sm" style={{ color: "var(--ink-3)" }}>No imported documents found.</div>
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-border text-xs uppercase text-gray-500">
+              <tr className="border-b text-xs uppercase" style={{ borderColor: "var(--line)", color: "var(--ink-3)" }}>
                 <th className="pb-2 pr-4 font-medium">Source File</th>
                 <th className="pb-2 pr-4 font-medium">Row</th>
                 <th className="pb-2 pr-4 font-medium">Entity Types</th>
@@ -138,7 +141,7 @@ function ImportedDocumentsList({
             </thead>
             <tbody>
               {data.items.map((row) => (
-                <tr key={row.id} className="border-b border-border hover:bg-gray-50">
+                <tr key={row.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800" style={{ borderColor: "var(--line)" }}>
                   <td className="py-2 pr-4">{row.source_file}</td>
                   <td className="py-2 pr-4">{row.row_index}</td>
                   <td className="py-2 pr-4">
@@ -153,9 +156,9 @@ function ImportedDocumentsList({
                   </td>
                   <td className="py-2 pr-4">
                     {row.reviewed ? (
-                      <span className="text-green-600">Yes</span>
+                      <span className="text-green-600 dark:text-green-400">Yes</span>
                     ) : (
-                      <span className="text-amber-600">No</span>
+                      <span className="text-amber-600 dark:text-amber-400">No</span>
                     )}
                   </td>
                   <td className="py-2">
@@ -174,22 +177,24 @@ function ImportedDocumentsList({
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-border px-6 py-3">
-          <span className="text-sm text-gray-500">
+        <div className="flex items-center justify-between border-t px-6 py-3" style={{ borderColor: "var(--line)" }}>
+          <span className="text-sm" style={{ color: "var(--ink-3)" }}>
             Page {page} of {totalPages} ({data?.total ?? 0} total)
           </span>
           <div className="flex gap-2">
             <button
               disabled={page <= 1}
               onClick={() => setPage((p) => p - 1)}
-              className="rounded border border-border px-3 py-1 text-sm disabled:opacity-40"
+              className="rounded border px-3 py-1 text-sm disabled:opacity-40"
+              style={{ borderColor: "var(--line)" }}
             >
               Previous
             </button>
             <button
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
-              className="rounded border border-border px-3 py-1 text-sm disabled:opacity-40"
+              className="rounded border px-3 py-1 text-sm disabled:opacity-40"
+              style={{ borderColor: "var(--line)" }}
             >
               Next
             </button>
@@ -388,7 +393,8 @@ function ImportedDocumentReview({
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="rounded border border-border px-3 py-1 text-sm hover:bg-gray-50"
+            className="rounded border px-3 py-1 text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+            style={{ borderColor: "var(--line)" }}
           >
             ← Back
           </button>
@@ -430,7 +436,7 @@ function ImportedDocumentReview({
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6">
           <div className="mb-4 flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-gray-700">Entity Palette:</span>
+            <span className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>Entity Palette:</span>
             {entityTypes.map((et) => {
               const color = entityColors[et.name] ?? "#94a3b8";
               const isArmed = spanState.armedType === et.name;
@@ -457,12 +463,12 @@ function ImportedDocumentReview({
           </div>
 
           {spanState.armedType && (
-            <div className="mb-4 rounded bg-blue-50 px-4 py-2 text-sm text-blue-700">
+            <div className="mb-4 rounded px-4 py-2 text-sm text-blue-700 dark:text-blue-300" style={{ background: "var(--primary-soft)" }}>
               Click and drag across tokens to create a <strong>{spanState.armedType}</strong> span.
             </div>
           )}
 
-          <div className="flex flex-wrap items-baseline gap-0 rounded-lg border border-border bg-white p-4 leading-relaxed">
+          <div className="flex flex-wrap items-baseline gap-0 rounded-lg border p-4 leading-relaxed" style={{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
             {detail.tokens.map((token, idx) => (
               <Token
                 key={`${idx}-${token}`}
@@ -480,10 +486,10 @@ function ImportedDocumentReview({
           </div>
         </div>
 
-        <div className="w-72 border-l border-border p-4">
-          <h3 className="mb-3 text-sm font-semibold text-gray-700">Spans</h3>
+        <div className="w-72 border-l p-4" style={{ borderColor: "var(--line)" }}>
+          <h3 className="mb-3 text-sm font-semibold" style={{ color: "var(--ink-2)" }}>Spans</h3>
           {spanState.spans.length === 0 ? (
-            <p className="text-xs text-gray-500">No spans</p>
+            <p className="text-xs" style={{ color: "var(--ink-3)" }}>No spans</p>
           ) : (
             <div className="space-y-2">
               {spanState.spans.map((span) => {
@@ -497,7 +503,7 @@ function ImportedDocumentReview({
                       borderLeft: `3px solid ${color}`,
                       background: selected ? `${color}11` : "transparent",
                     }}
-                    className={`cursor-pointer rounded p-2 transition-colors ${selected ? "" : "hover:bg-gray-50"}`}
+                    className={`cursor-pointer rounded p-2 transition-colors ${selected ? "" : "hover:bg-gray-50 dark:hover:bg-gray-800"}`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium" style={{ color }}>
@@ -516,7 +522,7 @@ function ImportedDocumentReview({
                         </button>
                       </div>
                     </div>
-                    <div className="mt-1 text-[11px] text-gray-500">
+                    <div className="mt-1 text-[11px]" style={{ color: "var(--ink-3)" }}>
                       tokens {span.startToken}–{span.endToken}
                     </div>
                     {selected && (
@@ -525,7 +531,8 @@ function ImportedDocumentReview({
                           value={span.entityType}
                           onChange={(e) => handleRetype(span.id, e.target.value)}
                           disabled={isDisabled}
-                          className="w-full rounded border border-border px-2 py-1 text-xs"
+                          className="w-full rounded border px-2 py-1 text-xs"
+                          style={{ borderColor: "var(--line)" }}
                         >
                           {entityTypes.map((et) => (
                             <option key={et.name} value={et.name}>

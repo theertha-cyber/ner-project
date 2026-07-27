@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from urllib.parse import urlparse
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -19,7 +20,20 @@ from src.gateway.main import app
 from src.gateway.models import Base
 
 
+def _assert_test_database(url: str) -> None:
+    db_name = urlparse(url).path.lstrip("/")
+    if "test" not in db_name.lower():
+        raise RuntimeError(
+            f"Refusing to run tests against database '{db_name}' — its name doesn't contain "
+            "'test'. This fixture suite runs destructive DROP TABLE/DELETE statements in "
+            "teardown; pointing it at a real dev/prod database (e.g. 'ner_dev') will destroy "
+            "data. Set NER_DATABASE_URL to a database whose name contains 'test' "
+            "(e.g. 'ner_test')."
+        )
+
+
 def pytest_sessionstart(session):
+    _assert_test_database(settings.database_url)
     setup_script = os.path.join(os.path.dirname(__file__), "..", "scripts", "setup_test_db.py")
     if os.path.exists(setup_script):
         subprocess.run([sys.executable, setup_script], check=True, cwd=os.path.dirname(setup_script))
@@ -36,7 +50,7 @@ async def tenant_schema(engine, setup_database):
             if s:
                 await conn.execute(text(s + ";"))
         await conn.execute(
-            text(f"ALTER TABLE {schema_name}.extraction_runs DROP CONSTRAINT IF EXISTS {schema_name}.extraction_runs_document_id_fkey")
+            text(f"ALTER TABLE {schema_name}.extraction_runs DROP CONSTRAINT IF EXISTS extraction_runs_document_id_fkey")
         )
         await conn.execute(
             text(f"ALTER TABLE {schema_name}.extraction_runs ALTER COLUMN document_id DROP NOT NULL")
@@ -48,6 +62,7 @@ async def tenant_schema(engine, setup_database):
 
 @pytest_asyncio.fixture(scope="function")
 async def engine():
+    _assert_test_database(settings.database_url)
     engine = create_async_engine(settings.database_url, isolation_level="AUTOCOMMIT", poolclass=NullPool)
     yield engine
     await engine.dispose()
@@ -68,6 +83,7 @@ CREATE TABLE IF NOT EXISTS {schema}.documents (
     status VARCHAR(20) DEFAULT 'uploaded',
     ocr_applied_flag BOOLEAN DEFAULT false,
     error_message TEXT,
+    purpose VARCHAR(20) NOT NULL DEFAULT 'query',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS {schema}.document_text_spans (

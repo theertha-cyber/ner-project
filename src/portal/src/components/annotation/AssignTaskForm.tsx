@@ -30,7 +30,7 @@ export function AssignTaskForm({ onAssign, onCancel }: AssignTaskFormProps) {
   const { data: documentsData, isLoading: isLoadingDocuments } = useQuery({
     queryKey: ["assign-form-documents"],
     queryFn: async () => {
-      const res = await authFetch("/api/v1/documents?per_page=100&page=1");
+      const res = await authFetch("/api/v1/documents?purpose=training&per_page=100&page=1");
       if (!res.ok) throw new Error("Failed to load documents");
       const data = await res.json();
       return (data.documents ?? []) as Document[];

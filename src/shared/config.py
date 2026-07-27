@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     azure_openai_chat_deployment: str = "gpt-4o-mini"
     azure_openai_embedding_deployment: str = "text-embedding-3-small"
 
+    chunk_size: int = 512
+    chunk_overlap: int = 128
+    retrieval_top_k: int = 5
+    embedding_model: str = "text-embedding-3-small"
+
     environment: str = "development"
     cors_origins: list[str] = ["http://localhost:3000"]
     cors_origin_regex: str = r"http://(localhost|127\.0\.0\.1)(:\d+)?"

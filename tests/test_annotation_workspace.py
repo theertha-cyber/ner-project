@@ -37,6 +37,7 @@ def _create_tables_sql(schema: str) -> list:
                 status VARCHAR(20) DEFAULT 'pending',
                 error_message TEXT,
                 blob_path VARCHAR(500),
+                purpose VARCHAR(20) NOT NULL DEFAULT 'query',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -199,7 +200,7 @@ async def seeded_document(seeded_entity_types):
     engine = create_async_engine(settings.database_url, poolclass=NullPool)
     async with engine.begin() as conn:
         await conn.execute(
-            text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status) VALUES (:id, :tid, 'test.txt', 'text/plain', 100, 'processed')"),
+            text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, purpose) VALUES (:id, :tid, 'test.txt', 'text/plain', 100, 'processed', 'training')"),
             {"id": doc_id, "tid": tid},
         )
         await conn.execute(
@@ -590,6 +591,31 @@ async def test_7_10_task_create_returns_201(seeded_document, client):
     assert data["status"] == "unannotated"
     assert data["document_id"] == doc_id
     assert data["annotator_user_id"] == "user-456"
+
+
+@pytest.mark.asyncio
+async def test_8_1_task_create_for_query_purpose_document_returns_422(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    schema = seeded_entity_types["schema"]
+    doc_id = str(uuid.uuid4())
+    token = make_token(tid)
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, purpose) VALUES (:id, :tid, 'q.txt', 'text/plain', 100, 'processed', 'query')"),
+            {"id": doc_id, "tid": tid},
+        )
+    await engine.dispose()
+
+    resp = await client.post(
+        "/api/v1/annotation-tasks",
+        json={"document_id": doc_id, "annotator_user_id": "user-456"},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
+    assert "training" in resp.text.lower()
 
 
 @pytest.mark.asyncio

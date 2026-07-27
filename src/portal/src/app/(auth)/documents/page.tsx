@@ -49,8 +49,8 @@ export default function DocumentsPage() {
 
   return (
     <div className="animate-fade-up flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-6 py-3">
-        <h1 className="text-xl font-semibold text-gray-900">Documents</h1>
+      <div className="flex items-center justify-between border-b px-6 py-3" style={{ borderColor: "var(--line)" }}>
+        <h1 className="text-xl font-semibold" style={{ color: "var(--ink)" }}>Documents</h1>
       </div>
 
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6">

@@ -55,6 +55,7 @@ def _create_tables_sql(schema: str) -> list:
                 status VARCHAR(20) DEFAULT 'pending',
                 error_message TEXT,
                 blob_path VARCHAR(500),
+                purpose VARCHAR(20) NOT NULL DEFAULT 'query',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -68,6 +69,19 @@ def _create_tables_sql(schema: str) -> list:
                 char_start INTEGER,
                 char_end INTEGER,
                 page_number INTEGER,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """,
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.document_chunks (
+                id VARCHAR PRIMARY KEY,
+                document_id VARCHAR NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                chunk_text TEXT NOT NULL,
+                page_number INTEGER,
+                char_start INTEGER,
+                char_end INTEGER,
+                purpose VARCHAR(20),
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """,
@@ -385,6 +399,49 @@ async def test_7_8_get_document_metadata(seeded_tenant, client):
 
 
 @pytest.mark.asyncio
+async def test_9_1_delete_document_removes_spans_and_chunks(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+    doc_id = str(uuid.uuid4())
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    schema = f"tenant_{tid}"
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path) VALUES (:id, :tid, 'del2.pdf', 'application/pdf', 512, 'processed', '/blob')"),
+            {"id": doc_id, "tid": tid},
+        )
+        await conn.execute(
+            text(f"INSERT INTO {schema}.document_text_spans (id, document_id, span_index, text, char_start, char_end, page_number) VALUES (:id, :doc_id, 0, 'some text', 0, 9, 0)"),
+            {"id": str(uuid.uuid4()), "doc_id": doc_id},
+        )
+        await conn.execute(
+            text(f"INSERT INTO {schema}.document_chunks (id, document_id, chunk_index, chunk_text, purpose) VALUES (:id, :doc_id, 0, 'some text', 'query')"),
+            {"id": str(uuid.uuid4()), "doc_id": doc_id},
+        )
+    await engine.dispose()
+
+    del_resp = await client.delete(
+        f"/api/v1/documents/{doc_id}",
+        headers=auth_header(token),
+    )
+    assert del_resp.status_code == 200
+
+    engine2 = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine2.begin() as conn:
+        span_count = (await conn.execute(
+            text(f"SELECT COUNT(*) FROM {schema}.document_text_spans WHERE document_id = :id"), {"id": doc_id}
+        )).scalar()
+        chunk_count = (await conn.execute(
+            text(f"SELECT COUNT(*) FROM {schema}.document_chunks WHERE document_id = :id"), {"id": doc_id}
+        )).scalar()
+    await engine2.dispose()
+
+    assert span_count == 0, "document_text_spans should be removed on delete"
+    assert chunk_count == 0, "document_chunks should be removed on delete"
+
+
+@pytest.mark.asyncio
 async def test_7_9_soft_delete_document(seeded_tenant, client):
     tid = seeded_tenant["tid"]
     slug = seeded_tenant["slug"]
@@ -455,6 +512,117 @@ async def test_7_11_jwt_with_unknown_tenant_returns_404(client):
         headers=auth_header(token),
     )
     assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
+
+
+@pytest.mark.asyncio
+async def test_8_1_upload_without_purpose_defaults_to_query(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+    doc_id = str(uuid.uuid4())
+
+    with (
+        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
+        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
+        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+    ):
+        mock_storage_cls.return_value
+        mock_trigger.return_value = None
+
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("test.pdf", io.BytesIO(PDF_CONTENT), "application/pdf")},
+            headers=auth_header(token),
+        )
+
+    assert resp.status_code == 201
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    schema = f"tenant_{tid}"
+    async with engine.begin() as conn:
+        row = (await conn.execute(
+            text(f"SELECT purpose FROM {schema}.documents WHERE id = :id"), {"id": doc_id}
+        )).fetchone()
+    await engine.dispose()
+    assert row.purpose == "query"
+
+
+@pytest.mark.asyncio
+async def test_8_2_upload_with_training_purpose(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+    doc_id = str(uuid.uuid4())
+
+    with (
+        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
+        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
+        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+    ):
+        mock_storage_cls.return_value
+        mock_trigger.return_value = None
+
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("test.pdf", io.BytesIO(PDF_CONTENT), "application/pdf")},
+            data={"purpose": "training"},
+            headers=auth_header(token),
+        )
+
+    assert resp.status_code == 201
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    schema = f"tenant_{tid}"
+    async with engine.begin() as conn:
+        row = (await conn.execute(
+            text(f"SELECT purpose FROM {schema}.documents WHERE id = :id"), {"id": doc_id}
+        )).fetchone()
+    await engine.dispose()
+    assert row.purpose == "training"
+
+
+@pytest.mark.asyncio
+async def test_8_3_upload_with_invalid_purpose_returns_422(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+
+    resp = await client.post(
+        "/api/v1/documents",
+        files={"file": ("test.pdf", io.BytesIO(PDF_CONTENT), "application/pdf")},
+        data={"purpose": "invalid-value"},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 422
+    assert "query" in resp.text.lower() and "training" in resp.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_8_4_list_documents_filtered_by_purpose(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    schema = f"tenant_{tid}"
+    async with engine.begin() as conn:
+        for i in range(2):
+            await conn.execute(
+                text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose) VALUES (:id, :tid, :fn, 'application/pdf', 1000, 'processed', '/blob', 'training')"),
+                {"id": str(uuid.uuid4()), "tid": tid, "fn": f"train{i}.pdf"},
+            )
+        for i in range(3):
+            await conn.execute(
+                text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose) VALUES (:id, :tid, :fn, 'application/pdf', 1000, 'processed', '/blob', 'query')"),
+                {"id": str(uuid.uuid4()), "tid": tid, "fn": f"query{i}.pdf"},
+            )
+    await engine.dispose()
+
+    resp = await client.get(
+        "/api/v1/documents?purpose=training",
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 2
+    assert all(d["filename"].startswith("train") for d in data["documents"])
 
 
 @pytest.mark.asyncio

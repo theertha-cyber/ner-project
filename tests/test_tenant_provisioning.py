@@ -25,6 +25,8 @@ async def test_scenario_1_create_tenant_201(client: AsyncClient, engine):
         "max_documents": 1000,
         "max_storage_gb": 5,
         "max_model_versions": 10,
+        "admin_email": "admin@acme-corp.io",
+        "admin_password": "AcmeAdmin1",
     }
     resp = await client.post("/api/v1/admin/tenants", json=payload, headers=auth_header(SYSTEM_ADMIN_TOKEN))
     assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
@@ -45,7 +47,12 @@ async def test_scenario_1_create_tenant_201(client: AsyncClient, engine):
 # --- Scenario 2: Duplicate slug returns 409 ---
 @pytest.mark.asyncio
 async def test_scenario_2_duplicate_slug_409(client: AsyncClient):
-    payload = {"name": "Acme Corp Dup", "slug": "duplicate-slug"}
+    payload = {
+        "name": "Acme Corp Dup",
+        "slug": "duplicate-slug",
+        "admin_email": "admin@duplicate-slug.io",
+        "admin_password": "DupAdmin1",
+    }
     resp1 = await client.post("/api/v1/admin/tenants", json=payload, headers=auth_header(SYSTEM_ADMIN_TOKEN))
     assert resp1.status_code == 201
     resp2 = await client.post("/api/v1/admin/tenants", json=payload, headers=auth_header(SYSTEM_ADMIN_TOKEN))
@@ -55,19 +62,24 @@ async def test_scenario_2_duplicate_slug_409(client: AsyncClient):
 # --- Scenario 3: Quota exceeded returns 429 ---
 @pytest.mark.asyncio
 async def test_scenario_3_quota_exceeded_429(client: AsyncClient):
-    payload_tenant = {"name": "Quota Test", "slug": "quota-test", "max_users": 1}
+    payload_tenant = {
+        "name": "Quota Test",
+        "slug": "quota-test",
+        "max_users": 2,
+        "admin_email": "admin@quota-test.io",
+        "admin_password": "QuotaAdmin1",
+    }
     resp = await client.post("/api/v1/admin/tenants", json=payload_tenant, headers=auth_header(SYSTEM_ADMIN_TOKEN))
     assert resp.status_code == 201
     tid = resp.json()["tenant"]["id"]
-    slug = resp.json()["tenant"]["slug"]
 
     ta_token = create_access_token(tenant_id=tid, user_id="quota-admin", role="tenant_admin")
-    user_payload = {"email": "user1@quota.test", "password": "StrongPass1", "role": "annotator"}
-    resp1 = await client.post(f"/api/v1/tenants/{slug}/users", json=user_payload, headers=auth_header(ta_token))
-    assert resp1.status_code == 201
+    user_payload = {"email": "user1@quota.io", "password": "StrongPass1", "role": "annotator"}
+    resp1 = await client.post("/api/v1/users", json=user_payload, headers=auth_header(ta_token))
+    assert resp1.status_code == 201, f"Expected 201, got {resp1.status_code}: {resp1.text}"
 
-    user_payload2 = {"email": "user2@quota.test", "password": "StrongPass2", "role": "annotator"}
-    resp2 = await client.post(f"/api/v1/tenants/{slug}/users", json=user_payload2, headers=auth_header(ta_token))
+    user_payload2 = {"email": "user2@quota.io", "password": "StrongPass2", "role": "annotator"}
+    resp2 = await client.post("/api/v1/users", json=user_payload2, headers=auth_header(ta_token))
     assert resp2.status_code == 429, f"Expected 429, got {resp2.status_code}: {resp2.text}"
 
 
@@ -76,7 +88,10 @@ async def test_scenario_3_quota_exceeded_429(client: AsyncClient):
 async def test_scenario_4_paginated_list(client: AsyncClient):
     for i in range(25):
         resp = await client.post("/api/v1/admin/tenants", json={
-            "name": f"Tenant {i}", "slug": f"tenant-{i}"
+            "name": f"Tenant {i}",
+            "slug": f"tenant-{i}",
+            "admin_email": f"admin@tenant-{i}.io",
+            "admin_password": "TenantAdmin1",
         }, headers=auth_header(SYSTEM_ADMIN_TOKEN))
         assert resp.status_code == 201
 
@@ -91,10 +106,14 @@ async def test_scenario_4_paginated_list(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_scenario_5_deactivate_tenant(client: AsyncClient, engine):
     resp = await client.post("/api/v1/admin/tenants", json={
-        "name": "Deactivate Test", "slug": "deactivate-test"
+        "name": "Deactivate Test",
+        "slug": "deactivate-test",
+        "admin_email": "admin@deactivate-test.io",
+        "admin_password": "DeactivateAdmin1",
     }, headers=auth_header(SYSTEM_ADMIN_TOKEN))
     assert resp.status_code == 201
     tid = resp.json()["tenant"]["id"]
+    slug = resp.json()["tenant"]["slug"]
 
     deact_resp = await client.post(f"/api/v1/admin/tenants/{tid}/deactivate", headers=auth_header(SYSTEM_ADMIN_TOKEN))
     assert deact_resp.status_code == 200
@@ -106,7 +125,7 @@ async def test_scenario_5_deactivate_tenant(client: AsyncClient, engine):
 
     user_token = create_access_token(tenant_id=tid, user_id="test-user", role="annotator")
     entity_resp = await client.get(
-        "/api/v1/entity-types",
+        f"/api/v1/tenants/{slug}/entity-types",
         headers={"Authorization": f"Bearer {user_token}"}
     )
     assert entity_resp.status_code == 403, f"Expected 403, got {entity_resp.status_code}: {entity_resp.text}"

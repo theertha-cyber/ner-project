@@ -15,13 +15,13 @@ function SkeletonRows() {
   return (
     <>
       {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
-        <tr key={i} className="animate-pulse border-b border-gray-100">
-          <td className="px-4 py-3"><div className="h-4 w-40 rounded bg-gray-200" /></td>
-          <td className="px-4 py-3"><div className="h-4 w-12 rounded bg-gray-200" /></td>
-          <td className="px-4 py-3"><div className="h-4 w-16 rounded bg-gray-200" /></td>
-          <td className="px-4 py-3"><div className="h-5 w-20 rounded-full bg-gray-200" /></td>
-          <td className="px-4 py-3"><div className="h-4 w-24 rounded bg-gray-200" /></td>
-          <td className="px-4 py-3"><div className="h-4 w-4 rounded bg-gray-200" /></td>
+        <tr key={i} className="animate-pulse" style={{ borderBottom: "1px solid var(--line)" }}>
+          <td className="px-4 py-3"><div className="h-4 w-40 rounded" style={{ background: "var(--surface-3)" }} /></td>
+          <td className="px-4 py-3"><div className="h-4 w-12 rounded" style={{ background: "var(--surface-3)" }} /></td>
+          <td className="px-4 py-3"><div className="h-4 w-16 rounded" style={{ background: "var(--surface-3)" }} /></td>
+          <td className="px-4 py-3"><div className="h-5 w-20 rounded-full" style={{ background: "var(--surface-3)" }} /></td>
+          <td className="px-4 py-3"><div className="h-4 w-24 rounded" style={{ background: "var(--surface-3)" }} /></td>
+          <td className="px-4 py-3"><div className="h-4 w-4 rounded" style={{ background: "var(--surface-3)" }} /></td>
         </tr>
       ))}
     </>
@@ -108,13 +108,13 @@ export function DocumentTable({
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-border bg-gray-50">
-              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Filename</th>
-              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Type</th>
-              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Size</th>
-              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
-              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Created</th>
-              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Delete</th>
+            <tr className="border-b" style={{ borderColor: "var(--line)", background: "var(--surface-3)" }}>
+              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Filename</th>
+              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Type</th>
+              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Size</th>
+              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Status</th>
+              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Created</th>
+              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Delete</th>
             </tr>
           </thead>
           <tbody>
@@ -122,7 +122,7 @@ export function DocumentTable({
               <SkeletonRows />
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">
+                <td colSpan={6} className="px-4 py-12 text-center text-sm" style={{ color: "var(--ink-3)" }}>
                   No documents yet — upload your first document
                 </td>
               </tr>
@@ -142,7 +142,7 @@ export function DocumentTable({
       </div>
 
       {!isLoading && data && data.total > perPage && (
-        <div className="flex items-center justify-between text-sm text-gray-500">
+        <div className="flex items-center justify-between text-sm" style={{ color: "var(--ink-3)" }}>
           <span>
             Showing {(page - 1) * perPage + 1}–
             {Math.min(page * perPage, data.total)} of {data.total}
@@ -152,7 +152,8 @@ export function DocumentTable({
               type="button"
               onClick={() => onPageChange(page - 1)}
               disabled={page <= 1}
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:text-gray-300"
+              className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+              style={{ color: "var(--ink-2)" }}
             >
               Previous
             </button>
@@ -160,7 +161,8 @@ export function DocumentTable({
               type="button"
               onClick={() => onPageChange(page + 1)}
               disabled={page >= totalPages}
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:text-gray-300"
+              className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+              style={{ color: "var(--ink-2)" }}
             >
               Next
             </button>

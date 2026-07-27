@@ -191,9 +191,9 @@ function ChatPageInner() {
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 100,
-            background: "#fef2f2",
-            color: "#991b1b",
-            border: "1px solid #fecaca",
+            background: "var(--bad-soft)",
+            color: "var(--bad)",
+            border: "1px solid var(--bad)",
             borderRadius: 8,
             padding: "10px 20px",
             fontSize: 13,
@@ -226,7 +226,7 @@ function ChatPageInner() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#9ca3af",
+              color: "var(--ink-3)",
               fontSize: 16,
             }}
           >

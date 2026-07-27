@@ -70,7 +70,7 @@ export function MessageThread({ messages, loading }: MessageThreadProps) {
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
       {loading && (
-        <div style={{ textAlign: "center", padding: 16, color: "#9ca3af" }}>Loading...</div>
+        <div style={{ textAlign: "center", padding: 16, color: "var(--ink-3)" }}>Loading...</div>
       )}
       {empty && !loading && (
         <div
@@ -79,7 +79,7 @@ export function MessageThread({ messages, loading }: MessageThreadProps) {
             alignItems: "center",
             justifyContent: "center",
             height: "100%",
-            color: "#9ca3af",
+            color: "var(--ink-3)",
             fontSize: 14,
           }}
         >
@@ -100,8 +100,8 @@ export function MessageThread({ messages, loading }: MessageThreadProps) {
               style={{
                 padding: "10px 14px",
                 borderRadius: 12,
-                background: msg.role === "user" ? "#2563eb" : "#f3f4f6",
-                color: msg.role === "user" ? "white" : "#111827",
+                background: msg.role === "user" ? "var(--primary)" : "var(--surface-2)",
+                color: msg.role === "user" ? "#fff" : "var(--ink)",
                 fontSize: 14,
                 lineHeight: 1.4,
                 borderBottomRightRadius: msg.role === "user" ? 4 : 12,

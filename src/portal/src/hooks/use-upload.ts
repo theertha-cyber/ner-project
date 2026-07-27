@@ -14,7 +14,7 @@ export function useUpload() {
   const { getAccessToken } = useAuth();
 
   const upload = useCallback(
-    async (file: File) => {
+    async (file: File, purpose: "query" | "training" = "query") => {
       setProgress(0);
       setError(null);
       setIsUploading(true);
@@ -56,6 +56,7 @@ export function useUpload() {
         const token = getAccessToken();
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("purpose", purpose);
 
         const baseUrl = DOCUMENT_URL || "";
         xhr.open("POST", `${baseUrl}/api/v1/documents`);

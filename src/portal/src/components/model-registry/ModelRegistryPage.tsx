@@ -42,11 +42,11 @@ export function ModelRegistryPage() {
   return (
     <div className="animate-fade-up flex h-full flex-col">
       {/* Header */}
-      <div className="border-b border-border px-6 py-3">
-        <p className="text-xs font-medium text-gray-400">GET /api/v1/models</p>
-        <h1 className="text-xl font-semibold text-gray-900">Model Registry</h1>
+      <div className="border-b px-6 py-3" style={{ borderColor: "var(--line)" }}>
+        <p className="text-xs font-medium" style={{ color: "var(--ink-3)" }}>GET /api/v1/models</p>
+        <h1 className="text-xl font-semibold" style={{ color: "var(--ink)" }}>Model Registry</h1>
         {!isLoading && (
-          <p className="text-xs text-gray-500">{versionCount} version{versionCount !== 1 ? "s" : ""}</p>
+          <p className="text-xs" style={{ color: "var(--ink-3)" }}>{versionCount} version{versionCount !== 1 ? "s" : ""}</p>
         )}
       </div>
 
@@ -60,7 +60,8 @@ export function ModelRegistryPage() {
                 {[0, 1, 2].map((i) => (
                   <div
                     key={i}
-                    className="h-16 w-full animate-pulse rounded-lg bg-gray-100"
+                    className="h-16 w-full animate-pulse rounded-lg"
+                    style={{ background: "var(--surface-3)" }}
                   />
                 ))}
               </>

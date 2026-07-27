@@ -53,29 +53,31 @@ export function DocumentRow({ doc, onDelete, isDeleting, isRemoving }: DocumentR
   return (
     <tr
       className={[
-        "border-b border-gray-100 transition-all duration-300",
+        "transition-all duration-300",
         isDeleting ? "opacity-50" : "",
         isRemoving ? "translate-x-full opacity-0" : "",
       ].join(" ")}
+      style={{ borderBottom: "1px solid var(--line)" }}
     >
-      <td className="px-4 py-3 text-sm text-gray-900">{doc.filename}</td>
-      <td className="px-4 py-3 text-sm text-gray-500">{contentTypeLabel(doc.content_type)}</td>
-      <td className="px-4 py-3 text-sm text-gray-500">{formatFileSize(doc.file_size)}</td>
+      <td className="px-4 py-3 text-sm" style={{ color: "var(--ink)" }}>{doc.filename}</td>
+      <td className="px-4 py-3 text-sm" style={{ color: "var(--ink-3)" }}>{contentTypeLabel(doc.content_type)}</td>
+      <td className="px-4 py-3 text-sm" style={{ color: "var(--ink-3)" }}>{formatFileSize(doc.file_size)}</td>
       <td className="px-4 py-3 text-sm">
         <span className="inline-flex items-center gap-1.5">
           {doc.status === "processing" && (
-            <span className="inline-block size-1.5 animate-pulse rounded-full bg-blue-500" />
+            <span className="inline-block size-1.5 animate-pulse rounded-full" style={{ background: "var(--color-status-running)" }} />
           )}
           <Badge variant={statusToVariant[doc.status]} label={doc.status} />
         </span>
       </td>
-      <td className="px-4 py-3 text-sm text-gray-500">{formatDate(doc.created_at)}</td>
+      <td className="px-4 py-3 text-sm" style={{ color: "var(--ink-3)" }}>{formatDate(doc.created_at)}</td>
       <td className="px-4 py-3 text-sm">
         <button
           type="button"
           onClick={handleDelete}
           disabled={isDeleting}
-          className="text-gray-400 hover:text-red-600 disabled:opacity-30"
+          className="hover:text-red-600 disabled:opacity-30"
+          style={{ color: "var(--ink-3)" }}
           aria-label={`Delete ${doc.filename}`}
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-4">

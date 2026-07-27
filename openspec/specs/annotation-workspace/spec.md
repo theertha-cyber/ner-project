@@ -101,11 +101,11 @@ The system SHALL use the `examples` column from `entity_definitions` as the keyw
 
 ### Requirement: Annotation Task Management
 
-The system SHALL allow Tenant Admins to create annotation tasks that assign a document to a specific annotator. Each task SHALL track status through `unannotated` → `in-progress` → `completed`. A document SHALL have at most one active (non-completed) task at any time. Tasks SHALL be stored in the tenant's isolated schema.
+The system SHALL allow Tenant Admins to create annotation tasks that assign a document to a specific annotator. Each task SHALL track status through `unannotated` → `in-progress` → `completed`. A document SHALL have at most one active (non-completed) task at any time. Tasks SHALL be stored in the tenant's isolated schema. Annotation tasks SHALL only be creatable for documents whose `purpose` is `training`.
 
 #### Scenario: Create an annotation task
 
-- **GIVEN** a processed document and an active annotator user
+- **GIVEN** a processed document with `purpose='training'` and an active annotator user
 - **WHEN** a Tenant Admin POSTs to `/api/v1/annotation-tasks` with `{document_id: "doc-123", annotator_user_id: "user-456"}`
 - **THEN** the response SHALL have status 201
 - **AND** the task SHALL have `status: "unannotated"`
@@ -144,6 +144,19 @@ The system SHALL allow Tenant Admins to create annotation tasks that assign a do
 - **WHEN** an annotator PATCHes `/api/v1/annotation-tasks/task-789` with `{status: "completed"}`
 - **THEN** the response SHALL have status 422
 - **AND** the error SHALL indicate the document must have at least one span before completing
+
+#### Scenario: Create task for a query-purpose document is rejected
+
+- **GIVEN** a processed document with `purpose='query'`
+- **WHEN** a Tenant Admin POSTs to `/api/v1/annotation-tasks` with that document's `document_id` and a valid `annotator_user_id`
+- **THEN** the response SHALL have status 422
+- **AND** the error SHALL indicate the document's purpose must be `training` to be assigned for annotation
+
+#### Scenario: Document picker only lists training-purpose documents
+
+- **GIVEN** a tenant with 2 processed documents with `purpose='training'` and 3 with `purpose='query'`
+- **WHEN** the annotation task assignment form requests the document list
+- **THEN** only the 2 `purpose='training'` documents SHALL be offered as assignable
 
 ### Requirement: Annotation Export
 

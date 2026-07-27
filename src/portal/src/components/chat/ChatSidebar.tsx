@@ -21,21 +21,21 @@ export function ChatSidebar({ conversations, activeConvId, onSelect, onNew, onDe
     <div
       style={{
         width: 280,
-        borderRight: "1px solid #e5e7eb",
+        borderRight: "1px solid var(--line)",
         display: "flex",
         flexDirection: "column",
-        background: "#f9fafb",
+        background: "var(--surface-3)",
       }}
     >
-      <div style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>
+      <div style={{ padding: "12px", borderBottom: "1px solid var(--line)" }}>
         <button
           onClick={onNew}
           disabled={loading}
           style={{
             width: "100%",
             padding: "10px 16px",
-            background: loading ? "#93c5fd" : "#2563eb",
-            color: "white",
+            background: loading ? "var(--ink-3)" : "var(--primary)",
+            color: "#fff",
             border: "none",
             borderRadius: 8,
             cursor: loading ? "not-allowed" : "pointer",
@@ -48,7 +48,7 @@ export function ChatSidebar({ conversations, activeConvId, onSelect, onNew, onDe
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
         {conversations.length === 0 && (
-          <div style={{ padding: 16, color: "#9ca3af", textAlign: "center", fontSize: 14 }}>
+          <div style={{ padding: 16, color: "var(--ink-3)", textAlign: "center", fontSize: 14 }}>
             No conversations yet
           </div>
         )}
@@ -59,8 +59,8 @@ export function ChatSidebar({ conversations, activeConvId, onSelect, onNew, onDe
             style={{
               padding: "12px 16px",
               cursor: "pointer",
-              borderBottom: "1px solid #e5e7eb",
-              background: activeConvId === conv.id ? "#e0e7ff" : "transparent",
+              borderBottom: "1px solid var(--line)",
+              background: activeConvId === conv.id ? "var(--primary-soft)" : "transparent",
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
@@ -71,7 +71,7 @@ export function ChatSidebar({ conversations, activeConvId, onSelect, onNew, onDe
                 style={{
                   fontWeight: activeConvId === conv.id ? 600 : 400,
                   fontSize: 14,
-                  color: "#111827",
+                  color: "var(--ink)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -79,7 +79,7 @@ export function ChatSidebar({ conversations, activeConvId, onSelect, onNew, onDe
               >
                 {conv.title || "New conversation"}
               </div>
-              <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
                 {conv.message_count} messages
               </div>
             </div>
@@ -93,7 +93,7 @@ export function ChatSidebar({ conversations, activeConvId, onSelect, onNew, onDe
               style={{
                 background: "none",
                 border: "none",
-                color: "#ef4444",
+                color: "var(--bad)",
                 cursor: "pointer",
                 fontSize: 14,
                 padding: "4px 8px",

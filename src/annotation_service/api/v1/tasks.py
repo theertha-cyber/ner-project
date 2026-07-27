@@ -50,6 +50,20 @@ async def create_task(
         from fastapi import HTTPException
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": "document_id and annotator_user_id are required"})
 
+    doc_result = await session.execute(
+        text(f"SELECT purpose FROM {schema}.documents WHERE id = :id"),
+        {"id": document_id},
+    )
+    doc_row = doc_result.fetchone()
+    if not doc_row:
+        raise NotFoundError("Document", document_id)
+    if doc_row.purpose != "training":
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "VALIDATION_ERROR", "message": "Document's purpose must be 'training' to be assigned for annotation"},
+        )
+
     result = await session.execute(
         text(f"""
             SELECT id FROM {schema}.annotation_tasks

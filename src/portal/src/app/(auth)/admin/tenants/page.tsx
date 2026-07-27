@@ -42,7 +42,7 @@ export default function TenantsPage() {
   return (
     <div className="animate-fade-up">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Tenants</h1>
+        <h1 className="text-2xl font-bold" style={{ color: "var(--ink)" }}>Tenants</h1>
         <Link
           href="/admin/tenants/new"
           className="rounded-md bg-brand-primary px-4 py-2 text-sm text-white hover:bg-brand-hover"
@@ -52,53 +52,53 @@ export default function TenantsPage() {
       </div>
 
       {loading ? (
-        <p className="text-gray-500">Loading...</p>
+        <p style={{ color: "var(--ink-3)" }}>Loading...</p>
       ) : data ? (
         <>
-          <div className="overflow-hidden rounded-lg bg-white shadow">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="overflow-hidden rounded-lg shadow" style={{ background: "var(--surface-2)" }}>
+            <table className="min-w-full" style={{ borderCollapse: "collapse" }}>
+              <thead style={{ background: "var(--surface-3)" }}>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
                     Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
                     Slug
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
                     Users
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
                     Created
                   </th>
                   <th className="px-6 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody>
                 {data.tenants.map((t) => (
-                  <tr key={t.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
+                  <tr key={t.id} style={{ borderBottom: "1px solid var(--line)" }} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td className="whitespace-nowrap px-6 py-4 text-sm font-medium" style={{ color: "var(--ink)" }}>
                       {t.name}
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">{t.slug}</td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm" style={{ color: "var(--ink-3)" }}>{t.slug}</td>
                     <td className="whitespace-nowrap px-6 py-4">
                       <span
                         className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
                           t.status === "active"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                            : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
                         }`}
                       >
                         {t.status}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    <td className="whitespace-nowrap px-6 py-4 text-sm" style={{ color: "var(--ink-3)" }}>
                       {t.max_users}
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    <td className="whitespace-nowrap px-6 py-4 text-sm" style={{ color: "var(--ink-3)" }}>
                       {new Date(t.created_at).toLocaleDateString()}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-right text-sm">
@@ -116,21 +116,23 @@ export default function TenantsPage() {
           </div>
 
           <div className="mt-4 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm" style={{ color: "var(--ink-3)" }}>
               Showing {data.tenants.length} of {data.total} tenants
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="rounded-md bg-white px-3 py-1 text-sm shadow disabled:opacity-50"
+                className="rounded-md px-3 py-1 text-sm shadow disabled:opacity-50"
+                style={{ background: "var(--surface-2)" }}
               >
                 Previous
               </button>
               <button
                 onClick={() => setPage((p) => p + 1)}
                 disabled={page * data.per_page >= data.total}
-                className="rounded-md bg-white px-3 py-1 text-sm shadow disabled:opacity-50"
+                className="rounded-md px-3 py-1 text-sm shadow disabled:opacity-50"
+                style={{ background: "var(--surface-2)" }}
               >
                 Next
               </button>
@@ -138,7 +140,7 @@ export default function TenantsPage() {
           </div>
         </>
       ) : (
-        <p className="text-gray-500">No tenants found.</p>
+        <p style={{ color: "var(--ink-3)" }}>No tenants found.</p>
       )}
     </div>
   );

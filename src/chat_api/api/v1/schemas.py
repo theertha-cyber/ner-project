@@ -15,6 +15,7 @@ class Source(BaseModel):
     entity_type: str | None = None
     value: str | None = None
     confidence: float | None = None
+    page_number: int | None = None
 
 
 class Citation(BaseModel):
