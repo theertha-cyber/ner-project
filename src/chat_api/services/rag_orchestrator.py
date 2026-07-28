@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
 from src.shared.retrieval import DenseRetriever, SparseRetriever, HybridRetriever, RerankingRetriever, CrossEncoderReranker, RetrievalResult
+from src.shared.retrieval.tools import build_default_registry
 from src.chat_api.api.v1.schemas import Source, Citation
 from src.chat_api.services.sql_generator import SQLGenerator
 from src.chat_api.services.embedding_service import EmbeddingService
@@ -26,6 +27,7 @@ class RAGOrchestrator:
         self.retriever = RerankingRetriever(base_retriever, CrossEncoderReranker())
         self.ner_client = NERClient()
         self.guardrails = GuardrailService()
+        self.tool_registry = build_default_registry()
         if settings.azure_openai_endpoint:
             self.llm_client = AsyncAzureOpenAI(
                 azure_endpoint=settings.azure_openai_endpoint,
@@ -216,6 +218,7 @@ class RAGOrchestrator:
                 entity_type=entity_type_name or s.entity_type,
                 entity_value=s.value,
                 confidence=s.confidence,
+                relevance_score=s.relevance_score,
                 context_snippet=context,
                 page_number=s.page_number,
                 source_type=s.source_type,

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
+from src.shared.auth import create_service_token
 from src.chat_api.api.v1.schemas import WidgetChatRequest, WidgetChatResponse, Source
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator
 from src.chat_api.services.guardrails import GuardrailService
@@ -176,7 +177,8 @@ async def widget_chat(
         )
 
     schema = _schema(tenant_id)
-    reply, sources = await orchestrator.execute(body.message, session, schema, tenant_id)
+    service_token = create_service_token(tenant_id)
+    reply, sources = await orchestrator.execute(body.message, session, schema, tenant_id, service_token)
     disclaimer = guardrails.inject_disclaimer()
 
     headers = rate_limiter.get_headers(f"widget:{tenant_id}", WIDGET_RATE_LIMIT, WIDGET_WINDOW)

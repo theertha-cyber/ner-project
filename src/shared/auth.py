@@ -57,6 +57,23 @@ def create_refresh_token(tenant_id: str, user_id: str, role: str, email: str = "
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def create_service_token(tenant_id: str, ttl_seconds: int = 60) -> str:
+    """Short-lived, no-user token for server-to-server calls made on behalf of a
+    tenant without an authenticated end-user session (e.g. the public/widget chat
+    path calling model_serving's internal endpoints). Carries only `tenant_id` —
+    no `user_id`/`role` — so it satisfies TenantContextMiddleware's tenant check
+    without asserting any human identity or permission level."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": f"service:{tenant_id}",
+        "tenant_id": tenant_id,
+        "iat": now,
+        "exp": now + timedelta(seconds=ttl_seconds),
+        "type": "service",
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
 def decode_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])

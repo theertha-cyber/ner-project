@@ -24,6 +24,7 @@ class Citation(BaseModel):
     entity_type: str | None = None
     entity_value: str | None = None
     confidence: float | None = None
+    relevance_score: float | None = None
     context_snippet: str | None = None
     page_number: int | None = None
     source_type: str = "citation"

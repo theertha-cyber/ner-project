@@ -53,6 +53,40 @@ class TestCrossEncoderReordersResults:
         assert reranked[0].document_id == "doc-c"
         assert reranked[0].chunk_text == "the actually relevant chunk"
 
+    async def test_rerank_overwrites_similarity_score_with_reranker_score(self, monkeypatch):
+        """similarity_score must reflect the cross-encoder's own score, not the
+        pre-rerank retriever's score — otherwise the UI shows a stale/wrong number."""
+        results = _make_results()
+
+        class FakeResponse:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"results": [{"index": 2, "score": 0.95}, {"index": 0, "score": 0.3}, {"index": 1, "score": 0.1}]}
+
+        class FakeAsyncClient:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, headers=None, json=None):
+                return FakeResponse()
+
+        monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+
+        reranker = CrossEncoderReranker()
+        reranked = await reranker.rerank("query", results, top_k=3)
+
+        assert [r.similarity_score for r in reranked] == [0.95, 0.3, 0.1]
+
 
 class TestCrossEncoderReturnsNoneOnFailure:
     """Covers scenario 7, Hallucination Risk 2: task 3.6."""

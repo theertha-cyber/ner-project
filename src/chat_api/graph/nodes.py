@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.config import settings
 from src.shared.database import get_engine
 from src.shared.retrieval import RerankingRetriever
+from src.shared.retrieval.tools.base import ToolContext
 from src.chat_api.api.v1.schemas import Source
+from src.chat_api.graph.agentic import run_agentic_loop
 from src.chat_api.graph.state import ChatState
 from src.chat_api.services.context_assembler import ContextAssembler
 
@@ -60,7 +62,7 @@ def build_nodes(orchestrator) -> dict:
             return {"blocked_reason": blocked_reason, "reply": reply, "sources": []}
 
         complexity = orchestrator.guardrails.assess_complexity(message)
-        if complexity > 3:
+        if complexity > 3 and not settings.chat_agentic_retrieval:
             return {
                 "complexity": complexity,
                 "reply": "That question requires multiple lookups. Please simplify and ask one thing at a time.",
@@ -104,6 +106,71 @@ def build_nodes(orchestrator) -> dict:
             except Exception as e:
                 logger.warning("Vector search failed: %s", str(e))
                 return {"chunks": [], "retrieval_error": str(e)}
+
+    @_traced("agentic_retrieval", count_key="chunks")
+    async def agentic_retrieval_node(state: ChatState) -> dict:
+        """Runs the bounded agentic retrieval loop (agentic-retrieval-loop). On any
+        failure that prevents the loop from producing evidence, falls back to the
+        existing one-shot sql_retrieval_node + retrieval_node behaviour for this turn."""
+        message = state["message"]
+        schema = state["schema"]
+        tenant_id = state["tenant_id"]
+        jwt_token = state.get("jwt_token")
+        conversation_context = state.get("conversation_context")
+        complexity = state.get("complexity") or 1
+
+        max_iterations = (
+            settings.agentic_max_iterations_complex if complexity > 3 else settings.agentic_max_iterations
+        )
+
+        session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+        loop_result = None
+        try:
+            async with session_factory() as session:
+                context = ToolContext(
+                    tenant_id=tenant_id,
+                    schema=schema,
+                    session=session,
+                    retriever=orchestrator.retriever,
+                    jwt_token=jwt_token,
+                    max_top_k=settings.retrieval_top_k,
+                    sql_search=orchestrator._sql_source,
+                    deadline=time.monotonic() + settings.agentic_deadline_seconds,
+                )
+                loop_result = await run_agentic_loop(
+                    message, conversation_context, orchestrator.llm_client, orchestrator.llm_model,
+                    orchestrator.tool_registry, context,
+                    max_iterations, settings.agentic_max_tool_calls,
+                    settings.agentic_deadline_seconds, settings.agentic_observation_char_limit,
+                )
+        except Exception as e:
+            logger.warning("agentic loop crashed, falling back to one-shot retrieval: %s", e)
+
+        if loop_result is None or loop_result.agentic_degraded:
+            stop_reason = loop_result.agentic_stop_reason if loop_result is not None else "loop_crashed"
+            logger.info(
+                "graph node=agentic_retrieval tenant_id=%s degraded=True stop_reason=%s falling back to one-shot retrieval",
+                tenant_id, stop_reason,
+            )
+            sql_part = await sql_retrieval_node(state)
+            retrieval_part = await retrieval_node(state)
+            return {
+                **sql_part,
+                **retrieval_part,
+                "tool_trace": loop_result.tool_trace if loop_result is not None else [],
+                "agentic_degraded": True,
+                "agentic_stop_reason": stop_reason,
+            }
+
+        return {
+            "chunks": loop_result.chunks,
+            "retrieval_error": loop_result.retrieval_error,
+            "sql_results": loop_result.sql_results,
+            "sql_error": loop_result.sql_error,
+            "tool_trace": loop_result.tool_trace,
+            "agentic_degraded": loop_result.agentic_degraded,
+            "agentic_stop_reason": loop_result.agentic_stop_reason,
+        }
 
     @_traced("ner_enrichment", count_key="ner_entities")
     async def ner_enrichment_node(state: ChatState) -> dict:
@@ -208,6 +275,7 @@ def build_nodes(orchestrator) -> dict:
         "guardrail": guardrail_node,
         "sql_retrieval": sql_retrieval_node,
         "retrieval": retrieval_node,
+        "agentic_retrieval": agentic_retrieval_node,
         "ner_enrichment": ner_enrichment_node,
         "source_assembly": source_assembly_node,
         "prompt_assembly": prompt_assembly_node,

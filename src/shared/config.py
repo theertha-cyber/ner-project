@@ -47,6 +47,13 @@ class Settings(BaseSettings):
 
     chat_use_graph: bool = True
 
+    chat_agentic_retrieval: bool = False
+    agentic_max_iterations: int = 3
+    agentic_max_iterations_complex: int = 5
+    agentic_max_tool_calls: int = 6
+    agentic_deadline_seconds: float = 8.0
+    agentic_observation_char_limit: int = 4000
+
     context_token_budget: int = 6000
     context_max_chunks: int | None = None
     conversation_history_turns: int = 5

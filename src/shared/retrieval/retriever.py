@@ -3,6 +3,12 @@ from typing import Protocol
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
+from src.shared.retrieval.config import (
+    RetrievalConfig,
+    resolve_rerank_candidate_count,
+    resolve_reranker_enabled,
+    resolve_top_k,
+)
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.reranker import Reranker
 
@@ -29,11 +35,12 @@ def _metadata_filter_clause(metadata_filter: dict | None) -> tuple[str, dict]:
 
 
 class DenseRetriever:
-    def __init__(self, embedding_service=None):
+    def __init__(self, embedding_service=None, config: RetrievalConfig | None = None):
         if embedding_service is None:
             from src.chat_api.services.embedding_service import EmbeddingService
             embedding_service = EmbeddingService()
         self.embedding_service = embedding_service
+        self.config = config
 
     async def retrieve(
         self,
@@ -43,7 +50,7 @@ class DenseRetriever:
         top_k: int | None = None,
         metadata_filter: dict | None = None,
     ) -> list[RetrievalResult]:
-        top_k = top_k if top_k is not None else settings.retrieval_top_k
+        top_k = resolve_top_k(top_k, self.config, settings)
         filter_clause, filter_params = _metadata_filter_clause(metadata_filter)
 
         query_embedding = await self.embedding_service.embed(query)
@@ -76,6 +83,9 @@ class DenseRetriever:
 
 
 class SparseRetriever:
+    def __init__(self, config: RetrievalConfig | None = None):
+        self.config = config
+
     async def retrieve(
         self,
         query: str,
@@ -84,7 +94,7 @@ class SparseRetriever:
         top_k: int | None = None,
         metadata_filter: dict | None = None,
     ) -> list[RetrievalResult]:
-        top_k = top_k if top_k is not None else settings.retrieval_top_k
+        top_k = resolve_top_k(top_k, self.config, settings)
         filter_clause, filter_params = _metadata_filter_clause(metadata_filter)
 
         result = await session.execute(
@@ -120,9 +130,15 @@ class HybridRetriever:
     CANDIDATE_MULTIPLIER = 3
     CANDIDATE_CAP = 50
 
-    def __init__(self, dense_retriever: DenseRetriever | None = None, sparse_retriever: SparseRetriever | None = None):
+    def __init__(
+        self,
+        dense_retriever: DenseRetriever | None = None,
+        sparse_retriever: SparseRetriever | None = None,
+        config: RetrievalConfig | None = None,
+    ):
         self.dense = dense_retriever if dense_retriever is not None else DenseRetriever()
         self.sparse = sparse_retriever if sparse_retriever is not None else SparseRetriever()
+        self.config = config
 
     async def retrieve(
         self,
@@ -132,7 +148,7 @@ class HybridRetriever:
         top_k: int | None = None,
         metadata_filter: dict | None = None,
     ) -> list[RetrievalResult]:
-        top_k = top_k if top_k is not None else settings.retrieval_top_k
+        top_k = resolve_top_k(top_k, self.config, settings)
         candidate_k = min(top_k * self.CANDIDATE_MULTIPLIER, self.CANDIDATE_CAP)
 
         # Sequential, not asyncio.gather: both retrievers share the same AsyncSession,
@@ -160,9 +176,10 @@ class RerankingRetriever:
     """Wraps a Retriever with a Reranker (decorator pattern). Implements the Retriever
     protocol itself so callers need no change beyond which instance they hold."""
 
-    def __init__(self, retriever: "Retriever", reranker: Reranker):
+    def __init__(self, retriever: "Retriever", reranker: Reranker, config: RetrievalConfig | None = None):
         self.retriever = retriever
         self.reranker = reranker
+        self.config = config
 
     async def retrieve(
         self,
@@ -172,14 +189,20 @@ class RerankingRetriever:
         top_k: int | None = None,
         metadata_filter: dict | None = None,
         jwt_token: str | None = None,
+        degraded_sink: list | None = None,
     ) -> list[RetrievalResult]:
-        top_k = top_k if top_k is not None else settings.retrieval_top_k
+        """`degraded_sink`, when provided, receives `True` appended to it if the
+        reranker was attempted but failed and the call fell back to unreranked
+        candidates. Callers that don't need to observe degradation (e.g. the chat
+        graph today) pass nothing and behaviour is unchanged."""
+        top_k = resolve_top_k(top_k, self.config, settings)
 
-        if not settings.reranker_enabled:
+        if not resolve_reranker_enabled(self.config, settings):
             return await self.retriever.retrieve(query, session, schema, top_k=top_k, metadata_filter=metadata_filter)
 
+        candidate_count = resolve_rerank_candidate_count(self.config, settings)
         candidates = await self.retriever.retrieve(
-            query, session, schema, top_k=settings.rerank_candidate_count, metadata_filter=metadata_filter
+            query, session, schema, top_k=candidate_count, metadata_filter=metadata_filter
         )
         reranked = await self.reranker.rerank(query, candidates, top_k=top_k, jwt_token=jwt_token)
         if reranked is None:
@@ -187,5 +210,7 @@ class RerankingRetriever:
                 "Reranker fallback: reranking failed or unavailable, returning unranked candidates truncated to top_k=%d",
                 top_k,
             )
+            if degraded_sink is not None:
+                degraded_sink.append(True)
             return candidates[:top_k]
         return reranked[:top_k]

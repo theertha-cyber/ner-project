@@ -26,6 +26,11 @@ class ChatState(TypedDict, total=False):
     retrieval_error: str | None
     ner_entities: list[dict]
 
+    # agentic retrieval loop outputs (additive; absent when the loop did not run)
+    tool_trace: list[dict]
+    agentic_degraded: bool
+    agentic_stop_reason: str
+
     # assembly
     sources: list[Source | Citation]
     document_names: dict[str, str]

@@ -8,6 +8,7 @@ interface Citation {
   entity_type?: string | null;
   entity_value?: string | null;
   confidence?: number | null;
+  relevance_score?: number | null;
   context_snippet?: string | null;
   page_number?: number | null;
   source_type?: string;
@@ -43,6 +44,11 @@ export function CitationCard({ citation }: { citation: Citation }) {
           </span>
         )}
       </div>
+      {citation.relevance_score !== undefined && citation.relevance_score !== null && (
+        <div style={{ color: "#9ca3af", marginTop: 2 }}>
+          relevance: {citation.relevance_score.toFixed(3)}
+        </div>
+      )}
       {hasContext && (
         <>
           <button

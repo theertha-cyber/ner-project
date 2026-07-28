@@ -46,7 +46,10 @@ class CrossEncoderReranker:
                 )
                 response.raise_for_status()
                 data = response.json()
-                return [results[r["index"]] for r in data["results"]]
+                return [
+                    results[r["index"]].model_copy(update={"similarity_score": r["score"]})
+                    for r in data["results"]
+                ]
             except (httpx.RequestError, httpx.HTTPStatusError) as e:
                 logger.warning("Reranking request failed: %s", str(e))
                 return None
