@@ -56,7 +56,7 @@ class TenantService:
                 table_name = row[0]
                 await self.db.execute(text(
                     f"CREATE TABLE {schema_name}.{table_name} "
-                    f"(LIKE tenant_template.{table_name} INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)"
+                    f"(LIKE tenant_template.{table_name} INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING GENERATED)"
                 ))
 
             # Create the initial tenant admin in the same transaction

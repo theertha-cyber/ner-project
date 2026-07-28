@@ -78,7 +78,9 @@ async def chat(
             {"id": conversation_id, "tid": tenant_id, "uid": user_id},
         )
 
-    reply, sources = await orchestrator.execute(body.message, session, schema, tenant_id, request.headers.get("Authorization", ""), conversation_context)
+    auth_header = request.headers.get("Authorization", "")
+    jwt_token = auth_header.removeprefix("Bearer ")
+    reply, sources = await orchestrator.execute(body.message, session, schema, tenant_id, jwt_token, conversation_context)
 
     disclaimer = guardrails.inject_disclaimer()
     sources_data = json.dumps([s.model_dump() for s in sources]) if sources else None

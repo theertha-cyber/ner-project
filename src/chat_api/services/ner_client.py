@@ -27,7 +27,7 @@ class NERClient:
                 response.raise_for_status()
                 data = response.json()
                 return data.get("entities", [])
-            except httpx.RequestError as e:
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
                 logger.error("NER inference request failed: %s", str(e))
                 return None
 
@@ -41,6 +41,6 @@ class NERClient:
                 response.raise_for_status()
                 data = response.json()
                 return data.get("entities", [])
-            except httpx.RequestError as e:
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
                 logger.error("Base model NER inference failed: %s", str(e))
                 return None
