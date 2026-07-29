@@ -38,9 +38,13 @@ describe("useUpload", () => {
       upload: { onprogress: null },
       onload: null,
       onerror: null,
+      onabort: null,
       open: vi.fn(),
       setRequestHeader: vi.fn(),
       send: vi.fn(),
+      abort: vi.fn(function (this: any) {
+        this.onabort?.();
+      }),
       status,
       responseText,
     };
@@ -111,6 +115,25 @@ describe("useUpload", () => {
     });
 
     expect(result.current.error).toContain("File too large");
+    expect(result.current.isUploading).toBe(false);
+  });
+
+  it("cancel aborts the in-flight request", async () => {
+    const xhrInstance = mockXhrFactory(201, JSON.stringify({ id: "doc-1" }));
+    const { result } = renderHook(() => useUpload(), { wrapper: createWrapper() });
+    const file = new File(["content"], "test.pdf", { type: "application/pdf" });
+
+    let uploadPromise: Promise<void>;
+    act(() => {
+      uploadPromise = result.current.upload(file);
+    });
+
+    await act(async () => {
+      result.current.cancel();
+      await expect(uploadPromise).rejects.toThrow();
+    });
+
+    expect(xhrInstance.abort).toHaveBeenCalled();
     expect(result.current.isUploading).toBe(false);
   });
 

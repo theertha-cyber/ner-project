@@ -53,6 +53,11 @@ export function useUpload() {
           reject(new Error("Network error"));
         };
 
+        xhr.onabort = () => {
+          setIsUploading(false);
+          reject(new DOMException("Upload cancelled", "AbortError"));
+        };
+
         const token = getAccessToken();
         const formData = new FormData();
         formData.append("file", file);
@@ -75,5 +80,9 @@ export function useUpload() {
     xhrRef.current = null;
   }, []);
 
-  return { upload, progress, isUploading, error, reset };
+  const cancel = useCallback(() => {
+    xhrRef.current?.abort();
+  }, []);
+
+  return { upload, progress, isUploading, error, reset, cancel };
 }
