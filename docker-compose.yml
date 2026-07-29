@@ -200,6 +200,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
       NER_REDIS_URL: "redis://redis:6379/0"
       NER_CELERY_BROKER_URL: "redis://redis:6379/0"
       NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"

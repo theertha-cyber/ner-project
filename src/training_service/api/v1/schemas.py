@@ -26,6 +26,8 @@ class TrainingJobResponse(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     failed_at: datetime | None = None
+    run_number: int | None = None
+    run_name: str | None = None
 
 
 class TrainingJobListResponse(BaseModel):
@@ -48,6 +50,8 @@ class ModelVersionResponse(BaseModel):
     promoted_at: datetime | None = None
     archived_at: datetime | None = None
     label_list: list[str] | None = None
+    run_number: int | None = None
+    run_name: str | None = None
 
 
 class ModelVersionListResponse(BaseModel):

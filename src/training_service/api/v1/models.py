@@ -25,6 +25,12 @@ router = APIRouter(prefix="/api/v1/models", tags=["model-registry"])
 CONLL_LABELS = ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-MISC", "I-MISC"]
 
 
+def _compute_run_name(run_number: int | None, created_at) -> str | None:
+    if run_number is None or created_at is None:
+        return None
+    return f"run-{run_number:03d}-{created_at:%Y%m%d}"
+
+
 def _base_model_metadata() -> dict:
     return {
         "id": "0",
@@ -39,6 +45,8 @@ def _base_model_metadata() -> dict:
         "promoted_at": None,
         "archived_at": None,
         "label_list": CONLL_LABELS,
+        "run_number": None,
+        "run_name": None,
     }
 
 
@@ -66,6 +74,7 @@ def require_tenant_admin(request: Request) -> None:
 
 def _row_to_response(row: dict) -> ModelVersionResponse:
     metrics = row.get("metrics") or {}
+    run_number = row.get("run_number")
     return ModelVersionResponse(
         id=str(row["version_number"]),
         version_number=row["version_number"],
@@ -79,6 +88,8 @@ def _row_to_response(row: dict) -> ModelVersionResponse:
         promoted_at=row.get("promoted_at"),
         archived_at=row.get("archived_at"),
         label_list=metrics.get("label_list"),
+        run_number=run_number,
+        run_name=_compute_run_name(run_number, row.get("created_at")),
     )
 
 

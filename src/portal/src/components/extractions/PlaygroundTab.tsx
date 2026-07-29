@@ -2,7 +2,9 @@
 
 import { useState, useMemo } from "react";
 import { useExtract } from "@/hooks/use-extract";
+import { useModelVersions } from "@/hooks/use-model-versions";
 import { Spinner } from "@/components/ui";
+import { BaseModelConfirmDialog } from "./BaseModelConfirmDialog";
 import type { ExtractedEntity } from "@/types/extraction";
 
 const SAMPLE_TEXT =
@@ -34,9 +36,19 @@ function groupEntities(entities: ExtractedEntity[]): Map<string, ExtractedEntity
 
 export function PlaygroundTab() {
   const [text, setText] = useState(SAMPLE_TEXT);
+  const [showBaseModelConfirm, setShowBaseModelConfirm] = useState(false);
   const { running, result, modelVersion, run } = useExtract();
+  const { activeModel } = useModelVersions();
 
   const versionLabel = modelVersion ? `model v${modelVersion} · serving` : "— · serving";
+
+  function handleRunClick() {
+    if (activeModel?.version_number === 0) {
+      setShowBaseModelConfirm(true);
+      return;
+    }
+    run(text);
+  }
 
   const groups = useMemo(() => result ? groupEntities(result) : null, [result]);
   const sortedTypeKeys = useMemo(
@@ -71,12 +83,22 @@ export function PlaygroundTab() {
         <button
           type="button"
           disabled={running || !text.trim()}
-          onClick={() => run(text)}
+          onClick={handleRunClick}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-opacity hover:bg-brand-hover disabled:opacity-50"
         >
           {running && <Spinner size="sm" />}
           Run extraction
         </button>
+
+        {showBaseModelConfirm && (
+          <BaseModelConfirmDialog
+            onConfirm={() => {
+              setShowBaseModelConfirm(false);
+              run(text);
+            }}
+            onCancel={() => setShowBaseModelConfirm(false)}
+          />
+        )}
 
         <p className="text-xs text-text-secondary">
           Whitespace-tokenized · POST /internal/v1/infer · mapped to char offsets. Not persisted.

@@ -82,13 +82,22 @@ describe("Sidebar", () => {
     expect(within(nav).queryByText("Settings")).not.toBeInTheDocument();
   });
 
-  // ── Tenant pill ──────────────────────────────────────────────────────────────
+  // ── Wordmark ─────────────────────────────────────────────────────────────────
 
-  it("tenant pill contains ▾ caret", () => {
+  it("wordmark reads NER Platform", () => {
     mockUser = createUser("annotator");
     render(<Sidebar effectiveRole="annotator" />);
-    // Both the tenant pill and the user strip button render ▾
-    expect(screen.getAllByText("▾").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("NER Platform")).toBeInTheDocument();
+  });
+
+  // ── Tenant pill (removed) ────────────────────────────────────────────────────
+
+  it("does not render a tenant pill", () => {
+    mockUser = createUser("annotator");
+    render(<Sidebar effectiveRole="annotator" />);
+    expect(screen.queryByText("acme")).not.toBeInTheDocument();
+    // Only the user strip button renders ▾ now that the tenant pill is gone
+    expect(screen.getAllByText("▾").length).toBe(1);
   });
 
   // ── User strip trigger ───────────────────────────────────────────────────────
@@ -163,27 +172,44 @@ describe("Sidebar", () => {
   });
 });
 
-// ── Topbar — AS label (covers verification rows 12–13) ──────────────────────
+// ── Topbar — search box and role-switcher removed (covers scenarios 15–16) ──
 
-describe("Topbar — AS label in demo mode", () => {
-  it("shows AS label when NEXT_PUBLIC_DEMO_MODE is true", () => {
+describe("Topbar — no search box or role-switcher", () => {
+  it("does not render a search box regardless of demo mode", () => {
     mockUser = createUser("annotator");
     const original = process.env.NEXT_PUBLIC_DEMO_MODE;
     process.env.NEXT_PUBLIC_DEMO_MODE = "true";
 
-    render(<Topbar demoRole={null} onDemoRoleChange={vi.fn()} />);
-    expect(screen.getByText("AS")).toBeInTheDocument();
+    render(<Topbar />);
+    expect(screen.queryByText(/search/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("⌘K")).not.toBeInTheDocument();
 
     process.env.NEXT_PUBLIC_DEMO_MODE = original;
   });
 
-  it("hides AS label when NEXT_PUBLIC_DEMO_MODE is not true", () => {
+  it("does not render the AS label or role-switcher chips when demo mode is true", () => {
     mockUser = createUser("annotator");
     const original = process.env.NEXT_PUBLIC_DEMO_MODE;
-    process.env.NEXT_PUBLIC_DEMO_MODE = "false";
+    process.env.NEXT_PUBLIC_DEMO_MODE = "true";
 
-    render(<Topbar demoRole={null} onDemoRoleChange={vi.fn()} />);
+    render(<Topbar />);
     expect(screen.queryByText("AS")).not.toBeInTheDocument();
+    expect(screen.queryByText("SA")).not.toBeInTheDocument();
+    expect(screen.queryByText("TA")).not.toBeInTheDocument();
+    expect(screen.queryByText("AN")).not.toBeInTheDocument();
+    expect(screen.queryByText("BU")).not.toBeInTheDocument();
+
+    process.env.NEXT_PUBLIC_DEMO_MODE = original;
+  });
+
+  it("does not render the AS label or role-switcher chips when demo mode is unset", () => {
+    mockUser = createUser("annotator");
+    const original = process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+
+    render(<Topbar />);
+    expect(screen.queryByText("AS")).not.toBeInTheDocument();
+    expect(screen.queryByText("SA")).not.toBeInTheDocument();
 
     process.env.NEXT_PUBLIC_DEMO_MODE = original;
   });

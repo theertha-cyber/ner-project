@@ -15,6 +15,7 @@ import { EntityPalette, EntityTypeItem } from "./EntityPalette";
 import { SpanInspector } from "./SpanInspector";
 import { SuggestionPanel } from "./SuggestionPanel";
 import { AnnotationToolbar } from "./AnnotationToolbar";
+import { AnnotationActionBar, SaveState } from "./AnnotationActionBar";
 import { ArmedBanner } from "./ArmedBanner";
 import { FocusPalette } from "./FocusPalette";
 import { AssignTaskForm } from "./AssignTaskForm";
@@ -53,6 +54,25 @@ export function AnnotationPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartIndex, setDragStartIndex] = useState<number | null>(null);
   const [dragEndIndex, setDragEndIndex] = useState<number | null>(null);
+  const [pendingWrites, setPendingWrites] = useState(0);
+  const pendingWritesRef = useRef(0);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  const incrementPendingWrites = useCallback(() => {
+    pendingWritesRef.current += 1;
+    setPendingWrites(pendingWritesRef.current);
+  }, []);
+
+  const decrementPendingWrites = useCallback(() => {
+    pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
+    setPendingWrites(pendingWritesRef.current);
+  }, []);
+
+  const waitForPendingWrites = useCallback(async () => {
+    while (pendingWritesRef.current > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }, []);
   // Task 3.1 — admin-only assign form state
   const isAdmin = user?.role === "tenant_admin";
   const [isAssignFormOpen, setIsAssignFormOpen] = useState(false);
@@ -131,6 +151,19 @@ export function AnnotationPage() {
       dispatch({ type: "SUGGESTIONS_LOAD", spans: [] });
       dispatch({ type: "DISARM" });
 
+      const currentStatus = taskStatuses[task.id] ?? task.status;
+      if (currentStatus === "unannotated" && !sentInProgressRef.current.has(task.id)) {
+        sentInProgressRef.current.add(task.id);
+        const patchRes = await authFetch(`/api/v1/annotation-tasks/${task.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "in-progress" }),
+        });
+        if (patchRes.ok) {
+          setTaskStatuses((prev) => ({ ...prev, [task.id]: "in-progress" }));
+        }
+      }
+
       try {
         const [textRes, spansRes, suggestedRes] = await Promise.all([
           authFetch(`/api/v1/documents/${task.document_id}/text`),
@@ -174,15 +207,7 @@ export function AnnotationPage() {
         toast("Failed to load document", "bad");
       }
     },
-    [toast],
-  );
-
-  const handleStatusChange = useCallback(
-    (newStatus: AnnotationTask["status"]) => {
-      if (!selectedTask) return;
-      setTaskStatuses((prev) => ({ ...prev, [selectedTask.id]: newStatus }));
-    },
-    [selectedTask],
+    [taskStatuses, toast],
   );
 
   const handleTokenClick = useCallback(
@@ -209,6 +234,7 @@ export function AnnotationPage() {
         };
         dispatch({ type: "SPAN_ADD_OPTIMISTIC", span: optimisticSpan });
 
+        incrementPendingWrites();
         try {
           const res = await authFetch(`/api/v1/documents/${selectedTask.document_id}/spans`, {
             method: "POST",
@@ -238,22 +264,11 @@ export function AnnotationPage() {
             confidence: data.confidence,
           };
           dispatch({ type: "SPAN_CONFIRM", optimisticId, realSpan });
-
-          const currentStatus = taskStatuses[selectedTask.id] ?? selectedTask.status;
-          if (currentStatus === "unannotated" && !sentInProgressRef.current.has(selectedTask.id)) {
-            sentInProgressRef.current.add(selectedTask.id);
-            const patchRes = await authFetch(`/api/v1/annotation-tasks/${selectedTask.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: "in-progress" }),
-            });
-            if (patchRes.ok) {
-              setTaskStatuses((prev) => ({ ...prev, [selectedTask.id]: "in-progress" }));
-            }
-          }
         } catch {
           dispatch({ type: "SPAN_REVERT", optimisticId });
           toast("Failed to create span", "bad");
+        } finally {
+          decrementPendingWrites();
         }
       } else {
         const confirmedAtToken = spanState.confirmed.find(
@@ -266,7 +281,7 @@ export function AnnotationPage() {
         }
       }
     },
-    [selectedTask, docText, tokenMap, spanState.armedType, spanState.confirmed, taskStatuses, toast],
+    [selectedTask, docText, tokenMap, spanState.armedType, spanState.confirmed, toast],
   );
 
   // Document-level mouseup handler for drag span creation
@@ -319,6 +334,7 @@ export function AnnotationPage() {
       };
       dispatch({ type: "SPAN_ADD_OPTIMISTIC", span: optimisticSpan });
 
+      incrementPendingWrites();
       try {
         const res = await authFetch(`/api/v1/documents/${selectedTask.document_id}/spans`, {
           method: "POST",
@@ -348,28 +364,17 @@ export function AnnotationPage() {
           confidence: data.confidence,
         };
         dispatch({ type: "SPAN_CONFIRM", optimisticId, realSpan });
-
-        const currentStatus = taskStatuses[selectedTask.id] ?? selectedTask.status;
-        if (currentStatus === "unannotated" && !sentInProgressRef.current.has(selectedTask.id)) {
-          sentInProgressRef.current.add(selectedTask.id);
-          const patchRes = await authFetch(`/api/v1/annotation-tasks/${selectedTask.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: "in-progress" }),
-          });
-          if (patchRes.ok) {
-            setTaskStatuses((prev) => ({ ...prev, [selectedTask.id]: "in-progress" }));
-          }
-        }
       } catch {
         dispatch({ type: "SPAN_REVERT", optimisticId });
         toast("Failed to create span", "bad");
+      } finally {
+        decrementPendingWrites();
       }
     };
 
     document.addEventListener("mouseup", handler);
     return () => document.removeEventListener("mouseup", handler);
-  }, [isDragging, dragStartIndex, dragEndIndex, spanState.armedType, spanState.confirmed, selectedTask, docText, tokenMap, taskStatuses, toast, handleTokenClick]);
+  }, [isDragging, dragStartIndex, dragEndIndex, spanState.armedType, spanState.confirmed, selectedTask, docText, tokenMap, toast, handleTokenClick]);
 
   const handleTokenMouseDown = useCallback((tokenIndex: number) => {
     setIsDragging(true);
@@ -402,11 +407,16 @@ export function AnnotationPage() {
     async (spanId: string) => {
       if (!selectedTask) return;
       dispatch({ type: "SPAN_DELETE", spanId });
-      const res = await authFetch(
-        `/api/v1/documents/${selectedTask.document_id}/spans/${spanId}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) toast("Failed to delete span", "bad");
+      incrementPendingWrites();
+      try {
+        const res = await authFetch(
+          `/api/v1/documents/${selectedTask.document_id}/spans/${spanId}`,
+          { method: "DELETE" },
+        );
+        if (!res.ok) toast("Failed to delete span", "bad");
+      } finally {
+        decrementPendingWrites();
+      }
     },
     [selectedTask, toast],
   );
@@ -448,10 +458,16 @@ export function AnnotationPage() {
       const suggestion = spanState.suggested.find((s) => s.id === suggestId);
       if (!suggestion) return;
 
-      const res = await authFetch(
-        `/api/v1/documents/${selectedTask.document_id}/spans/promote/${suggestId}`,
-        { method: "POST" },
-      );
+      incrementPendingWrites();
+      let res;
+      try {
+        res = await authFetch(
+          `/api/v1/documents/${selectedTask.document_id}/spans/promote/${suggestId}`,
+          { method: "POST" },
+        );
+      } finally {
+        decrementPendingWrites();
+      }
       if (!res.ok) {
         toast("Failed to promote suggestion", "bad");
         return;
@@ -466,21 +482,8 @@ export function AnnotationPage() {
         confidence: data.confidence,
       };
       dispatch({ type: "SUGGESTION_PROMOTE", suggestId, confirmedSpan });
-
-      const currentStatus = taskStatuses[selectedTask.id] ?? selectedTask.status;
-      if (currentStatus === "unannotated" && !sentInProgressRef.current.has(selectedTask.id)) {
-        sentInProgressRef.current.add(selectedTask.id);
-        const patchRes = await authFetch(`/api/v1/annotation-tasks/${selectedTask.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "in-progress" }),
-        });
-        if (patchRes.ok) {
-          setTaskStatuses((prev) => ({ ...prev, [selectedTask.id]: "in-progress" }));
-        }
-      }
     },
-    [selectedTask, spanState.suggested, taskStatuses, toast],
+    [selectedTask, spanState.suggested, toast],
   );
 
   const handleDismiss = useCallback((suggestId: string) => {
@@ -497,6 +500,31 @@ export function AnnotationPage() {
     ? (taskStatuses[selectedTask.id] ?? selectedTask.status)
     : null;
 
+  const saveState: SaveState = !selectedTask ? "idle" : pendingWrites > 0 ? "saving" : "saved";
+
+  const handleMarkCompleted = useCallback(async () => {
+    if (!selectedTask || isCompleting) return;
+    await waitForPendingWrites();
+    setIsCompleting(true);
+    try {
+      const res = await authFetch(`/api/v1/annotation-tasks/${selectedTask.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const msg = (err as { detail?: { message?: string } | string })?.detail;
+        toast(typeof msg === "string" ? msg : (msg as { message?: string })?.message ?? "Failed to complete task", "bad");
+        return;
+      }
+      setTaskStatuses((prev) => ({ ...prev, [selectedTask.id]: "completed" }));
+      queryClient.invalidateQueries({ queryKey: ["annotation-tasks"] });
+      toast("Task marked as completed", "ok");
+    } finally {
+      setIsCompleting(false);
+    }
+  }, [selectedTask, isCompleting, waitForPendingWrites, queryClient, toast]);
 
   const armedEntityType = spanState.armedType
     ? entityTypes.find((et) => et.name === spanState.armedType)
@@ -525,7 +553,6 @@ export function AnnotationPage() {
           suggestedCount={suggestedCount}
           layoutMode={layoutMode}
           isPrelabeling={isPrelabeling}
-          onStatusChange={handleStatusChange}
           onLayoutChange={handleLayoutChange}
           onPrelabel={handlePrelabel}
         />
@@ -563,7 +590,7 @@ export function AnnotationPage() {
       {layoutMode === "3pane" && (
         <div
           style={{
-            gridRow: "3 / 5",
+            gridRow: "3 / 4",
             borderRight: "1px solid var(--color-border)",
             overflowY: "auto",
             display: "flex",
@@ -682,7 +709,7 @@ export function AnnotationPage() {
       {layoutMode === "3pane" && (
         <div
           style={{
-            gridRow: "3 / 5",
+            gridRow: "3 / 4",
             borderLeft: "1px solid var(--color-border)",
             padding: "12px",
             overflowY: "auto",
@@ -735,6 +762,16 @@ export function AnnotationPage() {
           )}
         </div>
       )}
+
+      {/* ── Action Bar (spans full width, always at bottom) ── */}
+      <div style={{ gridColumn: "1 / -1", gridRow: 4 }}>
+        <AnnotationActionBar
+          task={selectedTask}
+          saveState={saveState}
+          isCompleting={isCompleting}
+          onMarkCompleted={handleMarkCompleted}
+        />
+      </div>
 
       {/* ── Focus Mode: Floating Span Inspector ── */}
       {selectedSpan && layoutMode === "focus" && (

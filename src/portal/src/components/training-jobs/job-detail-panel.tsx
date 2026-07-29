@@ -72,7 +72,7 @@ export function JobDetailPanel({
       {/* Header */}
       <div className="flex items-center gap-3">
         <span className="font-mono text-base font-semibold" style={{ color: "var(--ink)" }}>
-          {job.id}
+          {job.run_name ?? job.id}
         </span>
         <Badge variant={job.status} />
         <div className="flex-1" />
@@ -105,10 +105,12 @@ export function JobDetailPanel({
         <LineageFlow
           nodes={[
             { label: "DATASET", value: "Annotated Documents" },
-            { label: "TRAINING JOB", value: job.id, sublabel: "dslim/bert-base-NER" },
+            { label: "TRAINING JOB", value: job.run_name ?? job.id, sublabel: "dslim/bert-base-NER" },
             {
               label: "MODEL VERSION",
-              value: matchedVersion ? `v${matchedVersion.version_number}` : null,
+              value: matchedVersion
+                ? matchedVersion.run_name ?? `v${matchedVersion.version_number}`
+                : null,
               sublabel: "registry",
             },
           ]}

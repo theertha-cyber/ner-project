@@ -47,6 +47,7 @@ def _create_tables_sql(schema: str) -> list:
                 mlflow_run_url VARCHAR,
                 promoted_at TIMESTAMPTZ,
                 archived_at TIMESTAMPTZ,
+                run_number INTEGER,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """,
@@ -172,8 +173,8 @@ async def _seed_versions(engine, schema: str, tid: str, versions: list[dict]):
             await conn.execute(
                 text(f"""
                     INSERT INTO {schema}.model_versions
-                        (id, tenant_id, version_number, training_job_id, status, metrics, artifact_path, promoted_at, created_at)
-                    VALUES (:id, :tid, :vn, :tjid, :st, CAST(:metrics AS jsonb), :path, :promoted_at, :now)
+                        (id, tenant_id, version_number, training_job_id, status, metrics, artifact_path, promoted_at, run_number, created_at)
+                    VALUES (:id, :tid, :vn, :tjid, :st, CAST(:metrics AS jsonb), :path, :promoted_at, :run_number, :now)
                 """),
                 {
                     "id": v.get("id", str(uuid.uuid4())),
@@ -184,7 +185,8 @@ async def _seed_versions(engine, schema: str, tid: str, versions: list[dict]):
                     "metrics": json.dumps(v.get("metrics", {})),
                     "path": v.get("artifact_path"),
                     "promoted_at": v.get("promoted_at"),
-                    "now": datetime.now(timezone.utc),
+                    "run_number": v.get("run_number"),
+                    "now": v.get("created_at", datetime.now(timezone.utc)),
                 },
             )
 
@@ -430,3 +432,43 @@ async def test_standalone_warmup_does_not_change_status(client, engine, setup_sc
     get_resp = await client.get("/api/v1/models/active", headers=auth_header(token))
     assert get_resp.status_code == 200
     assert get_resp.json()["version_number"] == 0
+
+
+@pytest.mark.asyncio
+async def test_list_versions_exposes_run_name(client, engine, setup_schema):
+    tid, schema = setup_schema
+    await _seed_versions(engine, schema, tid, [
+        {"version_number": 3, "status": "completed", "metrics": {}, "run_number": 3,
+         "created_at": datetime(2026, 7, 29, tzinfo=timezone.utc)},
+    ])
+    token = make_token(tid)
+    resp = await client.get("/api/v1/models", headers=auth_header(token))
+    assert resp.status_code == 200
+    item = resp.json()["items"][0]
+    assert item["run_number"] == 3
+    assert item["run_name"] == "run-003-20260729"
+
+
+@pytest.mark.asyncio
+async def test_list_versions_legacy_run_name_null(client, engine, setup_schema):
+    tid, schema = setup_schema
+    await _seed_versions(engine, schema, tid, [
+        {"version_number": 1, "status": "completed", "metrics": {}},
+    ])
+    token = make_token(tid)
+    resp = await client.get("/api/v1/models", headers=auth_header(token))
+    assert resp.status_code == 200
+    item = resp.json()["items"][0]
+    assert item["run_number"] is None
+    assert item["run_name"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_active_base_model_run_name_null(client, engine, setup_schema):
+    tid, schema = setup_schema
+    token = make_token(tid)
+    resp = await client.get("/api/v1/models/active", headers=auth_header(token))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["version_number"] == 0
+    assert data["run_name"] is None

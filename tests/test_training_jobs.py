@@ -27,6 +27,7 @@ def _create_test_schema(schema: str):
                 status VARCHAR(20) DEFAULT 'queued',
                 metrics JSONB,
                 error_message TEXT,
+                run_number INTEGER,
                 started_at TIMESTAMPTZ,
                 completed_at TIMESTAMPTZ,
                 failed_at TIMESTAMPTZ,
@@ -48,6 +49,7 @@ def _create_test_schema(schema: str):
                 mlflow_run_url VARCHAR,
                 promoted_at TIMESTAMPTZ,
                 archived_at TIMESTAMPTZ,
+                run_number INTEGER,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """))
@@ -226,3 +228,59 @@ class TestModelVersionsStatusLifecycle:
                 {"id": self.version_id, "tid": self.tenant_id},
             )
         assert self._get_model_version_status() == "failed"
+
+
+class TestModelVersionRunNumberInheritance:
+    """Mirrors the run_number lookup/insert worker.py performs on job completion (see worker.py:363-409)."""
+
+    def setup_method(self):
+        self.tenant_id = str(uuid.uuid4())
+        self.schema = _schema(self.tenant_id)
+        self.job_id = str(uuid.uuid4())
+        _create_test_schema(self.schema)
+
+    def teardown_method(self):
+        _cleanup_test_schema(self.schema)
+
+    def test_model_version_inherits_job_run_number(self):
+        engine = _get_sync_engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"""
+                    INSERT INTO {self.schema}.training_jobs (id, tenant_id, status, run_number)
+                    VALUES (:id, :tid, 'running', :run_number)
+                """),
+                {"id": self.job_id, "tid": self.tenant_id, "run_number": 7},
+            )
+
+        with engine.connect() as conn:
+            job_run_number_row = conn.execute(
+                text(f"SELECT run_number FROM {self.schema}.training_jobs WHERE tenant_id = :tenant_id AND id = :job_id"),
+                {"tenant_id": self.tenant_id, "job_id": self.job_id},
+            ).fetchone()
+            run_number = job_run_number_row[0] if job_run_number_row else None
+
+        assert run_number == 7
+
+        version_id = str(uuid.uuid4())
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"""
+                    INSERT INTO {self.schema}.model_versions
+                        (id, tenant_id, version_number, training_job_id, status, run_number, created_at)
+                    VALUES (:id, :tid, :vn, :tjid, 'training', :run_number, :now)
+                """),
+                {
+                    "id": version_id, "tid": self.tenant_id, "vn": 1,
+                    "tjid": self.job_id, "run_number": run_number,
+                    "now": datetime.now(timezone.utc),
+                },
+            )
+
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(f"SELECT run_number FROM {self.schema}.model_versions WHERE id = :id"),
+                {"id": version_id},
+            ).fetchone()
+
+        assert row[0] == 7

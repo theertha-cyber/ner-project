@@ -7,6 +7,11 @@ vi.mock("@/lib/auth-fetch", () => ({
   authFetch: (...args: unknown[]) => mockAuthFetch(...args),
 }));
 
+const mockUseModelVersions = vi.fn();
+vi.mock("@/hooks/use-model-versions", () => ({
+  useModelVersions: () => mockUseModelVersions(),
+}));
+
 function makeExtractResponse(entities: object[], modelVersion = "1") {
   return new Response(
     JSON.stringify({ entities, model_version: modelVersion }),
@@ -17,6 +22,7 @@ function makeExtractResponse(entities: object[], modelVersion = "1") {
 describe("PlaygroundTab", () => {
   beforeEach(() => {
     mockAuthFetch.mockReset();
+    mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 3 } });
   });
 
   it("calls POST /api/v1/extract, disables button during request, renders grouped entities on 200", async () => {
@@ -151,5 +157,48 @@ describe("PlaygroundTab", () => {
     fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
 
     await waitFor(() => expect(screen.getByText("2 entities · 2 types")).toBeDefined());
+  });
+
+  it("does not show a confirmation dialog when a fine-tuned model is active", () => {
+    mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 3 } });
+    mockAuthFetch.mockResolvedValue(makeExtractResponse([]));
+    render(<PlaygroundTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mockAuthFetch).toHaveBeenCalled();
+  });
+
+  it("shows a confirmation dialog when only the base model is available", () => {
+    mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 0 } });
+    render(<PlaygroundTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
+
+    expect(screen.getByRole("dialog")).toBeDefined();
+    expect(mockAuthFetch).not.toHaveBeenCalled();
+  });
+
+  it("confirming the dialog proceeds with the extraction", async () => {
+    mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 0 } });
+    mockAuthFetch.mockResolvedValue(makeExtractResponse([]));
+    render(<PlaygroundTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
+    fireEvent.click(screen.getByRole("button", { name: /use base model/i }));
+
+    await waitFor(() => expect(mockAuthFetch).toHaveBeenCalled());
+  });
+
+  it("declining the dialog cancels the run", () => {
+    mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 0 } });
+    render(<PlaygroundTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mockAuthFetch).not.toHaveBeenCalled();
   });
 });

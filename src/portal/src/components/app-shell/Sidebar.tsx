@@ -6,11 +6,6 @@ import { useAuth } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
 import { navFor } from "@/lib/nav-config";
 
-function tenantDisplayName(slug: string | null): string {
-  if (!slug) return "Platform";
-  return slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 function userInitials(email: string): string {
   return email.slice(0, 2).toUpperCase();
 }
@@ -36,8 +31,6 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
   if (!user) return null;
 
   const navItems = navFor(effectiveRole);
-  const tenantName = tenantDisplayName(user.tenantSlug);
-  const tenantInitial = tenantName[0].toUpperCase();
   const initials = userInitials(user.email);
   const roleLabel = user.role.replace(/_/g, " ");
 
@@ -86,78 +79,8 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
               letterSpacing: "-0.02em",
             }}
           >
-            nerplatform
+            NER Platform
           </span>
-        </div>
-      </div>
-
-      {/* Tenant pill */}
-      <div style={{ padding: "0 12px 14px" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "9px 11px",
-            borderRadius: 12,
-            border: "1px solid var(--line)",
-            background: "var(--surface-3)",
-            cursor: "default",
-            transition: "border-color 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--primary-line)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--line)";
-          }}
-        >
-          <div
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 7,
-              background: "var(--primary-soft)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontFamily: "var(--font-mono, monospace)",
-              fontWeight: 700,
-              fontSize: 13,
-              color: "var(--primary-2)",
-              flexShrink: 0,
-            }}
-          >
-            {tenantInitial}
-          </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div
-              style={{
-                fontFamily: "var(--font-display, sans-serif)",
-                fontWeight: 600,
-                fontSize: 12.5,
-                color: "var(--ink)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {tenantName}
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-mono, monospace)",
-                fontSize: 10,
-                color: "var(--ink-3)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {user.tenantSlug ?? "—"}
-            </div>
-          </div>
-          <span style={{ fontSize: 11, color: "var(--ink-3)", flexShrink: 0 }}>▾</span>
         </div>
       </div>
 

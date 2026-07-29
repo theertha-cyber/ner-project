@@ -37,7 +37,7 @@ export function JobCard({ job, isSelected, onClick }: JobCardProps) {
           className={`inline-block h-2 w-2 shrink-0 rounded-full ${badgeDotClass(job.status)} ${isRunning ? "animate-pulse" : ""}`}
         />
         <span className="font-mono text-xs font-semibold" style={{ color: "var(--ink)" }}>
-          {job.id}
+          {job.run_name ?? job.id}
         </span>
         <div className="flex-1" />
         <Badge variant={job.status} />

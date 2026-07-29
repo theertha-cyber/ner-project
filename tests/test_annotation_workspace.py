@@ -750,6 +750,62 @@ async def test_7_15_task_complete_no_spans_422(seeded_document, client):
 
 
 @pytest.mark.asyncio
+async def test_task_recomplete_completed_task_is_idempotent(seeded_document, client):
+    tid = seeded_document["tid"]
+    schema = seeded_document["schema"]
+    doc_id = seeded_document["doc_id"]
+    token = make_token(tid)
+    task_id = str(uuid.uuid4())
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.annotation_tasks (id, document_id, annotator_user_id, status) VALUES (:id, :doc_id, :uid, 'completed')"),
+            {"id": task_id, "doc_id": doc_id, "uid": "user-456"},
+        )
+        await conn.execute(
+            text(f"INSERT INTO {schema}.spans (id, document_id, entity_type, char_start, char_end, text_content, confidence) VALUES (:sid, :doc_id, 'PER', 0, 8, 'John Doe', 1.0)"),
+            {"sid": str(uuid.uuid4()), "doc_id": doc_id},
+        )
+    await engine.dispose()
+
+    resp = await client.patch(
+        f"/api/v1/annotation-tasks/{task_id}",
+        json={"status": "completed"},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_task_reopen_completed_task_returns_422(seeded_document, client):
+    tid = seeded_document["tid"]
+    schema = seeded_document["schema"]
+    doc_id = seeded_document["doc_id"]
+    token = make_token(tid)
+    task_id = str(uuid.uuid4())
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.annotation_tasks (id, document_id, annotator_user_id, status) VALUES (:id, :doc_id, :uid, 'completed')"),
+            {"id": task_id, "doc_id": doc_id, "uid": "user-456"},
+        )
+    await engine.dispose()
+
+    resp = await client.patch(
+        f"/api/v1/annotation-tasks/{task_id}",
+        json={"status": "in-progress"},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "INVALID_TRANSITION"
+
+
+@pytest.mark.asyncio
 async def test_7_16_export_all_documents(seeded_document, client):
     tid = seeded_document["tid"]
     schema = seeded_document["schema"]

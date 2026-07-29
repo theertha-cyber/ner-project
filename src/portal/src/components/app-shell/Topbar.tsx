@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useDarkMode } from "@/hooks";
 import { SCREEN_TITLES, SCREEN_TITLES_FALLBACK } from "@/lib/nav-config";
-import type { AuthUser } from "@/lib/auth";
 
 function resolveScreen(pathname: string): [string, string] {
   for (const [, value] of Object.entries(SCREEN_TITLES)) {
@@ -19,19 +18,7 @@ function userInitials(email: string): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-const DEMO_ROLES: { label: string; role: AuthUser["role"] }[] = [
-  { label: "SA", role: "system_admin" },
-  { label: "TA", role: "tenant_admin" },
-  { label: "AN", role: "annotator" },
-  { label: "BU", role: "business_user" },
-];
-
-interface TopbarProps {
-  demoRole: AuthUser["role"] | null;
-  onDemoRoleChange: (role: AuthUser["role"]) => void;
-}
-
-export function Topbar({ demoRole, onDemoRoleChange }: TopbarProps) {
+export function Topbar() {
   const { user } = useAuth();
   const pathname = usePathname();
   const { dark, toggle } = useDarkMode();
@@ -84,78 +71,6 @@ export function Topbar({ demoRole, onDemoRoleChange }: TopbarProps) {
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
-
-      {/* Search placeholder */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "7px 12px",
-          borderRadius: 10,
-          border: "1px solid var(--line)",
-          background: "var(--surface-3)",
-          fontFamily: "var(--font-mono, monospace)",
-          fontSize: 12,
-          color: "var(--ink-3)",
-          cursor: "default",
-          userSelect: "none",
-          width: 230,
-        }}
-      >
-        ⌕ search · ⌘K
-      </div>
-
-      {/* Role-switcher chips — demo mode only, wrapped in pill container */}
-      {process.env.NEXT_PUBLIC_DEMO_MODE === "true" && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 3,
-            background: "var(--surface-3)",
-            border: "1px solid var(--line)",
-            borderRadius: 10,
-            padding: 3,
-          }}
-        >
-          {/* AS: static session label */}
-          <span
-            style={{
-              fontFamily: "var(--font-mono, monospace)",
-              fontSize: 10,
-              color: "var(--ink-3)",
-              userSelect: "none",
-              padding: "0 6px",
-            }}
-          >
-            AS
-          </span>
-          {DEMO_ROLES.map(({ label, role }) => {
-            const active = demoRole === role;
-            return (
-              <button
-                key={role}
-                onClick={() => onDemoRoleChange(role)}
-                style={{
-                  fontFamily: "var(--font-mono, monospace)",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: "4px 8px",
-                  borderRadius: 5,
-                  border: "1px solid",
-                  borderColor: active ? "var(--primary)" : "transparent",
-                  background: active ? "var(--primary)" : "transparent",
-                  color: active ? "#fff" : "var(--ink-3)",
-                  cursor: "pointer",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       {/* Dark mode toggle */}
       <button

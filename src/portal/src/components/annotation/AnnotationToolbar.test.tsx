@@ -1,12 +1,9 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AnnotationToolbar } from "./AnnotationToolbar";
 import type { AnnotationTask } from "./TaskQueue";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
-
-const mockToast = vi.fn();
-vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mockToast }) }));
 
 const mockAuthFetch = vi.fn();
 vi.mock("@/lib/auth-fetch", () => ({ authFetch: (...args: unknown[]) => mockAuthFetch(...args) }));
@@ -33,20 +30,15 @@ const defaultProps = {
   suggestedCount: 2,
   layoutMode: "3pane" as const,
   isPrelabeling: false,
-  onStatusChange: vi.fn(),
   onLayoutChange: vi.fn(),
   onPrelabel: vi.fn(),
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuthFetch.mockResolvedValue({
-    ok: true,
-    json: () => Promise.resolve({ id: task.id, status: "completed" }),
-  });
 });
 
-// ── Scenario 6 (task 4.5): Toolbar shows filename ────────────────────────────
+// ── Scenario 6 — Toolbar shows document filename ─────────────────────────────
 
 describe("Scenario 6 — Toolbar shows document filename", () => {
   it("shows filename in toolbar, not ordinal label", () => {
@@ -62,113 +54,48 @@ describe("Scenario 6 — Toolbar shows document filename", () => {
   });
 });
 
-// ── Scenario 5: Toolbar renders all six elements ──────────────────────────────
+// ── Scenario 1 — Toolbar renders all elements for an active task ─────────────
 
-describe("Scenario 5 — Toolbar renders all elements for an active task", () => {
-  it("shows filename, status group, span counter, pre-label button, and layout toggle", () => {
+describe("Scenario 1 — Toolbar renders all elements for an active task", () => {
+  it("shows filename, status badge, span counter, pre-label button, and layout toggle", () => {
     render(<AnnotationToolbar {...defaultProps} />);
 
-    // (1) Filename
     expect(screen.getByText("invoice-2026-00417.pdf")).toBeInTheDocument();
 
-    // (2) Status group with three buttons
-    expect(screen.getByTestId("status-group")).toBeInTheDocument();
-    expect(screen.getByTestId("status-btn-pending")).toBeInTheDocument();
-    expect(screen.getByTestId("status-btn-in_progress")).toBeInTheDocument();
-    expect(screen.getByTestId("status-btn-completed")).toBeInTheDocument();
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("in_progress");
 
-    // (3) "in_progress" is the active button (task status is "in-progress")
-    const activeBtn = screen.getByTestId("status-btn-in_progress");
-    expect(activeBtn).toHaveStyle({ fontWeight: "600" });
-
-    // (4) Span counter
     expect(screen.getByTestId("span-counter")).toHaveTextContent("3 confirmed · 2 suggested");
 
-    // (5) Pre-label button
     expect(screen.getByTestId("prelabel-btn")).toBeInTheDocument();
     expect(screen.getByTestId("prelabel-btn")).not.toBeDisabled();
 
-    // (6) Layout toggle
     expect(screen.getByTestId("layout-btn-3pane")).toBeInTheDocument();
     expect(screen.getByTestId("layout-btn-focus")).toBeInTheDocument();
   });
 });
 
-// ── Scenario 12 (task 4.5): Active status button has solid primary fill ───────
+// ── Scenario 2 — Toolbar exposes no status selection control ─────────────────
 
-describe("Scenario 12 — Active status button has solid primary fill", () => {
-  it("active button has primary background and white text", () => {
+describe("Scenario 2 — Toolbar exposes no status selection control", () => {
+  it("renders no status button group and issues no PATCH request", () => {
     render(<AnnotationToolbar {...defaultProps} />);
-    const activeBtn = screen.getByTestId("status-btn-in_progress");
-    expect(activeBtn).toHaveStyle({ color: "#fff" });
+
+    expect(screen.queryByTestId("status-group")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("status-btn-pending")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("status-btn-in_progress")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("status-btn-completed")).not.toBeInTheDocument();
+    expect(mockAuthFetch).not.toHaveBeenCalled();
   });
 });
 
-// ── Scenario 6: Clicking status button updates optimistically ─────────────────
+// ── Scenario 3 — Badge reflects completed status without offering a transition ──
 
-describe("Scenario 6 — Clicking status button sends PATCH and updates optimistically", () => {
-  it("calls onStatusChange immediately and sends PATCH request", async () => {
-    const onStatusChange = vi.fn();
-    render(<AnnotationToolbar {...defaultProps} onStatusChange={onStatusChange} />);
+describe("Scenario 3 — Badge reflects completed status without offering a transition", () => {
+  it("shows a completed badge and no control that transitions back to in_progress", () => {
+    render(<AnnotationToolbar {...defaultProps} currentStatus="completed" />);
 
-    fireEvent.click(screen.getByTestId("status-btn-completed"));
-
-    // Optimistic: onStatusChange called immediately
-    expect(onStatusChange).toHaveBeenCalledWith("completed");
-
-    // PATCH request sent
-    await waitFor(() => {
-      expect(mockAuthFetch).toHaveBeenCalledWith(
-        "/api/v1/annotation-tasks/task-1",
-        expect.objectContaining({
-          method: "PATCH",
-          body: JSON.stringify({ status: "completed" }),
-        }),
-      );
-    });
-  });
-
-  it("status button shows active state immediately after click", async () => {
-    render(<AnnotationToolbar {...defaultProps} />);
-
-    const completedBtn = screen.getByTestId("status-btn-completed");
-    fireEvent.click(completedBtn);
-
-    await waitFor(() => {
-      expect(completedBtn).toHaveStyle({ fontWeight: "600" });
-    });
-  });
-});
-
-// ── Scenario 7: 422 reverts selection and shows toast ────────────────────────
-
-describe("Scenario 7 — PATCH 422 reverts status selection and shows toast", () => {
-  it("reverts to previous status and shows toast on 422 response", async () => {
-    const errorDetail = { message: "Cannot transition from 'in-progress' to 'completed'" };
-    mockAuthFetch.mockResolvedValueOnce({
-      ok: false,
-      json: () => Promise.resolve({ detail: errorDetail }),
-    });
-
-    const onStatusChange = vi.fn();
-    render(<AnnotationToolbar {...defaultProps} onStatusChange={onStatusChange} />);
-
-    fireEvent.click(screen.getByTestId("status-btn-completed"));
-
-    // First call: optimistic update
-    expect(onStatusChange).toHaveBeenCalledWith("completed");
-
-    await waitFor(() => {
-      // Second call: revert to previous status
-      expect(onStatusChange).toHaveBeenCalledWith("in-progress");
-    });
-
-    await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.stringContaining("Cannot transition"),
-        "bad",
-      );
-    });
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("completed");
+    expect(screen.queryByTestId("status-group")).not.toBeInTheDocument();
   });
 });
 

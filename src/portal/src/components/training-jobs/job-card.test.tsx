@@ -19,6 +19,8 @@ const baseJob: TrainingJob = {
   started_at: null,
   completed_at: null,
   failed_at: null,
+  run_number: null,
+  run_name: null,
 };
 
 describe("JobCard", () => {
@@ -58,16 +60,18 @@ describe("JobCard", () => {
     expect(button?.style.background).toBe("var(--primary-soft)");
   });
 
-  it("shows job id, hyperparameter line, and F1 '—' for a running job with no metrics", () => {
+  it("shows run name, hyperparameter line, and F1 '—' for a running job with no metrics", () => {
     const job: TrainingJob = {
       ...baseJob,
       id: "tj_9f2a",
+      run_number: 5,
+      run_name: "run-005-20260729",
       status: "running",
       hyperparams: { learning_rate: 2e-5, num_epochs: 3, batch_size: 8, max_seq_length: 128 },
       metrics: null,
     };
     render(<JobCard job={job} isSelected={false} onClick={vi.fn()} />);
-    expect(screen.getByText("tj_9f2a")).toBeDefined();
+    expect(screen.getByText("run-005-20260729")).toBeDefined();
     expect(screen.getByText("lr 0.00002 · 3ep · bs 8")).toBeDefined();
     expect(screen.getByText("F1 —")).toBeDefined();
   });
@@ -76,11 +80,19 @@ describe("JobCard", () => {
     const job: TrainingJob = {
       ...baseJob,
       id: "tj_7c04",
+      run_number: 6,
+      run_name: "run-006-20260729",
       status: "completed",
       metrics: { eval_f1: 0.9 },
     };
     render(<JobCard job={job} isSelected={false} onClick={vi.fn()} />);
     expect(screen.getByText("F1 0.90")).toBeDefined();
     expect(document.querySelector(".animate-pulse")).toBeNull();
+  });
+
+  it("falls back to job id when run_name is absent (legacy job)", () => {
+    const job: TrainingJob = { ...baseJob, id: "tj_1a2b", run_number: null, run_name: null, status: "completed" };
+    render(<JobCard job={job} isSelected={false} onClick={vi.fn()} />);
+    expect(screen.getByText("tj_1a2b")).toBeDefined();
   });
 });

@@ -21,6 +21,8 @@ function buildBaseModelEntry(activeModel: ModelVersion | null | undefined): Mode
     mlflow_run_id: null,
     mlflow_run_url: null,
     artifact_path: null,
+    run_number: null,
+    run_name: null,
   };
 }
 
@@ -34,8 +36,9 @@ export function ModelRegistryPage() {
   const displayedModels = useMemo<ModelVersion[]>(() => {
     if (isLoading) return [];
     const fineTuned = [...(data ?? [])].sort((a, b) => b.version_number - a.version_number);
+    if (role !== "system_admin") return fineTuned;
     return [...fineTuned, buildBaseModelEntry(activeModel)];
-  }, [data, isLoading, activeModel]);
+  }, [data, isLoading, activeModel, role]);
 
   const versionCount = displayedModels.length;
 

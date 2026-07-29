@@ -36,7 +36,9 @@ export function ModelVersionCard({ model, isActive, isSelected, onSelect }: Mode
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold text-gray-900">
-          {model.version_number === 0 ? "Base Model" : `v${model.version_number}`}
+          {model.version_number === 0
+            ? "Base Model"
+            : model.run_name ?? `v${model.version_number}`}
         </span>
         <div className="flex items-center gap-1.5">
           {isActive && (

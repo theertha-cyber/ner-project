@@ -59,7 +59,19 @@ vi.mock("./SpanInspector", () => ({
 }));
 
 vi.mock("./SuggestionPanel", () => ({
-  SuggestionPanel: () => <div data-testid="mock-suggestion-panel" />,
+  SuggestionPanel: ({
+    suggestions,
+    onPromote,
+  }: {
+    suggestions: Array<{ id: string }>;
+    onPromote: (suggestId: string) => void;
+  }) => (
+    <div data-testid="mock-suggestion-panel">
+      {suggestions.map((s) => (
+        <button key={s.id} data-testid={`mock-promote-${s.id}`} onClick={() => onPromote(s.id)} />
+      ))}
+    </div>
+  ),
 }));
 
 vi.mock("./ArmedBanner", () => ({
@@ -287,5 +299,249 @@ describe("Scenario 3 — Clicking Assign Task button expands the inline form", (
     expect(screen.getByTestId("mock-assign-task-form")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("mock-cancel-btn"));
     expect(screen.queryByTestId("mock-assign-task-form")).not.toBeInTheDocument();
+  });
+});
+
+// ── Task lifecycle: promotion happens once, on task open ──────────────────────
+
+const mockUnannotatedTask: AnnotationTask = {
+  ...mockTask,
+  id: "task-unannotated",
+  status: "unannotated",
+};
+
+const mockCompletedTask: AnnotationTask = {
+  ...mockTask,
+  id: "task-completed",
+  status: "completed",
+};
+
+function queueAuthFetchTasksList(tasks: AnnotationTask[]) {
+  mockAuthFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(tasks) });
+}
+
+function queueAuthFetchDocLoad() {
+  mockAuthFetch
+    .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ text: "hello world" }) })
+    .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) })
+    .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) });
+}
+
+describe("Scenario 4 — Opening an unannotated task promotes it to in-progress", () => {
+  it("sends a PATCH with in-progress status on selection", async () => {
+    queueAuthFetchTasksList([mockUnannotatedTask]);
+    mockAuthFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: mockUnannotatedTask.id, status: "in-progress" }) });
+    queueAuthFetchDocLoad();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`task-row-${mockUnannotatedTask.id}`)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId(`task-row-${mockUnannotatedTask.id}`));
+
+    await waitFor(() => {
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `/api/v1/annotation-tasks/${mockUnannotatedTask.id}`,
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ status: "in-progress" }),
+        }),
+      );
+    });
+  });
+});
+
+describe("Scenario 5 — In-progress transition fires only once per session", () => {
+  it("sends exactly one in-progress PATCH across select, switch, and re-select", async () => {
+    queueAuthFetchTasksList([mockUnannotatedTask, mockTask]);
+    mockAuthFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: mockUnannotatedTask.id, status: "in-progress" }) });
+    queueAuthFetchDocLoad();
+    queueAuthFetchDocLoad();
+    queueAuthFetchDocLoad();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`task-row-${mockUnannotatedTask.id}`)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId(`task-row-${mockUnannotatedTask.id}`));
+    await waitFor(() => {
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `/api/v1/annotation-tasks/${mockUnannotatedTask.id}`,
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+
+    fireEvent.click(screen.getByTestId(`task-row-${mockTask.id}`));
+    await waitFor(() => screen.getByTestId("mock-document-viewer"));
+
+    fireEvent.click(screen.getByTestId(`task-row-${mockUnannotatedTask.id}`));
+    await waitFor(() => screen.getByTestId("mock-document-viewer"));
+
+    const patchCalls = mockAuthFetch.mock.calls.filter(
+      (call) => call[1]?.method === "PATCH" && call[0] === `/api/v1/annotation-tasks/${mockUnannotatedTask.id}`,
+    );
+    expect(patchCalls).toHaveLength(1);
+  });
+});
+
+describe("Scenario 6 — Opening a completed task sends no status request", () => {
+  it("sends no PATCH and renders the document for a completed task", async () => {
+    queueAuthFetchTasksList([mockCompletedTask]);
+    queueAuthFetchDocLoad();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`task-row-${mockCompletedTask.id}`)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId(`task-row-${mockCompletedTask.id}`));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mock-document-viewer")).toBeInTheDocument();
+    });
+
+    const patchCalls = mockAuthFetch.mock.calls.filter((call) => call[1]?.method === "PATCH");
+    expect(patchCalls).toHaveLength(0);
+  });
+});
+
+describe("Scenario 7 — Creating a span does not send a status request", () => {
+  it("promoting a suggestion sends the span request but no status PATCH", async () => {
+    queueAuthFetchTasksList([mockTask]);
+    mockAuthFetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ text: "hello world" }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockSuggestedSpan]) });
+    mockAuthFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        id: "confirmed-1",
+        entity_type: mockSuggestedSpan.entity_type,
+        char_start: mockSuggestedSpan.char_start,
+        char_end: mockSuggestedSpan.char_end,
+        text: mockSuggestedSpan.text,
+        confidence: 1.0,
+      }),
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`task-row-${mockTask.id}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`task-row-${mockTask.id}`));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`mock-promote-${mockSuggestedSpan.id}`)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId(`mock-promote-${mockSuggestedSpan.id}`));
+
+    await waitFor(() => {
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `/api/v1/documents/${mockTask.document_id}/spans/promote/${mockSuggestedSpan.id}`,
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    const patchCalls = mockAuthFetch.mock.calls.filter((call) => call[1]?.method === "PATCH");
+    expect(patchCalls).toHaveLength(0);
+  });
+});
+
+// ── Action bar: completion flow ───────────────────────────────────────────────
+
+describe("Scenario 9 — Mark as Completed completes the task", () => {
+  it("sends a PATCH with completed status and shows the completed badge on success", async () => {
+    queueAuthFetchTasksList([mockTask]);
+    queueAuthFetchDocLoad();
+    mockAuthFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: mockTask.id, status: "completed" }) });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`task-row-${mockTask.id}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`task-row-${mockTask.id}`));
+    await waitFor(() => screen.getByTestId("mock-document-viewer"));
+
+    fireEvent.click(screen.getByTestId("mark-completed-btn"));
+
+    await waitFor(() => {
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `/api/v1/annotation-tasks/${mockTask.id}`,
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ status: "completed" }),
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status-badge")).toHaveTextContent("completed");
+    });
+  });
+});
+
+describe("Scenario 10 — Completing with no spans surfaces the error and keeps the task in-progress", () => {
+  it("keeps the badge in_progress and re-enables the button on 422", async () => {
+    queueAuthFetchTasksList([mockTask]);
+    queueAuthFetchDocLoad();
+    mockAuthFetch.mockResolvedValueOnce({
+      ok: false,
+      json: () => Promise.resolve({ detail: { message: "Document must have at least one confirmed span before task can be completed" } }),
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`task-row-${mockTask.id}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`task-row-${mockTask.id}`));
+    await waitFor(() => screen.getByTestId("mock-document-viewer"));
+
+    const btn = screen.getByTestId("mark-completed-btn");
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status-badge")).toHaveTextContent("in_progress");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("mark-completed-btn")).not.toBeDisabled();
+    });
+  });
+});
+
+describe("Scenario 11 — Re-completing an already completed task saves further edits", () => {
+  it("sends a completed PATCH that succeeds with no transition error", async () => {
+    queueAuthFetchTasksList([mockCompletedTask]);
+    queueAuthFetchDocLoad();
+    mockAuthFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: mockCompletedTask.id, status: "completed" }) });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`task-row-${mockCompletedTask.id}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`task-row-${mockCompletedTask.id}`));
+    await waitFor(() => screen.getByTestId("mock-document-viewer"));
+
+    fireEvent.click(screen.getByTestId("mark-completed-btn"));
+
+    await waitFor(() => {
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `/api/v1/annotation-tasks/${mockCompletedTask.id}`,
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ status: "completed" }),
+        }),
+      );
+    });
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("completed");
   });
 });

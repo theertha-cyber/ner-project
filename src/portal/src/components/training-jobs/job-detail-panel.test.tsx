@@ -36,6 +36,8 @@ const baseJob: TrainingJob = {
   started_at: null,
   completed_at: null,
   failed_at: null,
+  run_number: null,
+  run_name: null,
 };
 
 describe("JobDetailPanel", () => {
@@ -199,5 +201,70 @@ describe("JobDetailPanel", () => {
       { wrapper: createWrapper() },
     );
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("shows the run name as the primary header identifier when present", () => {
+    const job = { ...baseJob, run_number: 3, run_name: "run-003-20260729" };
+    render(
+      <JobDetailPanel job={job} isLoading={false} isError={false} />,
+      { wrapper: createWrapper() },
+    );
+    expect(screen.getAllByText("run-003-20260729").length).toBeGreaterThan(0);
+  });
+
+  it("falls back to the full job id in the header when run_name is absent", () => {
+    render(
+      <JobDetailPanel job={baseJob} isLoading={false} isError={false} />,
+      { wrapper: createWrapper() },
+    );
+    expect(screen.getAllByText(baseJob.id).length).toBeGreaterThan(0);
+  });
+
+  it("renders matching run names for the job and its resolved model version in the lineage diagram", async () => {
+    const job = { ...baseJob, run_number: 6, run_name: "run-006-20260729" };
+    mockFetch.mockImplementation((url: string) => {
+      if (String(url).includes("/models/active")) {
+        return Promise.resolve(new Response(JSON.stringify({ model: null }), { status: 200 }));
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [{ id: "mv-1", version_number: 3, training_job_id: "job-1", status: "promoted", run_name: "run-006-20260729" }],
+          }),
+          { status: 200 },
+        ),
+      );
+    });
+
+    render(
+      <JobDetailPanel job={job} isLoading={false} isError={false} />,
+      { wrapper: createWrapper() },
+    );
+
+    expect((await screen.findAllByText("run-006-20260729")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("falls back to job id and v{version_number} in the lineage diagram for legacy entries", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (String(url).includes("/models/active")) {
+        return Promise.resolve(new Response(JSON.stringify({ model: null }), { status: 200 }));
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [{ id: "mv-1", version_number: 1, training_job_id: "job-1", status: "promoted", run_name: null }],
+          }),
+          { status: 200 },
+        ),
+      );
+    });
+
+    render(
+      <JobDetailPanel job={baseJob} isLoading={false} isError={false} />,
+      { wrapper: createWrapper() },
+    );
+
+    expect(screen.getAllByText("job-1").length).toBeGreaterThan(0);
+    expect(await screen.findByText("v1")).toBeDefined();
   });
 });

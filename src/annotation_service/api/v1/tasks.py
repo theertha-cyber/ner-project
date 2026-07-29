@@ -174,6 +174,7 @@ async def update_task(
     valid_transitions = {
         "unannotated": ["in-progress"],
         "in-progress": ["completed"],
+        "completed": ["completed"],
     }
 
     allowed = valid_transitions.get(current_status, [])

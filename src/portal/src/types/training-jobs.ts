@@ -30,6 +30,8 @@ export interface TrainingJob {
   started_at: string | null;
   completed_at: string | null;
   failed_at: string | null;
+  run_number: number | null;
+  run_name: string | null;
 }
 
 export interface TrainingJobListResponse {

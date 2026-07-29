@@ -16,6 +16,8 @@ export interface ModelVersion {
   mlflow_run_id: string | null;
   mlflow_run_url: string | null;
   artifact_path: string | null;
+  run_number: number | null;
+  run_name: string | null;
 }
 
 export interface ModelVersionListResponse {

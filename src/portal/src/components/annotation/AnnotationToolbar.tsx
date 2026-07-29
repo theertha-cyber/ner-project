@@ -1,8 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { authFetch } from "@/lib/auth-fetch";
-import { useToast } from "@/hooks/use-toast";
 import type { AnnotationTask } from "./TaskQueue";
 
 type LayoutMode = "3pane" | "focus";
@@ -22,7 +19,6 @@ interface AnnotationToolbarProps {
   suggestedCount: number;
   layoutMode: LayoutMode;
   isPrelabeling: boolean;
-  onStatusChange: (newStatus: TaskStatus) => void;
   onLayoutChange: (mode: LayoutMode) => void;
   onPrelabel: () => void;
 }
@@ -35,39 +31,10 @@ export function AnnotationToolbar({
   suggestedCount,
   layoutMode,
   isPrelabeling,
-  onStatusChange,
   onLayoutChange,
   onPrelabel,
 }: AnnotationToolbarProps) {
-  const { toast } = useToast();
-  const [optimisticStatus, setOptimisticStatus] = useState<TaskStatus | null>(null);
-
-  const resolvedStatus = optimisticStatus ?? currentStatus;
-
-  const handleStatusClick = async (newStatus: TaskStatus) => {
-    if (!task || newStatus === resolvedStatus) return;
-    const prevStatus = resolvedStatus;
-    setOptimisticStatus(newStatus);
-    onStatusChange(newStatus);
-
-    const res = await authFetch(`/api/v1/annotation-tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      setOptimisticStatus(prevStatus ?? null);
-      onStatusChange(prevStatus ?? "unannotated");
-      const msg = (err as { detail?: { message?: string } | string })?.detail;
-      toast(typeof msg === "string" ? msg : (msg as { message?: string })?.message ?? "Failed to update status", "bad");
-    } else {
-      setOptimisticStatus(null);
-    }
-  };
-
-  const statuses: TaskStatus[] = ["unannotated", "in-progress", "completed"];
+  const resolvedStatus = currentStatus;
 
   return (
     <div
@@ -124,48 +91,6 @@ export function AnnotationToolbar({
           </span>
         )}
       </div>
-
-      {/* Status button group */}
-      {task && (
-        <div
-          style={{
-            display: "flex",
-            borderRadius: 9,
-            border: "1px solid var(--color-border)",
-            background: "var(--color-surface-raised)",
-            padding: 3,
-            gap: 2,
-            flexShrink: 0,
-          }}
-          data-testid="status-group"
-        >
-          {statuses.map((s) => {
-            const isActive = resolvedStatus === s;
-            return (
-              <button
-                key={s}
-                onClick={() => handleStatusClick(s)}
-                data-testid={`status-btn-${STATUS_LABELS[s]}`}
-                style={{
-                  padding: "3px 10px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: isActive ? "var(--color-primary, #6366f1)" : "transparent",
-                  boxShadow: isActive ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
-                  color: isActive ? "#fff" : "var(--color-text-secondary)",
-                  fontSize: 12,
-                  fontWeight: isActive ? 600 : 400,
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {STATUS_LABELS[s]}
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       {/* Flex spacer */}
       <div style={{ flex: 1 }} />

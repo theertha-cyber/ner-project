@@ -13,11 +13,19 @@ const baseModel: ModelVersion = {
   mlflow_run_id: null,
   mlflow_run_url: null,
   artifact_path: null,
+  run_number: 3,
+  run_name: "run-003-20260620",
 };
 
 describe("ModelVersionCard", () => {
-  it("renders version number", () => {
+  it("renders run name for a completed model version", () => {
     render(<ModelVersionCard model={baseModel} isActive={false} isSelected={false} onSelect={vi.fn()} />);
+    expect(screen.getByText("run-003-20260620")).toBeDefined();
+  });
+
+  it("falls back to v{version_number} when run_name is null (legacy)", () => {
+    const legacy: ModelVersion = { ...baseModel, run_number: null, run_name: null };
+    render(<ModelVersionCard model={legacy} isActive={false} isSelected={false} onSelect={vi.fn()} />);
     expect(screen.getByText("v3")).toBeDefined();
   });
 
@@ -63,7 +71,7 @@ describe("ModelVersionCard", () => {
     const v0: ModelVersion = {
       id: "v0-base", version_number: 0, status: "promoted",
       training_job_id: "", created_at: "",
-      metrics: null, mlflow_run_id: null, mlflow_run_url: null, artifact_path: null,
+      metrics: null, mlflow_run_id: null, mlflow_run_url: null, artifact_path: null, run_number: null, run_name: null,
     };
     render(<ModelVersionCard model={v0} isActive={true} isSelected={false} onSelect={vi.fn()} />);
     expect(screen.getByText("Base Model")).toBeDefined();
@@ -74,7 +82,7 @@ describe("ModelVersionCard", () => {
     const v0: ModelVersion = {
       id: "v0-base", version_number: 0, status: "promoted",
       training_job_id: "", created_at: "",
-      metrics: null, mlflow_run_id: null, mlflow_run_url: null, artifact_path: null,
+      metrics: null, mlflow_run_id: null, mlflow_run_url: null, artifact_path: null, run_number: null, run_name: null,
     };
     render(<ModelVersionCard model={v0} isActive={false} isSelected={false} onSelect={vi.fn()} />);
     expect(screen.getByText("dslim/bert-base-NER")).toBeDefined();

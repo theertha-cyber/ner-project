@@ -78,7 +78,14 @@ def require_system_admin(request: Request) -> None:
         raise HTTPException(status_code=403, detail="System admin access required")
 
 
+def _compute_run_name(run_number: int | None, created_at) -> str | None:
+    if run_number is None or created_at is None:
+        return None
+    return f"run-{run_number:03d}-{created_at:%Y%m%d}"
+
+
 def _row_to_response(row: dict) -> TrainingJobResponse:
+    run_number = row.get("run_number")
     return TrainingJobResponse(
         id=row["id"],
         tenant_id=row["tenant_id"],
@@ -95,6 +102,8 @@ def _row_to_response(row: dict) -> TrainingJobResponse:
         started_at=row.get("started_at"),
         completed_at=row.get("completed_at"),
         failed_at=row.get("failed_at"),
+        run_number=run_number,
+        run_name=_compute_run_name(run_number, row.get("created_at")),
     )
 
 

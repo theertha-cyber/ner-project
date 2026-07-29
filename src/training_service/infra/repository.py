@@ -14,15 +14,22 @@ class TrainingJobRepository:
     async def create(session: AsyncSession, tenant_id: str, job_id: str, hyperparams: dict, celery_task_id: str | None = None) -> dict:
         schema = _schema(tenant_id)
         now = datetime.now(timezone.utc)
+        # Serialize run_number assignment per tenant so concurrent submissions can't collide.
+        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:tid))"), {"tid": tenant_id})
+        run_number_result = await session.execute(
+            text(f"SELECT COALESCE(MAX(run_number), 0) + 1 FROM {schema}.training_jobs WHERE tenant_id = :tenant_id"),
+            {"tenant_id": tenant_id},
+        )
+        run_number = run_number_result.scalar()
         await session.execute(
             text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, celery_task_id, created_at)
-                VALUES (:id, :tenant_id, 'pending_approval', CAST(:hyperparams AS jsonb), :celery_task_id, :created_at)
+                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, celery_task_id, run_number, created_at)
+                VALUES (:id, :tenant_id, 'pending_approval', CAST(:hyperparams AS jsonb), :celery_task_id, :run_number, :created_at)
             """),
-            {"id": job_id, "tenant_id": tenant_id, "hyperparams": json.dumps(hyperparams), "celery_task_id": celery_task_id, "created_at": now},
+            {"id": job_id, "tenant_id": tenant_id, "hyperparams": json.dumps(hyperparams), "celery_task_id": celery_task_id, "run_number": run_number, "created_at": now},
         )
         await session.commit()
-        return {"id": job_id, "tenant_id": tenant_id, "status": "pending_approval", "hyperparams": hyperparams, "celery_task_id": celery_task_id}
+        return {"id": job_id, "tenant_id": tenant_id, "status": "pending_approval", "hyperparams": hyperparams, "celery_task_id": celery_task_id, "run_number": run_number}
 
     @staticmethod
     async def get_by_id(session: AsyncSession, tenant_id: str, job_id: str) -> dict | None:

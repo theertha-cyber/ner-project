@@ -13,6 +13,11 @@ vi.mock("@/hooks/use-batch-runs", () => ({
   useBatchRuns: () => mockUseBatchRuns(),
 }));
 
+const mockUseModelVersions = vi.fn();
+vi.mock("@/hooks/use-model-versions", () => ({
+  useModelVersions: () => mockUseModelVersions(),
+}));
+
 const RUN_A: BatchRun = {
   run_id: "run-aaa-111",
   status: "completed",
@@ -39,6 +44,7 @@ describe("BatchRunsTab", () => {
   beforeEach(() => {
     mockAuthFetch.mockReset();
     mockUseBatchRuns.mockReturnValue({ runs: [RUN_A, RUN_B], triggerBatch: vi.fn() });
+    mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 2 } });
   });
 
   it("Test 7: run cards render with ID, status, progress bar, and footer", () => {
@@ -117,5 +123,43 @@ describe("BatchRunsTab", () => {
 
     const failedPill = screen.getAllByText("failed");
     expect(failedPill[0].className).toContain("bg-status-failed");
+  });
+
+  it("shows a confirmation dialog when only the base model is available", () => {
+    mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 0 } });
+    const triggerBatch = vi.fn();
+    mockUseBatchRuns.mockReturnValue({ runs: [RUN_A], triggerBatch });
+
+    render(<BatchRunsTab />);
+    fireEvent.click(screen.getByText(/new batch run/i));
+
+    expect(screen.getByRole("dialog")).toBeDefined();
+    expect(triggerBatch).not.toHaveBeenCalled();
+  });
+
+  it("declining the dialog cancels the batch run", () => {
+    mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 0 } });
+    const triggerBatch = vi.fn();
+    mockUseBatchRuns.mockReturnValue({ runs: [RUN_A], triggerBatch });
+
+    render(<BatchRunsTab />);
+    fireEvent.click(screen.getByText(/new batch run/i));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(triggerBatch).not.toHaveBeenCalled();
+  });
+
+  it("confirming the dialog proceeds with the batch run", async () => {
+    mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 0 } });
+    const newRun: BatchRun = { run_id: "run-new-999", status: "queued" };
+    const triggerBatch = vi.fn().mockResolvedValue(newRun);
+    mockUseBatchRuns.mockReturnValue({ runs: [RUN_A], triggerBatch });
+
+    render(<BatchRunsTab />);
+    fireEvent.click(screen.getByText(/new batch run/i));
+    fireEvent.click(screen.getByRole("button", { name: /use base model/i }));
+
+    await waitFor(() => expect(triggerBatch).toHaveBeenCalled());
   });
 });

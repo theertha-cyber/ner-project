@@ -43,14 +43,18 @@ function createWrapper() {
 
 const noopMutation = { mutate: vi.fn(), isPending: false };
 
-beforeEach(() => {
+function mockUser(role: string) {
   vi.mocked(useAuth).mockReturnValue({
-    user: { role: "tenant_admin", tenantId: "t1", userId: "u1", email: "a@b.com", tenantSlug: "acme" },
+    user: { role, tenantId: "t1", userId: "u1", email: "a@b.com", tenantSlug: "acme" },
     getAccessToken: vi.fn(),
     setAccessToken: vi.fn(),
     login: vi.fn(),
     logout: vi.fn(),
   });
+}
+
+beforeEach(() => {
+  mockUser("tenant_admin");
   vi.mocked(useToast).mockReturnValue({ toast: vi.fn() });
   vi.mocked(usePromoteModel).mockReturnValue(noopMutation as ReturnType<typeof usePromoteModel>);
   vi.mocked(useDemoteModel).mockReturnValue(noopMutation as ReturnType<typeof useDemoteModel>);
@@ -84,7 +88,8 @@ describe("ModelRegistryPage", () => {
     expect(skeletons.length).toBe(3);
   });
 
-  it("always shows base model card even with no fine-tuned models", () => {
+  it("shows base model card for system_admin with no fine-tuned models trained yet", () => {
+    mockUser("system_admin");
     vi.mocked(useModelVersions).mockReturnValue({
       data: [],
       isLoading: false,
@@ -96,7 +101,8 @@ describe("ModelRegistryPage", () => {
     expect(screen.getByText("Base Model")).toBeDefined();
   });
 
-  it("shows base model as promoted when activeModel is version 0", () => {
+  it("shows base model as promoted for system_admin when activeModel is version 0", () => {
+    mockUser("system_admin");
     vi.mocked(useModelVersions).mockReturnValue({
       data: [],
       isLoading: false,
@@ -105,6 +111,7 @@ describe("ModelRegistryPage", () => {
         id: "v0", version_number: 0, status: "promoted",
         training_job_id: "", created_at: "",
         metrics: null, mlflow_run_id: null, mlflow_run_url: null, artifact_path: null,
+        run_number: null, run_name: null,
       },
       isActiveLoading: false,
     });
@@ -113,19 +120,22 @@ describe("ModelRegistryPage", () => {
     expect(screen.getByText("promoted")).toBeDefined();
   });
 
-  it("renders fine-tuned model cards alongside base model", () => {
+  it("shows fine-tuned model cards above the base model card for system_admin", () => {
+    mockUser("system_admin");
     vi.mocked(useModelVersions).mockReturnValue({
       data: [
         {
           id: "mv-1", version_number: 1, status: "archived", training_job_id: "tj-1",
           created_at: "2026-06-01T00:00:00Z", metrics: null,
           mlflow_run_id: null, mlflow_run_url: null, artifact_path: null,
+          run_number: null, run_name: null,
         },
         {
           id: "mv-2", version_number: 2, status: "promoted", training_job_id: "tj-2",
           created_at: "2026-06-10T00:00:00Z",
           metrics: { eval_f1: 0.88, eval_precision: 0.90, eval_recall: 0.86, eval_loss: 0.13 },
           mlflow_run_id: null, mlflow_run_url: null, artifact_path: null,
+          run_number: null, run_name: null,
         },
       ],
       isLoading: false,
@@ -147,6 +157,7 @@ describe("ModelRegistryPage", () => {
           created_at: "2026-06-20T00:00:00Z",
           metrics: { eval_f1: 0.89, eval_precision: 0.91, eval_recall: 0.87, eval_loss: 0.12 },
           mlflow_run_id: null, mlflow_run_url: null, artifact_path: null,
+          run_number: null, run_name: null,
         },
       ],
       isLoading: false,
@@ -163,7 +174,8 @@ describe("ModelRegistryPage", () => {
     expect(screen.getByText("0.8900")).toBeDefined();
   });
 
-  it("selecting base model card shows base model detail", () => {
+  it("selecting base model card shows base model detail for system_admin", () => {
+    mockUser("system_admin");
     vi.mocked(useModelVersions).mockReturnValue({
       data: [],
       isLoading: false,
@@ -176,5 +188,71 @@ describe("ModelRegistryPage", () => {
     fireEvent.click(screen.getByText("Base Model"));
     expect(screen.getAllByText("dslim/bert-base-NER").length).toBeGreaterThan(0);
     expect(screen.getByText("PER")).toBeDefined();
+  });
+
+  it("hides base model card for tenant_admin even with no fine-tuned models", () => {
+    mockUser("tenant_admin");
+    vi.mocked(useModelVersions).mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      activeModel: null,
+      isActiveLoading: false,
+    });
+    render(<ModelRegistryPage />, { wrapper: createWrapper() });
+    expect(screen.queryByText("Base Model")).toBeNull();
+    expect(screen.getByText("Model Registry")).toBeDefined();
+  });
+
+  it("hides base model card for business_user", () => {
+    mockUser("business_user");
+    vi.mocked(useModelVersions).mockReturnValue({
+      data: [
+        {
+          id: "mv-1", version_number: 1, status: "completed", training_job_id: "tj-1",
+          created_at: "2026-06-01T00:00:00Z", metrics: null,
+          mlflow_run_id: null, mlflow_run_url: null, artifact_path: null,
+          run_number: 1, run_name: "run-001-20260601",
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      activeModel: null,
+      isActiveLoading: false,
+    });
+    render(<ModelRegistryPage />, { wrapper: createWrapper() });
+    expect(screen.queryByText("Base Model")).toBeNull();
+    expect(screen.getByText("run-001-20260601")).toBeDefined();
+  });
+
+  it("hides base model card for annotator", () => {
+    mockUser("annotator");
+    vi.mocked(useModelVersions).mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      activeModel: null,
+      isActiveLoading: false,
+    });
+    render(<ModelRegistryPage />, { wrapper: createWrapper() });
+    expect(screen.queryByText("Base Model")).toBeNull();
+  });
+
+  it("hides base model card for tenant_admin even when it is the tenant's only active model", () => {
+    mockUser("tenant_admin");
+    vi.mocked(useModelVersions).mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      activeModel: {
+        id: "v0", version_number: 0, status: "promoted",
+        training_job_id: "", created_at: "",
+        metrics: null, mlflow_run_id: null, mlflow_run_url: null, artifact_path: null,
+        run_number: null, run_name: null,
+      },
+      isActiveLoading: false,
+    });
+    render(<ModelRegistryPage />, { wrapper: createWrapper() });
+    expect(screen.queryByText("Base Model")).toBeNull();
   });
 });

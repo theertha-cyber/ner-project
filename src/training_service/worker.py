@@ -366,6 +366,11 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
                 {"tenant_id": tenant_id},
             ).fetchone()
             version_number = row[0]
+            job_run_number_row = conn.execute(
+                text(f"SELECT run_number FROM {schema}.training_jobs WHERE tenant_id = :tenant_id AND id = :job_id"),
+                {"tenant_id": tenant_id, "job_id": job_id},
+            ).fetchone()
+            run_number = job_run_number_row[0] if job_run_number_row else None
 
         version_id = str(uuid.uuid4())
         artifact_path = _save_artifacts(tenant_id, version_number, model_dir)
@@ -392,9 +397,9 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
             conn.execute(
                 text(f"""
                     INSERT INTO {schema}.model_versions
-                        (id, tenant_id, version_number, training_job_id, status, metrics, artifact_path, created_at, mlflow_run_id)
+                        (id, tenant_id, version_number, training_job_id, status, metrics, artifact_path, created_at, mlflow_run_id, run_number)
                     VALUES (:id, :tenant_id, :version_number,
-                        :training_job_id, 'training', CAST(:metrics AS jsonb), :artifact_path, :now, :mlflow_run_id)
+                        :training_job_id, 'training', CAST(:metrics AS jsonb), :artifact_path, :now, :mlflow_run_id, :run_number)
                 """),
                 {
                     "id": version_id,
@@ -405,6 +410,7 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
                     "artifact_path": artifact_path,
                     "now": datetime.now(timezone.utc),
                     "mlflow_run_id": mlflow_run_id,
+                    "run_number": run_number,
                 },
             )
 

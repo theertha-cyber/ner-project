@@ -2,14 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { useBatchRuns } from "@/hooks/use-batch-runs";
+import { useModelVersions } from "@/hooks/use-model-versions";
 import { BatchRunCard } from "./BatchRunCard";
 import { BatchRunDetail } from "./BatchRunDetail";
+import { BaseModelConfirmDialog } from "./BaseModelConfirmDialog";
 import type { BatchRun } from "@/types/extraction";
 
 export function BatchRunsTab() {
   const { runs, triggerBatch } = useBatchRuns();
+  const { activeModel } = useModelVersions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
+  const [showBaseModelConfirm, setShowBaseModelConfirm] = useState(false);
 
   // Auto-select the most recent run on mount or when runs change
   useEffect(() => {
@@ -31,6 +35,14 @@ export function BatchRunsTab() {
     }
   }
 
+  function handleNewBatchRunClick() {
+    if (activeModel?.version_number === 0) {
+      setShowBaseModelConfirm(true);
+      return;
+    }
+    handleNewBatchRun();
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Header row */}
@@ -41,12 +53,22 @@ export function BatchRunsTab() {
         <button
           type="button"
           disabled={triggering}
-          onClick={handleNewBatchRun}
+          onClick={handleNewBatchRunClick}
           className="flex items-center gap-1.5 rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:bg-brand-hover disabled:opacity-50 transition-colors"
         >
           ⊕ New batch run
         </button>
       </div>
+
+      {showBaseModelConfirm && (
+        <BaseModelConfirmDialog
+          onConfirm={() => {
+            setShowBaseModelConfirm(false);
+            handleNewBatchRun();
+          }}
+          onCancel={() => setShowBaseModelConfirm(false)}
+        />
+      )}
 
       {/* Two-column layout */}
       <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 18 }}>

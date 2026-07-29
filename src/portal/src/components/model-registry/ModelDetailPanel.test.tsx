@@ -35,6 +35,8 @@ const completedModel: ModelVersion = {
   mlflow_run_id: "run-abc",
   mlflow_run_url: "http://mlflow:5000/#/experiments/1/runs/abc123",
   artifact_path: "tenants/acme-corp/models/v3",
+  run_number: null,
+  run_name: null,
 };
 
 const mockToast = vi.fn();

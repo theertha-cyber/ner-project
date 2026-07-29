@@ -87,6 +87,18 @@ def _cache_model_version(tenant_id: str, version_data: dict) -> None:
         )
 
 
+def _lookup_run_number(tenant_id: str, version_number: int) -> int | None:
+    engine = _get_sync_engine()
+    schema = _schema(tenant_id)
+    with engine.connect() as conn:
+        result = conn.execute(
+            text(f"SELECT run_number FROM {schema}.model_versions WHERE tenant_id = :tid AND version_number = :vn"),
+            {"tid": tenant_id, "vn": version_number},
+        )
+        row = result.fetchone()
+        return row[0] if row else None
+
+
 def _read_cache_model_versions(tenant_id: str) -> list[dict]:
     engine = _get_sync_engine()
     schema = _schema(tenant_id)
@@ -138,6 +150,13 @@ def list_model_versions(tenant_id: str) -> tuple[list[dict], str | None]:
 
         try:
             for v in versions:
+                v["run_number"] = _lookup_run_number(tenant_id, v["version_number"])
+        except Exception:
+            for v in versions:
+                v.setdefault("run_number", None)
+
+        try:
+            for v in versions:
                 _cache_model_version(tenant_id, v)
         except Exception:
             pass
@@ -179,6 +198,10 @@ def get_active_model(tenant_id: str) -> tuple[dict | None, str | None]:
             "mlflow_run_url": _mlflow_run_url(version.run_id),
             "created_at": datetime.fromtimestamp(int(version.creation_timestamp) / 1000, tz=timezone.utc) if version.creation_timestamp else None,
         }
+        try:
+            result["run_number"] = _lookup_run_number(tenant_id, result["version_number"])
+        except Exception:
+            result["run_number"] = None
         try:
             _cache_model_version(tenant_id, result)
         except Exception:
@@ -232,6 +255,10 @@ def promote_model_version(tenant_id: str, version_number: int) -> dict | None:
         "created_at": datetime.fromtimestamp(int(version.creation_timestamp) / 1000, tz=timezone.utc) if version.creation_timestamp else None,
     }
     try:
+        result["run_number"] = _lookup_run_number(tenant_id, result["version_number"])
+    except Exception:
+        result["run_number"] = None
+    try:
         _cache_model_version(tenant_id, result)
     except Exception:
         pass
@@ -268,6 +295,10 @@ def demote_model_version(tenant_id: str, version_number: int) -> dict | None:
         "mlflow_run_url": _mlflow_run_url(version.run_id),
         "created_at": datetime.fromtimestamp(int(version.creation_timestamp) / 1000, tz=timezone.utc) if version.creation_timestamp else None,
     }
+    try:
+        result["run_number"] = _lookup_run_number(tenant_id, result["version_number"])
+    except Exception:
+        result["run_number"] = None
     try:
         _cache_model_version(tenant_id, result)
     except Exception:

@@ -76,7 +76,7 @@ export function ModelDetailPanel({ model, role }: ModelDetailPanelProps) {
       {/* Header */}
       <div>
         <h2 className="text-lg font-semibold text-gray-900">
-          {isBaseModel ? "Base Model" : `v${model.version_number}`}
+          {isBaseModel ? "Base Model" : model.run_name ?? `v${model.version_number}`}
         </h2>
         {isBaseModel ? (
           <p className="font-mono text-xs text-gray-500">dslim/bert-base-NER</p>
