@@ -148,17 +148,16 @@ def _infer_with_onnx(tokens: list[str], tenant_id: str) -> list[dict]:
 
 
 def _infer_with_base_model(tokens: str | list[str]) -> list[dict]:
+    """Returns one prediction per model output token, in source order, with no
+    deduplication by word text — downstream BIO reconstruction depends on both
+    order and repeated occurrences of the same word."""
     pipe = _get_base_pipeline()
     text = " ".join(tokens) if isinstance(tokens, list) else tokens
     raw = pipe(text)
-    grouped = {}
-    for item in raw:
-        word = item["word"]
-        label = item["entity"]
-        score = item["score"]
-        if word not in grouped or score > grouped[word]["confidence"]:
-            grouped[word] = {"token": word, "label": label, "confidence": score}
-    return list(grouped.values())
+    return [
+        {"token": item["word"], "label": item["entity"], "confidence": float(item["score"])}
+        for item in raw
+    ]
 
 
 def infer(tenant_id: str, tokens: list[str]) -> tuple[list[dict], str] | tuple[None, None]:

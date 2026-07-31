@@ -243,7 +243,8 @@ class TestHybridRetrieverFusion:
 @pytest.mark.integration
 class TestOrchestratorLexicalRetrieval:
     """Covers scenario 15 at the retrieval layer: an exact-term query with low
-    semantic similarity must still surface the matching chunk via _vector_source."""
+    semantic similarity must still surface the matching chunk via the retriever
+    (reached in production through the `semantic_retrieval` capability)."""
 
     @pytest.mark.asyncio
     async def test_vector_source_surfaces_low_similarity_lexical_match(self, hybrid_schema):
@@ -260,10 +261,9 @@ class TestOrchestratorLexicalRetrieval:
             await _insert_chunk(session, schema, doc_id, 0, "reference code PL77320 appears here", low_similarity_vec)
             await session.commit()
 
-        orchestrator = RAGOrchestrator.__new__(RAGOrchestrator)
-        orchestrator.retriever = HybridRetriever(DenseRetriever(FakeEmbeddingService(query_vec)), SparseRetriever())
+        retriever = HybridRetriever(DenseRetriever(FakeEmbeddingService(query_vec)), SparseRetriever())
 
         async with session_factory() as session:
-            results = await orchestrator._vector_source("PL77320", session, schema)
+            results = await retriever.retrieve("PL77320", session, schema)
 
         assert any(r.document_id == doc_id and r.chunk_index == 0 for r in results)

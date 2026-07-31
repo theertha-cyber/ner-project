@@ -27,6 +27,8 @@ async def _proxy(method: str, path: str, request: Request):
             resp = await client.get(url, headers=headers, params=dict(request.query_params))
         elif method == "POST":
             resp = await client.post(url, headers=headers, json=body)
+        elif method == "PATCH":
+            resp = await client.patch(url, headers=headers, json=body)
         elif method == "DELETE":
             resp = await client.delete(url, headers=headers)
         elif method == "OPTIONS":
@@ -56,6 +58,11 @@ async def proxy_list_conversations(request: Request):
 @router.get("/chat/conversations/{conv_id}")
 async def proxy_get_conversation(conv_id: str, request: Request):
     return await _proxy("GET", f"/api/v1/chat/conversations/{conv_id}", request)
+
+
+@router.patch("/chat/conversations/{conv_id}")
+async def proxy_rename_conversation(conv_id: str, request: Request):
+    return await _proxy("PATCH", f"/api/v1/chat/conversations/{conv_id}", request)
 
 
 @router.delete("/chat/conversations/{conv_id}")

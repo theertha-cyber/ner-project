@@ -199,6 +199,45 @@ body {
   100% { transform: scale(1); }
 }
 
+@keyframes thinkingPulse {
+  0%   { opacity: 0.4; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.4; }
+}
+
+.thinking-dots {
+  display: inline-block;
+  animation: thinkingPulse 1.4s ease-in-out infinite;
+}
+
+.chat-markdown p {
+  margin: 0 0 8px 0;
+}
+.chat-markdown p:last-child {
+  margin-bottom: 0;
+}
+.chat-markdown ul,
+.chat-markdown ol {
+  margin: 0 0 8px 0;
+  padding-left: 20px;
+}
+.chat-markdown li {
+  margin-bottom: 2px;
+}
+.chat-markdown strong {
+  font-weight: 700;
+}
+.chat-markdown code {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 13px;
+}
+.chat-markdown a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 @keyframes spanPopIn {
   0%   { opacity: 0; transform: scale(0.92); }
   100% { opacity: 1; transform: scale(1); }

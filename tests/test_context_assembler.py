@@ -29,7 +29,7 @@ class TestBudgetAssembly:
         text = _prose(512)
         chunk = _make_chunk("doc-1", 0, text)
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
-        messages = assembler.assemble("question?", None, [chunk], None, {"doc-1": "report.pdf"}, None)
+        messages = assembler.assemble("question?", None, [chunk], {"doc-1": "report.pdf"}, None)
         user_content = messages[-1]["content"]
         assert text in user_content
 
@@ -37,7 +37,7 @@ class TestBudgetAssembly:
         """Covers scenario 2: task 2.7."""
         chunks = [_make_chunk(f"doc-{i}", 0, _prose(500)) for i in range(5)]
         assembler = ContextAssembler(token_budget=1200, max_chunks=5)
-        messages = assembler.assemble("question?", None, chunks, None, {}, None)
+        messages = assembler.assemble("question?", None, chunks, {}, None)
         total = sum(_count_tokens(m["content"]) for m in messages)
         assert total <= 1200
         user_content = messages[-1]["content"]
@@ -49,7 +49,7 @@ class TestBudgetAssembly:
         oversized = _make_chunk("doc-1", 0, oversized_text)
         fitting = _make_chunk("doc-2", 0, _prose(50))
         assembler = ContextAssembler(token_budget=1000, max_chunks=5)
-        messages = assembler.assemble("question?", None, [oversized, fitting], None, {}, None)
+        messages = assembler.assemble("question?", None, [oversized, fitting], {}, None)
         user_content = messages[-1]["content"]
         assert fitting.chunk_text in user_content
         assert oversized.chunk_text not in user_content
@@ -59,20 +59,19 @@ class TestBudgetAssembly:
         """Covers scenario 4: task 2.9."""
         huge = _make_chunk("doc-1", 0, _prose(8000))
         assembler = ContextAssembler(token_budget=500, max_chunks=5)
-        messages = assembler.assemble("question?", None, [huge], None, {}, None)
+        messages = assembler.assemble("question?", None, [huge], {}, None)
         user_content = messages[-1]["content"]
         assert user_content.strip() != ""
         assert "No relevant data found" not in user_content
         total = sum(_count_tokens(m["content"]) for m in messages)
         assert total <= 500
 
-    def test_budget_accounting_includes_sql_and_ner(self):
-        """Covers scenario 5: task 2.10."""
+    def test_budget_accounting_includes_sql(self):
+        """Covers scenario 5: task 2.10 (NER accounting removed with retrieval-time NER)."""
         chunks = [_make_chunk(f"doc-{i}", 0, _prose(400)) for i in range(3)]
         sql_results = [{"entity_type": "ORG", "count": i, "note": _prose(50)} for i in range(20)]
-        ner_entities = [{"entity_type": "ORG", "value": f"Company{i}", "confidence": 0.9} for i in range(50)]
         assembler = ContextAssembler(token_budget=2000, max_chunks=5)
-        messages = assembler.assemble("question?", sql_results, chunks, ner_entities, {}, None)
+        messages = assembler.assemble("question?", sql_results, chunks, {}, None)
         total = sum(_count_tokens(m["content"]) for m in messages)
         assert total <= 2000
 
@@ -85,7 +84,7 @@ class TestBudgetAssembly:
 
         chunks = [_make_chunk(f"doc-{i}", 0, _prose(500)) for i in range(5)]
         assembler = ContextAssembler(token_budget=scoped_settings.context_token_budget, max_chunks=5)
-        messages = assembler.assemble("question?", None, chunks, None, {}, None)
+        messages = assembler.assemble("question?", None, chunks, {}, None)
         total = sum(_count_tokens(m["content"]) for m in messages)
         assert total <= 2000
 
@@ -109,7 +108,7 @@ class TestDeduplication:
         c0 = _make_chunk("doc-1", full_chunks[0].chunk_index, full_chunks[0].chunk_text)
         c1 = _make_chunk("doc-1", full_chunks[1].chunk_index, full_chunks[1].chunk_text)
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
-        messages = assembler.assemble("question?", None, [c0, c1], None, {}, None)
+        messages = assembler.assemble("question?", None, [c0, c1], {}, None)
         user_content = messages[-1]["content"]
         marker = _overlap_marker(c0.chunk_text, c1.chunk_text)
         assert user_content.count(marker) == 1
@@ -121,7 +120,7 @@ class TestDeduplication:
         c1 = _make_chunk("doc-1", full_chunks[1].chunk_index, full_chunks[1].chunk_text)
         other = _make_chunk("doc-2", 0, _prose(50))
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
-        messages = assembler.assemble("question?", None, [c1, other, c0], None, {}, None)
+        messages = assembler.assemble("question?", None, [c1, other, c0], {}, None)
         user_content = messages[-1]["content"]
         marker = _overlap_marker(c0.chunk_text, c1.chunk_text)
         assert user_content.count(marker) == 1
@@ -132,7 +131,7 @@ class TestDeduplication:
         c0 = _make_chunk("doc-1", 0, shared_text)
         c5 = _make_chunk("doc-1", 5, shared_text)
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
-        messages = assembler.assemble("question?", None, [c0, c5], None, {}, None)
+        messages = assembler.assemble("question?", None, [c0, c5], {}, None)
         user_content = messages[-1]["content"]
         assert user_content.count(shared_text) == 2
 
@@ -143,7 +142,7 @@ class TestDeduplication:
         c1 = _make_chunk("doc-1", full_chunks[1].chunk_index, full_chunks[1].chunk_text)
         original_c1_text = c1.chunk_text
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
-        assembler.assemble("question?", None, [c0, c1], None, {}, None)
+        assembler.assemble("question?", None, [c0, c1], {}, None)
         assert c1.chunk_text == original_c1_text
         assert c0.chunk_text == full_chunks[0].chunk_text
 
@@ -153,25 +152,27 @@ class TestEmptySourceDegradation:
 
     def test_all_sources_empty_produces_fallback_context(self):
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
-        messages = assembler.assemble("question?", None, None, None, None, None)
+        messages = assembler.assemble("question?", None, None, None, None)
         assert "No relevant data found" in messages[-1]["content"]
 
     def test_empty_sql_only(self):
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
         chunk = _make_chunk("doc-1", 0, _prose(20))
-        messages = assembler.assemble("question?", [], [chunk], [], {}, None)
+        messages = assembler.assemble("question?", [], [chunk], {}, None)
         assert chunk.chunk_text in messages[-1]["content"]
 
     def test_empty_chunks_only(self):
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
         sql_results = [{"entity_type": "ORG", "count": 1}]
-        messages = assembler.assemble("question?", sql_results, [], [], {}, None)
+        messages = assembler.assemble("question?", sql_results, [], {}, None)
         assert "Entity data" in messages[-1]["content"]
 
-    def test_empty_ner_only(self):
+    def test_no_ner_block_ever_rendered(self):
+        """Retrieval-time NER is removed: the assembler has no NER input at all,
+        so no response should ever contain an 'NER entities' block."""
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
         chunk = _make_chunk("doc-1", 0, _prose(20))
-        messages = assembler.assemble("question?", None, [chunk], [], {}, None)
+        messages = assembler.assemble("question?", None, [chunk], {}, None)
         assert "NER entities" not in messages[-1]["content"]
         assert chunk.chunk_text in messages[-1]["content"]
 
@@ -181,7 +182,7 @@ class TestProvenance:
         """Covers scenario 10: task 4.3."""
         chunk = _make_chunk("doc-1", 0, _prose(50), page_number=3)
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
-        messages = assembler.assemble("question?", None, [chunk], None, {"doc-1": "report.pdf"}, None)
+        messages = assembler.assemble("question?", None, [chunk], {"doc-1": "report.pdf"}, None)
         user_content = messages[-1]["content"]
         assert "report.pdf" in user_content
         assert "page 3" in user_content
@@ -191,7 +192,7 @@ class TestProvenance:
         """Covers scenario 11: task 4.4."""
         chunk = _make_chunk("doc-1", 0, _prose(50), page_number=None)
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
-        messages = assembler.assemble("question?", None, [chunk], None, {"doc-1": "report.pdf"}, None)
+        messages = assembler.assemble("question?", None, [chunk], {"doc-1": "report.pdf"}, None)
         user_content = messages[-1]["content"]
         assert "report.pdf" in user_content
         assert "page" not in user_content
@@ -200,6 +201,6 @@ class TestProvenance:
         """Covers scenario 12: task 4.5."""
         chunk = _make_chunk("doc-unresolved", 0, _prose(50))
         assembler = ContextAssembler(token_budget=6000, max_chunks=5)
-        messages = assembler.assemble("question?", None, [chunk], None, {}, None)
+        messages = assembler.assemble("question?", None, [chunk], {}, None)
         user_content = messages[-1]["content"]
         assert "doc-unresolved" in user_content

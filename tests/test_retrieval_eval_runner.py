@@ -1,3 +1,6 @@
+import json as _json
+from types import SimpleNamespace
+
 import pytest
 
 from src.shared.config import settings
@@ -5,10 +8,11 @@ from src.shared.retrieval.config import RetrievalConfig
 from src.shared.retrieval.eval.embeddings import PrecomputedEmbeddingService
 from src.shared.retrieval.eval.golden_set import GoldenQuery, Judgment
 from src.shared.retrieval.eval.report import build_json_report, build_markdown_summary
-from src.shared.retrieval.eval.runner import MatrixConfiguration, run_configuration, run_matrix
+from src.shared.retrieval.eval.runner import MatrixConfiguration, MatrixResult, run_configuration, run_matrix
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.retriever import RerankingRetriever
 from src.shared.retrieval.tools.base import ToolContext, ToolResult
+from src.shared.retrieval.tools.registry import ToolRegistry
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -21,7 +25,7 @@ def _queries(n: int) -> list[GoldenQuery]:
 
 
 class SpyTool:
-    name = "search_documents"
+    name = "semantic_retrieval"
 
     def __init__(self, result_fn):
         self.calls: list[dict] = []
@@ -37,20 +41,20 @@ class SpyRegistry:
         self._tool = tool
 
     def get(self, name: str):
-        assert name == "search_documents"
+        assert name == "semantic_retrieval"
         return self._tool
 
 
 def _healthy_result(args, context):
-    return ToolResult(tool_name="search_documents", results=[
+    return ToolResult(tool_name="semantic_retrieval", results=[
         RetrievalResult(document_id="doc-a", chunk_index=0, chunk_text="c", similarity_score=0.9)
     ])
 
 
 class TestRunnerInvokesToolLayer:
-    """Covers verification.md row 32."""
+    """Covers verification.md row 56."""
 
-    async def test_runner_invokes_tool_per_query(self):
+    async def test_runner_invokes_capability_per_query(self):
         tool = SpyTool(_healthy_result)
         registry = SpyRegistry(tool)
         queries = _queries(5)
@@ -66,12 +70,12 @@ class TestRunnerInvokesToolLayer:
 
 
 class TestToolErrorNotFatal:
-    """Covers verification.md row 33."""
+    """Covers verification.md row 57."""
 
     async def test_tool_error_recorded_not_fatal(self):
         def result_fn(args, context):
             if args["query"] == "query 2":
-                return ToolResult(tool_name="search_documents", results=[], error="boom")
+                return ToolResult(tool_name="semantic_retrieval", results=[], error="boom")
             return _healthy_result(args, context)
 
         tool = SpyTool(result_fn)
@@ -92,8 +96,6 @@ class TestToolErrorNotFatal:
 
 
 class TestMatrixPerConfigAggregates:
-    """Covers verification.md row 34."""
-
     async def test_matrix_produces_per_config_aggregates(self):
         tool = SpyTool(_healthy_result)
         registry = SpyRegistry(tool)
@@ -116,8 +118,6 @@ class TestMatrixPerConfigAggregates:
 
 
 class TestConfigDoesNotLeakToGlobalSettings:
-    """Covers verification.md row 35."""
-
     async def test_config_does_not_leak_and_reranking_applies(self, monkeypatch):
         monkeypatch.setattr(settings, "reranker_enabled", True)
         before = settings.reranker_enabled
@@ -156,8 +156,6 @@ class TestConfigDoesNotLeakToGlobalSettings:
 
 
 class TestPerQueryReproducesAggregate:
-    """Covers verification.md row 36."""
-
     async def test_per_query_blocks_reproduce_aggregate(self):
         tool = SpyTool(_healthy_result)
         registry = SpyRegistry(tool)
@@ -176,8 +174,6 @@ class TestPerQueryReproducesAggregate:
 
 
 class TestJsonReportFields:
-    """Covers verification.md row 37."""
-
     async def test_json_report_fields_complete(self):
         tool = SpyTool(_healthy_result)
         registry = SpyRegistry(tool)
@@ -195,16 +191,14 @@ class TestJsonReportFields:
 
 
 class TestMarkdownSummaryRanksConfigs:
-    """Covers verification.md row 38."""
-
     async def test_markdown_summary_ranks_configurations(self):
         def better_result(args, context):
-            return ToolResult(tool_name="search_documents", results=[
+            return ToolResult(tool_name="semantic_retrieval", results=[
                 RetrievalResult(document_id="doc-a", chunk_index=0, chunk_text="c", similarity_score=0.9)
             ])
 
         def worse_result(args, context):
-            return ToolResult(tool_name="search_documents", results=[])
+            return ToolResult(tool_name="semantic_retrieval", results=[])
 
         queries = _queries(3)
 
@@ -217,7 +211,6 @@ class TestMarkdownSummaryRanksConfigs:
         good = await run_configuration(queries, MatrixConfiguration("good", RetrievalConfig()), context_factory, registry_factory=lambda: SpyRegistry(good_tool), k=5)
         bad = await run_configuration(queries, MatrixConfiguration("bad", RetrievalConfig()), context_factory, registry_factory=lambda: SpyRegistry(bad_tool), k=5)
 
-        from src.shared.retrieval.eval.runner import MatrixResult
         matrix = MatrixResult(configurations=[good, bad])
         report = build_json_report("test-set", len(queries), matrix)
         markdown = build_markdown_summary(report)
@@ -228,8 +221,6 @@ class TestMarkdownSummaryRanksConfigs:
 
 
 class TestDeterminism:
-    """Covers verification.md rows 44-45."""
-
     async def test_precomputed_service_has_no_raw_text_embed_path(self):
         # embed() is the only path that would let raw text reach an external API;
         # it is intentionally unimplemented so the fixture service can never make one.
@@ -242,7 +233,6 @@ class TestDeterminism:
             await service.embed("arbitrary raw query text")
 
     async def test_repeated_runs_are_identical(self):
-        tool = SpyTool(_healthy_result)
         queries = _queries(4)
         config = MatrixConfiguration(name="dense", retrieval_config=RetrievalConfig())
 
@@ -255,16 +245,10 @@ class TestDeterminism:
         assert run_1.aggregate == run_2.aggregate
 
 
-# --- rows 27-28: agentic configuration in the eval harness ---
+# --- Orchestrated configuration (verification.md rows 58-60) ---
 
-from types import SimpleNamespace
-import json as _json
-
-from src.shared.retrieval.tools.registry import ToolRegistry
-
-
-class ScriptedAgenticTool:
-    name = "search_documents"
+class ScriptedSemanticRetrievalTool:
+    name = "semantic_retrieval"
     description = "scripted"
     args_schema = {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
 
@@ -276,100 +260,105 @@ class ScriptedAgenticTool:
 
 
 class ScriptedEvalPlanner:
-    """Stops after one search_documents call for every query."""
+    """Always emits one semantic_retrieval call — the orchestrator makes exactly one
+    planning call per query, so there is no observe/re-plan cycle to script here."""
 
     def __init__(self, fail_query_ids: set[str] = frozenset()):
         self.fail_query_ids = fail_query_ids
         self.chat = SimpleNamespace(completions=self)
-        self._calls_this_query = 0
 
     async def create(self, **kwargs):
-        # crude cycle: first call per query requests a tool, second stops.
         last_user_msg = next(m["content"] for m in kwargs["messages"] if m["role"] == "user")
         if last_user_msg in self.fail_query_ids:
             raise RuntimeError("scripted planner failure for this query")
 
-        has_tool_message = any(m["role"] == "tool" for m in kwargs["messages"])
-        if has_tool_message:
-            message = SimpleNamespace(content="done", tool_calls=None)
-        else:
-            tool_calls = [SimpleNamespace(id="c1", function=SimpleNamespace(name="search_documents", arguments=_json.dumps({"query": last_user_msg})))]
-            message = SimpleNamespace(content=None, tool_calls=tool_calls)
+        tool_calls = [SimpleNamespace(id="c1", function=SimpleNamespace(name="semantic_retrieval", arguments=_json.dumps({"query": last_user_msg})))]
+        message = SimpleNamespace(content=None, tool_calls=tool_calls)
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
-class TestAgenticConfigurationInReport:
-    """Covers verification.md row 27."""
+class TestOrchestratedConfigurationInReport:
+    """Covers verification.md row 58."""
 
-    async def test_agentic_configuration_appears_alongside_one_shot(self):
-        one_shot_tool = SpyTool(_healthy_result)
-        one_shot_registry = SpyRegistry(one_shot_tool)
+    async def test_orchestrated_configuration_appears_alongside_baseline(self):
+        baseline_tool = SpyTool(_healthy_result)
+        baseline_registry = SpyRegistry(baseline_tool)
 
-        def agentic_result_fn(args, context):
-            return ToolResult(tool_name="search_documents", results=[
+        def orchestrated_result_fn(args, context):
+            return ToolResult(tool_name="semantic_retrieval", results=[
                 RetrievalResult(document_id="doc-a", chunk_index=0, chunk_text="c", similarity_score=0.9)
             ])
 
-        def agentic_registry_factory():
+        def orchestrated_registry_factory():
             reg = ToolRegistry()
-            reg.register(ScriptedAgenticTool(agentic_result_fn))
+            reg.register(ScriptedSemanticRetrievalTool(orchestrated_result_fn))
             return reg
 
         queries = _queries(3)
-        one_shot_config = MatrixConfiguration(name="dense", retrieval_config=RetrievalConfig())
-        agentic_config = MatrixConfiguration(
-            name="agentic", retrieval_config=RetrievalConfig(), is_agentic=True,
+        baseline_config = MatrixConfiguration(name="dense", retrieval_config=RetrievalConfig())
+        orchestrated_config = MatrixConfiguration(
+            name="orchestrated", retrieval_config=RetrievalConfig(), is_orchestrated=True,
             planner_client_factory=lambda: ScriptedEvalPlanner(),
         )
 
-        def one_shot_context_factory(cfg, query):
+        def context_factory(cfg, query):
             return ToolContext(tenant_id="t", schema="s", session=object())
 
-        def agentic_context_factory(cfg, query):
-            return ToolContext(tenant_id="t", schema="s", session=object())
+        baseline_result = await run_configuration(queries, baseline_config, context_factory, registry_factory=lambda: baseline_registry, k=5)
+        orchestrated_result = await run_configuration(queries, orchestrated_config, context_factory, registry_factory=orchestrated_registry_factory, k=5)
 
-        one_shot_result = await run_configuration(queries, one_shot_config, one_shot_context_factory, registry_factory=lambda: one_shot_registry, k=5)
-        agentic_result = await run_configuration(queries, agentic_config, agentic_context_factory, registry_factory=agentic_registry_factory, k=5)
-
-        report = build_json_report("test-set", len(queries), _make_matrix([one_shot_result, agentic_result]))
+        report = build_json_report("test-set", len(queries), MatrixResult(configurations=[baseline_result, orchestrated_result]))
 
         names = {c["name"] for c in report["configurations"]}
-        assert names == {"dense", "agentic"}
-        assert report["aggregate"]["agentic"]["ndcg_at_k"] is not None
+        assert names == {"dense", "orchestrated"}
+        assert report["aggregate"]["orchestrated"]["ndcg_at_k"] is not None
         assert report["aggregate"]["dense"]["ndcg_at_k"] is not None
 
 
-class TestAgenticQueryErrorDoesNotAbortRun:
-    """Covers verification.md row 28."""
+class TestOrchestrationErrorDoesNotAbortRun:
+    """Covers verification.md row 59."""
 
     async def test_one_failed_query_does_not_abort_the_run(self):
-        def agentic_result_fn(args, context):
-            return ToolResult(tool_name="search_documents", results=[
+        def orchestrated_result_fn(args, context):
+            return ToolResult(tool_name="semantic_retrieval", results=[
                 RetrievalResult(document_id="doc-a", chunk_index=0, chunk_text="c", similarity_score=0.9)
             ])
 
-        def agentic_registry_factory():
+        def orchestrated_registry_factory():
             reg = ToolRegistry()
-            reg.register(ScriptedAgenticTool(agentic_result_fn))
+            reg.register(ScriptedSemanticRetrievalTool(orchestrated_result_fn))
             return reg
 
         queries = _queries(3)
-        agentic_config = MatrixConfiguration(
-            name="agentic", retrieval_config=RetrievalConfig(), is_agentic=True,
+        orchestrated_config = MatrixConfiguration(
+            name="orchestrated", retrieval_config=RetrievalConfig(), is_orchestrated=True,
             planner_client_factory=lambda: ScriptedEvalPlanner(fail_query_ids={"query 1"}),
         )
 
         def context_factory(cfg, query):
             return ToolContext(tenant_id="t", schema="s", session=object())
 
-        result = await run_configuration(queries, agentic_config, context_factory, registry_factory=agentic_registry_factory, k=5)
+        result = await run_configuration(queries, orchestrated_config, context_factory, registry_factory=orchestrated_registry_factory, k=5)
 
         assert len(result.per_query) == 3
-        failed = [r for r in result.per_query if r.error]
-        assert len(failed) == 1
-        assert result.aggregate.query_count == 2
+        # A planner error triggers the orchestrator's degraded fallback (both
+        # capabilities on the raw query), not an unrecoverable error — but the
+        # fallback plan's structured_retrieval entry is unregistered here, so its
+        # results are empty and the query is recorded as degraded.
+        degraded = [r for r in result.per_query if r.degraded]
+        assert len(degraded) == 1
+        assert degraded[0].query_id == "q1"
 
 
-def _make_matrix(config_results):
-    from src.shared.retrieval.eval.runner import MatrixResult
-    return MatrixResult(configurations=config_results)
+class TestOrchestratedConfigurationFields:
+    """Covers verification.md row 60."""
+
+    def test_configuration_fields_express_budgets_not_loop_iterations(self):
+        config = MatrixConfiguration(name="orchestrated", retrieval_config=RetrievalConfig())
+        field_names = set(config.__dataclass_fields__)
+
+        assert "max_invocations" in field_names
+        assert "deadline_seconds" in field_names
+        assert "max_iterations" not in field_names
+        assert "max_tool_calls" not in field_names
+        assert "observation_char_limit" not in field_names

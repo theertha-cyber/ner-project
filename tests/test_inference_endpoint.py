@@ -381,3 +381,42 @@ class TestInferenceBaseModelFallback:
             labels = {p["label"] for p in data["predictions"]}
             assert "B-PER" in labels or "I-PER" in labels
             assert "B-ORG" in labels or "I-ORG" in labels
+
+    async def test_infer_base_preserves_order_and_repeats(self, monkeypatch):
+        """Covers verification.md row 51: base-model predictions must be an ordered,
+        non-deduplicated sequence so BIO reconstruction can occur downstream."""
+        def mock_resolve(*args):
+            return "base", 0
+
+        def mock_base_pipeline():
+            class MockPipe:
+                def __call__(self, text):
+                    return [
+                        {"entity": "B-ORG", "word": "InApp", "score": 0.90},
+                        {"entity": "B-LOC", "word": "Kochi", "score": 0.80},
+                        {"entity": "B-ORG", "word": "InApp", "score": 0.70},
+                    ]
+            return MockPipe()
+
+        monkeypatch.setattr(
+            "src.model_serving.services.inference_service._resolve_active_version",
+            mock_resolve,
+        )
+        monkeypatch.setattr(
+            "src.model_serving.services.inference_service._get_base_pipeline",
+            mock_base_pipeline,
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/internal/v1/infer",
+                json={"tokens": ["InApp", "Kochi", "InApp"]},
+                headers=auth_header("test-tenant"),
+            )
+            assert resp.status_code == 200
+            predictions = resp.json()["predictions"]
+            assert len(predictions) == 3
+            assert [p["token"] for p in predictions] == ["InApp", "Kochi", "InApp"]
+            assert predictions[0]["confidence"] == pytest.approx(0.90)
+            assert predictions[2]["confidence"] == pytest.approx(0.70)

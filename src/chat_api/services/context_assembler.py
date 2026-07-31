@@ -5,7 +5,7 @@ from src.shared.retrieval.chunking import TOKENIZER
 from src.shared.retrieval.models import RetrievalResult
 
 SYSTEM_PROMPT = """You are a helpful chatbot for a multi-tenant Named Entity Recognition (NER) platform.
-You have access to the tenant's extracted entity data, document context, and live NER analysis.
+You have access to the tenant's extracted entity data and document context.
 Always answer based on the provided context data. Do not make up information.
 When citing sources, reference the specific document or entity source.
 If you cannot find relevant information, say so clearly.
@@ -84,7 +84,6 @@ class ContextAssembler:
         message: str,
         sql_results: list[dict] | None,
         chunks: list[RetrievalResult] | None,
-        ner_entities: list[dict] | None,
         document_names: dict[str, str] | None,
         conversation_context: list[dict] | None,
     ) -> list[dict]:
@@ -111,13 +110,6 @@ class ContextAssembler:
             if sql_tokens <= remaining:
                 context_parts.append(sql_part)
                 remaining -= sql_tokens
-
-        if ner_entities:
-            ner_part = f"NER entities: {json.dumps([{'type': e['entity_type'], 'value': e['value'], 'confidence': e['confidence']} for e in ner_entities])}"
-            ner_tokens = _count_tokens(ner_part)
-            if ner_tokens <= remaining:
-                context_parts.append(ner_part)
-                remaining -= ner_tokens
 
         admitted_chunks: list[RetrievalResult] = []
         for chunk in chunks:

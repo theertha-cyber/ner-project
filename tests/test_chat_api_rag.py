@@ -116,3 +116,37 @@ class TestCitationEnrichment:
                         conll_to_name[conll_label] = name
         assert conll_to_name.get("ORG") == "organization"
         assert conll_to_name.get("PER") == "person"
+
+
+class _FakeResult:
+    def fetchall(self):
+        return []
+
+
+class _FakeSession:
+    async def execute(self, *args, **kwargs):
+        return _FakeResult()
+
+
+class TestSourceAssemblyHasNoNerSources:
+    """Covers verification.md row 38: retrieval-time NER is removed, so
+    source_assembly_node must never construct a `source_type="ner"` entry."""
+
+    async def test_source_assembly_never_produces_ner_sources(self):
+        from src.chat_api.graph.nodes import build_nodes
+        from src.chat_api.services.rag_orchestrator import RAGOrchestrator
+        from src.shared.retrieval.models import RetrievalResult
+
+        orchestrator = RAGOrchestrator.__new__(RAGOrchestrator)
+        nodes = build_nodes(orchestrator)
+
+        chunks = [RetrievalResult(document_id="doc-1", chunk_index=0, chunk_text="text", similarity_score=0.9)]
+        state = {
+            "message": "q", "tenant_id": "t1", "schema": "tenant_t1",
+            "session": _FakeSession(), "chunks": chunks, "sql_results": [{"count": 1}],
+        }
+        result = await nodes["source_assembly"](state)
+
+        assert all(s.source_type != "ner" for s in result["sources"])
+        assert any(s.source_type == "document_chunk" for s in result["sources"])
+        assert any(s.source_type == "sql" for s in result["sources"])

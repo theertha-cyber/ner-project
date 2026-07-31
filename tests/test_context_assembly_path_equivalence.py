@@ -31,7 +31,6 @@ async def test_graph_path_matches_direct_assembler_call():
     message = "What organizations were mentioned?"
     sql_results = [{"entity_type": "ORG", "count": 3}]
     chunks = [_make_chunk("doc-1", 0, "Acme Corp signed a contract.", page_number=1)]
-    ner_entities = [{"entity_type": "ORG", "value": "Acme Corp", "confidence": 0.95, "chunk_index": 0}]
     document_names = {"doc-1": "report.pdf"}
     conversation_context = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello"}]
 
@@ -40,14 +39,13 @@ async def test_graph_path_matches_direct_assembler_call():
         "message": message,
         "sql_results": sql_results,
         "chunks": chunks,
-        "ner_entities": ner_entities,
         "document_names": document_names,
         "conversation_context": conversation_context,
     }
     graph_result = await nodes["prompt_assembly"](state)
 
     direct_messages = ContextAssembler().assemble(
-        message, sql_results, chunks, ner_entities, document_names, conversation_context,
+        message, sql_results, chunks, document_names, conversation_context,
     )
 
     assert graph_result["prompt_messages"] == direct_messages

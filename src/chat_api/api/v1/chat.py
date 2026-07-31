@@ -8,10 +8,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
 from src.shared.exceptions import NotFoundError
-from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse
+from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator
 from src.chat_api.services.guardrails import GuardrailService
 from src.chat_api.services.rate_limiter import rate_limiter, INTERNAL_RATE_LIMIT, INTERNAL_WINDOW
+from src.chat_api.services.title_generator import derive_conversation_title
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,19 @@ guardrails = GuardrailService()
 
 def _schema(tenant_id: str) -> str:
     return f"tenant_{tenant_id.replace('-', '_')}"
+
+
+def _parse_persisted_source(s) -> Source | Citation:
+    # Persisted rows are Citation-shaped for every RAG reply (rag_orchestrator's
+    # _enrich_citations always converts Source -> Citation before chat.py writes
+    # this column). Citation carries `context_snippet` (the readable chunk text)
+    # under a different field name than Source's `chunk_text`; deserializing a
+    # Citation-shaped dict as Source silently drops it, leaving only document_id
+    # on reload. Distinguish by a field unique to each shape.
+    d = s if isinstance(s, dict) else s.model_dump()
+    if "context_snippet" in d:
+        return Citation(**d)
+    return Source(**d)
 
 
 async def get_session() -> AsyncSession:
@@ -60,10 +74,11 @@ async def chat(
 
     if conversation_id:
         conv_check = await session.execute(
-            text(f"SELECT id FROM {schema}.conversations WHERE id = :cid AND user_id = :uid"),
+            text(f"SELECT id, title FROM {schema}.conversations WHERE id = :cid AND user_id = :uid"),
             {"cid": conversation_id, "uid": user_id},
         )
-        if not conv_check.fetchone():
+        conv_row = conv_check.fetchone()
+        if not conv_row:
             raise NotFoundError("Conversation", conversation_id)
 
         msg_result = await session.execute(
@@ -71,11 +86,19 @@ async def chat(
             {"cid": conversation_id},
         )
         conversation_context = [{"role": r.role, "content": r.content} for r in msg_result.fetchall()]
+
+        if not conv_row.title:
+            title = derive_conversation_title(body.message)
+            await session.execute(
+                text(f"UPDATE {schema}.conversations SET title = :title WHERE id = :cid"),
+                {"title": title, "cid": conversation_id},
+            )
     else:
         conversation_id = str(uuid.uuid4())
+        title = derive_conversation_title(body.message)
         await session.execute(
-            text(f"INSERT INTO {schema}.conversations (id, tenant_id, user_id) VALUES (:id, :tid, :uid)"),
-            {"id": conversation_id, "tid": tenant_id, "uid": user_id},
+            text(f"INSERT INTO {schema}.conversations (id, tenant_id, user_id, title) VALUES (:id, :tid, :uid, :title)"),
+            {"id": conversation_id, "tid": tenant_id, "uid": user_id, "title": title},
         )
 
     auth_header = request.headers.get("Authorization", "")
@@ -209,12 +232,42 @@ async def get_conversation(
         if r.sources:
             import json
             try:
-                sources_list = [Source(**s) if isinstance(s, dict) else Source.model_validate(s) for s in (json.loads(r.sources) if isinstance(r.sources, str) else r.sources)]
+                sources_list = [_parse_persisted_source(s) for s in (json.loads(r.sources) if isinstance(r.sources, str) else r.sources)]
             except (json.JSONDecodeError, TypeError):
                 pass
         messages.append(MessageResponse(id=r.id, role=r.role, content=r.content, sources=sources_list, created_at=str(r.created_at)))
 
     return ConversationDetail(id=conv.id, title=conv.title, created_at=str(conv.created_at), messages=messages)
+
+
+@router.patch("/conversations/{conv_id}", response_model=ConversationRenameResponse)
+async def rename_conversation(
+    conv_id: str,
+    body: ConversationRenameRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    tenant_id = getattr(request.state, "tenant_id", None)
+    user_id = getattr(request.state, "user_id", None)
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context not available")
+
+    schema = _schema(tenant_id)
+    result = await session.execute(
+        text(f"SELECT id FROM {schema}.conversations WHERE id = :cid AND user_id = :uid"),
+        {"cid": conv_id, "uid": user_id},
+    )
+    if not result.fetchone():
+        raise NotFoundError("Conversation", conv_id)
+
+    title = body.title
+    await session.execute(
+        text(f"UPDATE {schema}.conversations SET title = :title WHERE id = :cid"),
+        {"title": title, "cid": conv_id},
+    )
+    await session.commit()
+
+    return ConversationRenameResponse(id=conv_id, title=title)
 
 
 @router.delete("/conversations/{conv_id}", status_code=204)

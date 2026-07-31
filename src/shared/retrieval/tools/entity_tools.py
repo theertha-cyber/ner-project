@@ -1,8 +1,8 @@
 from src.shared.retrieval.tools.base import ToolContext, ToolResult, run_tool
 
 
-class SearchEntitiesTool:
-    """Answers a natural-language question against extracted entity data.
+class StructuredRetrievalTool:
+    """Answers a natural-language question against extracted structured entity data.
 
     Delegates SQL generation, validation, and execution to `context.sql_search` — a
     callable the caller supplies (e.g. the chat API's SQLGenerator.generate_and_execute)
@@ -10,10 +10,11 @@ class SearchEntitiesTool:
     reusable by any caller that wires up an equivalent, validated entity-search
     callable."""
 
-    name = "search_entities"
+    name = "structured_retrieval"
     description = (
-        "Answer a natural-language question about extracted structured entities "
-        "(e.g. counts, aggregates, lookups over extraction results)."
+        "Retrieve structured entity data extracted from the tenant's documents "
+        "(e.g. counts, aggregates, lookups over extraction results) by answering a "
+        "natural-language question against it."
     )
     args_schema = {
         "type": "object",
@@ -30,7 +31,13 @@ class SearchEntitiesTool:
             rows = await context.sql_search(args["query"], context.session, context.schema, None)
             return (rows or []), False
 
-        return await run_tool(self.name, self.args_schema, args, context, executor)
+        result = await run_tool(self.name, self.args_schema, args, context, executor)
+        if not result.error:
+            result.candidate_document_ids = {
+                row["document_id"] for row in result.results
+                if isinstance(row, dict) and row.get("document_id") is not None
+            }
+        return result
 
 
-search_entities = SearchEntitiesTool()
+structured_retrieval = StructuredRetrievalTool()

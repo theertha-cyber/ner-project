@@ -137,7 +137,7 @@ export default function LoginPage() {
           {/* Logo */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 64 }}>
             <div style={{ width: 34, height: 34, borderRadius: 9, background: "#fff", display: "grid", placeItems: "center", fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 800, color: "#c2410c", fontSize: 19, flexShrink: 0 }}>n</div>
-            <span style={{ fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 18, letterSpacing: "-0.02em", textShadow: TS_SM }}>nerp</span>
+            <span style={{ fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 18, letterSpacing: "-0.02em", textShadow: TS_SM }}>NER Platform</span>
           </div>
 
           <div style={{ fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 20, textShadow: TS_SM }}>

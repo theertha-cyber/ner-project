@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.shared.retrieval.retriever import DenseRetriever
 from src.shared.retrieval.tools.base import ToolContext
-from src.shared.retrieval.tools.document_tools import lookup_document, search_documents
-from src.shared.retrieval.tools.entity_tools import search_entities
+from src.shared.retrieval.tools.document_tools import semantic_retrieval
+from src.shared.retrieval.tools.entity_tools import structured_retrieval
 
 pytestmark = [pytest.mark.verification, pytest.mark.asyncio]
 
@@ -91,10 +91,10 @@ async def _create_second_schema(engine, tenant_id: str) -> tuple[str, "async_ses
     return schema, session_factory
 
 
-class TestLookupDocumentRestriction:
-    """Covers verification.md row 11."""
+class TestDocumentScopeRestriction:
+    """Covers verification.md row 27 (single-document scope, integration slice)."""
 
-    async def test_lookup_document_restricts_to_document_id(self, seeded_schema):
+    async def test_document_scope_restricts_to_single_document(self, seeded_schema):
         tenant_id, schema, session_factory = seeded_schema
         doc_a, doc_b = f"doc-{uuid.uuid4()}", f"doc-{uuid.uuid4()}"
         vec = _fake_vector([0.9, 0.1, 0.0])
@@ -111,15 +111,57 @@ class TestLookupDocumentRestriction:
                 tenant_id=tenant_id, schema=schema, session=session,
                 retriever=DenseRetriever(FakeEmbeddingService(vec)),
             )
-            result = await lookup_document.call({"query": "matching chunk", "document_id": doc_a}, context)
+            result = await semantic_retrieval.call(
+                {"query": "matching chunk", "scope": {"type": "document", "document_ids": [doc_a]}}, context
+            )
 
         assert result.error is None
         assert result.results
         assert all(r.document_id == doc_a for r in result.results)
 
 
+class TestDocumentScopeMultipleDocuments:
+    """Covers verification.md row 28: multi-document scope, results restricted to
+    the named set, ids passed as bound parameters (never string-interpolated)."""
+
+    async def test_document_scope_restricts_to_multiple_documents(self, seeded_schema):
+        tenant_id, schema, session_factory = seeded_schema
+        doc_a, doc_b, doc_c = (f"doc-{uuid.uuid4()}" for _ in range(3))
+        vec = _fake_vector([0.9, 0.1, 0.0])
+
+        async with session_factory() as session:
+            for doc_id in (doc_a, doc_b, doc_c):
+                await _insert_document(session, schema, tenant_id, doc_id)
+            await _insert_chunk(session, schema, doc_a, 0, "matching chunk in document a", vec)
+            await _insert_chunk(session, schema, doc_b, 0, "matching chunk in document b", vec)
+            await _insert_chunk(session, schema, doc_c, 0, "matching chunk in document c", vec)
+            await session.commit()
+
+        # A malicious "document id" containing SQL syntax must be treated as a literal
+        # value (and simply match nothing) rather than being interpolated into the query.
+        hostile_id = "') OR 1=1 --"
+
+        async with session_factory() as session:
+            context = ToolContext(
+                tenant_id=tenant_id, schema=schema, session=session,
+                retriever=DenseRetriever(FakeEmbeddingService(vec)),
+            )
+            result = await semantic_retrieval.call(
+                {
+                    "query": "matching chunk",
+                    "scope": {"type": "document", "document_ids": [doc_a, doc_b, hostile_id]},
+                },
+                context,
+            )
+
+        assert result.error is None
+        assert result.results
+        assert {r.document_id for r in result.results} == {doc_a, doc_b}
+        assert doc_c not in {r.document_id for r in result.results}
+
+
 class TestTwoSchemaIsolation:
-    """Covers verification.md row 8."""
+    """Covers verification.md row 18."""
 
     async def test_tool_queries_context_schema_only(self, seeded_schema, engine):
         tenant_id_a, schema_a, session_factory = seeded_schema
@@ -145,7 +187,7 @@ class TestTwoSchemaIsolation:
                 tenant_id=tenant_id_a, schema=schema_a, session=session,
                 retriever=DenseRetriever(FakeEmbeddingService(vec)),
             )
-            result = await search_documents.call({"query": "shared matching phrase alpha"}, context)
+            result = await semantic_retrieval.call({"query": "shared matching phrase alpha"}, context)
 
         assert result.error is None
         assert all(r.document_id != doc_b for r in result.results)
@@ -155,7 +197,7 @@ class TestTwoSchemaIsolation:
 
 
 class TestPurposeExclusion:
-    """Covers verification.md row 9."""
+    """Covers verification.md row 19."""
 
     async def test_training_purpose_chunks_excluded(self, seeded_schema):
         tenant_id, schema, session_factory = seeded_schema
@@ -173,20 +215,66 @@ class TestPurposeExclusion:
                 tenant_id=tenant_id, schema=schema, session=session,
                 retriever=DenseRetriever(FakeEmbeddingService(vec)),
             )
-            result = await search_documents.call({"query": "content"}, context)
+            result = await semantic_retrieval.call({"query": "content"}, context)
 
         assert result.error is None
         assert all(r.chunk_index != 0 for r in result.results)
 
 
-class TestSearchEntitiesReturnsRows:
-    """Covers verification.md row 14."""
+class TestSemanticRetrievalReturnsRankedChunks:
+    """Covers verification.md row 49."""
 
-    async def test_search_entities_returns_structured_rows(self, seeded_schema):
+    async def test_semantic_retrieval_returns_top_k_ranked_chunks(self, seeded_schema):
+        tenant_id, schema, session_factory = seeded_schema
+        doc_id = f"doc-{uuid.uuid4()}"
+        vec = _fake_vector([0.9, 0.1, 0.0])
+
+        async with session_factory() as session:
+            await _insert_document(session, schema, tenant_id, doc_id)
+            for i in range(3):
+                await _insert_chunk(session, schema, doc_id, i, f"matching chunk {i}", vec)
+            await session.commit()
+
+        async with session_factory() as session:
+            context = ToolContext(
+                tenant_id=tenant_id, schema=schema, session=session,
+                retriever=DenseRetriever(FakeEmbeddingService(vec)),
+            )
+            result = await semantic_retrieval.call({"query": "matching", "top_k": 2}, context)
+
+        assert result.error is None
+        assert len(result.results) <= 2
+        for r in result.results:
+            assert r.document_id == doc_id
+            assert r.similarity_score is not None
+
+
+class TestEmptyCorpus:
+    """Covers verification.md row 50."""
+
+    async def test_semantic_retrieval_on_empty_corpus_does_not_raise(self, seeded_schema):
+        tenant_id, schema, session_factory = seeded_schema
+        vec = _fake_vector([0.1, 0.1, 0.1])
+
+        async with session_factory() as session:
+            context = ToolContext(
+                tenant_id=tenant_id, schema=schema, session=session,
+                retriever=DenseRetriever(FakeEmbeddingService(vec)),
+            )
+            result = await semantic_retrieval.call({"query": "anything"}, context)
+
+        assert result.error is None
+        assert result.results == []
+
+
+class TestStructuredRetrievalReturnsRows:
+    """Covers verification.md row 35 (renamed from search_entities)."""
+
+    async def test_structured_retrieval_returns_rows(self, seeded_schema):
         tenant_id, schema, session_factory = seeded_schema
 
         async def stub_sql_search(query, session, schema, conversation_context):
-            result = await session.execute(text(f"SELECT 1 AS count"))
+            result = await session.execute(text("SELECT 1 AS count"))
             rows = result.fetchall()
             columns = result.keys()
             return [dict(zip(columns, row)) for row in rows]
@@ -196,7 +284,7 @@ class TestSearchEntitiesReturnsRows:
                 tenant_id=tenant_id, schema=schema, session=session,
                 sql_search=stub_sql_search,
             )
-            result = await search_entities.call({"query": "how many entities"}, context)
+            result = await structured_retrieval.call({"query": "how many entities"}, context)
 
         assert result.error is None
         assert result.results == [{"count": 1}]

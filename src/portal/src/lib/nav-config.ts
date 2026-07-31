@@ -18,7 +18,6 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "training-jobs", icon: "↻", label: "Training Queue", href: "/training-jobs", roles: ["system_admin"], badge: 2 },
         { id: "models", icon: "◈", label: "Model Registry", href: "/models", roles: ["system_admin"] },
         { id: "audit", icon: "≡", label: "Audit Log", href: "/audit", roles: ["system_admin"] },
-        { id: "reports", icon: "▤", label: "Reports", href: "/reports", roles: ["system_admin"] },
       ];
     case "tenant_admin":
       return [
@@ -31,9 +30,7 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "models", icon: "◈", label: "Model Registry", href: "/models", roles: ["tenant_admin"] },
         { id: "users", icon: "⊙", label: "Users", href: "/users", roles: ["tenant_admin"] },
         { id: "chat", icon: "💬", label: "Chat", href: "/chat", roles: ["tenant_admin"] },
-        { id: "analytics", icon: "📊", label: "Analytics", href: "/analytics", roles: ["tenant_admin"] },
         { id: "widget-keys", icon: "⊟", label: "Widget Keys", href: "/widget-keys", roles: ["tenant_admin"] },
-        { id: "reports", icon: "▤", label: "Reports", href: "/reports", roles: ["tenant_admin"] },
       ];
     case "annotator":
       return [
@@ -41,7 +38,6 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "annotation", icon: "✎", label: "Annotation", href: "/annotation", roles: ["annotator"], badge: 4 },
         { id: "imported-documents", icon: "⬌", label: "Imported Docs", href: "/imported-documents", roles: ["annotator"] },
         { id: "documents", icon: "◻", label: "Documents", href: "/documents", roles: ["annotator"] },
-        { id: "reports", icon: "▤", label: "Reports", href: "/reports", roles: ["annotator"] },
       ];
     case "business_user":
       return [
@@ -50,8 +46,6 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "extractions", icon: "⤴", label: "Extractions", href: "/extractions", roles: ["business_user"] },
         { id: "models", icon: "◈", label: "Models", href: "/models", roles: ["business_user"] },
         { id: "chat", icon: "💬", label: "Chat", href: "/chat", roles: ["business_user"] },
-        { id: "analytics", icon: "📊", label: "Analytics", href: "/analytics", roles: ["business_user"] },
-        { id: "reports", icon: "▤", label: "Reports", href: "/reports", roles: ["business_user"] },
       ];
   }
 }
@@ -72,7 +66,6 @@ export const SCREEN_TITLES: Record<string, [title: string, path: string]> = {
   analytics: ["Analytics", "/analytics"],
   settings: ["Settings", "/settings"],
   "widget-keys": ["Widget Keys", "/widget-keys"],
-  reports: ["Reports", "/reports"],
 };
 
 export const SCREEN_TITLES_FALLBACK: [string, string] = ["Dashboard", "/dashboard"];

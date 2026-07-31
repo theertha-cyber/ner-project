@@ -59,18 +59,33 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
       <button
         onClick={handleSubmit}
         disabled={disabled || !text.trim()}
+        aria-label="Send message"
         style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           background: disabled || !text.trim() ? "var(--ink-3)" : "var(--primary)",
           color: "#fff",
           border: "none",
           borderRadius: 8,
-          padding: "10px 20px",
+          width: 42,
+          padding: "10px 12px",
           cursor: disabled || !text.trim() ? "not-allowed" : "pointer",
-          fontSize: 14,
-          fontWeight: 600,
         }}
       >
-        {disabled ? "Sending..." : "Send"}
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="22" y1="2" x2="11" y2="13" />
+          <polygon points="22 2 15 22 11 13 2 9 22 2" />
+        </svg>
       </button>
     </div>
   );

@@ -27,9 +27,15 @@ class Retriever(Protocol):
 
 
 def _metadata_filter_clause(metadata_filter: dict | None) -> tuple[str, dict]:
-    """Only `document_id` is a supported filter key today. Returns a bound-parameter
-    SQL fragment (or empty string) and its params — never string-interpolates the value."""
-    if metadata_filter and "document_id" in metadata_filter:
+    """Supports `document_id` (single id, kept for backward compatibility) and
+    `document_ids` (a list, used by the `document` retrieval scope). Returns a
+    bound-parameter SQL fragment (or empty string) and its params — never
+    string-interpolates the value(s)."""
+    if not metadata_filter:
+        return "", {}
+    if "document_ids" in metadata_filter:
+        return " AND document_id = ANY(:mf_document_ids)", {"mf_document_ids": list(metadata_filter["document_ids"])}
+    if "document_id" in metadata_filter:
         return " AND document_id = :mf_document_id", {"mf_document_id": metadata_filter["document_id"]}
     return "", {}
 

@@ -2,6 +2,7 @@ from typing import TypedDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.chat_api.api.v1.schemas import Source, Citation
 from src.shared.retrieval.models import RetrievalResult
+from src.shared.retrieval.orchestrator import RetrievalPlan
 
 
 class ChatState(TypedDict, total=False):
@@ -17,19 +18,20 @@ class ChatState(TypedDict, total=False):
 
     # guardrail outcome
     blocked_reason: str | None
-    complexity: int
+
+    # orchestrator outcome
+    retrieval_plan: RetrievalPlan
 
     # stage outputs
     sql_results: list[dict] | None
     sql_error: str | None
     chunks: list[RetrievalResult]
     retrieval_error: str | None
-    ner_entities: list[dict]
 
-    # agentic retrieval loop outputs (additive; absent when the loop did not run)
-    tool_trace: list[dict]
-    agentic_degraded: bool
-    agentic_stop_reason: str
+    # orchestration trace (additive; absent when the turn was declined by the guardrail)
+    plan_trace: list[dict]
+    orchestration_degraded: bool
+    orchestration_stop_reason: str
 
     # assembly
     sources: list[Source | Citation]

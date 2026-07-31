@@ -1,13 +1,69 @@
+import re
 import uuid
 import requests
 from datetime import datetime, timezone
 from sqlalchemy import text, create_engine
 from src.shared.config import settings
 from src.extraction_service.celery_app import celery_app
+from src.extraction_service.services.document_entity_store import insert_document_entities
+from src.extraction_service.services.entity_normalizer import (
+    merge_wordpieces,
+    reconstruct_entities,
+)
+
+_TOKEN_RE = re.compile(r"\S+")
 
 
 def _schema(tenant_id: str) -> str:
     return f"tenant_{tenant_id.replace('-', '_')}"
+
+
+def _tokenize_span(span_text: str, page_number, span_char_start) -> list[dict]:
+    """Tokenizes on whitespace (matching str.split() semantics) while attaching each
+    token's page number and absolute character offsets, computed from the span's own
+    page_number/char_start. Offsets are None when the span carries none."""
+    tokens = []
+    for m in _TOKEN_RE.finditer(span_text or ""):
+        char_start = span_char_start + m.start() if span_char_start is not None else None
+        char_end = span_char_start + m.end() if span_char_start is not None else None
+        tokens.append({
+            "token": m.group(0),
+            "page_number": page_number,
+            "char_start": char_start,
+            "char_end": char_end,
+        })
+    return tokens
+
+
+def _align_predictions_with_offsets(predictions: list[dict], token_records: list[dict]) -> list[dict]:
+    """Attaches page_number/char_start/char_end from `token_records` (in document
+    order) to each prediction by scanning forward for a matching token text,
+    tolerating that predictions are a filtered, possibly WordPiece-split subset of
+    the original tokens. A prediction whose token text cannot be found from the
+    current scan position onward gets NULL offsets rather than aborting."""
+    aligned = []
+    ptr = 0
+    n = len(token_records)
+    for pred in predictions:
+        tok_text = pred.get("token", "")
+        search_text = tok_text[2:] if tok_text.startswith("##") else tok_text
+        found_idx = None
+        for j in range(ptr, n):
+            if token_records[j]["token"] == tok_text or token_records[j]["token"] == search_text:
+                found_idx = j
+                break
+        merged = dict(pred)
+        if found_idx is not None:
+            merged["page_number"] = token_records[found_idx]["page_number"]
+            merged["char_start"] = token_records[found_idx]["char_start"]
+            merged["char_end"] = token_records[found_idx]["char_end"]
+            ptr = found_idx + 1
+        else:
+            merged["page_number"] = None
+            merged["char_start"] = None
+            merged["char_end"] = None
+        aligned.append(merged)
+    return aligned
 
 
 def _get_sync_engine():
@@ -109,17 +165,20 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
             with engine.connect() as conn:
                 result = conn.execute(
                     text(f"""
-                        SELECT text FROM {schema}.document_text_spans
+                        SELECT text, page_number, char_start FROM {schema}.document_text_spans
                         WHERE document_id = :doc_id
                         ORDER BY span_index NULLS LAST
                     """),
                     {"doc_id": doc_id},
                 )
-                spans = [row[0] for row in result.fetchall() if row[0]]
+                span_rows = [row for row in result.fetchall() if row[0]]
 
-            doc_text = " ".join(spans)
-            tokens = doc_text.split()
-            print(f"WORKER: doc={doc_id} spans={len(spans)} tokens={len(tokens)} text_preview={doc_text[:80]!r}", flush=True)
+            token_records = []
+            for span_text, page_number, span_char_start in span_rows:
+                token_records.extend(_tokenize_span(span_text, page_number, span_char_start))
+            tokens = [t["token"] for t in token_records]
+            doc_text_preview = " ".join(span_text for span_text, _, _ in span_rows)[:80]
+            print(f"WORKER: doc={doc_id} spans={len(span_rows)} tokens={len(tokens)} text_preview={doc_text_preview!r}", flush=True)
             if not tokens:
                 failed += 1
                 continue
@@ -144,6 +203,10 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
             predictions = body.get("predictions", [])
             model_version = body.get("model_version", "0")
 
+            aligned_predictions = _align_predictions_with_offsets(predictions, token_records)
+            merged_predictions = merge_wordpieces(aligned_predictions)
+            normalized_entities = reconstruct_entities(merged_predictions)
+
             with engine.begin() as conn:
                 for pred in predictions:
                     conn.execute(
@@ -161,6 +224,7 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
                             "confidence": pred.get("confidence", 0.0),
                         },
                     )
+                insert_document_entities(conn, schema, doc_id, normalized_entities)
 
             processed += 1
 

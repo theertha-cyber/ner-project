@@ -1,5 +1,7 @@
 import pytest
-from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, ConversationSummary, ConversationDetail, MessageResponse, Source, Citation, ConversationCreateResponse
+from pydantic import ValidationError
+from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, ConversationSummary, ConversationDetail, MessageResponse, Source, Citation, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse
+from src.chat_api.services.title_generator import derive_conversation_title
 
 pytestmark = [pytest.mark.verification]
 
@@ -114,3 +116,59 @@ class TestConversationSchemas:
         assert d["id"] == "conv-123"
         assert d["title"] is None
         assert "created_at" in d
+
+
+class TestConversationTitleGeneration:
+    def test_title_generated_from_short_message(self):
+        title = derive_conversation_title("How many organizations did we extract last month?")
+        assert title == "How many organizations did we extract last month"
+
+    def test_title_truncated_at_word_boundary_for_long_message(self):
+        message = "How many organizations did we extract last month across all our tenant document sets combined?"
+        title = derive_conversation_title(message)
+        assert len(title) <= 61  # 60 chars + ellipsis
+        assert title.endswith("…")
+        body = title[:-1]
+        assert len(body) <= 60
+        assert not body.endswith(" ")
+        # truncation must land on a word boundary: the body is a prefix of
+        # the collapsed message that ends exactly at a word (not mid-word)
+        assert message.startswith(body)
+        assert message[len(body):len(body) + 1] in (" ", "")
+
+    def test_title_falls_back_for_whitespace_only_message(self):
+        assert derive_conversation_title("   ") == "New conversation"
+
+    def test_title_falls_back_for_punctuation_only_message(self):
+        assert derive_conversation_title("...???!!!") == "New conversation"
+
+    def test_title_collapses_internal_whitespace(self):
+        title = derive_conversation_title("hello   \n\n  world")
+        assert title == "hello world"
+
+
+class TestConversationRenameRequest:
+    def test_valid_title_is_accepted_and_trimmed(self):
+        req = ConversationRenameRequest(title="  Q3 entity counts  ")
+        assert req.title == "Q3 entity counts"
+
+    def test_blank_title_is_rejected(self):
+        with pytest.raises(ValidationError):
+            ConversationRenameRequest(title="   ")
+
+    def test_empty_title_is_rejected(self):
+        with pytest.raises(ValidationError):
+            ConversationRenameRequest(title="")
+
+    def test_over_length_title_is_rejected(self):
+        with pytest.raises(ValidationError):
+            ConversationRenameRequest(title="x" * 101)
+
+    def test_title_at_max_length_is_accepted(self):
+        req = ConversationRenameRequest(title="x" * 100)
+        assert len(req.title) == 100
+
+    def test_rename_response_fields(self):
+        resp = ConversationRenameResponse(id="conv-123", title="Renamed chat")
+        d = resp.model_dump()
+        assert d == {"id": "conv-123", "title": "Renamed chat"}

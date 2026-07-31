@@ -85,6 +85,31 @@ def _create_tables_sql(schema: str) -> list:
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """,
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.extracted_entities (
+                id VARCHAR PRIMARY KEY,
+                run_id VARCHAR,
+                document_id VARCHAR,
+                entity_id VARCHAR,
+                value TEXT,
+                confidence FLOAT,
+                review_status VARCHAR DEFAULT 'unreviewed'
+            )
+        """,
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.document_entities (
+                id VARCHAR PRIMARY KEY,
+                document_id VARCHAR NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_value TEXT NOT NULL,
+                normalized_value TEXT NOT NULL,
+                confidence DOUBLE PRECISION NOT NULL,
+                page_number INTEGER,
+                char_start INTEGER,
+                char_end INTEGER,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """,
     ]
 
 
@@ -419,6 +444,14 @@ async def test_9_1_delete_document_removes_spans_and_chunks(seeded_tenant, clien
             text(f"INSERT INTO {schema}.document_chunks (id, document_id, chunk_index, chunk_text, purpose) VALUES (:id, :doc_id, 0, 'some text', 'query')"),
             {"id": str(uuid.uuid4()), "doc_id": doc_id},
         )
+        await conn.execute(
+            text(f"INSERT INTO {schema}.extracted_entities (id, run_id, document_id, entity_id, value, confidence) VALUES (:id, 'run-del', :doc_id, 'B-PER', 'Arjun', 0.9)"),
+            {"id": str(uuid.uuid4()), "doc_id": doc_id},
+        )
+        await conn.execute(
+            text(f"INSERT INTO {schema}.document_entities (id, document_id, entity_type, entity_value, normalized_value, confidence) VALUES (:id, :doc_id, 'PER', 'Arjun', 'arjun', 0.9)"),
+            {"id": str(uuid.uuid4()), "doc_id": doc_id},
+        )
     await engine.dispose()
 
     del_resp = await client.delete(
@@ -435,10 +468,18 @@ async def test_9_1_delete_document_removes_spans_and_chunks(seeded_tenant, clien
         chunk_count = (await conn.execute(
             text(f"SELECT COUNT(*) FROM {schema}.document_chunks WHERE document_id = :id"), {"id": doc_id}
         )).scalar()
+        extracted_entity_count = (await conn.execute(
+            text(f"SELECT COUNT(*) FROM {schema}.extracted_entities WHERE document_id = :id"), {"id": doc_id}
+        )).scalar()
+        document_entity_count = (await conn.execute(
+            text(f"SELECT COUNT(*) FROM {schema}.document_entities WHERE document_id = :id"), {"id": doc_id}
+        )).scalar()
     await engine2.dispose()
 
     assert span_count == 0, "document_text_spans should be removed on delete"
     assert chunk_count == 0, "document_chunks should be removed on delete"
+    assert extracted_entity_count == 0, "extracted_entities should be removed on delete"
+    assert document_entity_count == 0, "document_entities should be removed on delete"
 
 
 @pytest.mark.asyncio

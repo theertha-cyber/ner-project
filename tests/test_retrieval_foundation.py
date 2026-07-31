@@ -349,11 +349,10 @@ class TestRetrievalPurposeScoping:
         from sqlalchemy.ext.asyncio import async_sessionmaker
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
-        orchestrator = RAGOrchestrator.__new__(RAGOrchestrator)
-        orchestrator.retriever = DenseRetriever(FakeEmbeddingService(_fake_vector([0.9, 0.1, 0.0])))
+        retriever = DenseRetriever(FakeEmbeddingService(_fake_vector([0.9, 0.1, 0.0])))
 
         async with session_factory() as session:
-            results = await orchestrator._vector_source("training.pdf matching query", session, schema)
+            results = await retriever.retrieve("training.pdf matching query", session, schema)
 
         assert all(r.document_id != training_doc_id for r in results)
 
@@ -364,9 +363,9 @@ class TestRetrievalPurposeScoping:
 
 @pytest.mark.integration
 class TestOrchestratorVectorSourceIntegration:
-    """Covers scenarios 1, 2, 4: RAGOrchestrator._vector_source returns
-    RetrievalResult objects via the Retriever interface, end-to-end against
-    a seeded tenant schema."""
+    """Covers scenarios 1, 2, 4: the retriever returns RetrievalResult objects via
+    the Retriever interface, end-to-end against a seeded tenant schema. Reached in
+    production through the `semantic_retrieval` capability."""
 
     @pytest.mark.asyncio
     async def test_vector_source_returns_retrieval_results_via_retriever(self, seeded_chunks, engine):
@@ -374,11 +373,10 @@ class TestOrchestratorVectorSourceIntegration:
         from sqlalchemy.ext.asyncio import async_sessionmaker
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
-        orchestrator = RAGOrchestrator.__new__(RAGOrchestrator)
-        orchestrator.retriever = DenseRetriever(FakeEmbeddingService(_fake_vector([1.0, 0.0, 0.0])))
+        retriever = DenseRetriever(FakeEmbeddingService(_fake_vector([1.0, 0.0, 0.0])))
 
         async with session_factory() as session:
-            results = await orchestrator._vector_source("closely matching query", session, schema)
+            results = await retriever.retrieve("closely matching query", session, schema)
 
         assert len(results) == 3
         assert all(isinstance(r, RetrievalResult) for r in results)

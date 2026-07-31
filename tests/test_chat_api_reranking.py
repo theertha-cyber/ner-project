@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.shared.config import settings
 from src.shared.retrieval.retriever import DenseRetriever, SparseRetriever, HybridRetriever, RerankingRetriever
+from src.shared.retrieval.tools import build_default_registry
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator
 
 pytestmark = [pytest.mark.verification]
@@ -87,8 +88,8 @@ def _make_orchestrator(retriever) -> RAGOrchestrator:
         def check_blocked_question_type(self, message, tenant_id):
             return None
 
-        def assess_complexity(self, message):
-            return 1
+        async def classify_domain(self, message, conversation_context, llm_client, llm_model):
+            return True
 
         def enforce_sources(self, reply, sources):
             return reply, sources
@@ -97,13 +98,9 @@ def _make_orchestrator(retriever) -> RAGOrchestrator:
         async def generate_and_execute(self, message, session, schema, conv_text):
             return None
 
-    class NoopNERClient:
-        async def infer(self, text, tenant_id, jwt_token=None):
-            return []
-
     orchestrator.guardrails = NoopGuardrails()
     orchestrator.sql_generator = NoopSqlGenerator()
-    orchestrator.ner_client = NoopNERClient()
+    orchestrator.tool_registry = build_default_registry()
     return orchestrator
 
 

@@ -66,4 +66,62 @@ describe("ChatSidebar", () => {
     rerender(<ChatSidebar {...defaultProps} loading={false} />);
     expect(screen.getByRole("button", { name: /new conversation/i })).not.toBeDisabled();
   });
+
+  describe("rename", () => {
+    const conversations = [
+      { id: "c1", title: "Original title", created_at: "2026-01-01", message_count: 5 },
+    ];
+
+    it("opens inline edit on rename icon click", () => {
+      const onRename = vi.fn();
+      render(<ChatSidebar {...defaultProps} conversations={conversations} onRename={onRename} />);
+      fireEvent.click(screen.getByTitle("Rename conversation"));
+      expect(screen.getByDisplayValue("Original title")).toBeInTheDocument();
+    });
+
+    it("confirms rename with Enter and calls onRename with the new title", () => {
+      const onRename = vi.fn();
+      render(<ChatSidebar {...defaultProps} conversations={conversations} onRename={onRename} />);
+      fireEvent.click(screen.getByTitle("Rename conversation"));
+      const input = screen.getByDisplayValue("Original title");
+      fireEvent.change(input, { target: { value: "Renamed chat" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(onRename).toHaveBeenCalledWith("c1", "Renamed chat");
+      expect(screen.queryByDisplayValue("Renamed chat")).not.toBeInTheDocument();
+    });
+
+    it("cancels rename with Escape without calling onRename", () => {
+      const onRename = vi.fn();
+      render(<ChatSidebar {...defaultProps} conversations={conversations} onRename={onRename} />);
+      fireEvent.click(screen.getByTitle("Rename conversation"));
+      const input = screen.getByDisplayValue("Original title");
+      fireEvent.change(input, { target: { value: "Some draft" } });
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(onRename).not.toHaveBeenCalled();
+      expect(screen.getByText("Original title")).toBeInTheDocument();
+    });
+
+    it("does not render rename icon when onRename is not provided", () => {
+      render(<ChatSidebar {...defaultProps} conversations={conversations} />);
+      expect(screen.queryByTitle("Rename conversation")).not.toBeInTheDocument();
+    });
+
+    it("keeps the previous title displayed when the rename call fails", () => {
+      // Simulates the page-level failure path: onRename is called, but since the
+      // API call failed, the parent never updates the conversations prop, so the
+      // sidebar continues to render the previous title.
+      const onRename = vi.fn();
+      const { rerender } = render(
+        <ChatSidebar {...defaultProps} conversations={conversations} onRename={onRename} />
+      );
+      fireEvent.click(screen.getByTitle("Rename conversation"));
+      const input = screen.getByDisplayValue("Original title");
+      fireEvent.change(input, { target: { value: "Renamed chat" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(onRename).toHaveBeenCalledWith("c1", "Renamed chat");
+
+      rerender(<ChatSidebar {...defaultProps} conversations={conversations} onRename={onRename} />);
+      expect(screen.getByText("Original title")).toBeInTheDocument();
+    });
+  });
 });

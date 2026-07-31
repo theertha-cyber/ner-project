@@ -227,6 +227,14 @@ async def delete_document(
         {"id": doc_id},
     )
     await session.execute(
+        text(f"DELETE FROM {_schema(tenant_id)}.extracted_entities WHERE document_id = :id"),
+        {"id": doc_id},
+    )
+    await session.execute(
+        text(f"DELETE FROM {_schema(tenant_id)}.document_entities WHERE document_id = :id"),
+        {"id": doc_id},
+    )
+    await session.execute(
         text(f"UPDATE {_schema(tenant_id)}.documents SET status = 'deleted' WHERE id = :id"),
         {"id": doc_id},
     )

@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Multi-tenant NER Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--card:#ffffff;
+  --hair:rgba(20,22,28,.085);--hair-2:rgba(20,22,28,.15);
+  --ink:#14161c;--ink-2:#3d4350;--muted:#6a7180;--dim:#9aa1af;
+
+  --r900:#5b0a14;--r800:#7a1220;--r700:#a81726;--r600:#d62330;
+  --r500:#ef3b47;--r400:#ff6b4a;--r100:#ffe3e4;--r50:#fff5f5;
+  --graphite:#2a2e37;
+
+  --role-1:#7a1220;--role-2:#d62330;--role-3:#ff6b4a;--role-4:#2a2e37;
+
+  --shadow-sm:0 1px 2px rgba(16,18,24,.05);
+  --shadow:0 1px 2px rgba(16,18,24,.05), 0 10px 26px -14px rgba(16,18,24,.24);
+  --shadow-lg:0 1px 2px rgba(16,18,24,.05), 0 26px 56px -26px rgba(122,18,32,.28);
+
+  --r:16px;
+  --ease:cubic-bezier(.16,.84,.44,1);
+  --navH:0px;--dockH:84px;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;
+}
+
+/* ================= BACKGROUNDS (React Bits ports) ================= */
+#dotgrid{position:fixed;inset:0;z-index:0;pointer-events:none}
+.aurora{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.aurora i{position:absolute;display:block;border-radius:50%;filter:blur(90px);opacity:.5;will-change:transform}
+.a1{width:70vw;height:52vw;background:radial-gradient(circle,#ffd9d9 0%,rgba(255,217,217,0) 68%);top:-24vw;left:-14vw;animation:au1 26s ease-in-out infinite}
+.a2{width:58vw;height:46vw;background:radial-gradient(circle,#ffc9c2 0%,rgba(255,201,194,0) 66%);top:-8vw;right:-16vw;animation:au2 32s ease-in-out infinite}
+.a3{width:64vw;height:44vw;background:radial-gradient(circle,#ffe6de 0%,rgba(255,230,222,0) 70%);bottom:-18vw;left:26vw;opacity:.4;animation:au3 38s ease-in-out infinite}
+@keyframes au1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(6vw,4vw) scale(1.12)}}
+@keyframes au2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-5vw,5vw) scale(1.09)}}
+@keyframes au3{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(4vw,-4vw) scale(1.14)}}
+.veil{position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse 90% 80% at 50% 45%,rgba(255,255,255,.55) 0%,rgba(255,255,255,.86) 55%,rgba(255,255,255,.95) 100%)}
+
+/* ================= DECK ================= */
+#deck{
+  position:fixed;inset:0;z-index:2;
+  display:flex;flex-direction:row;
+  overflow-x:auto;overflow-y:hidden;
+  scroll-snap-type:x mandatory;
+  scroll-behavior:smooth;
+  scrollbar-width:none;-ms-overflow-style:none;
+}
+#deck::-webkit-scrollbar{display:none}
+
+.slide{
+  flex:0 0 100vw;width:100vw;height:100%;
+  scroll-snap-align:center;scroll-snap-stop:always;
+  position:relative;display:flex;align-items:center;justify-content:center;
+  padding:34px 74px var(--dockH);
+}
+.fit{
+  flex:none;
+  width:var(--fitw,1120px);
+  transform-origin:center center;
+  will-change:transform;
+}
+@media(max-width:960px){
+  .slide{padding:22px 18px var(--dockH);align-items:flex-start;overflow-y:auto}
+  .fit{width:100%!important;transform:none!important;padding:26px 0 30px}
+}
+
+/* slide chrome */
+.slide-no{
+  position:absolute;top:16px;left:38px;
+  font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;letter-spacing:.2em;color:var(--dim);
+}
+.slide-no b{color:var(--r600)}
+@media(max-width:960px){.slide-no{display:none}}
+
+/* ================= top bar ================= */
+#progress{position:fixed;top:0;left:0;height:2px;width:0;z-index:40;
+  background:linear-gradient(90deg,var(--r800),var(--r600),var(--r400));box-shadow:0 0 12px rgba(214,35,48,.5);
+  transition:width .45s var(--ease)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 4px rgba(214,35,48,.18)}50%{box-shadow:0 0 0 9px rgba(214,35,48,0)}}
+
+/* ================= edge arrows ================= */
+.arrow{
+  position:fixed;top:50%;transform:translateY(-50%);z-index:35;
+  width:46px;height:46px;border-radius:50%;cursor:pointer;
+  display:grid;place-items:center;
+  background:rgba(255,255,255,.9);border:1px solid var(--hair);
+  box-shadow:var(--shadow);backdrop-filter:blur(10px);
+  transition:transform .3s var(--ease),background .25s,border-color .25s,opacity .3s;
+}
+.arrow svg{width:17px;height:17px;stroke:var(--r600);fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;transition:stroke .25s}
+.arrow:hover{background:var(--r600);border-color:var(--r600);transform:translateY(-50%) scale(1.09)}
+.arrow:hover svg{stroke:#fff}
+.arrow.prev{left:16px}
+.arrow.next{right:16px}
+.arrow[disabled]{opacity:0;pointer-events:none}
+@media(max-width:960px){.arrow{width:38px;height:38px}.arrow.prev{left:8px}.arrow.next{right:8px}}
+
+/* ================= bottom dock: dots + counter ================= */
+.dock{
+  position:fixed;left:0;right:0;bottom:0;z-index:35;height:var(--dockH);
+  display:flex;align-items:center;justify-content:center;gap:22px;
+  pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.86) 55%);
+}
+.dots{display:flex;align-items:center;gap:9px;pointer-events:auto;
+  padding:9px 14px;border-radius:999px;background:rgba(255,255,255,.86);
+  border:1px solid var(--hair);box-shadow:var(--shadow-sm);backdrop-filter:blur(12px)}
+.dots button{
+  position:relative;width:9px;height:9px;padding:0;border:none;border-radius:999px;cursor:pointer;
+  background:#d9dce3;transition:width .42s var(--ease),background .3s;
+}
+.dots button:hover{background:var(--r400)}
+.dots button.active{width:30px;background:var(--r600)}
+.dots button span{
+  position:absolute;bottom:24px;left:50%;transform:translateX(-50%) translateY(4px);
+  padding:5px 10px;border-radius:8px;background:var(--ink);color:#fff;
+  font-size:10.5px;font-weight:600;letter-spacing:.04em;white-space:nowrap;
+  opacity:0;pointer-events:none;transition:opacity .22s,transform .22s var(--ease);
+}
+.dots button:hover span{opacity:1;transform:translateX(-50%) translateY(0)}
+.counter{font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:600;letter-spacing:.14em;color:var(--dim);pointer-events:none}
+.counter b{color:var(--ink)}
+@media(max-width:640px){.counter{display:none}}
+
+/* ================= type ================= */
+h1,h2,h3{font-family:'Space Grotesk',sans-serif;letter-spacing:-.035em;line-height:1.07;margin:0;color:var(--ink)}
+h2{font-size:clamp(30px,3.6vw,48px);font-weight:700}
+.eyebrow{
+  font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--r600);margin-bottom:15px;display:flex;align-items:center;gap:11px;
+}
+.eyebrow::before{content:'';width:22px;height:1.5px;background:var(--r600);flex:none}
+.lede{color:var(--muted);font-size:16.5px;max-width:70ch;margin-top:16px;line-height:1.66}
+
+.rv{opacity:0;transform:translateY(20px);transition:opacity .7s var(--ease),transform .7s var(--ease)}
+.slide.active .rv{opacity:1;transform:none}
+.slide.active .rv[data-d="1"]{transition-delay:.07s}
+.slide.active .rv[data-d="2"]{transition-delay:.14s}
+.slide.active .rv[data-d="3"]{transition-delay:.21s}
+.slide.active .rv[data-d="4"]{transition-delay:.28s}
+
+/* ================= hero ================= */
+.tag{display:inline-flex;align-items:center;gap:9px;padding:7px 14px 7px 10px;border:1px solid var(--r100);
+  border-radius:999px;background:var(--r50);font-size:12.5px;color:var(--r800);font-weight:500;margin-bottom:30px}
+.tag .sq{width:6px;height:6px;border-radius:2px;background:var(--r600)}
+h1{font-size:clamp(44px,6.6vw,92px);font-weight:700;letter-spacing:-.045em}
+h1 .red{color:var(--r600)}
+.hero-sub{font-size:19px;color:var(--muted);max-width:56ch;margin-top:26px;line-height:1.6}
+.hero-meta{display:flex;margin-top:46px;flex-wrap:wrap;border-top:1px solid var(--hair)}
+.hero-meta div{padding:20px 38px 0 0;margin-right:38px}
+.hero-meta div+div{border-left:1px solid var(--hair);padding-left:38px}
+.hero-meta .k{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.03em}
+.hero-meta .k em{font-style:normal;color:var(--r600)}
+.hero-meta .v{font-size:11px;color:var(--dim);letter-spacing:.13em;text-transform:uppercase;margin-top:4px;font-weight:500}
+.swipe-hint{display:inline-flex;align-items:center;gap:10px;margin-top:44px;color:var(--dim);
+  font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:600}
+.swipe-hint .track{width:52px;height:1.5px;background:var(--hair-2);position:relative;overflow:hidden}
+.swipe-hint .track::after{content:'';position:absolute;top:0;bottom:0;width:18px;background:var(--r600);animation:slide 2.2s ease-in-out infinite}
+@keyframes slide{0%{left:-20px}60%,100%{left:100%}}
+
+/* ================= contents ================= */
+.toc{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:34px;border-top:1px solid var(--hair);border-left:1px solid var(--hair)}
+@media(max-width:760px){.toc{grid-template-columns:repeat(2,1fr)}}
+.toc button{
+  display:block;text-align:left;background:none;font-family:inherit;cursor:pointer;padding:22px 20px 24px;
+  border:none;border-bottom:1px solid var(--hair);border-right:1px solid var(--hair);
+  position:relative;overflow:hidden;transition:background .35s;color:inherit;
+}
+.toc button::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;background:var(--r600);transform:scaleX(0);transform-origin:left;transition:transform .45s var(--ease)}
+.toc button:hover{background:var(--r50)}
+.toc button:hover::before{transform:scaleX(1)}
+.toc .n{font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--r600);letter-spacing:.14em;font-weight:600}
+.toc .t{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;margin-top:8px;letter-spacing:-.02em}
+
+/* ================= stage cards ================= */
+.stages{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:36px}
+@media(max-width:900px){.stages{grid-template-columns:1fr}}
+.stage{padding:24px 22px 26px;border:1px solid var(--hair);border-radius:var(--r);background:var(--card);
+  box-shadow:var(--shadow-sm);position:relative;overflow:hidden;
+  transition:transform .5s var(--ease),box-shadow .45s,border-color .35s}
+.stage:hover{transform:translateY(-5px);box-shadow:var(--shadow-lg);border-color:rgba(214,35,48,.22)}
+.stage::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--c)}
+.stage .ico{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--tint);margin-bottom:16px}
+.stage .ico svg{width:19px;height:19px;stroke:var(--c);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.stage .lbl{font-family:'Space Grotesk',sans-serif;font-size:9.6px;letter-spacing:.2em;text-transform:uppercase;color:var(--c);font-weight:700}
+.stage h3{font-size:19px;font-weight:600;margin:8px 0 10px;letter-spacing:-.025em}
+.stage p{color:var(--muted);font-size:14px;margin:0;line-height:1.62}
+
+/* ================= why novel ================= */
+.novel{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:36px;border-top:1px solid var(--hair);border-left:1px solid var(--hair)}
+@media(max-width:1000px){.novel{grid-template-columns:repeat(2,1fr)}}
+.ncard{padding:24px 22px 26px;border-right:1px solid var(--hair);border-bottom:1px solid var(--hair);transition:background .4s}
+.ncard:hover{background:var(--r50)}
+.ncard .num{font-family:'Space Grotesk',sans-serif;font-size:11.5px;font-weight:700;color:var(--dim);letter-spacing:.12em;transition:color .35s}
+.ncard:hover .num{color:var(--r600)}
+.ncard .lbl{font-family:'Space Grotesk',sans-serif;font-size:9.2px;letter-spacing:.19em;text-transform:uppercase;color:var(--c);font-weight:700;margin-top:18px}
+.ncard h3{font-size:16.5px;font-weight:600;margin:9px 0 10px;line-height:1.3;letter-spacing:-.02em}
+.ncard p{color:var(--muted);font-size:13.3px;margin:0;line-height:1.6}
+
+/* ================= diagram shell ================= */
+.diagram-shell{margin-top:26px;border:1px solid var(--hair);border-radius:18px;background:var(--card);
+  box-shadow:var(--shadow);padding:18px;position:relative;overflow:hidden}
+.diagram-bar{display:flex;align-items:center;gap:14px;padding:0 4px 14px;border-bottom:1px solid var(--hair);margin-bottom:16px;flex-wrap:wrap}
+.diagram-bar .title{font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:600}
+.legend{display:flex;gap:15px;margin-left:auto;flex-wrap:wrap}
+.legend span{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--dim)}
+.legend i{width:20px;height:2px;border-radius:2px;display:block;background:#8a92a1}
+.legend i.data{background:#c3c9d4;height:1.5px}
+.legend i.dash{background:repeating-linear-gradient(90deg,var(--r600) 0 5px,transparent 5px 10px)}
+.legend i.async{background:repeating-linear-gradient(90deg,var(--r400) 0 5px,transparent 5px 10px)}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;
+  border:1px solid var(--r100);background:var(--r50);color:var(--r700);
+  font-size:11.5px;font-weight:600;font-family:'Space Grotesk',sans-serif;cursor:pointer;
+  transition:background .25s,border-color .25s,transform .25s var(--ease)}
+.btn:hover{background:var(--r100);border-color:rgba(214,35,48,.34);transform:translateY(-1px)}
+.btn svg{width:12px;height:12px;fill:currentColor}
+.scroll-x{overflow-x:auto;overflow-y:hidden}
+.scroll-x::-webkit-scrollbar{height:6px}
+.scroll-x::-webkit-scrollbar-track{background:#f1f2f5;border-radius:9px}
+.scroll-x::-webkit-scrollbar-thumb{background:#d5d8e0;border-radius:9px}
+
+/* ================= shared diagram svg ================= */
+.dgm{width:100%;display:block;overflow:visible}
+@media(max-width:960px){.dgm{min-width:1080px}}
+.dgm text{font-family:'Inter',sans-serif}
+/* white halo keeps every label legible over lines and boxes */
+.dgm .halo{paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round;stroke-linecap:round}
+
+.dgm .box{fill:#fff;stroke:var(--nc,#c3c9d4);stroke-opacity:.36;stroke-width:1.2;
+  filter:drop-shadow(0 6px 14px rgba(16,18,24,.09));transition:stroke-opacity .3s}
+.dgm .grp:hover .box{stroke-opacity:.85}
+.dgm .t1{font-size:14.5px;font-weight:600;fill:#14161c;letter-spacing:-.01em}
+.dgm .t2{font-size:12px;font-weight:500;fill:#7d8493}
+.dgm .badge circle{fill:var(--nc)}
+.dgm .badge text{font-size:11px;font-weight:700;fill:#fff;letter-spacing:.02em}
+.dgm .cap{font-size:11px;font-weight:700;fill:#fff;letter-spacing:.16em}
+.dgm .elabel{font-size:11px;font-weight:600;fill:#7d8493;letter-spacing:.04em}
+
+.dgm .edge{fill:none;stroke:#8a92a1;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.dgm .edge.thin{stroke:#c3c9d4;stroke-width:1.4}
+.dgm .edge.red{stroke:var(--r600);stroke-width:1.6}
+.dgm .edge.async{stroke:var(--r400);stroke-width:1.6}
+
+/* sequenced entrance */
+.dgm .lane,.dgm .grp,.dgm .edge,.dgm .elabel{opacity:0}
+.dgm .grp{transform-box:fill-box;transform-origin:center;transform:scale(.92) translateY(6px)}
+.dgm.play .lane{animation:laneIn .7s var(--ease) forwards;animation-delay:calc(var(--i,0)*.08s)}
+.dgm.play .grp{animation:grpIn .5s var(--ease) forwards;animation-delay:calc(.28s + var(--i,0)*.16s)}
+.dgm.play .elabel{animation:fadeIn .5s ease forwards;animation-delay:calc(.5s + var(--i,0)*.16s)}
+.dgm.play .edge{stroke-dasharray:1;stroke-dashoffset:1;opacity:1;
+  animation:draw .5s var(--ease) forwards;animation-delay:calc(.28s + var(--i,0)*.16s)}
+@keyframes laneIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+@keyframes grpIn{to{opacity:1;transform:none}}
+@keyframes fadeIn{to{opacity:1}}
+@keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+.dgm .spark{opacity:0}
+.dgm.play .spark{animation:fadeIn .4s ease forwards;animation-delay:4.2s}
+
+/* ================= swimlane specifics ================= */
+#flow .lane-band{fill:var(--lt);stroke:var(--hair)}
+#flow .lane-tab text{font-family:'Space Grotesk',sans-serif;font-size:12.5px;font-weight:600;fill:#fff;letter-spacing:.1em}
+
+/* ================= architecture specifics ================= */
+.archwrap{position:relative}
+.scanline{position:absolute;left:0;right:0;height:96px;pointer-events:none;z-index:2;
+  background:linear-gradient(180deg,rgba(214,35,48,0),rgba(214,35,48,.05) 55%,rgba(214,35,48,0));
+  animation:scan 8s cubic-bezier(.5,0,.5,1) infinite}
+.scanline::after{content:'';position:absolute;left:0;right:0;bottom:38px;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(214,35,48,.34),transparent)}
+@keyframes scan{0%{top:-12%;opacity:0}12%{opacity:1}88%{opacity:1}100%{top:102%;opacity:0}}
+#arch .gbox{fill:#fff;stroke:var(--gc);stroke-opacity:.2;stroke-width:1.2;
+  filter:drop-shadow(0 8px 20px rgba(16,18,24,.06))}
+#arch .gtint{fill:var(--gc);opacity:.028}
+#arch .gtop{fill:var(--gc)}
+#arch .gcap{font-size:10.5px;font-weight:700;fill:var(--gc);letter-spacing:.15em}
+#arch .unit{fill:#fcfcfd;stroke:var(--hair);stroke-width:1;transition:fill .3s,stroke .3s}
+#arch .grp:hover .unit{fill:#fff;stroke:var(--gc);stroke-opacity:.45}
+#arch .u1{font-size:13px;font-weight:600;fill:#14161c;letter-spacing:-.01em}
+#arch .u2{font-size:11px;font-weight:500;fill:#8b93a1}
+#arch .orlbl{font-size:10.5px;font-style:italic;fill:#9aa1af}
+#arch .icn{stroke:var(--gc);fill:none;stroke-width:1.5}
+#arch .icnbg{fill:var(--gc);opacity:.1}
+#arch .datacap{font-size:10.5px;font-weight:700;fill:#5a616f;letter-spacing:.15em}
+
+/* ================= roles ================= */
+.roles{margin-top:30px;border-top:1px solid var(--hair)}
+.role{display:grid;grid-template-columns:210px 1fr 280px;gap:24px;padding:20px 20px 20px 18px;
+  border-bottom:1px solid var(--hair);transition:background .35s;position:relative}
+.role::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c);transform:scaleY(0);transition:transform .45s var(--ease)}
+.role:hover{background:var(--r50)}
+.role:hover::before{transform:scaleY(1)}
+.role .who{display:flex;align-items:flex-start;gap:11px}
+.role .chip{width:9px;height:9px;border-radius:3px;background:var(--c);margin-top:6px;flex:none}
+.role .nm{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;letter-spacing:-.025em}
+.role .cnt{font-size:9.4px;color:var(--dim);letter-spacing:.16em;text-transform:uppercase;margin-top:3px;font-weight:600}
+.role .act{color:var(--ink-2);font-size:13.8px;line-height:1.58}
+.role .out{font-size:13px;color:var(--ink);line-height:1.5;padding-left:20px;border-left:1px solid var(--hair)}
+.role .out b{display:block;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:5px}
+@media(max-width:920px){.role{grid-template-columns:1fr;gap:10px}.role .out{padding-left:0;border-left:none;border-top:1px solid var(--hair);padding-top:10px}}
+
+/* ================= in practice ================= */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:38px}
+@media(max-width:1000px){.steps{grid-template-columns:1fr;gap:30px}}
+.step{padding:0 22px}
+.step:first-child{padding-left:0}
+.step:last-child{padding-right:0}
+.step .rail{height:2px;background:var(--hair);position:relative;margin-bottom:22px}
+.step .rail>span.fill{position:absolute;inset:0;background:var(--c);transform:scaleX(0);transform-origin:left;
+  transition:transform .85s var(--ease);transition-delay:calc(var(--i)*.18s)}
+.slide.active .step .rail>span.fill{transform:scaleX(1)}
+.step .marker{position:absolute;top:-5px;left:0;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--c)}
+.step .cap{font-family:'Space Grotesk',sans-serif;font-size:9.4px;letter-spacing:.19em;text-transform:uppercase;color:var(--c);font-weight:700}
+.step h3{font-size:17.5px;font-weight:600;margin:9px 0 10px;line-height:1.28;letter-spacing:-.025em}
+.step p{color:var(--muted);font-size:13.4px;line-height:1.6;margin:0}
+
+/* ================= closing ================= */
+.closing-inner{text-align:center}
+.closing-inner h2{font-size:clamp(42px,6.4vw,84px)}
+.closing-inner h2 .red{color:var(--r600)}
+.closing-inner p{color:var(--muted);margin-top:18px;font-size:16.5px}
+.closing-inner .meta{margin-top:40px;display:flex;justify-content:center;gap:0;flex-wrap:wrap;border-top:1px solid var(--hair);padding-top:22px}
+.closing-inner .meta span{font-size:11.5px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase;font-weight:600;padding:0 20px}
+.closing-inner .meta span+span{border-left:1px solid var(--hair)}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important}
+  #deck{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<canvas id="dotgrid"></canvas>
+<div class="aurora"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
+<div class="veil"></div>
+<div id="progress"></div>
+
+<button class="arrow prev" id="prev" aria-label="Previous slide">
+  <svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg>
+</button>
+<button class="arrow next" id="next" aria-label="Next slide">
+  <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+</button>
+
+<div class="dock">
+  <div class="dots" id="dots"></div>
+  <div class="counter" id="counter"><b>01</b> / 09</div>
+</div>
+
+<div id="deck">
+
+  <!-- ============ 01 HERO ============ -->
+  <section class="slide" data-title="Title">
+    <div class="fit" style="--fitw:1000px">
+      <div class="tag rv"><span class="sq"></span> <b>Four roles</b>&nbsp;· one end-to-end workflow</div>
+      <h1 class="rv" data-d="1">Multi&#8209;tenant<br><span class="red">NER Platform</span></h1>
+      <p class="hero-sub rv" data-d="2">A platform where teams define their own data types, label documents, train a model, and extract structured information from it.</p>
+      <div class="hero-meta rv" data-d="3">
+        <div><div class="k"><em>1</em> tenant</div><div class="v">1 model</div></div>
+        <div><div class="k"><em>4</em> roles</div><div class="v">One continuous loop</div></div>
+        <div><div class="k"><em>0</em></div><div class="v">Tools to stitch</div></div>
+      </div>
+      <div class="swipe-hint rv" data-d="4"><span class="track"></span> Swipe or press →</div>
+    </div>
+  </section>
+
+  <!-- ============ 02 CONTENTS ============ -->
+  <section class="slide" data-title="Contents">
+    <div class="fit" style="--fitw:1080px">
+      <div class="eyebrow rv">Contents</div>
+      <h2 class="rv" data-d="1">What's Ahead</h2>
+      <div class="toc rv" data-d="2" id="toc">
+        <button data-i="2"><div class="n">01</div><div class="t">What Is It</div></button>
+        <button data-i="3"><div class="n">02</div><div class="t">Why It's Novel</div></button>
+        <button data-i="4"><div class="n">03</div><div class="t">End-to-End Workflow</div></button>
+        <button data-i="5"><div class="n">04</div><div class="t">Architecture</div></button>
+        <button data-i="6"><div class="n">05</div><div class="t">Platform Roles</div></button>
+        <button data-i="7"><div class="n">06</div><div class="t">In Practice: Inapp</div></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 03 WHAT IS IT ============ -->
+  <section class="slide" data-title="What Is It">
+    <div class="fit" style="--fitw:1080px">
+      <div class="eyebrow rv">Overview</div>
+      <h2 class="rv" data-d="1">What Is It</h2>
+      <p class="lede rv" data-d="2">A managed platform for building custom Named Entity Recognition models: it takes an organization's own documents, turns human-labeled examples into training data, fine-tunes a model on that data, and serves it for extraction — all under one workspace per tenant.</p>
+      <div class="stages">
+        <div class="stage rv" data-d="1" style="--c:var(--r800);--tint:#fdeced">
+          <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
+          <div class="lbl">Ingest</div>
+          <h3>Upload &amp; define schema</h3>
+          <p>Load source documents and define the entity types (fields) specific to the organization.</p>
+        </div>
+        <div class="stage rv" data-d="2" style="--c:var(--r600);--tint:#ffeced">
+          <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.2"/></svg></div>
+          <div class="lbl">Annotate &amp; Fine-tune</div>
+          <h3>Label, train, approve</h3>
+          <p>Annotators produce labeled spans; a training job fine-tunes the base model on them, gated by admin approval.</p>
+        </div>
+        <div class="stage rv" data-d="3" style="--c:var(--r400);--tint:#fff0eb">
+          <div class="ico"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.4"/><path d="m20 20-4.4-4.4"/><path d="M9 11h4"/></svg></div>
+          <div class="lbl">Serve</div>
+          <h3>Extract &amp; query</h3>
+          <p>The promoted model runs inference on new documents, returning structured, queryable entity data.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 04 WHY NOVEL ============ -->
+  <section class="slide" data-title="Why It's Novel">
+    <div class="fit" style="--fitw:1120px">
+      <div class="eyebrow rv">Why It's Novel</div>
+      <h2 class="rv" data-d="1">Why It's Novel</h2>
+      <p class="lede rv" data-d="2">A generic entity extractor doesn't know your documents. This platform is built so every tenant's does.</p>
+      <div class="novel rv" data-d="2">
+        <div class="ncard" style="--c:var(--r800)">
+          <div class="num">01</div><div class="lbl">Isolation</div>
+          <h3>Every tenant gets its own model</h3>
+          <p>Entities, documents, and training runs never cross organization lines.</p>
+        </div>
+        <div class="ncard" style="--c:var(--r700)">
+          <div class="num">02</div><div class="lbl">Customization</div>
+          <h3>Fine-tuned on your documents</h3>
+          <p>A stock NER model doesn't recognize your invoice codes or clause names — yours does, because it trained on them.</p>
+        </div>
+        <div class="ncard" style="--c:var(--r600)">
+          <div class="num">03</div><div class="lbl">Human-in-the-loop</div>
+          <h3>Every model is reviewed before it ships</h3>
+          <p>Annotation and approval gates keep training data accurate and spend accountable.</p>
+        </div>
+        <div class="ncard" style="--c:var(--r400)">
+          <div class="num">04</div><div class="lbl">One Pipeline</div>
+          <h3>Setup to structured data, one platform</h3>
+          <p>No stitching together a labeling tool, a training pipeline, and a separate extraction app.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 05 WORKFLOW ============ -->
+  <section class="slide" data-title="End-to-End Workflow">
+    <div class="fit" style="--fitw:1400px">
+      <div class="eyebrow rv">End-to-End Workflow</div>
+      <h2 class="rv" data-d="1">End-to-End Workflow</h2>
+      <div class="diagram-shell rv" data-d="2">
+        <div class="diagram-bar">
+          <span class="title">Swimlane · role handoffs — tenant creation through to a business user querying results</span>
+          <div class="legend">
+            <span><i></i> Process flow</span>
+            <span><i class="dash"></i> Model reference</span>
+          </div>
+          <button class="btn" data-replay>
+            <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg> Replay
+          </button>
+        </div>
+        <div class="scroll-x">
+        <svg id="flow" class="dgm anim" viewBox="0 0 1300 530" role="img" aria-label="End-to-end workflow swimlane diagram">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8f1626"/><stop offset="1" stop-color="#640d1a"/></linearGradient>
+            <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e12c39"/><stop offset="1" stop-color="#b21b28"/></linearGradient>
+            <linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff7f5e"/><stop offset="1" stop-color="#ef5a3a"/></linearGradient>
+            <linearGradient id="g4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a3f4a"/><stop offset="1" stop-color="#22262e"/></linearGradient>
+            <pattern id="dotbg" width="20" height="20" patternUnits="userSpaceOnUse">
+              <circle cx="1.2" cy="1.2" r="0.9" fill="#e6e9ef"/>
+            </pattern>
+            <marker id="arw" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,1.2 L9,5 L0,8.8 z" fill="#8a92a1"/></marker>
+            <marker id="arwR" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,1.2 L9,5 L0,8.8 z" fill="#d62330"/></marker>
+          </defs>
+
+          <rect x="0" y="0" width="1300" height="530" fill="url(#dotbg)" opacity=".6"/>
+
+          <!-- lanes -->
+          <g class="lane" style="--i:0;--lt:rgba(122,18,32,.038)">
+            <rect class="lane-band" x="0" y="6" width="1300" height="122" rx="14"/>
+            <g class="lane-tab"><rect x="0" y="6" width="150" height="122" rx="14" fill="url(#g1)"/>
+              <text x="75" y="63" text-anchor="middle">SYSTEM ADMIN</text>
+              <text x="75" y="81" text-anchor="middle" style="font-size:9.8px;opacity:.72">(PLATFORM OWNER)</text></g>
+          </g>
+          <g class="lane" style="--i:1;--lt:rgba(214,35,48,.038)">
+            <rect class="lane-band" x="0" y="136" width="1300" height="122" rx="14"/>
+            <g class="lane-tab"><rect x="0" y="136" width="150" height="122" rx="14" fill="url(#g2)"/>
+              <text x="75" y="202" text-anchor="middle">TENANT ADMIN</text></g>
+          </g>
+          <g class="lane" style="--i:2;--lt:rgba(255,107,74,.05)">
+            <rect class="lane-band" x="0" y="266" width="1300" height="122" rx="14"/>
+            <g class="lane-tab"><rect x="0" y="266" width="150" height="122" rx="14" fill="url(#g3)"/>
+              <text x="75" y="332" text-anchor="middle">ANNOTATOR</text></g>
+          </g>
+          <g class="lane" style="--i:3;--lt:rgba(42,46,55,.035)">
+            <rect class="lane-band" x="0" y="396" width="1300" height="122" rx="14"/>
+            <g class="lane-tab"><rect x="0" y="396" width="150" height="122" rx="14" fill="url(#g4)"/>
+              <text x="75" y="462" text-anchor="middle">BUSINESS USER</text></g>
+          </g>
+
+          <!-- edges -->
+          <path class="edge" style="--i:1"  d="M320,67 H335 V197 H350"          marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" style="--i:3"  d="M515,197 H545"                   marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" style="--i:5"  d="M570,226 V327 H590"              marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" style="--i:7"  d="M775,327 H820 V226"              marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" style="--i:9"  d="M885,168 V96"                    marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge red" style="--i:11" stroke-dasharray="6 4" d="M955,67 H1000" marker-end="url(#arwR)" pathLength="1"/>
+          <path class="edge" style="--i:13" d="M1075,96 V132 H1165 V168"        marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" style="--i:15" d="M1240,226 V406 H782 V428"        marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge red" style="--i:15" stroke-dasharray="6 4" d="M1160,226 V370 H992 V428" marker-end="url(#arwR)" pathLength="1"/>
+          <path class="edge" style="--i:17" d="M865,457 H895"                   marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" style="--i:19" d="M1100,457 H1120"                 marker-end="url(#arw)"  pathLength="1"/>
+
+          <text class="elabel halo" style="--i:11" x="977"  y="30"  text-anchor="middle">Training executes</text>
+          <text class="elabel halo" style="--i:15" x="1076" y="362" text-anchor="middle">Latest promoted model</text>
+
+          <!-- nodes -->
+          <g class="grp" style="--i:0;--nc:var(--role-1)">
+            <rect class="box" x="170" y="38" width="150" height="58" rx="12"/>
+            <text class="t1" x="245" y="72" text-anchor="middle">Create Tenant</text>
+            <g class="badge"><circle cx="188" cy="38" r="11"/><text x="188" y="41.8" text-anchor="middle">1</text></g>
+          </g>
+          <g class="grp" style="--i:2;--nc:var(--role-2)">
+            <rect class="box" x="350" y="168" width="165" height="58" rx="12"/>
+            <text class="t1" x="433" y="194" text-anchor="middle">Upload Documents</text>
+            <text class="t2" x="433" y="211" text-anchor="middle">for finetuning</text>
+            <g class="badge"><circle cx="368" cy="168" r="11"/><text x="368" y="171.8" text-anchor="middle">2</text></g>
+          </g>
+          <g class="grp" style="--i:4;--nc:var(--role-2)">
+            <rect class="box" x="545" y="168" width="205" height="58" rx="12"/>
+            <text class="t1" x="648" y="194" text-anchor="middle">Assign Documents</text>
+            <text class="t2" x="648" y="211" text-anchor="middle">to annotator + entity fields</text>
+            <g class="badge"><circle cx="563" cy="168" r="11"/><text x="563" y="171.8" text-anchor="middle">3</text></g>
+          </g>
+          <g class="grp" style="--i:6;--nc:var(--role-3)">
+            <rect class="box" x="590" y="298" width="185" height="58" rx="12"/>
+            <text class="t1" x="683" y="324" text-anchor="middle">Annotate Documents</text>
+            <text class="t2" x="683" y="341" text-anchor="middle">to entity fields</text>
+            <g class="badge"><circle cx="608" cy="298" r="11"/><text x="608" y="301.8" text-anchor="middle">4</text></g>
+          </g>
+          <g class="grp" style="--i:8;--nc:var(--role-2)">
+            <rect class="box" x="790" y="168" width="190" height="58" rx="12"/>
+            <text class="t1" x="885" y="194" text-anchor="middle">Submit Training Job</text>
+            <text class="t2" x="885" y="211" text-anchor="middle">with annotated documents</text>
+            <g class="badge"><circle cx="808" cy="168" r="11"/><text x="808" y="171.8" text-anchor="middle">5</text></g>
+          </g>
+          <g class="grp" style="--i:10;--nc:var(--role-1)">
+            <rect class="box" x="760" y="38" width="195" height="58" rx="12"/>
+            <text class="t1" x="858" y="72" text-anchor="middle">Approve Training Job</text>
+            <g class="badge"><circle cx="778" cy="38" r="11"/><text x="778" y="41.8" text-anchor="middle">6</text></g>
+          </g>
+          <g class="grp" style="--i:12;--nc:var(--role-1)">
+            <rect class="box" x="1000" y="38" width="150" height="58" rx="12"/>
+            <text class="t1" x="1075" y="72" text-anchor="middle">Training Runs</text>
+            <g class="badge"><circle cx="1018" cy="38" r="11"/><text x="1018" y="41.8" text-anchor="middle">7</text></g>
+          </g>
+          <g class="grp" style="--i:14;--nc:var(--role-2)">
+            <rect class="box" x="1080" y="168" width="175" height="58" rx="12"/>
+            <text class="t1" x="1168" y="194" text-anchor="middle">Promote Finetuned</text>
+            <text class="t2" x="1168" y="211" text-anchor="middle">model</text>
+            <g class="badge"><circle cx="1098" cy="168" r="11"/><text x="1098" y="171.8" text-anchor="middle">8</text></g>
+          </g>
+          <g class="grp" style="--i:16;--nc:var(--role-4)">
+            <rect class="box" x="700" y="428" width="165" height="58" rx="12"/>
+            <text class="t1" x="783" y="462" text-anchor="middle">Upload Documents</text>
+            <g class="badge"><circle cx="718" cy="428" r="11"/><text x="718" y="431.8" text-anchor="middle">9</text></g>
+          </g>
+          <g class="grp" style="--i:18;--nc:var(--role-4)">
+            <rect class="box" x="895" y="428" width="205" height="58" rx="12"/>
+            <text class="t1" x="998" y="454" text-anchor="middle">Perform NER Extraction</text>
+            <text class="t2" x="998" y="471" text-anchor="middle">latest promoted model</text>
+            <g class="badge"><circle cx="913" cy="428" r="11"/><text x="913" y="431.8" text-anchor="middle">10</text></g>
+          </g>
+          <g class="grp" style="--i:20;--nc:var(--role-4)">
+            <rect class="box" x="1120" y="428" width="170" height="58" rx="12"/>
+            <text class="t1" x="1205" y="462" text-anchor="middle">Query Documents</text>
+            <g class="badge"><circle cx="1138" cy="428" r="11"/><text x="1138" y="431.8" text-anchor="middle">11</text></g>
+          </g>
+
+          <!-- travelling pulses -->
+          <g class="spark">
+            <circle r="3.6" fill="#7a1220"><animateMotion dur="3.4s" repeatCount="indefinite" path="M320,67 H335 V197 H350"/></circle>
+            <circle r="3.6" fill="#ff6b4a"><animateMotion dur="3s"   repeatCount="indefinite" path="M570,226 V327 H590"/></circle>
+            <circle r="3.6" fill="#d62330"><animateMotion dur="2.6s" repeatCount="indefinite" path="M775,327 H820 V226"/></circle>
+            <circle r="3.6" fill="#2a2e37"><animateMotion dur="3.2s" repeatCount="indefinite" path="M1240,226 V406 H782 V428"/></circle>
+            <circle r="3.2" fill="#d62330"><animateMotion dur="2.8s" repeatCount="indefinite" path="M1160,226 V370 H992 V428"/></circle>
+          </g>
+        </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 06 ARCHITECTURE ============ -->
+  <section class="slide" data-title="Architecture">
+    <div class="fit" style="--fitw:1400px">
+      <div class="eyebrow rv">Detailed Architecture</div>
+      <h2 class="rv" data-d="1">Detailed Architectural Diagram</h2>
+      <div class="diagram-shell rv" data-d="2">
+        <div class="diagram-bar">
+          <span class="title">NER Platform — System Architecture</span>
+          <div class="legend">
+            <span><i></i> Request / process flow</span>
+            <span><i class="data"></i> Data read / write</span>
+            <span><i class="async"></i> Async tasks (Celery / Redis)</span>
+          </div>
+          <button class="btn" data-replay>
+            <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg> Replay
+          </button>
+        </div>
+        <div class="archwrap">
+        <div class="scanline"></div>
+        <div class="scroll-x">
+        <svg id="arch" class="dgm anim" viewBox="0 0 1400 750" role="img" aria-label="NER platform system architecture diagram">
+          <defs>
+            <pattern id="dotbg2" width="20" height="20" patternUnits="userSpaceOnUse">
+              <circle cx="1.2" cy="1.2" r="0.9" fill="#e6e9ef"/>
+            </pattern>
+            <marker id="ap" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,1.2 L9,5 L0,8.8 z" fill="#8a92a1"/></marker>
+            <marker id="ad" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="6.4" markerHeight="6.4" orient="auto-start-reverse">
+              <path d="M0,1.2 L9,5 L0,8.8 z" fill="#aab1bd"/></marker>
+            <marker id="aa" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="6.4" markerHeight="6.4" orient="auto-start-reverse">
+              <path d="M0,1.2 L9,5 L0,8.8 z" fill="#ff6b4a"/></marker>
+          </defs>
+
+          <rect x="0" y="0" width="1400" height="750" fill="url(#dotbg2)" opacity=".55"/>
+
+          <!-- ============ FRONTEND ============ -->
+          <g class="grp" style="--i:0;--gc:var(--graphite)">
+            <rect class="gbox" x="550" y="4" width="300" height="58" rx="12"/>
+            <text class="gcap" x="700" y="24" text-anchor="middle">FRONTEND</text>
+            <text class="u1" x="700" y="42" text-anchor="middle" style="font-size:13.5px">Web / Admin Portal · Next.js + React</text>
+          </g>
+
+          <path class="edge" style="--i:1" d="M700,62 V96" marker-end="url(#ap)" pathLength="1"/>
+
+          <!-- ============ API GATEWAY ============ -->
+          <g class="grp" style="--i:2;--gc:var(--r600)">
+            <rect class="gbox" x="470" y="96" width="460" height="58" rx="12"/>
+            <text class="gcap" x="700" y="116" text-anchor="middle">API GATEWAY · SINGLE ENTRY POINT</text>
+            <text class="u1" x="700" y="134" text-anchor="middle" style="font-size:13.5px">FastAPI · JWT Auth · Tenant Context</text>
+          </g>
+
+          <!-- ============ fan-out to the four pipelines ============ -->
+          <path class="edge" style="--i:3" d="M700,154 V172" pathLength="1"/>
+          <path class="edge" style="--i:4" d="M173,172 H1226" pathLength="1"/>
+          <path class="edge" style="--i:5" d="M173,172 V196"  marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" style="--i:5" d="M524,172 V196"  marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" style="--i:5" d="M875,172 V196"  marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" style="--i:5" d="M1226,172 V196" marker-end="url(#ap)" pathLength="1"/>
+
+          <!-- ============ G1 · DOCUMENT PIPELINE ============ -->
+          <g class="grp" style="--i:6;--gc:var(--r800)">
+            <rect class="gbox" x="15" y="196" width="315" height="244" rx="13"/>
+            <rect class="gtint" x="15" y="196" width="315" height="244" rx="13"/>
+            <rect class="gtop" x="15" y="196" width="315" height="4" rx="2"/>
+            <text class="gcap" x="30" y="222">DOCUMENT PIPELINE</text>
+            <rect class="unit" x="27" y="264" width="291" height="54" rx="9"/>
+            <text class="u1" x="172" y="286" text-anchor="middle">Document Processing</text>
+            <text class="u2" x="172" y="303" text-anchor="middle">FastAPI + OCR</text>
+            <rect class="unit" x="27" y="330" width="291" height="54" rx="9"/>
+            <text class="u1" x="172" y="352" text-anchor="middle">Annotation Service</text>
+            <text class="u2" x="172" y="369" text-anchor="middle">Pre-label · Review · BIO Export</text>
+          </g>
+
+          <!-- ============ G2 · ML PIPELINE ============ -->
+          <g class="grp" style="--i:7;--gc:var(--r700)">
+            <rect class="gbox" x="366" y="196" width="315" height="244" rx="13"/>
+            <rect class="gtint" x="366" y="196" width="315" height="244" rx="13"/>
+            <rect class="gtop" x="366" y="196" width="315" height="4" rx="2"/>
+            <text class="gcap" x="381" y="222">ML PIPELINE</text>
+            <rect class="unit" x="378" y="230" width="291" height="54" rx="9"/>
+            <text class="u1" x="524" y="252" text-anchor="middle">Training Orchestrator</text>
+            <text class="u2" x="524" y="269" text-anchor="middle">PyTorch fine-tuning, ONNX export</text>
+            <rect class="unit" x="378" y="296" width="291" height="54" rx="9"/>
+            <text class="u1" x="524" y="318" text-anchor="middle">MLflow Registry</text>
+            <text class="u2" x="524" y="335" text-anchor="middle">Version · Promote · Rollback</text>
+            <rect class="unit" x="378" y="362" width="291" height="54" rx="9"/>
+            <text class="u1" x="524" y="384" text-anchor="middle">Model Serving</text>
+            <text class="u2" x="524" y="401" text-anchor="middle">ONNX Runtime</text>
+          </g>
+
+          <!-- ============ G3 · EXTRACTION & ANALYTICS ============ -->
+          <g class="grp" style="--i:8;--gc:var(--r600)">
+            <rect class="gbox" x="717" y="196" width="315" height="244" rx="13"/>
+            <rect class="gtint" x="717" y="196" width="315" height="244" rx="13"/>
+            <rect class="gtop" x="717" y="196" width="315" height="4" rx="2"/>
+            <text class="gcap" x="732" y="222">EXTRACTION &amp; ANALYTICS</text>
+            <rect class="unit" x="729" y="264" width="291" height="54" rx="9"/>
+            <text class="u1" x="874" y="286" text-anchor="middle">Extraction Service</text>
+            <text class="u2" x="874" y="303" text-anchor="middle">NER + Confidence Filter</text>
+            <rect class="unit" x="729" y="330" width="291" height="54" rx="9"/>
+            <text class="u1" x="874" y="352" text-anchor="middle">Analytics Service</text>
+            <text class="u2" x="874" y="369" text-anchor="middle">Materialized Views from PostgreSQL</text>
+          </g>
+
+          <!-- ============ G4 · ANALYTICS & CHATBOT ============ -->
+          <g class="grp" style="--i:9;--gc:var(--graphite)">
+            <rect class="gbox" x="1068" y="196" width="315" height="244" rx="13"/>
+            <rect class="gtint" x="1068" y="196" width="315" height="244" rx="13"/>
+            <rect class="gtop" x="1068" y="196" width="315" height="4" rx="2"/>
+            <text class="gcap" x="1083" y="222">ANALYTICS &amp; CHATBOT</text>
+            <rect class="unit" x="1080" y="230" width="291" height="54" rx="9"/>
+            <text class="u1" x="1226" y="261" text-anchor="middle">Intent Orchestrator</text>
+            <rect class="unit" x="1080" y="296" width="125" height="54" rx="9"/>
+            <text class="u1" x="1142" y="317" text-anchor="middle" style="font-size:11.6px">LLM · NL → SQL</text>
+            <text class="u2" x="1142" y="332" text-anchor="middle" style="font-size:10px">queries postgresql</text>
+            <text class="orlbl" x="1226" y="326" text-anchor="middle">or</text>
+            <rect class="unit" x="1246" y="296" width="125" height="54" rx="9"/>
+            <text class="u1" x="1308" y="317" text-anchor="middle" style="font-size:11.6px">Vector Search</text>
+            <text class="u2" x="1308" y="332" text-anchor="middle" style="font-size:10px">queries vector db</text>
+            <rect class="unit" x="1080" y="362" width="291" height="54" rx="9"/>
+            <text class="u1" x="1226" y="393" text-anchor="middle">Response Generator</text>
+          </g>
+
+          <!-- ============ internal chains ============ -->
+          <path class="edge" style="--i:10" d="M524,284 V296" marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" style="--i:10" d="M524,350 V362" marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" style="--i:10" d="M1160,284 V290 H1142 V296" marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" style="--i:10" d="M1292,284 V290 H1308 V296" marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" style="--i:10" d="M1142,350 V356 H1184 V362" marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" style="--i:10" d="M1308,350 V356 H1268 V362" marker-end="url(#ap)" pathLength="1"/>
+
+          <!-- ============ cross-pipeline flow (wide 36px gutters) ============ -->
+          <path class="edge" style="--i:11" d="M318,357 H348 V257 H378" marker-end="url(#ap)" pathLength="1"/>
+          <text class="elabel halo" style="--i:11" x="348" y="307" text-anchor="middle"
+                transform="rotate(-90 348 307)">GET /annotation-export</text>
+
+          <path class="edge" style="--i:12" d="M669,389 H699 V291 H729" marker-end="url(#ap)" pathLength="1"/>
+          <text class="elabel halo" style="--i:12" x="699" y="340" text-anchor="middle"
+                transform="rotate(-90 699 340)">inference</text>
+
+          <!-- ============ ROUTING CHANNEL · pipelines (440) → data row (580), 140px, lettered lanes ============ -->
+
+          <!-- async · celery, dashed coral -->
+          <path class="edge async" style="--i:13" stroke-dasharray="6 4" d="M100,580 V440" marker-end="url(#aa)" pathLength="1"/>
+          <text class="elabel halo" style="--i:13" x="70" y="512" text-anchor="middle" transform="rotate(-90 70 512)">task queue</text>
+
+          <path class="edge async" style="--i:14" stroke-dasharray="6 4" d="M195,580 V452 H480 V440" marker-end="url(#aa)" pathLength="1"/>
+          <text class="elabel halo" style="--i:14" x="338" y="448" text-anchor="middle">model training</text>
+
+          <path class="edge async" style="--i:14" stroke-dasharray="6 4" d="M255,580 V480 H845 V440" marker-end="url(#aa)" pathLength="1"/>
+          <text class="elabel halo" style="--i:14" x="560" y="476" text-anchor="middle">batch extraction only</text>
+
+          <!-- data read / write, thin grey -->
+          <path class="edge thin" style="--i:15" d="M172,440 V466 H420 V580" marker-end="url(#ad)" pathLength="1"/>
+          <text class="elabel halo" style="--i:15" x="296" y="462" text-anchor="middle">store documents</text>
+
+          <path class="edge thin" style="--i:15" d="M450,580 V508 H600 V440" marker-end="url(#ad)" pathLength="1"/>
+          <text class="elabel halo" style="--i:15" x="525" y="504" text-anchor="middle">retrieve finetuned model</text>
+
+          <path class="edge thin" style="--i:15" d="M740,580 V536 H150 V440" marker-end="url(#ad)" pathLength="1"/>
+          <text class="elabel halo" style="--i:15" x="445" y="532" text-anchor="middle">retrieve annotation metadata</text>
+
+          <path class="edge thin" style="--i:15" d="M845,440 V580" marker-end="url(#ad)" pathLength="1"/>
+          <text class="elabel halo" style="--i:15" x="833" y="462" text-anchor="end">store</text>
+
+          <path class="edge thin" style="--i:15" d="M915,580 V440" marker-end="url(#ad)" pathLength="1"/>
+          <text class="elabel halo" style="--i:15" x="927" y="462">retrieve</text>
+
+          <path class="edge thin" style="--i:15" d="M1246,440 V580" marker-end="url(#ad)" pathLength="1"/>
+          <text class="elabel halo" style="--i:15" x="1258" y="462">store document embeddings</text>
+
+          <!-- ============ DATA LAYER ============ -->
+          <g class="grp" style="--i:16;--gc:var(--graphite)">
+            <rect class="gbox" x="330" y="580" width="1055" height="110" rx="13"/>
+            <rect class="gtint" x="330" y="580" width="1055" height="110" rx="13"/>
+            <rect class="gtop" x="330" y="580" width="1055" height="4" rx="2"/>
+            <text class="datacap" x="345" y="606">DATA LAYER · PER-TENANT</text>
+
+            <rect class="unit" x="345" y="620" width="333" height="52" rx="10"/>
+            <rect class="icnbg" x="359" y="635" width="22" height="22" rx="7"/>
+            <ellipse class="icn" cx="370" cy="642.5" rx="6" ry="2.6"/>
+            <path class="icn" d="M364,642.5 V650 c0,1.4 2.7,2.6 6,2.6 s6,-1.2 6,-2.6 V642.5"/>
+            <text class="u1" x="393" y="641">Object Storage</text>
+            <text class="u2" x="393" y="657">MinIO · S3</text>
+
+            <rect class="unit" x="692" y="620" width="333" height="52" rx="10"/>
+            <rect class="icnbg" x="706" y="635" width="22" height="22" rx="7"/>
+            <ellipse class="icn" cx="717" cy="642.5" rx="6" ry="2.6"/>
+            <path class="icn" d="M711,642.5 V650 c0,1.4 2.7,2.6 6,2.6 s6,-1.2 6,-2.6 V642.5"/>
+            <text class="u1" x="740" y="641">PostgreSQL</text>
+            <text class="u2" x="740" y="657">Per-tenant schemas</text>
+
+            <rect class="unit" x="1039" y="620" width="333" height="52" rx="10"/>
+            <rect class="icnbg" x="1053" y="635" width="22" height="22" rx="7"/>
+            <ellipse class="icn" cx="1064" cy="642.5" rx="6" ry="2.6"/>
+            <path class="icn" d="M1058,642.5 V650 c0,1.4 2.7,2.6 6,2.6 s6,-1.2 6,-2.6 V642.5"/>
+            <text class="u1" x="1087" y="641">Vector Database</text>
+            <text class="u2" x="1087" y="657">Document embeddings</text>
+          </g>
+
+          <!-- ============ ASYNC TASKS ============ -->
+          <g class="grp" style="--i:17;--gc:var(--r400)">
+            <rect class="gbox" x="15" y="580" width="300" height="110" rx="13"/>
+            <rect class="gtint" x="15" y="580" width="300" height="110" rx="13"/>
+            <rect class="gtop" x="15" y="580" width="300" height="4" rx="2"/>
+            <text class="gcap" x="30" y="606">ASYNC TASKS</text>
+            <rect class="unit" x="27" y="620" width="276" height="52" rx="10"/>
+            <rect class="icnbg" x="41" y="635" width="22" height="22" rx="7"/>
+            <path class="icn" d="M47,643 H57 M47,646.5 H57 M47,650 H54"/>
+            <text class="u1" x="75" y="641" style="font-size:12.4px">Celery Broker + Backend</text>
+            <text class="u2" x="75" y="657">Redis · off the request path</text>
+          </g>
+
+          <!-- ============ travelling pulses ============ -->
+          <g class="spark">
+            <circle r="3.4" fill="#d62330"><animateMotion dur="2.4s" repeatCount="indefinite" path="M700,62 V96"/></circle>
+            <circle r="3.4" fill="#a81726"><animateMotion dur="3s"   repeatCount="indefinite" path="M318,357 H348 V257 H378"/></circle>
+            <circle r="3.4" fill="#d62330"><animateMotion dur="3s"   repeatCount="indefinite" path="M669,389 H699 V291 H729"/></circle>
+            <circle r="3.2" fill="#ff6b4a"><animateMotion dur="3.4s" repeatCount="indefinite" path="M195,580 V452 H480 V440"/></circle>
+            <circle r="3.2" fill="#ff6b4a"><animateMotion dur="4s"   repeatCount="indefinite" path="M255,580 V480 H845 V440"/></circle>
+          </g>
+        </svg>
+        </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 07 ROLES ============ -->
+  <section class="slide" data-title="Platform Roles">
+    <div class="fit" style="--fitw:1120px">
+      <div class="eyebrow rv">Platform Roles</div>
+      <h2 class="rv" data-d="1">Platform Roles</h2>
+      <p class="lede rv" data-d="2">Four roles, one continuous loop from setup to structured data.</p>
+      <div class="roles rv" data-d="2">
+        <div class="role" style="--c:var(--role-1)">
+          <div class="who"><span class="chip"></span><div><div class="nm">System Admin</div><div class="cnt">Platform owner</div></div></div>
+          <div class="act">Creates tenants, sets quotas, approves or rejects training requests.</div>
+          <div class="out"><b>Key output</b>Gatekeeps platform spend and tenant provisioning.</div>
+        </div>
+        <div class="role" style="--c:var(--role-2)">
+          <div class="who"><span class="chip"></span><div><div class="nm">Tenant Admin</div><div class="cnt">Workspace owner</div></div></div>
+          <div class="act">Defines entity types, uploads documents, assigns annotation tasks, submits training, promotes models.</div>
+          <div class="out"><b>Key output</b>Owns the workspace and drives the training lifecycle.</div>
+        </div>
+        <div class="role" style="--c:var(--role-3)">
+          <div class="who"><span class="chip"></span><div><div class="nm">Annotator</div><div class="cnt">Labeling</div></div></div>
+          <div class="act">Works a task queue, labels entity spans, confirms completed documents.</div>
+          <div class="out"><b>Key output</b>Builds the confirmed dataset the model trains on.</div>
+        </div>
+        <div class="role" style="--c:var(--role-4)">
+          <div class="who"><span class="chip"></span><div><div class="nm">Business User</div><div class="cnt">Day to day</div></div></div>
+          <div class="act">Uploads documents, runs entity extraction, reviews results, queries and exports data.</div>
+          <div class="out"><b>Key output</b>Turns documents into structured, usable data day to day.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 08 IN PRACTICE ============ -->
+  <section class="slide" data-title="In Practice: Inapp">
+    <div class="fit" style="--fitw:1120px">
+      <div class="eyebrow rv">Example · One Organization</div>
+      <h2 class="rv" data-d="1">In Practice: Inapp</h2>
+      <p class="lede rv" data-d="2">How Inapp's HR team turns resumes into structured candidate data.</p>
+      <div class="steps rv" data-d="2">
+        <div class="step" style="--c:var(--role-1);--i:0">
+          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
+          <div class="cap">System Admin</div>
+          <h3>Approves Inapp's request</h3>
+          <p>Reviews Inapp's request to fine-tune a resume-screening model.</p>
+        </div>
+        <div class="step" style="--c:var(--role-2);--i:1">
+          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
+          <div class="cap">Tenant Admin</div>
+          <h3>Defines resume fields</h3>
+          <p>Sets up candidate name, employer, degree, and skills as entity types.</p>
+        </div>
+        <div class="step" style="--c:var(--role-3);--i:2">
+          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
+          <div class="cap">Annotator</div>
+          <h3>Labels sample resumes</h3>
+          <p>Marks the spans across past resumes that train the model.</p>
+        </div>
+        <div class="step" style="--c:var(--role-4);--i:3">
+          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
+          <div class="cap">Business User · HR</div>
+          <h3>Screens new candidates</h3>
+          <p>Uploads incoming resumes, extracts fields instantly, and asks the assistant which candidates fit the role.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 09 THANK YOU ============ -->
+  <section class="slide" data-title="Thank you">
+    <div class="fit closing-inner" style="--fitw:840px">
+      <h2 class="rv">Thank <span class="red">you!</span></h2>
+      <p class="rv" data-d="1">Multi-tenant NER Platform · four roles, one end-to-end workflow.</p>
+      <div class="meta rv" data-d="2">
+        <span>Ingest</span><span>Annotate</span><span>Fine-tune</span><span>Serve</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ===========================================================
+   DotGrid — vanilla port of reactbits.dev/backgrounds/dot-grid
+   =========================================================== */
+(function(){
+  const cv = document.getElementById('dotgrid');
+  const ctx = cv.getContext('2d');
+  const CFG = {
+    dotSize:2.4, gap:30,
+    base:[223,226,232], active:[214,35,48],
+    proximity:130, speedTrigger:90, shockRadius:240, shockStrength:4.4,
+    stiffness:0.055, damping:0.78, maxSpeed:5000
+  };
+  let dots = [];
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const pointer = {x:-9999,y:-9999,lx:0,ly:0,vx:0,vy:0,lt:0};
+
+  function build(){
+    const w = innerWidth, h = innerHeight;
+    cv.width = w*dpr; cv.height = h*dpr;
+    cv.style.width = w+'px'; cv.style.height = h+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    const cols = Math.floor((w + CFG.gap)/CFG.gap), rows = Math.floor((h + CFG.gap)/CFG.gap);
+    const ox = (w - (cols-1)*CFG.gap)/2, oy = (h - (rows-1)*CFG.gap)/2;
+    dots = [];
+    for (let r=0;r<rows;r++) for (let c=0;c<cols;c++)
+      dots.push({cx:ox+c*CFG.gap, cy:oy+r*CFG.gap, dx:0, dy:0, vx:0, vy:0});
+  }
+  function frame(){
+    ctx.clearRect(0,0,innerWidth,innerHeight);
+    const px = pointer.x, py = pointer.y, prox2 = CFG.proximity*CFG.proximity;
+    for (const d of dots){
+      d.vx += -CFG.stiffness*d.dx; d.vy += -CFG.stiffness*d.dy;
+      d.vx *= CFG.damping;         d.vy *= CFG.damping;
+      d.dx += d.vx;                d.dy += d.vy;
+      const x = d.cx+d.dx, y = d.cy+d.dy;
+      const ax = x-px, ay = y-py, dist2 = ax*ax + ay*ay;
+      let col = CFG.base;
+      if (dist2 < prox2){
+        const t = 1 - Math.sqrt(dist2)/CFG.proximity;
+        col = [
+          Math.round(CFG.base[0] + (CFG.active[0]-CFG.base[0])*t),
+          Math.round(CFG.base[1] + (CFG.active[1]-CFG.base[1])*t),
+          Math.round(CFG.base[2] + (CFG.active[2]-CFG.base[2])*t)
+        ];
+      }
+      ctx.beginPath();
+      ctx.arc(x, y, CFG.dotSize, 0, 6.2832);
+      ctx.fillStyle = 'rgb('+col[0]+','+col[1]+','+col[2]+')';
+      ctx.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  addEventListener('pointermove', e => {
+    const now = performance.now(), dt = Math.max(now - pointer.lt, 1);
+    pointer.lt = now;
+    pointer.vx = (e.clientX - pointer.lx)/dt*1000;
+    pointer.vy = (e.clientY - pointer.ly)/dt*1000;
+    pointer.lx = e.clientX; pointer.ly = e.clientY;
+    pointer.x  = e.clientX; pointer.y  = e.clientY;
+    let sp = Math.min(Math.hypot(pointer.vx, pointer.vy), CFG.maxSpeed);
+    if (sp > CFG.speedTrigger){
+      for (const d of dots){
+        const ax = d.cx - e.clientX, ay = d.cy - e.clientY, dist = Math.hypot(ax, ay);
+        if (dist < CFG.proximity){
+          const f = (1 - dist/CFG.proximity) * (sp/CFG.maxSpeed) * 26, a = Math.atan2(ay, ax);
+          d.vx += Math.cos(a)*f; d.vy += Math.sin(a)*f;
+        }
+      }
+    }
+  }, {passive:true});
+  addEventListener('pointerdown', e => {
+    for (const d of dots){
+      const ax = d.cx - e.clientX, ay = d.cy - e.clientY, dist = Math.hypot(ax, ay);
+      if (dist < CFG.shockRadius){
+        const f = (1 - dist/CFG.shockRadius) * CFG.shockStrength * 6, a = Math.atan2(ay, ax);
+        d.vx += Math.cos(a)*f; d.vy += Math.sin(a)*f;
+      }
+    }
+  }, {passive:true});
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(build, 150); });
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches){ build(); frame(); }
+})();
+
+/* ===========================================================
+   Horizontal deck
+   =========================================================== */
+const deck    = document.getElementById('deck');
+const slides  = [...deck.querySelectorAll('.slide')];
+const dotsBox = document.getElementById('dots');
+const counter = document.getElementById('counter');
+const prevBtn = document.getElementById('prev');
+const nextBtn = document.getElementById('next');
+const pad = n => String(n + 1).padStart(2, '0');
+let index = 0, locked = false;
+
+/* slide numbers + dots */
+slides.forEach((s, i) => {
+  const no = document.createElement('div');
+  no.className = 'slide-no';
+  no.innerHTML = '<b>' + pad(i) + '</b> / ' + pad(slides.length - 1);
+  s.appendChild(no);
+
+  const b = document.createElement('button');
+  b.setAttribute('aria-label', 'Go to slide ' + (i + 1) + ': ' + s.dataset.title);
+  b.innerHTML = '<span>' + s.dataset.title + '</span>';
+  b.addEventListener('click', () => goto(i));
+  dotsBox.appendChild(b);
+});
+const dotBtns = [...dotsBox.children];
+
+/* replay any animated diagram (swimlane, architecture) */
+function playSvg(svg){
+  if (!svg) return;
+  svg.classList.remove('play');
+  void svg.getBoundingClientRect();
+  svg.classList.add('play');
+}
+function playSlideDiagrams(slide){
+  slide.querySelectorAll('svg.anim').forEach(playSvg);
+}
+
+function activate(i){
+  if (i === index && slides[i].classList.contains('active')) return;
+  index = i;
+  slides.forEach((s, k) => s.classList.toggle('active', k === i));
+  dotBtns.forEach((d, k) => d.classList.toggle('active', k === i));
+  counter.innerHTML = '<b>' + pad(i) + '</b> / ' + pad(slides.length - 1);
+  document.getElementById('progress').style.width = (i / (slides.length - 1) * 100) + '%';
+  prevBtn.disabled = i === 0;
+  nextBtn.disabled = i === slides.length - 1;
+  playSlideDiagrams(slides[i]);
+}
+
+function goto(i){
+  i = Math.max(0, Math.min(slides.length - 1, i));
+  deck.scrollTo({left: i * deck.clientWidth, behavior:'smooth'});
+  activate(i);
+}
+
+/* keep index in sync with native scroll / swipe */
+let st;
+deck.addEventListener('scroll', () => {
+  clearTimeout(st);
+  st = setTimeout(() => activate(Math.round(deck.scrollLeft / deck.clientWidth)), 60);
+}, {passive:true});
+
+prevBtn.addEventListener('click', () => goto(index - 1));
+nextBtn.addEventListener('click', () => goto(index + 1));
+document.querySelectorAll('#toc button').forEach(b => b.addEventListener('click', () => goto(+b.dataset.i)));
+document.querySelectorAll('[data-replay]').forEach(b => b.addEventListener('click', () => {
+  playSvg(b.closest('.diagram-shell').querySelector('svg.anim'));
+}));
+
+/* wheel → horizontal, one slide per gesture */
+deck.addEventListener('wheel', e => {
+  if (e.ctrlKey) return;
+  const el = e.target.closest('.scroll-x');
+  if (el && el.scrollWidth > el.clientWidth + 2) return;   // let inner diagram scroll
+  if (window.innerWidth <= 960) return;                     // mobile: native vertical
+  e.preventDefault();
+  if (locked) return;
+  const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  if (Math.abs(d) < 12) return;
+  locked = true;
+  goto(index + (d > 0 ? 1 : -1));
+  setTimeout(() => { locked = false; }, 680);
+}, {passive:false});
+
+/* keyboard */
+addEventListener('keydown', e => {
+  const k = e.key;
+  if (k === 'ArrowRight' || k === 'PageDown' || k === ' ' || k === 'ArrowDown'){ e.preventDefault(); goto(index + 1); }
+  else if (k === 'ArrowLeft' || k === 'PageUp' || k === 'ArrowUp'){ e.preventDefault(); goto(index - 1); }
+  else if (k === 'Home'){ e.preventDefault(); goto(0); }
+  else if (k === 'End'){ e.preventDefault(); goto(slides.length - 1); }
+});
+
+/* fit each slide's content to the viewport (deck-style scaling) */
+function fitAll(){
+  const narrow = innerWidth <= 960;
+  const availH = innerHeight - 84 - 60;   // dock + breathing room
+  const availW = innerWidth - 160;             // arrow gutters
+  slides.forEach(s => {
+    const el = s.querySelector('.fit');
+    if (narrow){ el.style.transform = 'none'; return; }
+    el.style.transform = 'none';
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const scale = Math.min(availW / w, availH / h, 1.18);
+    el.style.transform = 'scale(' + (scale < 1 ? scale : Math.min(scale, 1.12)) + ')';
+  });
+  deck.scrollLeft = index * deck.clientWidth;
+}
+let ft;
+addEventListener('resize', () => { clearTimeout(ft); ft = setTimeout(fitAll, 120); });
+addEventListener('load', fitAll);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitAll);
+
+fitAll();
+activate(0);
+</script>
+</body>
+</html>

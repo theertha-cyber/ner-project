@@ -8,7 +8,7 @@ from src.shared.config import settings
 logger = logging.getLogger(__name__)
 
 WHITELISTED_TABLES = {
-    "extracted_entities": {"id", "run_id", "entity_id", "value", "confidence", "normalized_value", "source_span_id", "review_status", "corrected_value", "corrected_by", "correction_notes", "document_id"},
+    "document_entities": {"id", "document_id", "entity_type", "entity_value", "normalized_value", "confidence", "page_number", "char_start", "char_end", "created_at"},
     "document_chunks": {"id", "document_id", "chunk_index", "chunk_text", "created_at"},
     "documents": {"id", "tenant_id", "filename", "mime_type", "file_size_bytes", "status", "created_at"},
     "document_text_spans": {"id", "document_id", "page_no", "block_no", "text", "start_offset", "end_offset"},
@@ -49,7 +49,8 @@ Only use tables and columns from the whitelist below.
 Always include a LIMIT clause.
 Never use DDL, INSERT, UPDATE, DELETE, DROP, ALTER, or GRANT.
 Never use UNION, subqueries without whitelisted tables, or JOINs on non-whitelisted tables.
-When querying `extracted_entities`, you SHOULD JOIN with `documents` AS d ON d.id = extracted_entities.document_id and include `d.filename AS document_name` in the SELECT clause.
+When querying `document_entities`, you SHOULD JOIN with `documents` AS d ON d.id = document_entities.document_id and include `d.filename AS document_name` in the SELECT clause.
+`document_entities` holds one row per complete logical entity (already reconstructed from BIO tokens), not per token — match on `normalized_value` for entity lookups (e.g. `normalized_value = 'aws'` matches both "AWS" and "Amazon Web Services").
 
 Available tables and columns:
 {tables_desc}

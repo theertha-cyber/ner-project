@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ChatRequest(BaseModel):
@@ -42,6 +42,23 @@ class ConversationSummary(BaseModel):
     title: str | None
     created_at: str
     message_count: int
+
+
+class ConversationRenameRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("title must not be blank")
+        return stripped
+
+
+class ConversationRenameResponse(BaseModel):
+    id: str
+    title: str
 
 
 class MessageResponse(BaseModel):

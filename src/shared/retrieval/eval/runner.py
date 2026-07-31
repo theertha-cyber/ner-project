@@ -1,11 +1,12 @@
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
-from src.shared.retrieval.agentic_loop import run_agentic_loop
 from src.shared.retrieval.config import RetrievalConfig
 from src.shared.retrieval.eval.golden_set import GoldenQuery
 from src.shared.retrieval.eval.metrics import AggregateMetrics, Judgment, QueryMetrics, RankedItem, aggregate, compute_query_metrics
+from src.shared.retrieval.orchestrator import OrchestrationBudget, orchestrate_retrieval
 from src.shared.retrieval.tools import build_default_registry
 from src.shared.retrieval.tools.base import ToolContext
 from src.shared.retrieval.tools.registry import ToolRegistry
@@ -15,13 +16,11 @@ from src.shared.retrieval.tools.registry import ToolRegistry
 class MatrixConfiguration:
     name: str
     retrieval_config: RetrievalConfig
-    is_agentic: bool = False
+    is_orchestrated: bool = False
     planner_client_factory: Callable[[], object] | None = None
     llm_model: str = "eval-planner"
-    max_iterations: int = 3
-    max_tool_calls: int = 6
+    max_invocations: int = 3
     deadline_seconds: float = 8.0
-    observation_char_limit: int = 4000
 
 
 @dataclass
@@ -62,7 +61,7 @@ async def run_query(
     context: ToolContext,
     k: int,
 ) -> QueryRunResult:
-    tool = registry.get("search_documents")
+    tool = registry.get("semantic_retrieval")
     tool_result = await tool.call({"query": query.query, "top_k": k}, context)
 
     if tool_result.error is not None:
@@ -78,38 +77,49 @@ async def run_query(
     return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=tool_result.degraded, error=None)
 
 
-async def run_query_agentic(
+async def run_query_orchestrated(
     query: GoldenQuery,
     registry: ToolRegistry,
     context: ToolContext,
     k: int,
     config: MatrixConfiguration,
 ) -> QueryRunResult:
+    """Runs a golden-set query through the Intent Orchestrator's plan-and-execute
+    path (redesign-retrieval-orchestration), rather than the retired bounded agentic
+    loop, so eval results are directly comparable to the direct-capability baseline
+    configurations run through `run_query`."""
+
+    @asynccontextmanager
+    async def context_factory():
+        yield context
+
     try:
         llm_client = config.planner_client_factory()
-        loop_result = await run_agentic_loop(
-            query.query, None, llm_client, config.llm_model, registry, context,
-            config.max_iterations, config.max_tool_calls, config.deadline_seconds, config.observation_char_limit,
+        budget = OrchestrationBudget(
+            max_invocations=config.max_invocations, deadline=time.monotonic() + config.deadline_seconds,
+        )
+        result = await orchestrate_retrieval(
+            query.query, None, llm_client, config.llm_model, registry, context_factory, budget,
         )
     except Exception as e:
         metrics = QueryMetrics(
             query_id=query.query_id, recall_at_k=0.0, precision_at_k=0.0, mrr_at_k=0.0, ndcg_at_k=0.0,
-            skipped=True, skip_reason=f"agentic loop error: {e}",
+            skipped=True, skip_reason=f"orchestrator error: {e}",
         )
         return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=True, error=str(e))
 
-    if not loop_result.chunks and (loop_result.retrieval_error is not None or loop_result.agentic_degraded):
-        failure = loop_result.retrieval_error or loop_result.agentic_stop_reason
+    if not result.chunks and (result.retrieval_error is not None or result.orchestration_degraded):
+        failure = result.retrieval_error or result.orchestration_stop_reason
         metrics = QueryMetrics(
             query_id=query.query_id, recall_at_k=0.0, precision_at_k=0.0, mrr_at_k=0.0, ndcg_at_k=0.0,
-            skipped=True, skip_reason=f"agentic loop failure: {failure}",
+            skipped=True, skip_reason=f"orchestrator failure: {failure}",
         )
-        return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=loop_result.agentic_degraded, error=failure)
+        return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=result.orchestration_degraded, error=failure)
 
-    ranked = [RankedItem(document_id=c.document_id, chunk_index=c.chunk_index) for c in loop_result.chunks]
+    ranked = [RankedItem(document_id=c.document_id, chunk_index=c.chunk_index) for c in result.chunks]
     judgments = [Judgment(document_id=j.document_id, chunk_index=j.chunk_index, grade=j.grade) for j in query.relevant]
     metrics = compute_query_metrics(query.query_id, ranked, judgments, k)
-    return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=loop_result.agentic_degraded, error=None)
+    return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=result.orchestration_degraded, error=None)
 
 
 async def run_configuration(
@@ -123,8 +133,8 @@ async def run_configuration(
     per_query: list[QueryRunResult] = []
     for query in golden_queries:
         context = await _resolve_context(context_factory, config, query)
-        if config.is_agentic:
-            per_query.append(await run_query_agentic(query, registry, context, k, config))
+        if config.is_orchestrated:
+            per_query.append(await run_query_orchestrated(query, registry, context, k, config))
         else:
             per_query.append(await run_query(query, registry, context, k))
 

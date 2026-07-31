@@ -6,8 +6,8 @@ from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.retriever import RerankingRetriever
 from src.shared.retrieval.tools import build_default_registry
 from src.shared.retrieval.tools.base import ToolContext, ToolResult, validate_args, ArgValidationError
-from src.shared.retrieval.tools.document_tools import lookup_document, search_documents
-from src.shared.retrieval.tools.entity_tools import search_entities
+from src.shared.retrieval.tools.document_tools import semantic_retrieval
+from src.shared.retrieval.tools.entity_tools import structured_retrieval
 from src.shared.retrieval.tools.registry import ToolLookupError, ToolRegistrationError, ToolRegistry
 
 pytestmark = [pytest.mark.asyncio]
@@ -27,6 +27,13 @@ class SpyRetriever:
 
     async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
         self.calls.append({"query": query, "top_k": top_k, "metadata_filter": metadata_filter})
+        if metadata_filter and "document_ids" in metadata_filter:
+            allowed = set(metadata_filter["document_ids"])
+            filtered = [r for r in self.results if r.document_id in allowed]
+            return filtered[:top_k] if top_k is not None else filtered
+        if metadata_filter and "document_id" in metadata_filter:
+            filtered = [r for r in self.results if r.document_id == metadata_filter["document_id"]]
+            return filtered[:top_k] if top_k is not None else filtered
         return self.results[:top_k] if top_k is not None else self.results
 
 
@@ -47,13 +54,11 @@ def _context(retriever=None, sql_search=None, max_top_k=20) -> ToolContext:
     )
 
 
-# --- Tool contract (rows 1-3) ---
+# --- Tool contract shape ---
 
 class TestToolContractShape:
-    """Covers verification.md row 1."""
-
     def test_tool_contract_shape(self):
-        for tool in (search_documents, lookup_document, search_entities):
+        for tool in (semantic_retrieval, structured_retrieval):
             assert isinstance(tool.name, str) and tool.name
             assert isinstance(tool.description, str) and tool.description
             assert isinstance(tool.args_schema, dict)
@@ -62,13 +67,11 @@ class TestToolContractShape:
 
 
 class TestInvalidArgumentType:
-    """Covers verification.md row 2."""
-
     async def test_invalid_arg_type_rejected_without_query(self):
         retriever = SpyRetriever(_make_results(3))
         context = _context(retriever=retriever)
 
-        result = await search_documents.call({"query": 123}, context)
+        result = await semantic_retrieval.call({"query": 123}, context)
 
         assert result.error is not None
         assert result.results == []
@@ -76,13 +79,11 @@ class TestInvalidArgumentType:
 
 
 class TestUnknownArgumentKey:
-    """Covers verification.md row 3."""
-
     async def test_unknown_arg_key_rejected(self):
         retriever = SpyRetriever(_make_results(3))
         context = _context(retriever=retriever)
 
-        result = await search_documents.call({"query": "q", "schema": "tenant_other"}, context)
+        result = await semantic_retrieval.call({"query": "q", "schema": "tenant_other"}, context)
 
         assert result.error is not None
         assert retriever.calls == []
@@ -92,11 +93,7 @@ class TestUnknownArgumentKey:
             validate_args({"type": "object", "properties": {"query": {"type": "string"}}}, {"query": "q", "extra": 1})
 
 
-# --- No tenancy params (row 7) ---
-
 class TestNoTenancyParams:
-    """Covers verification.md row 7."""
-
     def test_no_tenancy_params_in_any_args_schema(self):
         registry = build_default_registry()
         for tool in registry.list():
@@ -104,16 +101,12 @@ class TestNoTenancyParams:
             assert keys.isdisjoint({"schema", "tenant_id", "tenant", "purpose"}), tool.name
 
 
-# --- Result envelope (rows 4-6) ---
-
 class TestResultEnvelope:
-    """Covers verification.md rows 4-6."""
-
     async def test_success_metadata(self):
         results = _make_results(3)
         context = _context(retriever=SpyRetriever(results))
 
-        result = await search_documents.call({"query": "matching text"}, context)
+        result = await semantic_retrieval.call({"query": "matching text"}, context)
 
         assert result.error is None
         assert result.degraded is False
@@ -123,7 +116,7 @@ class TestResultEnvelope:
     async def test_retriever_exception_returns_error_result(self):
         context = _context(retriever=RaisingRetriever())
 
-        result = await search_documents.call({"query": "q"}, context)
+        result = await semantic_retrieval.call({"query": "q"}, context)
 
         assert result.error is not None
         assert result.results == []
@@ -133,57 +126,133 @@ class TestResultEnvelope:
         retriever = RerankingRetriever(wrapped, FailingReranker())
         context = _context(retriever=retriever)
 
-        result = await search_documents.call({"query": "q"}, context)
+        result = await semantic_retrieval.call({"query": "q"}, context)
 
         assert result.degraded is True
         assert len(result.results) > 0
 
 
-# --- search_documents delegation and bounds (rows 10, 12, 13) ---
-
-class TestSearchDocumentsDelegation:
-    """Covers verification.md row 10."""
-
-    async def test_search_documents_delegates_once(self):
+class TestSemanticRetrievalDelegation:
+    async def test_semantic_retrieval_delegates_once(self):
         retriever = SpyRetriever(_make_results(3))
         context = _context(retriever=retriever)
 
-        await search_documents.call({"query": "q"}, context)
+        await semantic_retrieval.call({"query": "q"}, context)
 
         assert len(retriever.calls) == 1
         assert retriever.calls[0]["query"] == "q"
 
 
 class TestTopKBounds:
-    """Covers verification.md row 12."""
-
     async def test_top_k_bounds_result_count(self):
         retriever = SpyRetriever(_make_results(10))
         context = _context(retriever=retriever)
 
-        result = await search_documents.call({"query": "q", "top_k": 3}, context)
+        result = await semantic_retrieval.call({"query": "q", "top_k": 3}, context)
 
         assert len(result.results) <= 3
 
 
 class TestTopKClamp:
-    """Covers verification.md row 13."""
+    """Covers verification.md row 30."""
 
     async def test_top_k_clamped_to_max(self):
         retriever = SpyRetriever(_make_results(50))
         context = _context(retriever=retriever, max_top_k=5)
 
-        result = await search_documents.call({"query": "q", "top_k": 1000}, context)
+        result = await semantic_retrieval.call({"query": "q", "top_k": 1000}, context)
 
         assert result.error is None
         assert retriever.calls[0]["top_k"] == 5
 
 
-# --- entity tool (rows 15, 16) ---
+# --- Scope (rows 26-29) ---
+
+class TestDefaultTenantScope:
+    """Covers verification.md row 26."""
+
+    async def test_default_tenant_scope_no_filter(self):
+        retriever = SpyRetriever(_make_results(3))
+        context = _context(retriever=retriever)
+
+        result = await semantic_retrieval.call({"query": "q"}, context)
+
+        assert result.error is None
+        assert retriever.calls[0]["metadata_filter"] is None
+
+    async def test_explicit_tenant_scope_no_filter(self):
+        retriever = SpyRetriever(_make_results(3))
+        context = _context(retriever=retriever)
+
+        result = await semantic_retrieval.call({"query": "q", "scope": {"type": "tenant"}}, context)
+
+        assert result.error is None
+        assert retriever.calls[0]["metadata_filter"] is None
+
+
+class TestDocumentScope:
+    """Covers verification.md row 27."""
+
+    async def test_document_scope_restricts_results(self):
+        results = _make_results(2, document_id="D1") + _make_results(2, document_id="D2")
+        retriever = SpyRetriever(results)
+        context = _context(retriever=retriever)
+
+        result = await semantic_retrieval.call(
+            {"query": "q", "scope": {"type": "document", "document_ids": ["D1"]}}, context
+        )
+
+        assert result.error is None
+        assert all(r.document_id == "D1" for r in result.results)
+        assert retriever.calls[0]["metadata_filter"] == {"document_ids": ["D1"]}
+
+
+class TestDocumentScopeMultiple:
+    """Covers verification.md row 28 (non-integration slice)."""
+
+    async def test_document_scope_accepts_multiple_documents(self):
+        results = (
+            _make_results(1, document_id="D1")
+            + _make_results(1, document_id="D2")
+            + _make_results(1, document_id="D3")
+        )
+        retriever = SpyRetriever(results)
+        context = _context(retriever=retriever)
+
+        result = await semantic_retrieval.call(
+            {"query": "q", "scope": {"type": "document", "document_ids": ["D1", "D2"]}}, context
+        )
+
+        assert result.error is None
+        assert {r.document_id for r in result.results} <= {"D1", "D2"}
+
+
+class TestUnknownScopeType:
+    """Covers verification.md row 29."""
+
+    async def test_unknown_scope_type_rejected(self):
+        retriever = SpyRetriever(_make_results(3))
+        context = _context(retriever=retriever)
+
+        result = await semantic_retrieval.call({"query": "q", "scope": {"type": "galaxy"}}, context)
+
+        assert result.error is not None
+        assert "galaxy" in result.error
+        assert retriever.calls == []
+
+    async def test_document_scope_without_document_ids_rejected(self):
+        retriever = SpyRetriever(_make_results(3))
+        context = _context(retriever=retriever)
+
+        result = await semantic_retrieval.call({"query": "q", "scope": {"type": "document"}}, context)
+
+        assert result.error is not None
+        assert retriever.calls == []
+
+
+# --- structured_retrieval (renamed from search_entities) ---
 
 class TestEntityToolImportIsolation:
-    """Covers verification.md row 15."""
-
     def test_entity_tool_does_not_import_chat_api(self):
         import src.shared.retrieval.tools.entity_tools as mod
         source = inspect.getsource(mod)
@@ -206,8 +275,6 @@ class TestEntityToolImportIsolation:
 
 
 class TestRejectedSqlNotExecuted:
-    """Covers verification.md row 16."""
-
     async def test_rejected_sql_not_executed(self):
         executed = {"called": False}
 
@@ -216,20 +283,54 @@ class TestRejectedSqlNotExecuted:
 
         context = _context(sql_search=rejecting_sql_search)
 
-        result = await search_entities.call({"query": "drop everything"}, context)
+        result = await structured_retrieval.call({"query": "drop everything"}, context)
 
         assert result.error is not None
         assert executed["called"] is False
 
 
-# --- registry (rows 17-20) ---
+class TestCandidateDocumentIds:
+    """Covers verification.md rows 38-40 (normalized-entity-store change)."""
+
+    async def test_candidate_ids_are_distinct_document_ids_of_result_rows(self):
+        async def sql_search(query, session, schema, conversation_context):
+            return [{"document_id": "docA"}, {"document_id": "docA"}, {"document_id": "docB"}]
+
+        context = _context(sql_search=sql_search)
+        result = await structured_retrieval.call({"query": "q"}, context)
+
+        assert result.candidate_document_ids == {"docA", "docB"}
+        assert len(result.results) == 3
+
+    async def test_no_document_id_column_yields_no_candidates(self):
+        async def sql_search(query, session, schema, conversation_context):
+            return [{"entity_type": "ORG", "count": 3}]
+
+        context = _context(sql_search=sql_search)
+        result = await structured_retrieval.call({"query": "q"}, context)
+
+        assert result.candidate_document_ids == set()
+
+    async def test_failed_invocation_yields_no_candidates(self):
+        async def rejecting_sql_search(query, session, schema, conversation_context):
+            raise RuntimeError("SQL rejected by validation layer")
+
+        context = _context(sql_search=rejecting_sql_search)
+        result = await structured_retrieval.call({"query": "q"}, context)
+
+        assert result.error is not None
+        assert result.candidate_document_ids == set()
+
+
+# --- registry (rows 32-33) ---
 
 class TestRegistry:
-    """Covers verification.md rows 17-20."""
+    """Covers verification.md rows 32-33."""
 
     def test_registry_get_by_name(self):
         registry = build_default_registry()
-        assert registry.get("search_documents") is search_documents
+        assert registry.get("semantic_retrieval") is semantic_retrieval
+        assert registry.get("structured_retrieval") is structured_retrieval
 
     def test_registry_unknown_name_raises(self):
         registry = build_default_registry()
@@ -238,16 +339,16 @@ class TestRegistry:
 
     def test_registry_duplicate_rejected(self):
         registry = ToolRegistry()
-        registry.register(search_documents)
+        registry.register(semantic_retrieval)
         with pytest.raises(ToolRegistrationError):
-            registry.register(search_documents)
+            registry.register(semantic_retrieval)
 
-    def test_export_schemas_tool_calling_shape(self):
+    def test_registry_exposes_two_capabilities(self):
         registry = build_default_registry()
         schemas = registry.export_schemas()
 
         by_name = {s["function"]["name"]: s for s in schemas}
-        assert set(by_name) == {"search_documents", "lookup_document", "search_entities"}
+        assert set(by_name) == {"semantic_retrieval", "structured_retrieval"}
         for s in schemas:
             assert s["type"] == "function"
             fn = s["function"]
@@ -255,15 +356,20 @@ class TestRegistry:
             assert fn["description"] == tool.description
             assert fn["parameters"] == tool.args_schema
 
+    def test_capability_descriptions_state_intent_not_implementation(self):
+        registry = build_default_registry()
+        for tool in registry.list():
+            description = tool.description.lower()
+            for implementation_term in ("pgvector", "sql", "postgres", "index", "embedding"):
+                assert implementation_term not in description, (tool.name, implementation_term)
 
-# --- Observation rendering (rows 39-41) ---
+
+# --- Observation rendering ---
 
 class TestObservationRendering:
-    """Covers verification.md rows 39-41."""
-
     def test_observation_includes_identity(self):
         results = _make_results(2)
-        result = ToolResult(tool_name="search_documents", results=results, latency_ms=1.0)
+        result = ToolResult(tool_name="semantic_retrieval", results=results, latency_ms=1.0)
 
         observation = result.to_observation(limit=10_000)
 
@@ -274,7 +380,7 @@ class TestObservationRendering:
             assert f"{item.similarity_score:.4f}" in observation
 
     def test_error_result_renders_error_observation(self):
-        result = ToolResult(tool_name="search_documents", results=[], error="boom")
+        result = ToolResult(tool_name="semantic_retrieval", results=[], error="boom")
 
         observation = result.to_observation(limit=10_000)
 
@@ -283,7 +389,7 @@ class TestObservationRendering:
 
     def test_observation_limit_preserves_results(self):
         results = _make_results(50)
-        result = ToolResult(tool_name="search_documents", results=results, latency_ms=1.0)
+        result = ToolResult(tool_name="semantic_retrieval", results=results, latency_ms=1.0)
 
         observation = result.to_observation(limit=200)
 
@@ -291,11 +397,9 @@ class TestObservationRendering:
         assert len(result.results) == 50
 
 
-# --- Tool context budget (rows 42-43) ---
+# --- Tool context budget ---
 
 class TestToolContextBudget:
-    """Covers verification.md rows 42-43."""
-
     async def test_expired_deadline_denies_before_io(self):
         import time
 
@@ -306,7 +410,7 @@ class TestToolContextBudget:
             retriever=spy, max_top_k=context.max_top_k, deadline=time.monotonic() - 1,
         )
 
-        result = await search_documents.call({"query": "x"}, context)
+        result = await semantic_retrieval.call({"query": "x"}, context)
 
         assert spy.calls == []
         assert result.error is not None
@@ -316,7 +420,7 @@ class TestToolContextBudget:
         spy = SpyRetriever(_make_results(2))
         context = _context(retriever=spy)
 
-        result = await search_documents.call({"query": "x"}, context)
+        result = await semantic_retrieval.call({"query": "x"}, context)
 
         assert result.error is None
         assert len(result.results) == 2

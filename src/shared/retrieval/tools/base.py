@@ -55,6 +55,7 @@ class ToolResult:
     latency_ms: float = 0.0
     degraded: bool = False
     error: str | None = None
+    candidate_document_ids: set[str] = field(default_factory=set)
 
     def to_observation(self, limit: int) -> str:
         """Renders this result into a plain-text observation for an LLM conversation.

@@ -45,14 +45,9 @@ class Settings(BaseSettings):
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     rerank_candidate_count: int = 20
 
-    chat_use_graph: bool = True
-
-    chat_agentic_retrieval: bool = False
-    agentic_max_iterations: int = 3
-    agentic_max_iterations_complex: int = 5
-    agentic_max_tool_calls: int = 6
-    agentic_deadline_seconds: float = 8.0
-    agentic_observation_char_limit: int = 4000
+    orchestrator_max_invocations: int = 3
+    retrieval_deadline_seconds: float = 8.0
+    candidate_document_filtering_enabled: bool = False
 
     context_token_budget: int = 6000
     context_max_chunks: int | None = None

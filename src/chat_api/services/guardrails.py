@@ -4,43 +4,90 @@ from src.chat_api.api.v1.schemas import Source, Citation, ChatResponse
 
 logger = logging.getLogger(__name__)
 
-BLOCKED_PATTERNS = {
-    "classification": re.compile(r"(classify|categorize|tag)\s+(this|the\s+(text|document|content))", re.IGNORECASE),
-    "content_generation": re.compile(r"(write|compose|draft|generate|create)\s+(an?\s+)?(email|essay|article|poem|story|report|letter)", re.IGNORECASE),
-    "summarization": re.compile(r"(summarize|summary|tldr|tl;dr|gist)\s+(of\s+)?(this|the\s+(text|document|article))", re.IGNORECASE),
-    "pii": re.compile(r"(ssn|social security|credit card|passport|driver.?s license)\s+(number|info|details)", re.IGNORECASE),
-}
-
-MAX_COMPLEXITY_SCORE = 3
+PII_PATTERN = re.compile(r"(ssn|social security|credit card|passport|driver.?s license)\s+(number|info|details)", re.IGNORECASE)
 
 FALLBACK_REPLY = "I couldn't find relevant information to answer that question."
 
+DOMAIN_DECLINE_REPLY = (
+    "I can only answer questions about your tenant's documents and the entities "
+    "extracted from them. I can't help with that."
+)
+
+DOMAIN_CLASSIFIER_SYSTEM_PROMPT = """You are a domain filter for a multi-tenant document and \
+entity-extraction platform. Each tenant uploads its own documents (which could be contracts, \
+resumes, invoices, medical records, support tickets, or any other document type) and the \
+platform extracts structured entities from them (e.g. names, dates, organizations, skills, \
+amounts — whatever entity types that tenant has configured). The platform then answers \
+questions about that tenant's uploaded documents and the entities extracted from them: \
+lookups, filters, counts, aggregates, comparisons, and semantic search over document content, \
+on ANY subject matter the tenant's documents happen to cover.
+
+Decide whether the user's message is a question seeking information from the tenant's own \
+documents/extracted entities (in_domain), or a request for something the platform has no \
+access to and was never meant to do — general knowledge, entertainment, unrelated content \
+generation, or requests entirely unconnected to any document or entity data (out_of_domain).
+
+Respond with exactly one word: "in_domain" or "out_of_domain".
+
+In-domain examples (note: the subject matter varies by tenant — all of these are valid):
+- "How many organizations did we extract?"
+- "Which contracts mention Acme Corp?"
+- "Summarize the findings in this contract."
+- "Compare what document A and document B say about liability."
+- "What entities appear on page 3 of the uploaded lease?"
+- "Find me candidates who graduated in 2026."
+- "Is Arjun a good AI engineer?" (a lookup/judgement over this tenant's resume data)
+- "Find me candidates for a Backend Engineer role, preferably at an MNC."
+- "Which invoices are overdue?"
+- "List patients diagnosed with hypertension."
+
+Out-of-domain examples (requests with no connection to any tenant document or extracted entity):
+- "Who is the American president?"
+- "Tell me a joke."
+- "What's the weather today?"
+- "Write me a poem about the ocean."
+- "What's 2+2?"
+
+When in doubt, prefer in_domain: this classifier's job is only to filter out requests with \
+no plausible connection to tenant document/entity data, not to judge whether the platform can \
+fully answer the specific question.
+"""
+
 
 class GuardrailService:
-    def check_blocked_question(self, message: str) -> str | None:
-        for reason, pattern in BLOCKED_PATTERNS.items():
-            if pattern.search(message):
-                logger.info("Blocked question detected: %s (message: %.50s)", reason, message)
-                return reason
-        return None
-
-    def assess_complexity(self, message: str) -> int:
-        score = 0
-        entity_keywords = {"how many", "count", "list", "show", "what", "which", "find", "search"}
-        question_marks = message.count("?")
-        score += min(question_marks, 3)
-        words = set(w.lower() for w in message.split())
-        score += sum(1 for kw in entity_keywords if any(kw in w for w in words))
-        complexity = min(score, 5)
-        logger.info("Query complexity score: %d (message: %.50s)", complexity, message)
-        return complexity
-
     def check_blocked_question_type(self, message: str, tenant_id: str) -> str | None:
+        """Deterministic short-circuits that decline without an LLM call: a reference to
+        another tenant's schema, or a request for PII not present in extracted entities.
+        Everything else is left to `classify_domain`."""
         cross_tenant = re.search(rf"(?!\b{re.escape(tenant_id)}\b)\btenant_\w+\b", message, re.IGNORECASE) if tenant_id else False
         if cross_tenant:
             logger.info("Cross-tenant query detected")
             return "cross_tenant"
-        return self.check_blocked_question(message)
+        if PII_PATTERN.search(message):
+            logger.info("PII query detected")
+            return "pii"
+        return None
+
+    async def classify_domain(self, message: str, conversation_context: list[dict] | None, llm_client, llm_model: str) -> bool:
+        """Returns True if the query is in-domain. Fails open (treats the query as
+        in-domain) on any classifier error, since tenant isolation is enforced
+        structurally elsewhere and an unsourced answer is already refused downstream —
+        the guardrail here is a scope/cost filter, not a security boundary."""
+        messages = [{"role": "system", "content": DOMAIN_CLASSIFIER_SYSTEM_PROMPT}]
+        if conversation_context:
+            for turn in conversation_context[-3:]:
+                messages.append({"role": turn["role"], "content": turn["content"]})
+        messages.append({"role": "user", "content": message})
+
+        try:
+            response = await llm_client.chat.completions.create(
+                model=llm_model, messages=messages, temperature=0, max_tokens=5,
+            )
+            verdict = (response.choices[0].message.content or "").strip().lower()
+            return "out_of_domain" not in verdict
+        except Exception as e:
+            logger.warning("Domain classifier failed, failing open (admitting query): %s", e)
+            return True
 
     def enforce_sources(self, reply: str, sources: list[Source | Citation]) -> tuple[str, list[Source | Citation]]:
         if not sources:

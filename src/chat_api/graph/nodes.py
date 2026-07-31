@@ -1,27 +1,37 @@
-import json
 import logging
 import time
+from contextlib import asynccontextmanager
+from dataclasses import asdict
 from functools import wraps
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.shared.config import settings
 from src.shared.database import get_engine
-from src.shared.retrieval import RerankingRetriever
+from src.shared.retrieval.orchestrator import (
+    STOP_EMPTY_PLAN,
+    STOP_PLANNER_ERROR,
+    OrchestrationBudget,
+    build_fallback_plan,
+    execute_plan,
+    plan_retrieval,
+)
 from src.shared.retrieval.tools.base import ToolContext
 from src.chat_api.api.v1.schemas import Source
-from src.chat_api.graph.agentic import run_agentic_loop
 from src.chat_api.graph.state import ChatState
 from src.chat_api.services.context_assembler import ContextAssembler
 
 logger = logging.getLogger(__name__)
 
+DOMAIN_DECLINE_REASON = "out_of_domain"
+
 DECLINE_MESSAGES = {
-    "classification": "I can only answer questions about extracted entities and document content. I cannot perform classification tasks.",
-    "content_generation": "I can only answer questions about extracted entities and document content. I cannot generate content.",
-    "summarization": "I can only answer questions about extracted entities and document content. I cannot summarize documents.",
     "cross_tenant": "I can only answer questions about your tenant's data. Cross-tenant queries are not supported.",
     "pii": "I cannot access or search for personally identifiable information.",
+    DOMAIN_DECLINE_REASON: (
+        "I can only answer questions about your tenant's documents and the entities "
+        "extracted from them. I can't help with that."
+    ),
 }
 
 
@@ -47,161 +57,110 @@ def _traced(name: str, count_key: str | None = None):
 
 def build_nodes(orchestrator) -> dict:
     """Returns a dict of node-name -> async callable, each closing over the given
-    RAGOrchestrator instance so its attributes (retriever, sql_generator, ner_client,
-    guardrails, llm_client) are read fresh at call time — required because tests
+    RAGOrchestrator instance so its attributes (retriever, sql_generator, guardrails,
+    llm_client, tool_registry) are read fresh at call time — required because tests
     construct RAGOrchestrator via __new__ and hand-assign these attributes directly."""
 
     @_traced("guardrail")
     async def guardrail_node(state: ChatState) -> dict:
         message = state["message"]
         tenant_id = state["tenant_id"]
+        conversation_context = state.get("conversation_context")
 
         blocked_reason = orchestrator.guardrails.check_blocked_question_type(message, tenant_id)
         if blocked_reason:
             reply = DECLINE_MESSAGES.get(blocked_reason, "I'm sorry, I cannot answer that type of question.")
             return {"blocked_reason": blocked_reason, "reply": reply, "sources": []}
 
-        complexity = orchestrator.guardrails.assess_complexity(message)
-        if complexity > 3 and not settings.chat_agentic_retrieval:
+        is_in_domain = await orchestrator.guardrails.classify_domain(
+            message, conversation_context, orchestrator.llm_client, orchestrator.llm_model,
+        )
+        if not is_in_domain:
             return {
-                "complexity": complexity,
-                "reply": "That question requires multiple lookups. Please simplify and ask one thing at a time.",
+                "blocked_reason": DOMAIN_DECLINE_REASON,
+                "reply": DECLINE_MESSAGES[DOMAIN_DECLINE_REASON],
                 "sources": [],
             }
 
-        return {"blocked_reason": None, "complexity": complexity}
+        return {"blocked_reason": None}
 
-    @_traced("sql_retrieval", count_key="sql_results")
-    async def sql_retrieval_node(state: ChatState) -> dict:
+    @_traced("orchestrator")
+    async def orchestrator_node(state: ChatState) -> dict:
+        """Makes the single planning LLM call and stores the resulting plan in state.
+        On a planner exception or an all-rejected plan, substitutes the degraded
+        fallback plan (both capabilities on the raw query) so the plan itself is
+        already visible in state before retrieval_execution_node runs."""
         message = state["message"]
-        schema = state["schema"]
         conversation_context = state.get("conversation_context")
+        registry = orchestrator.tool_registry
 
-        session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
-        async with session_factory() as session:
-            try:
-                results = await orchestrator._sql_source(message, session, schema, conversation_context)
-                return {"sql_results": results, "sql_error": None}
-            except Exception as e:
-                logger.warning("SQL source failed: %s", e)
-                return {"sql_results": None, "sql_error": str(e)}
-
-    @_traced("retrieval", count_key="chunks")
-    async def retrieval_node(state: ChatState) -> dict:
-        message = state["message"]
-        schema = state["schema"]
-        jwt_token = state.get("jwt_token")
-
-        session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
-        async with session_factory() as session:
-            try:
-                retriever = orchestrator.retriever
-                if isinstance(retriever, RerankingRetriever):
-                    chunks = await retriever.retrieve(
-                        message, session, schema, top_k=settings.retrieval_top_k, jwt_token=jwt_token,
-                    )
-                else:
-                    chunks = await retriever.retrieve(message, session, schema, top_k=settings.retrieval_top_k)
-                return {"chunks": chunks, "retrieval_error": None}
-            except Exception as e:
-                logger.warning("Vector search failed: %s", str(e))
-                return {"chunks": [], "retrieval_error": str(e)}
-
-    @_traced("agentic_retrieval", count_key="chunks")
-    async def agentic_retrieval_node(state: ChatState) -> dict:
-        """Runs the bounded agentic retrieval loop (agentic-retrieval-loop). On any
-        failure that prevents the loop from producing evidence, falls back to the
-        existing one-shot sql_retrieval_node + retrieval_node behaviour for this turn."""
-        message = state["message"]
-        schema = state["schema"]
-        tenant_id = state["tenant_id"]
-        jwt_token = state.get("jwt_token")
-        conversation_context = state.get("conversation_context")
-        complexity = state.get("complexity") or 1
-
-        max_iterations = (
-            settings.agentic_max_iterations_complex if complexity > 3 else settings.agentic_max_iterations
-        )
-
-        session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
-        loop_result = None
         try:
-            async with session_factory() as session:
-                context = ToolContext(
-                    tenant_id=tenant_id,
-                    schema=schema,
-                    session=session,
-                    retriever=orchestrator.retriever,
-                    jwt_token=jwt_token,
-                    max_top_k=settings.retrieval_top_k,
-                    sql_search=orchestrator._sql_source,
-                    deadline=time.monotonic() + settings.agentic_deadline_seconds,
-                )
-                loop_result = await run_agentic_loop(
-                    message, conversation_context, orchestrator.llm_client, orchestrator.llm_model,
-                    orchestrator.tool_registry, context,
-                    max_iterations, settings.agentic_max_tool_calls,
-                    settings.agentic_deadline_seconds, settings.agentic_observation_char_limit,
-                )
+            plan = await plan_retrieval(message, conversation_context, orchestrator.llm_client, orchestrator.llm_model, registry)
         except Exception as e:
-            logger.warning("agentic loop crashed, falling back to one-shot retrieval: %s", e)
-
-        if loop_result is None or loop_result.agentic_degraded:
-            stop_reason = loop_result.agentic_stop_reason if loop_result is not None else "loop_crashed"
-            logger.info(
-                "graph node=agentic_retrieval tenant_id=%s degraded=True stop_reason=%s falling back to one-shot retrieval",
-                tenant_id, stop_reason,
-            )
-            sql_part = await sql_retrieval_node(state)
-            retrieval_part = await retrieval_node(state)
+            logger.warning("orchestrator: planning call failed, using degraded fallback plan: %s", e)
             return {
-                **sql_part,
-                **retrieval_part,
-                "tool_trace": loop_result.tool_trace if loop_result is not None else [],
-                "agentic_degraded": True,
-                "agentic_stop_reason": stop_reason,
+                "retrieval_plan": build_fallback_plan(message, registry),
+                "orchestration_degraded": True,
+                "orchestration_stop_reason": STOP_PLANNER_ERROR,
             }
 
-        return {
-            "chunks": loop_result.chunks,
-            "retrieval_error": loop_result.retrieval_error,
-            "sql_results": loop_result.sql_results,
-            "sql_error": loop_result.sql_error,
-            "tool_trace": loop_result.tool_trace,
-            "agentic_degraded": loop_result.agentic_degraded,
-            "agentic_stop_reason": loop_result.agentic_stop_reason,
-        }
+        if not plan.entries or all(e.rejected for e in plan.entries):
+            logger.info("orchestrator: planner produced no usable entries, using degraded fallback plan")
+            return {
+                "retrieval_plan": build_fallback_plan(message, registry),
+                "orchestration_degraded": True,
+                "orchestration_stop_reason": STOP_EMPTY_PLAN,
+            }
 
-    @_traced("ner_enrichment", count_key="ner_entities")
-    async def ner_enrichment_node(state: ChatState) -> dict:
-        chunks = state.get("chunks") or []
+        return {"retrieval_plan": plan, "orchestration_degraded": False, "orchestration_stop_reason": None}
+
+    @_traced("retrieval_execution", count_key="chunks")
+    async def retrieval_execution_node(state: ChatState) -> dict:
+        plan = state["retrieval_plan"]
         tenant_id = state["tenant_id"]
+        schema = state["schema"]
         jwt_token = state.get("jwt_token")
+        already_degraded = state.get("orchestration_degraded", False)
 
-        ner_entities: list[dict] = []
-        for idx, chunk in enumerate(chunks[:3]):
-            entities = await orchestrator.ner_client.infer(chunk.chunk_text, tenant_id, jwt_token)
-            if entities:
-                for ent in entities:
-                    ner_entities.append({
-                        "entity_type": ent.get("entity_type"),
-                        "value": ent.get("value"),
-                        "confidence": ent.get("confidence"),
-                        "chunk_index": idx,
-                    })
-        return {"ner_entities": ner_entities}
+        session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+        deadline = time.monotonic() + settings.retrieval_deadline_seconds
+
+        @asynccontextmanager
+        async def context_factory():
+            async with session_factory() as session:
+                yield ToolContext(
+                    tenant_id=tenant_id, schema=schema, session=session,
+                    retriever=orchestrator.retriever, jwt_token=jwt_token,
+                    max_top_k=settings.retrieval_top_k, sql_search=orchestrator._sql_source,
+                    deadline=deadline,
+                )
+
+        budget = OrchestrationBudget(max_invocations=settings.orchestrator_max_invocations, deadline=deadline)
+        result = await execute_plan(plan, orchestrator.tool_registry, context_factory, budget)
+
+        return {
+            "chunks": result.chunks,
+            "sql_results": result.sql_results,
+            "retrieval_error": result.retrieval_error,
+            "sql_error": result.sql_error,
+            "plan_trace": [asdict(t) for t in result.plan_trace],
+            "orchestration_degraded": already_degraded or result.orchestration_degraded,
+            "orchestration_stop_reason": (
+                state.get("orchestration_stop_reason") if already_degraded else result.orchestration_stop_reason
+            ),
+        }
 
     @_traced("source_assembly", count_key="sources")
     async def source_assembly_node(state: ChatState) -> dict:
         sql_results = state.get("sql_results")
         chunks = state.get("chunks") or []
-        ner_entities = state.get("ner_entities") or []
         tenant_id = state["tenant_id"]
         schema = state["schema"]
         session = state["session"]
 
         sql_source = None
         if sql_results:
+            import json
             sql_source = Source(
                 source_type="sql",
                 value=json.dumps(sql_results[:5], default=str),
@@ -220,22 +179,10 @@ def build_nodes(orchestrator) -> dict:
             for c in chunks
         ]
 
-        ner_sources = [
-            Source(
-                source_type="ner",
-                entity_type=e["entity_type"],
-                value=e["value"],
-                confidence=e["confidence"],
-                document_id=chunks[e["chunk_index"]].document_id if e["chunk_index"] < len(chunks) else None,
-            )
-            for e in ner_entities
-        ]
-
         sources = []
         if sql_source:
             sources.append(sql_source)
         sources.extend(vector_sources[:3])
-        sources.extend(ner_sources[:5])
 
         document_names = await orchestrator._resolve_document_names(sources, session, schema)
         sources = await orchestrator._enrich_citations(sources, session, schema, tenant_id, document_names=document_names)
@@ -246,12 +193,11 @@ def build_nodes(orchestrator) -> dict:
         message = state["message"]
         sql_results = state.get("sql_results")
         chunks = state.get("chunks") or []
-        ner_entities = state.get("ner_entities") or []
         document_names = state.get("document_names") or {}
         conversation_context = state.get("conversation_context")
 
         llm_messages = ContextAssembler().assemble(
-            message, sql_results, chunks, ner_entities, document_names, conversation_context,
+            message, sql_results, chunks, document_names, conversation_context,
         )
         return {"prompt_messages": llm_messages}
 
@@ -273,10 +219,8 @@ def build_nodes(orchestrator) -> dict:
 
     return {
         "guardrail": guardrail_node,
-        "sql_retrieval": sql_retrieval_node,
-        "retrieval": retrieval_node,
-        "agentic_retrieval": agentic_retrieval_node,
-        "ner_enrichment": ner_enrichment_node,
+        "orchestrator": orchestrator_node,
+        "retrieval_execution": retrieval_execution_node,
         "source_assembly": source_assembly_node,
         "prompt_assembly": prompt_assembly_node,
         "generation": generation_node,

@@ -13,6 +13,7 @@ interface Message {
   content: string;
   sources?: Source[];
   created_at: string;
+  isThinking?: boolean;
 }
 
 interface Source {
@@ -115,6 +116,26 @@ function ChatPageInner() {
     }
   }, [showError]);
 
+  const handleRenameConversation = useCallback(async (convId: string, title: string) => {
+    try {
+      const resp = await authFetch(CHAT_API_BASE + "/conversations/" + convId, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setConversations((prev) =>
+          prev.map((c) => (c.id === convId ? { ...c, title: data.title } : c))
+        );
+      } else {
+        showError("Failed to rename conversation. Please try again.");
+      }
+    } catch {
+      showError("Network error. Please check your connection and try again.");
+    }
+  }, [showError]);
+
   const handleDeleteConversation = useCallback(async (convId: string) => {
     try {
       const resp = await authFetch(CHAT_API_BASE + "/conversations/" + convId, {
@@ -135,14 +156,23 @@ function ChatPageInner() {
   const handleSendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return;
 
+    const isFirstMessage = messages.length === 0;
     const tempId = "temp-" + Date.now();
+    const thinkingId = "thinking-" + Date.now();
     const optimistic: Message = {
       id: tempId,
       role: "user",
       content: text,
       created_at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, optimistic]);
+    const thinking: Message = {
+      id: thinkingId,
+      role: "assistant",
+      content: "",
+      created_at: new Date().toISOString(),
+      isThinking: true,
+    };
+    setMessages((prev) => [...prev, optimistic, thinking]);
     setSending(true);
 
     try {
@@ -157,9 +187,6 @@ function ChatPageInner() {
 
       if (resp.ok) {
         const data = await resp.json();
-        setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? { ...m, id: data.conversation_id + "-user" } : m))
-        );
         const assistantMsg: Message = {
           id: data.conversation_id + "-resp-" + Date.now(),
           role: "assistant",
@@ -167,22 +194,32 @@ function ChatPageInner() {
           sources: data.sources,
           created_at: new Date().toISOString(),
         };
-        setMessages((prev) => [...prev, assistantMsg]);
+        setMessages((prev) =>
+          prev
+            .map((m) => (m.id === tempId ? { ...m, id: data.conversation_id + "-user" } : m))
+            .map((m) => (m.id === thinkingId ? assistantMsg : m))
+        );
 
         if (!activeConvId) {
           setActiveConvId(data.conversation_id);
+        }
+        if (!activeConvId || isFirstMessage) {
           loadConversations();
         }
+      } else {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId && m.id !== thinkingId));
+        showError("Failed to get a response. Please try again.");
       }
     } catch {
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setMessages((prev) => prev.filter((m) => m.id !== tempId && m.id !== thinkingId));
+      showError("Network error. Please check your connection and try again.");
     } finally {
       setSending(false);
     }
-  }, [activeConvId, loadConversations]);
+  }, [activeConvId, messages, loadConversations, showError]);
 
   return (
-    <div className="animate-fade-up" style={{ display: "flex", height: "calc(100vh - 60px)", overflow: "hidden", position: "relative" }}>
+    <div className="animate-fade-up flex h-full" style={{ overflow: "hidden", position: "relative" }}>
       {errorToast && (
         <div
           style={{
@@ -211,9 +248,10 @@ function ChatPageInner() {
         onSelect={handleSelectConversation}
         onNew={handleNewConversation}
         onDelete={handleDeleteConversation}
+        onRename={handleRenameConversation}
         loading={creatingConversation}
       />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         {activeConvId ? (
           <>
             <MessageThread messages={messages} loading={loading} />

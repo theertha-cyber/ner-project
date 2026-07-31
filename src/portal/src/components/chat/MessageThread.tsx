@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CitationCard } from "./CitationCard";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { CitationChips } from "./CitationChips";
 
 interface Source {
   source_type: string;
@@ -20,6 +22,7 @@ interface Citation {
   entity_type?: string | null;
   entity_value?: string | null;
   confidence?: number | null;
+  relevance_score?: number | null;
   context_snippet?: string | null;
   page_number?: number | null;
   source_type?: string;
@@ -31,6 +34,7 @@ interface Message {
   content: string;
   sources?: (Source | Citation)[];
   created_at: string;
+  isThinking?: boolean;
 }
 
 interface MessageThreadProps {
@@ -42,20 +46,18 @@ function isCitation(s: Source | Citation): s is Citation {
   return "document_name" in s;
 }
 
-function SourceCitation({ source }: { source: Source }) {
-  return (
-    <CitationCard
-      citation={{
-        document_name: null,
-        document_id: source.document_id,
-        entity_type: source.entity_type,
-        entity_value: source.value,
-        confidence: source.confidence,
-        context_snippet: source.source_type === "document_chunk" ? source.chunk_text : null,
-        source_type: source.source_type,
-      }}
-    />
-  );
+function toCitation(s: Source | Citation): Citation {
+  if (isCitation(s)) return s;
+  return {
+    document_name: null,
+    document_id: s.document_id,
+    entity_type: s.entity_type,
+    entity_value: s.value,
+    confidence: s.confidence,
+    relevance_score: s.relevance_score,
+    context_snippet: s.source_type === "document_chunk" ? s.chunk_text : null,
+    source_type: s.source_type,
+  };
 }
 
 export function MessageThread({ messages, loading }: MessageThreadProps) {
@@ -68,7 +70,7 @@ export function MessageThread({ messages, loading }: MessageThreadProps) {
   const empty = messages.length === 0;
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px" }}>
       {loading && (
         <div style={{ textAlign: "center", padding: 16, color: "var(--ink-3)" }}>Loading...</div>
       )}
@@ -108,22 +110,20 @@ export function MessageThread({ messages, loading }: MessageThreadProps) {
                 borderBottomLeftRadius: msg.role === "assistant" ? 4 : 12,
               }}
             >
-              {msg.content}
+              {msg.isThinking ? (
+                <span style={{ color: "var(--ink-3)" }} className="thinking-dots">
+                  Thinking...
+                </span>
+              ) : msg.role === "assistant" ? (
+                <div className="chat-markdown">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                </div>
+              ) : (
+                msg.content
+              )}
             </div>
-            {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
-              <div style={{ marginTop: 4 }}>
-                <ol style={{ margin: 0, paddingLeft: 20, listStyle: "decimal" }}>
-                  {msg.sources.map((source, i) => (
-                    <li key={i} style={{ marginBottom: 4 }}>
-                      {isCitation(source) ? (
-                        <CitationCard citation={source} />
-                      ) : (
-                        <SourceCitation source={source} />
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </div>
+            {!msg.isThinking && msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
+              <CitationChips citations={msg.sources.map(toCitation)} />
             )}
           </div>
         </div>
