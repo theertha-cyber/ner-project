@@ -191,6 +191,7 @@ CREATE TABLE IF NOT EXISTS {schema}.chat_messages (
     sources JSONB,
     answer_kind TEXT NOT NULL DEFAULT 'answer',
     model_version TEXT,
+    response_time_ms INTEGER,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS {schema}.chat_message_feedback (

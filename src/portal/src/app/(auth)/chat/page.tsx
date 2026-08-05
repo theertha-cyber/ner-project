@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { RequireAuth } from "@/components/require-auth";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { MessageThread } from "@/components/chat/MessageThread";
@@ -43,6 +44,8 @@ const CHAT_API_BASE = "/api/v1/chat";
 
 function ChatPageInner() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const conversationParam = searchParams.get("conversation");
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -87,6 +90,12 @@ function ChatPageInner() {
     setActiveConvId(convId);
     loadMessages(convId);
   }, [loadMessages]);
+
+  useEffect(() => {
+    if (conversationParam && conversationParam !== activeConvId) {
+      handleSelectConversation(conversationParam);
+    }
+  }, [conversationParam, activeConvId, handleSelectConversation]);
 
   const showError = useCallback((msg: string) => {
     setErrorToast(msg);
@@ -311,7 +320,9 @@ function ChatPageInner() {
 export default function ChatPage() {
   return (
     <RequireAuth roles={["tenant_admin", "business_user"]}>
-      <ChatPageInner />
+      <Suspense fallback={null}>
+        <ChatPageInner />
+      </Suspense>
     </RequireAuth>
   );
 }

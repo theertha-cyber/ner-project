@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
 import { navFor } from "@/lib/nav-config";
-import { Settings, LogOut, ChevronDown } from "lucide-react";
+import { Settings, LogOut, ChevronDown, PanelLeft } from "lucide-react";
 
 function userInitials(email: string): string {
   return email.slice(0, 2).toUpperCase();
@@ -20,6 +20,7 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     function handleEscape(e: KeyboardEvent) {
@@ -38,9 +39,9 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
   return (
     <aside
       style={{
-        width: 248,
-        minWidth: 248,
-        maxWidth: 248,
+        width: collapsed ? 72 : 248,
+        minWidth: collapsed ? 72 : 248,
+        maxWidth: collapsed ? 72 : 248,
         position: "sticky",
         top: 0,
         height: "100vh",
@@ -48,6 +49,7 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
         flexDirection: "column",
         background: "var(--surface-2)",
         borderRight: "1px solid var(--line)",
+        transition: "width 0.15s ease, min-width 0.15s ease, max-width 0.15s ease",
       }}
     >
       {/* Logo block — height matches Topbar (62px) so the two bottom borders line up */}
@@ -57,41 +59,77 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
           minHeight: 62,
           display: "flex",
           alignItems: "center",
+          justifyContent: collapsed ? "center" : "space-between",
           gap: 10,
-          padding: "0 16px",
+          padding: collapsed ? "0 12px" : "0 12px 0 16px",
           borderBottom: "1px solid var(--line)",
         }}
       >
-        <div
+        {!collapsed && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <div
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 8,
+                background: "var(--primary)",
+                display: "grid",
+                placeItems: "center",
+                fontFamily: "var(--font-display, sans-serif)",
+                fontWeight: 800,
+                fontSize: 17,
+                lineHeight: 1,
+                color: "#fff",
+                flexShrink: 0,
+              }}
+            >
+              n
+            </div>
+            <span
+              style={{
+                fontFamily: "var(--font-display, sans-serif)",
+                fontWeight: 700,
+                fontSize: 16,
+                lineHeight: 1.2,
+                color: "var(--ink)",
+                letterSpacing: "-0.02em",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              NER Platform
+            </span>
+          </div>
+        )}
+        <button
+          onClick={() => setCollapsed((prev) => !prev)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 8,
-            background: "var(--primary)",
+            width: 28,
+            height: 28,
+            borderRadius: 7,
+            border: "none",
+            background: "transparent",
             display: "grid",
             placeItems: "center",
-            fontFamily: "var(--font-display, sans-serif)",
-            fontWeight: 800,
-            fontSize: 17,
-            lineHeight: 1,
-            color: "#fff",
+            color: "var(--ink-2)",
+            cursor: "pointer",
             flexShrink: 0,
+            transition: "background 0.12s, color 0.12s",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--ink)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-2)";
           }}
         >
-          n
-        </div>
-        <span
-          style={{
-            fontFamily: "var(--font-display, sans-serif)",
-            fontWeight: 700,
-            fontSize: 16,
-            lineHeight: 1.2,
-            color: "var(--ink)",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          NER Platform
-        </span>
+          <PanelLeft size={17} strokeWidth={2} />
+        </button>
       </div>
 
       {/* Nav section */}
@@ -102,12 +140,14 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
             <button
               key={item.id}
               onClick={() => router.push(item.href)}
+              title={collapsed ? item.label : undefined}
               style={{
                 display: "flex",
                 alignItems: "center",
+                justifyContent: collapsed ? "center" : "flex-start",
                 gap: 10,
                 width: "100%",
-                padding: "9px 11px",
+                padding: collapsed ? "9px" : "9px 11px",
                 borderRadius: 10,
                 border: "none",
                 background: isActive ? "var(--primary)" : "transparent",
@@ -134,8 +174,8 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
               }}
             >
               <item.icon size={16} strokeWidth={2} style={{ flexShrink: 0 }} />
-              <span style={{ flex: 1 }}>{item.label}</span>
-              {item.badge != null && (
+              {!collapsed && <span style={{ flex: 1 }}>{item.label}</span>}
+              {!collapsed && item.badge != null && (
                 <span
                   style={{
                     fontFamily: "var(--font-mono, monospace)",
@@ -162,12 +202,14 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
           onClick={() => setMenuOpen((prev) => !prev)}
           aria-haspopup="true"
           aria-expanded={menuOpen}
+          title={collapsed ? user.email : undefined}
           style={{
             display: "flex",
             alignItems: "center",
+            justifyContent: collapsed ? "center" : "flex-start",
             gap: 8,
             width: "100%",
-            padding: "7px 8px",
+            padding: collapsed ? "7px" : "7px 8px",
             borderRadius: 11,
             border: menuOpen ? "1px solid var(--primary-line)" : "1px solid transparent",
             background: menuOpen ? "var(--primary-soft)" : "transparent",
@@ -194,46 +236,50 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
           >
             {initials}
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 500,
-                color: "var(--ink)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {user.email}
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-mono, monospace)",
-                fontSize: 10,
-                color: "var(--ink-3)",
-              }}
-            >
-              {roleLabel}
-            </div>
-          </div>
-          <span
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: 7,
-              background: "var(--surface-2)",
-              border: "1px solid var(--line)",
-              display: "grid",
-              placeItems: "center",
-              color: "var(--ink-2)",
-              flexShrink: 0,
-              transition: "transform 0.18s ease",
-              transform: menuOpen ? "rotate(180deg)" : "rotate(0deg)",
-            }}
-          >
-            <ChevronDown size={13} strokeWidth={2.25} />
-          </span>
+          {!collapsed && (
+            <>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: "var(--ink)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {user.email}
+                </div>
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: 10,
+                    color: "var(--ink-3)",
+                  }}
+                >
+                  {roleLabel}
+                </div>
+              </div>
+              <span
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 7,
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--line)",
+                  display: "grid",
+                  placeItems: "center",
+                  color: "var(--ink-2)",
+                  flexShrink: 0,
+                  transition: "transform 0.18s ease",
+                  transform: menuOpen ? "rotate(180deg)" : "rotate(0deg)",
+                }}
+              >
+                <ChevronDown size={13} strokeWidth={2.25} />
+              </span>
+            </>
+          )}
         </button>
       </div>
 
@@ -259,7 +305,8 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
           style={{
             position: "absolute",
             left: 12,
-            right: 12,
+            right: collapsed ? "auto" : 12,
+            width: collapsed ? 180 : "auto",
             bottom: 62,
             zIndex: 61,
             transformOrigin: "bottom center",

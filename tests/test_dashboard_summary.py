@@ -68,7 +68,7 @@ class TestDashboardSummaryShape:
         assert [s["label"] for s in d["stats"]] == ["Conversations", "Messages Sent", "Helpful Responses"]
         assert d["pTitle"] == "Recent Conversations"
         assert d["sideTop"] == "AI Assistant Status"
-        assert d["sideBot"] == "Frequently Asked Topics"
+        assert d["sideBot"] == ""
 
     async def test_system_admin_tenant_count_is_wired(self):
         status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
@@ -110,7 +110,7 @@ async def _seed_training_jobs(engine, schema: str, count: int = 1):
     async with engine.begin() as conn:
         for i in range(count):
             await conn.execute(
-                text(f"INSERT INTO {schema}.training_jobs (id, tenant_id, status, created_at) VALUES (:id, :tid, 'completed', NOW()) ON CONFLICT (id) DO NOTHING"),
+                text(f"INSERT INTO {schema}.training_jobs (id, tenant_id, status, created_at, started_at) VALUES (:id, :tid, 'completed', NOW(), NOW()) ON CONFLICT (id) DO NOTHING"),
                 {"id": f"tj-{i}", "tid": "test-tenant"},
             )
 
@@ -182,7 +182,20 @@ class TestTenantAdminQueries:
         expected_f1 = f"{0.872 * 100:.1f}"
         assert body["data"]["big"] == expected_f1
 
-        assert s[2]["value"] == "2"
+        # Training value reflects jobs currently running, not a 24h historical
+        # count — the 2 seeded jobs are 'completed', so none are running.
+        assert s[2]["value"] == "0"
+        assert "2" in s[2]["sub"]
+
+    async def test_training_stat_shows_zero_when_nothing_running(self, engine, tenant_schema):
+        tid, schema = tenant_schema
+        await _seed_training_jobs(engine, schema, 1)
+
+        status, body = await _get("tenant_admin", tid)
+        assert status == 200
+        s = body["data"]["stats"]
+        assert s[2]["value"] == "0"
+        assert s[2]["sub"] == "1 job ran in last 24h"
 
     async def test_annotation_progress_calculates_correctly(self, engine, tenant_schema):
         tid, schema = tenant_schema
@@ -324,6 +337,57 @@ class TestBusinessUserQueries:
 
         assert d["bigUnit"] == ""
         assert d["big"] in ("Online", "Offline")
+
+    async def test_avg_response_time_shows_milliseconds(self, engine, tenant_schema):
+        tid, schema = tenant_schema
+        user_id = "biz-user-resp-ms"
+        await _seed_conversations(engine, schema, user_id, conversation_count=1, messages_per=1)
+        async with engine.begin() as conn:
+            for ms in (200, 400):
+                await conn.execute(
+                    text(f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, response_time_ms) VALUES (:id, 'conv-0', 'assistant', 'reply', :ms)"),
+                    {"id": f"asst-{ms}", "ms": ms},
+                )
+
+        status, body = await _get("business_user", tid, user_id)
+        assert status == 200
+        resp_time = next(m for m in body["data"]["sideMetrics"] if m["k"] == "resp time")
+        assert resp_time["v"] == "300ms"
+
+    async def test_avg_response_time_shows_seconds_above_1000ms(self, engine, tenant_schema):
+        tid, schema = tenant_schema
+        user_id = "biz-user-resp-s"
+        await _seed_conversations(engine, schema, user_id, conversation_count=1, messages_per=1)
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, response_time_ms) VALUES ('asst-slow', 'conv-0', 'assistant', 'reply', 2500)"),
+            )
+
+        status, body = await _get("business_user", tid, user_id)
+        assert status == 200
+        resp_time = next(m for m in body["data"]["sideMetrics"] if m["k"] == "resp time")
+        assert resp_time["v"] == "2.5s"
+
+    async def test_avg_response_time_dash_when_no_data(self, engine, tenant_schema):
+        tid, schema = tenant_schema
+        user_id = "biz-user-resp-none"
+        await _seed_conversations(engine, schema, user_id, conversation_count=1, messages_per=1)
+
+        status, body = await _get("business_user", tid, user_id)
+        assert status == 200
+        resp_time = next(m for m in body["data"]["sideMetrics"] if m["k"] == "resp time")
+        assert resp_time["v"] == "—"
+
+    async def test_frequently_asked_topics_block_removed(self, engine, tenant_schema):
+        tid, schema = tenant_schema
+        user_id = "biz-user-no-topics"
+        await _seed_conversations(engine, schema, user_id, conversation_count=2)
+
+        status, body = await _get("business_user", tid, user_id)
+        assert status == 200
+        d = body["data"]
+        assert d["sideBot"] == ""
+        assert d["sideRows"] == []
 
 
 @pytest.mark.asyncio

@@ -113,7 +113,8 @@ class TestDashboardSummaryRoles:
         assert [s["label"] for s in d["stats"]] == ["Conversations", "Messages Sent", "Helpful Responses"]
         assert d["pTitle"] == "Recent Conversations"
         assert d["sideTop"] == "AI Assistant Status"
-        assert d["sideBot"] == "Frequently Asked Topics"
+        assert d["sideBot"] == ""
+        assert d["sideRows"] == []
         assert "eval F1" not in d["bigUnit"]
         assert set(body["sources"].keys()) >= {"conversations", "feedback", "assistant_health"}
 

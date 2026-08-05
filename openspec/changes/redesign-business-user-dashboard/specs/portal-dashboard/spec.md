@@ -30,8 +30,8 @@ The system SHALL define a `DashboardData` TypeScript type that mirrors the mocku
 - **THEN** the response contains `kicker: "Your AI assistant workspace"`, `title` and `line` copy describing the user's assistant usage rather than document extraction
 - **AND** `stats` contains exactly 3 items: "Conversations" (total conversations started by this user), "Messages Sent" (total user-authored messages), and "Helpful Responses" (count derived from this user's `up` ratings in `chat_message_feedback`)
 - **AND** `pTitle: "Recent Conversations"` with up to 4 rows, each row showing the conversation title (or generated summary), last interaction time, and message count, linking to the conversation in chat
-- **AND** the side panel is titled `sideTop: "AI Assistant Status"` showing assistant online/offline status, last updated time, and average response time (or `—` if unavailable) — it SHALL NOT show F1, precision, recall, or loss
-- **AND** `sideBot: "Frequently Asked Topics"` with `sideRows` populated from keyword frequency over this user's own conversation titles
+- **AND** the side panel is titled `sideTop: "AI Assistant Status"` showing assistant online/offline status, last updated time, and average response time computed from this user's own `chat_messages.response_time_ms` values (or `—` if no timed messages exist yet) — it SHALL NOT show F1, precision, recall, or loss
+- **AND** `sideBot` and `sideRows` SHALL be empty (no "Frequently Asked Topics" or other secondary chart is shown for this role)
 
 #### Scenario: partial service failure degrades gracefully
 
@@ -96,6 +96,19 @@ Each role handler SHALL accept the `db` session and `tenant_id` parameters and e
 - **THEN** the `AI Assistant Status` panel SHALL show "Offline"
 - **AND** `sources.assistant_health` SHALL be `false`
 - **AND** the overall request SHALL still succeed (no 500 error)
+
+#### Scenario: business_user summary computes average response time from recorded assistant messages
+
+- **GIVEN** the caller has role `business_user` and has at least one assistant reply in `{schema}.chat_messages` with a non-null `response_time_ms`
+- **WHEN** `GET /api/v1/dashboard/summary` is called
+- **THEN** the `resp time` side metric SHALL show the average of that user's assistant `response_time_ms` values, formatted as milliseconds (`"Nms"`) when under 1000ms or seconds (`"N.Ns"`) when 1000ms or greater
+- **AND** the average SHALL be scoped to the caller's own conversations only
+
+#### Scenario: business_user summary shows dash for response time when no timed messages exist
+
+- **GIVEN** the caller has role `business_user` and has no assistant messages with a recorded `response_time_ms`
+- **WHEN** `GET /api/v1/dashboard/summary` is called
+- **THEN** the `resp time` side metric SHALL show `—`
 
 #### Scenario: sources map includes all data domains
 

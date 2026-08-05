@@ -99,15 +99,17 @@ export function StatCard({ item }: StatCardProps) {
           </span>
         )}
       </div>
-      <div
-        style={{
-          fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-          fontSize: 10.5,
-          color: "var(--color-text-tertiary, #94a3b8)",
-        }}
-      >
-        {item.sub}
-      </div>
+      {item.sub && (
+        <div
+          style={{
+            fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+            fontSize: 10.5,
+            color: "var(--color-text-tertiary, #94a3b8)",
+          }}
+        >
+          {item.sub}
+        </div>
+      )}
     </div>
   );
 }

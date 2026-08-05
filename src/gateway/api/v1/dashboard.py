@@ -1,5 +1,4 @@
 import logging
-import re
 from datetime import datetime, timezone
 import httpx
 from fastapi import APIRouter, Depends, Request
@@ -321,29 +320,35 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str, auth_header: str 
     if active_model:
         sources["models"] = True
 
-    # Training: jobs active in the last 24h (value unchanged), with a running-now
-    # badge derived from a separate live-status count.
+    # Training: value SHALL reflect jobs currently running right now, not a
+    # historical 24h count \u2014 showing "1" while "No training in progress" is
+    # displayed underneath was a contradictory, confusing pairing.
     train_sub = "service unavailable"
     train_delta = "\u2014"
     train_dir: str | None = None
     try:
-        result = await db.execute(
-            text(f"SELECT COUNT(*) FROM {schema}.training_jobs WHERE started_at >= NOW() - INTERVAL '24 hours'")
+        r = await db.execute(
+            text(f"SELECT COUNT(*) FROM {schema}.training_jobs WHERE status = 'running'")
         )
-        training_count = str(result.scalar())
+        running = r.scalar() or 0
+        training_count = str(running)
         sources["training"] = True
-        running = 0
+
+        recent = 0
         try:
-            r = await db.execute(
-                text(f"SELECT COUNT(*) FROM {schema}.training_jobs WHERE status = 'running'")
+            r2 = await db.execute(
+                text(f"SELECT COUNT(*) FROM {schema}.training_jobs WHERE started_at >= NOW() - INTERVAL '24 hours'")
             )
-            running = r.scalar() or 0
+            recent = r2.scalar() or 0
         except Exception:
             await db.rollback()
+
         if running > 0:
             train_sub = f"{running} job{'s' if running != 1 else ''} running"
             train_delta = "live"
             train_dir = "warn"
+        elif recent > 0:
+            train_sub = f"{recent} job{'s' if recent != 1 else ''} ran in last 24h"
         else:
             train_sub = "No training in progress"
     except Exception:
@@ -930,17 +935,17 @@ async def _business_user_data(db: AsyncSession, tenant_id: str, user_id: str) ->
 
     assistant_status, assistant_meta, assistant_healthy = await _fetch_assistant_health()
     sources["assistant_health"] = assistant_healthy
+    avg_response_time = await _business_avg_response_time(db, schema, user_id)
     side_metrics_list = [
         SideMetric(k="status", v=assistant_status),
         SideMetric(k="updated", v=assistant_meta),
-        SideMetric(k="resp time", v="\u2014"),
+        SideMetric(k="resp time", v=avg_response_time),
     ]
-    side_rows = await _business_topic_frequency(db, schema, user_id)
 
     stats = [
-        _stat("Conversations", conversation_count, "", "active" if conversation_count is not None else "service unavailable", "\u2014"),
-        _stat("Messages Sent", message_count, "", "active" if message_count is not None else "service unavailable", "\u2014"),
-        _stat("Helpful Responses", helpful_count, "", "active" if helpful_count is not None else "service unavailable", "\u2014"),
+        _stat("Conversations", conversation_count, "", "" if conversation_count is not None else "service unavailable", ""),
+        _stat("Messages Sent", message_count, "", "" if message_count is not None else "service unavailable", ""),
+        _stat("Helpful Responses", helpful_count, "", "" if helpful_count is not None else "service unavailable", ""),
     ]
 
     data = DashboardData(
@@ -957,8 +962,8 @@ async def _business_user_data(db: AsyncSession, tenant_id: str, user_id: str) ->
         bigUnit="",
         bar=0,
         sideMetrics=side_metrics_list,
-        sideBot="Frequently Asked Topics",
-        sideRows=side_rows,
+        sideBot="",
+        sideRows=[],
     )
     return data, sources
 
@@ -988,37 +993,25 @@ async def _business_conversation_activity(db: AsyncSession, schema: str, user_id
     return rows[:4]
 
 
-_TOPIC_STOPWORDS = {
-    "the", "a", "an", "is", "are", "was", "were", "what", "when", "where", "who",
-    "why", "how", "do", "does", "did", "of", "in", "on", "for", "to", "and", "or",
-    "with", "about", "my", "me", "i", "you", "your", "can", "could", "please",
-    "new", "conversation",
-}
-
-
-async def _business_topic_frequency(db: AsyncSession, schema: str, user_id: str) -> list[SideRow]:
-    side_rows: list[SideRow] = []
+async def _business_avg_response_time(db: AsyncSession, schema: str, user_id: str) -> str:
     try:
         result = await db.execute(
-            text(f"SELECT title FROM {schema}.conversations WHERE user_id = :user_id AND title IS NOT NULL"),
+            text(f"""
+                SELECT AVG(cm.response_time_ms) FROM {schema}.chat_messages cm
+                JOIN {schema}.conversations c ON c.id = cm.conversation_id
+                WHERE c.user_id = :user_id AND cm.role = 'assistant' AND cm.response_time_ms IS NOT NULL
+            """),
             {"user_id": user_id},
         )
-        counts: dict[str, int] = {}
-        for row in result:
-            for word in re.findall(r"[A-Za-z']+", row.title.lower()):
-                if word in _TOPIC_STOPWORDS or len(word) < 3:
-                    continue
-                counts[word] = counts.get(word, 0) + 1
-
-        top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
-        total = sum(cnt for _, cnt in top) or 1
-        for word, cnt in top:
-            pct = round(cnt / total * 100, 1)
-            side_rows.append(SideRow(label=word, val=str(cnt), pct=pct, c="blue"))
+        avg_ms = result.scalar()
+        if avg_ms is None:
+            return "—"
+        avg_ms = float(avg_ms)
+        if avg_ms >= 1000:
+            return f"{avg_ms / 1000:.1f}s"
+        return f"{round(avg_ms)}ms"
     except Exception:
-        pass
-
-    return side_rows
+        return "—"
 
 
 async def _fetch_assistant_health() -> tuple[str, str, bool]:

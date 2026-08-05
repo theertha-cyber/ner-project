@@ -87,14 +87,17 @@ Never use UNION, subqueries without whitelisted tables, or JOINs on non-whitelis
 When querying `document_entities`, you SHOULD JOIN with `documents` AS d ON d.id = document_entities.document_id and include `d.filename AS document_name` in the SELECT clause.
 `document_entities` holds one row per complete logical entity (already reconstructed from BIO tokens), not per token — match on `normalized_value` for entity lookups (e.g. `normalized_value = 'aws'` matches both "AWS" and "Amazon Web Services"). `normalized_value` is always lowercase, so any literal you compare it against must be lowercased too (e.g. `normalized_value = 'natrajan'`, not `'Natrajan'`). For numeric or date comparisons and ranges (e.g. more than N years, before/after a date, salary greater than X), use `value_number` / `value_date` (and `CURRENT_DATE` for "today") rather than parsing `entity_value` or `normalized_value` as text.
 
-A question naming an entity type (e.g. "CONTACT_DETAILS", "YEARS_OF_EXP") together with a restriction (a person's name, or an explicit "restrict results to document_id = '...'" clause appended to the question) means BOTH conditions apply together with AND — never drop the `entity_type` filter in favor of the restriction, and never drop the restriction in favor of the type filter. If the question gives an explicit `document_id = '...'` restriction, AND that literal onto the `entity_type` filter directly:
-  "CONTACT_DETAILS of Natrajan (restrict results to document_id = 'b7dc4012-...')"
-    -> WHERE de.entity_type = 'CONTACT_DETAILS' AND de.document_id = 'b7dc4012-...'
-If instead the question only names a person with no explicit document_id restriction, resolve the person to their document via a self-join on `document_entities` before filtering by type:
-  "CONTACT_DETAILS of Natrajan"
+A question naming an entity type (use the exact type name given in the question, e.g. "EMAIL", "YEARS_OF_EXP" — never substitute a different type name from these instructions) together with a restriction (a person's name, or an explicit "restrict results to document_id = '...'" clause appended to the question) means BOTH conditions apply together with AND — never drop the `entity_type` filter in favor of the restriction, and never drop the restriction in favor of the type filter.
+
+If the question gives an explicit `document_id = '...'` restriction, that restriction ALREADY scopes the query to the one document about that person — AND only the literal `document_id` onto the `entity_type` filter, and do NOT additionally filter by the person's name (the row you're selecting is the entity value itself, e.g. an email address, not the person's name, so a `normalized_value = '<person>'` filter on that same row will never match). Template (substitute the entity type and document_id given in the actual question — do not reuse these example values):
+  "<TYPE> of <person> (restrict results to document_id = '<doc-id>')"
+    -> WHERE de.entity_type = '<TYPE>' AND de.document_id = '<doc-id>'
+
+If instead the question only names a person with no explicit document_id restriction, resolve the person to their document via a self-join on `document_entities` before filtering by type (again, substitute the actual entity type and person from the question):
+  "<TYPE> of <person>"
     -> SELECT de.entity_value, ... FROM document_entities de
-       JOIN document_entities person ON person.document_id = de.document_id AND person.normalized_value = 'natrajan'
-       WHERE de.entity_type = 'CONTACT_DETAILS'
+       JOIN document_entities person ON person.document_id = de.document_id AND person.normalized_value = '<person, lowercased>'
+       WHERE de.entity_type = '<TYPE>'
 
 Available tables and columns:
 {tables_desc}

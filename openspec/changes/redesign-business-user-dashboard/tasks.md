@@ -31,11 +31,22 @@
 - [x] 3.15 Scenario "business_user conversation row navigates to chat" — add a test in `src/portal/src/components/dashboard/ActivityPanel.test.tsx` asserting a `go: "chat"` row navigates to `/chat?conversation={id}`.
 - [x] 3.16 Scenario "status dot and tag render correct colours" — confirm no regression via existing coverage in `src/portal/src/components/dashboard/ActivityPanel.test.tsx`.
 
-## 4. Verification & Evidence
+## 4. Follow-up: real response-time tracking + topics removal
 
-- [x] 4.1 Run all acceptance-criteria tests for every scenario in verification.md § Spec Alignment and confirm all pass.
-- [x] 4.2 Collect functional evidence (screenshot / test output / log) for each scenario — record one entry per row in verification.md § Evidence Log.
-- [x] 4.3 Confirm every Hallucination Risk mitigation step in verification.md § Hallucination Risk Register.
-- [x] 4.4 Confirm all ADR compliance steps in verification.md § Pattern & ADR Compliance.
-- [ ] 4.5 Complete Audit Record sign-off in verification.md § Audit Record (human reviewer required).
-- [x] 4.6 Run `openspec validate redesign-business-user-dashboard --type change --strict` and confirm it exits clean before archive.
+- [x] 4.1 Add alembic migration `033_chat_messages_response_time_ms.py` adding `chat_messages.response_time_ms INTEGER NULL` to `tenant_template` and every existing tenant schema.
+- [x] 4.2 In `chat.py`'s `POST /api/v1/chat` handler, measure wall-clock duration of `orchestrator.execute_with_clarification` (`time.monotonic()`) and persist it as `response_time_ms` on the assistant's `chat_messages` row.
+- [x] 4.3 Add `_business_avg_response_time(db, schema, user_id)` in `dashboard.py` — averages the caller's own assistant `response_time_ms` values, formats as `"Nms"` (<1000ms) or `"N.Ns"` (>=1000ms), returns `"—"` when no timed messages exist.
+- [x] 4.4 Wire `_business_avg_response_time` into `_business_user_data`'s `resp time` side metric, replacing the hardcoded `"—"`.
+- [x] 4.5 Remove `_business_topic_frequency` and its stopword set entirely; set `sideBot`/`sideRows` to empty for `business_user` (no replacement panel).
+- [x] 4.6 Update `tests/conftest.py`'s `chat_messages` fixture table to include `response_time_ms`.
+- [x] 4.7 Update/add tests for response-time formatting (ms vs s vs dash) and for `sideBot`/`sideRows` being empty, in `tests/test_dashboard_summary.py` and `tests/test_dashboard_summary_roles.py`.
+- [x] 4.8 Run `db-init` (alembic upgrade + verify_schema) against the dev database, then rebuild/restart `gateway`, `chat_api`, `portal` containers.
+
+## 5. Verification & Evidence
+
+- [x] 5.1 Run all acceptance-criteria tests for every scenario in verification.md § Spec Alignment and confirm all pass.
+- [x] 5.2 Collect functional evidence (screenshot / test output / log) for each scenario — record one entry per row in verification.md § Evidence Log.
+- [x] 5.3 Confirm every Hallucination Risk mitigation step in verification.md § Hallucination Risk Register.
+- [x] 5.4 Confirm all ADR compliance steps in verification.md § Pattern & ADR Compliance.
+- [ ] 5.5 Complete Audit Record sign-off in verification.md § Audit Record (human reviewer required).
+- [x] 5.6 Run `openspec validate redesign-business-user-dashboard --type change --strict` and confirm it exits clean before archive.

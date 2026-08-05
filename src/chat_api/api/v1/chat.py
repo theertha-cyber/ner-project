@@ -1,3 +1,4 @@
+import time
 import uuid
 import json
 import logging
@@ -104,9 +105,11 @@ async def chat(
 
     auth_header = request.headers.get("Authorization", "")
     jwt_token = auth_header.removeprefix("Bearer ")
+    started_at = time.monotonic()
     reply, sources, pending_clarification, answer_kind, model_version = await orchestrator.execute_with_clarification(
         body.message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id,
     )
+    response_time_ms = round((time.monotonic() - started_at) * 1000)
 
     disclaimer = guardrails.inject_disclaimer()
     sources_data = json.dumps([s.model_dump() for s in sources]) if sources else None
@@ -117,10 +120,10 @@ async def chat(
     )
     await session.execute(
         text(
-            f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources, answer_kind, model_version) "
-            "VALUES (:id, :cid, 'assistant', :content, :sources, :answer_kind, :model_version)"
+            f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources, answer_kind, model_version, response_time_ms) "
+            "VALUES (:id, :cid, 'assistant', :content, :sources, :answer_kind, :model_version, :response_time_ms)"
         ),
-        {"id": message_id, "cid": conversation_id, "content": reply, "sources": sources_data, "answer_kind": answer_kind, "model_version": model_version},
+        {"id": message_id, "cid": conversation_id, "content": reply, "sources": sources_data, "answer_kind": answer_kind, "model_version": model_version, "response_time_ms": response_time_ms},
     )
     await session.execute(
         text(f"UPDATE {schema}.conversations SET updated_at = NOW() WHERE id = :cid"),
