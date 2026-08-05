@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -6,19 +7,26 @@ from functools import wraps
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from src.extraction_service.services.entity_normalizer import canonicalize
 from src.shared.config import settings
 from src.shared.database import get_engine
 from src.shared.retrieval.orchestrator import (
+    SEMANTIC_CAPABILITY_NAME,
     STOP_EMPTY_PLAN,
     STOP_PLANNER_ERROR,
+    STRUCTURED_CAPABILITY_NAME,
     OrchestrationBudget,
+    PlanEntry,
+    RetrievalPlan,
     build_fallback_plan,
     execute_plan,
     plan_retrieval,
 )
 from src.shared.retrieval.tools.base import ToolContext
-from src.chat_api.api.v1.schemas import Source
+from src.chat_api.api.v1.schemas import CandidateEntity, PendingClarification, Source
 from src.chat_api.graph.state import ChatState
+from src.chat_api.services import conversation_entity_state as conv_state
+from src.chat_api.services import entity_resolver
 from src.chat_api.services.context_assembler import ContextAssembler
 
 logger = logging.getLogger(__name__)
@@ -53,6 +61,50 @@ def _traced(name: str, count_key: str | None = None):
             return result
         return wrapper
     return decorator
+
+
+_ANAPHORA_RE = re.compile(
+    r"\b(she|he|her|him|his|they|them|their|that person|this candidate|that candidate)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_anaphoric_reference(message: str) -> bool:
+    return bool(_ANAPHORA_RE.search(message))
+
+
+def _rewrite_plan_for_resolution(plan, document_id: str, query_override: str | None):
+    """Returns a new RetrievalPlan with every `semantic_retrieval` entry's `scope`
+    overridden to the resolved document, and every `structured_retrieval` entry's
+    `query` argument extended with an explicit document constraint. When
+    `query_override` is given (resuming after a selection), both capabilities'
+    `query` argument is replaced with it so retrieval answers the original request
+    rather than the selection utterance."""
+    new_entries = []
+    for entry in plan.entries:
+        args = dict(entry.arguments)
+        if entry.capability_name == SEMANTIC_CAPABILITY_NAME:
+            if query_override is not None:
+                args["query"] = query_override
+            args["scope"] = {"type": "document", "document_ids": [document_id]}
+        elif entry.capability_name == STRUCTURED_CAPABILITY_NAME:
+            base_query = query_override if query_override is not None else args.get("query", "")
+            args["query"] = f"{base_query} (restrict results to document_id = '{document_id}')"
+        new_entries.append(PlanEntry(
+            capability_name=entry.capability_name, arguments=args,
+            rejected=entry.rejected, rejection_reason=entry.rejection_reason,
+        ))
+    return RetrievalPlan(entries=new_entries, truncated=plan.truncated)
+
+
+def _candidates_to_schema(candidates: list[entity_resolver.Candidate]) -> list[CandidateEntity]:
+    return [
+        CandidateEntity(
+            document_id=c.document_id, name=c.name, organization=c.organization,
+            experience=c.experience, skills=c.skills, filename=c.filename,
+        )
+        for c in candidates
+    ]
 
 
 def build_nodes(orchestrator) -> dict:
@@ -114,6 +166,118 @@ def build_nodes(orchestrator) -> dict:
 
         return {"retrieval_plan": plan, "orchestration_degraded": False, "orchestration_stop_reason": None}
 
+    @_traced("entity_resolution")
+    async def entity_resolution_node(state: ChatState) -> dict:
+        """Resolves person-entity references before retrieval runs. Either rewrites
+        `retrieval_plan` with a resolved document scope (unique match, inherited
+        binding, or a just-completed selection) or returns a terminal clarification
+        reply that short-circuits the graph to END. See design.md Decision 1 and
+        Decision 8 for the resolution/binding rules implemented here."""
+        message = state["message"]
+        tenant_id = state["tenant_id"]
+        schema = state["schema"]
+        session = state["session"]
+        conversation_id = state.get("conversation_id")
+        plan = state["retrieval_plan"]
+
+        if not conversation_id:
+            return {"entity_resolution_outcome": None, "resolved_document_ids": []}
+
+        conv = await conv_state.read_state(session, schema, conversation_id)
+
+        if conv.has_pending_clarification:
+            idx = await entity_resolver.interpret_selection(
+                message, conv.pending_candidates, orchestrator.llm_client, orchestrator.llm_model,
+            )
+            if idx is not None:
+                selected = conv.pending_candidates[idx]
+                original_message = conv.pending_original_message
+                await conv_state.set_binding(session, schema, conversation_id, selected.document_id, selected.name)
+                await conv_state.clear_pending(session, schema, conversation_id)
+                rewritten = _rewrite_plan_for_resolution(plan, selected.document_id, query_override=original_message)
+                logger.info(
+                    "entity_resolution outcome=selected tenant_id=%s document_id=%s",
+                    tenant_id, selected.document_id,
+                )
+                return {
+                    "retrieval_plan": rewritten,
+                    "message": original_message,
+                    "original_message": original_message,
+                    "entity_resolution_outcome": "unique",
+                    "resolved_document_ids": [selected.document_id],
+                }
+
+            if conv.pending_reask_count < conv_state.MAX_REASKS:
+                await conv_state.increment_reask(session, schema, conversation_id, conv.pending_reask_count)
+                reply = entity_resolver.render_clarification(conv.pending_mention, conv.pending_candidates)
+                logger.info("entity_resolution outcome=reask tenant_id=%s", tenant_id)
+                return {
+                    "reply": reply, "sources": [],
+                    "entity_resolution_outcome": "ambiguous",
+                    "resolved_document_ids": [],
+                    "pending_clarification": PendingClarification(
+                        mention=conv.pending_mention, candidates=_candidates_to_schema(conv.pending_candidates),
+                    ).model_dump(),
+                }
+
+            await conv_state.clear_pending(session, schema, conversation_id)
+            logger.info("entity_resolution outcome=abandoned tenant_id=%s", tenant_id)
+            return {"entity_resolution_outcome": "unresolved", "resolved_document_ids": []}
+
+        result = await entity_resolver.resolve_entity(message, session, schema, tenant_id)
+
+        if result.outcome == entity_resolver.UNIQUE:
+            await conv_state.set_binding(session, schema, conversation_id, result.resolved_document_id, result.resolved_entity_value)
+            rewritten = _rewrite_plan_for_resolution(plan, result.resolved_document_id, query_override=None)
+            return {
+                "retrieval_plan": rewritten,
+                "entity_resolution_outcome": "unique",
+                "resolved_document_ids": [result.resolved_document_id],
+            }
+
+        if result.outcome == entity_resolver.AMBIGUOUS:
+            if conv.has_binding and any(c.document_id == conv.resolved_document_id for c in result.candidates) and (
+                canonicalize(result.mention) == canonicalize(conv.resolved_entity_value or "")
+            ):
+                rewritten = _rewrite_plan_for_resolution(plan, conv.resolved_document_id, query_override=None)
+                return {
+                    "retrieval_plan": rewritten,
+                    "entity_resolution_outcome": "unique",
+                    "resolved_document_ids": [conv.resolved_document_id],
+                }
+
+            await conv_state.store_pending_clarification(session, schema, conversation_id, message, result.mention, result.candidates)
+            reply = entity_resolver.render_clarification(result.mention, result.candidates)
+            return {
+                "reply": reply, "sources": [],
+                "entity_resolution_outcome": "ambiguous",
+                "resolved_document_ids": [],
+                "pending_clarification": PendingClarification(
+                    mention=result.mention, candidates=_candidates_to_schema(result.candidates),
+                ).model_dump(),
+            }
+
+        if result.outcome == entity_resolver.OVER_CAP:
+            reply = entity_resolver.render_narrowing_message(result.mention)
+            return {
+                "reply": reply, "sources": [],
+                "entity_resolution_outcome": "over_cap",
+                "resolved_document_ids": [],
+            }
+
+        # UNRESOLVED: no mention of its own in this message.
+        if conv.has_binding:
+            if _has_anaphoric_reference(message):
+                rewritten = _rewrite_plan_for_resolution(plan, conv.resolved_document_id, query_override=None)
+                return {
+                    "retrieval_plan": rewritten,
+                    "entity_resolution_outcome": "unique",
+                    "resolved_document_ids": [conv.resolved_document_id],
+                }
+            await conv_state.clear_binding(session, schema, conversation_id)
+
+        return {"entity_resolution_outcome": "unresolved", "resolved_document_ids": []}
+
     @_traced("retrieval_execution", count_key="chunks")
     async def retrieval_execution_node(state: ChatState) -> dict:
         plan = state["retrieval_plan"]
@@ -121,6 +285,7 @@ def build_nodes(orchestrator) -> dict:
         schema = state["schema"]
         jwt_token = state.get("jwt_token")
         already_degraded = state.get("orchestration_degraded", False)
+        resolved_document_ids = state.get("resolved_document_ids") or []
 
         session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
         deadline = time.monotonic() + settings.retrieval_deadline_seconds
@@ -138,9 +303,17 @@ def build_nodes(orchestrator) -> dict:
         budget = OrchestrationBudget(max_invocations=settings.orchestrator_max_invocations, deadline=deadline)
         result = await execute_plan(plan, orchestrator.tool_registry, context_factory, budget)
 
+        sql_results = result.sql_results
+        if resolved_document_ids and sql_results:
+            resolved_set = set(resolved_document_ids)
+            sql_results = [
+                row for row in sql_results
+                if not isinstance(row, dict) or row.get("document_id") is None or row.get("document_id") in resolved_set
+            ]
+
         return {
             "chunks": result.chunks,
-            "sql_results": result.sql_results,
+            "sql_results": sql_results,
             "retrieval_error": result.retrieval_error,
             "sql_error": result.sql_error,
             "plan_trace": [asdict(t) for t in result.plan_trace],
@@ -220,6 +393,7 @@ def build_nodes(orchestrator) -> dict:
     return {
         "guardrail": guardrail_node,
         "orchestrator": orchestrator_node,
+        "entity_resolution": entity_resolution_node,
         "retrieval_execution": retrieval_execution_node,
         "source_assembly": source_assembly_node,
         "prompt_assembly": prompt_assembly_node,

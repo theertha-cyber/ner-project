@@ -68,8 +68,109 @@ describe("JobActions", () => {
       <JobActions jobId="job-1" status="pending_approval" tenantId="t1" />,
       { wrapper: createWrapper() },
     );
-    expect(screen.getByText("Approve & queue")).toBeDefined();
+    expect(screen.getByText("Approve")).toBeDefined();
     expect(screen.getByText("Reject")).toBeDefined();
+  });
+
+  it("opens a hyperparameter form when Approve is clicked, without approving immediately", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { role: "system_admin", tenantId: "", userId: "u1", email: "a@b.com", tenantSlug: null },
+      getAccessToken: vi.fn(),
+      setAccessToken: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+
+    render(
+      <JobActions jobId="job-1" status="pending_approval" tenantId="t1" />,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByText("Approve"));
+
+    expect(screen.getByText("Learning Rate")).toBeDefined();
+    expect(screen.getByText(/Confirm approve & queue/)).toBeDefined();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("disables the approve form submit until all fields are valid", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { role: "system_admin", tenantId: "", userId: "u1", email: "a@b.com", tenantSlug: null },
+      getAccessToken: vi.fn(),
+      setAccessToken: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+
+    render(
+      <JobActions jobId="job-1" status="pending_approval" tenantId="t1" />,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByText("Approve"));
+    const submitBtn = screen.getByText(/Confirm approve & queue/);
+    expect(submitBtn).not.toBeDisabled();
+
+    const learningRateInput = screen.getByDisplayValue("2e-5");
+    fireEvent.change(learningRateInput, { target: { value: "not-a-number" } });
+    expect(submitBtn).toBeDisabled();
+  });
+
+  it("submits the entered hyperparameters to the approve endpoint", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { role: "system_admin", tenantId: "", userId: "u1", email: "a@b.com", tenantSlug: null },
+      getAccessToken: vi.fn(),
+      setAccessToken: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ id: "job-1", status: "queued" }), { status: 200 }),
+    );
+
+    render(
+      <JobActions jobId="job-1" status="pending_approval" tenantId="t1" />,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByText("Approve"));
+    fireEvent.click(screen.getByText(/Confirm approve & queue/));
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(String(url)).toContain("/approve");
+    expect(JSON.parse(options.body)).toEqual({
+      learning_rate: 2e-5,
+      num_epochs: 3,
+      batch_size: 8,
+      max_seq_length: 128,
+    });
+  });
+
+  it("surfaces a backend validation error on the approve form and keeps it open", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { role: "system_admin", tenantId: "", userId: "u1", email: "a@b.com", tenantSlug: null },
+      getAccessToken: vi.fn(),
+      setAccessToken: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ detail: "num_epochs must be between 1 and 50" }), { status: 422 }),
+    );
+
+    render(
+      <JobActions jobId="job-1" status="pending_approval" tenantId="t1" />,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByText("Approve"));
+    fireEvent.click(screen.getByText(/Confirm approve & queue/));
+
+    await waitFor(() => {
+      expect(screen.getByText("num_epochs must be between 1 and 50")).toBeDefined();
+    });
+    expect(screen.getByText("Learning Rate")).toBeDefined();
   });
 
   it("hides approve/reject for non-pending jobs", () => {
@@ -144,7 +245,8 @@ describe("JobActions", () => {
       { wrapper: createWrapper() },
     );
 
-    fireEvent.click(screen.getByText("Approve & queue"));
+    fireEvent.click(screen.getByText("Approve"));
+    fireEvent.click(screen.getByText(/Confirm approve & queue/));
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalled());
     const callUrl = String(mockFetch.mock.calls[0][0]);

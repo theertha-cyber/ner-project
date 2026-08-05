@@ -254,20 +254,36 @@ h1 .red{color:var(--r600)}
 .dgm .edge.red{stroke:var(--r600);stroke-width:1.6}
 .dgm .edge.async{stroke:var(--r400);stroke-width:1.6}
 
-/* sequenced entrance */
-.dgm .lane,.dgm .grp,.dgm .edge,.dgm .elabel{opacity:0}
-.dgm .grp{transform-box:fill-box;transform-origin:center;transform:scale(.92) translateY(6px)}
-.dgm.play .lane{animation:laneIn .7s var(--ease) forwards;animation-delay:calc(var(--i,0)*.08s)}
-.dgm.play .grp{animation:grpIn .5s var(--ease) forwards;animation-delay:calc(.28s + var(--i,0)*.16s)}
-.dgm.play .elabel{animation:fadeIn .5s ease forwards;animation-delay:calc(.5s + var(--i,0)*.16s)}
-.dgm.play .edge{stroke-dasharray:1;stroke-dashoffset:1;opacity:1;
-  animation:draw .5s var(--ease) forwards;animation-delay:calc(.28s + var(--i,0)*.16s)}
-@keyframes laneIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
-@keyframes grpIn{to{opacity:1;transform:none}}
-@keyframes fadeIn{to{opacity:1}}
-@keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
-.dgm .spark{opacity:0}
-.dgm.play .spark{animation:fadeIn .4s ease forwards;animation-delay:4.2s}
+/* click-to-reveal entrance (stage-gated, no autoplay) */
+.dgm{cursor:pointer}
+.dgm .grp{transform-box:fill-box;transform-origin:center}
+.dgm [data-step]{opacity:0;pointer-events:none;transition:opacity .5s var(--ease),transform .5s var(--ease)}
+.dgm [data-step].shown{pointer-events:auto}
+.dgm .grp[data-step]{transform:scale(.92) translateY(6px)}
+.dgm .lane[data-step]{transform:translateX(-12px)}
+.dgm .edge[data-step]{stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .55s var(--ease),opacity .3s}
+.dgm [data-step].shown{opacity:1;transform:none}
+.dgm .edge[data-step].shown{stroke-dashoffset:0}
+.dgm .spark[data-step]{opacity:0}
+.dgm .spark[data-step].shown{opacity:1}
+
+/* stage progress readout + tap hint */
+.stage-hint{position:absolute;right:32px;bottom:26px;z-index:3;display:flex;align-items:center;gap:9px;
+  font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--r700);background:rgba(255,255,255,.92);border:1px solid var(--r100);border-radius:999px;
+  padding:6px 13px;pointer-events:none;transition:opacity .3s,color .3s,border-color .3s}
+.diagram-shell.done .stage-hint{color:var(--dim);border-color:var(--hair)}
+
+/* pipeline boxes stay compressed until clicked (architecture diagram) */
+#arch .pipeline .gbox,#arch .pipeline .gtint{transition:height .45s var(--ease)}
+#arch .pipeline:not(.expanded) .gbox,#arch .pipeline:not(.expanded) .gtint{height:56px}
+#arch .pipeline .punits{opacity:0;pointer-events:none;transition:opacity .3s}
+#arch .pipeline.expanded .punits{opacity:1;pointer-events:auto}
+#arch .pipeline .hint2{font-size:10px;fill:#9aa1af;transition:opacity .25s}
+#arch .pipeline.expanded .hint2{opacity:0}
+#arch .pipeline .gtop-hdr{cursor:pointer}
+#arch .pipeline:not(.expanded) .gbox{cursor:pointer}
+#arch .pipeline:not(.expanded):hover .gbox{stroke-opacity:.55}
 
 /* ================= swimlane specifics ================= */
 #flow .lane-band{fill:var(--lt);stroke:var(--hair)}
@@ -275,12 +291,6 @@ h1 .red{color:var(--r600)}
 
 /* ================= architecture specifics ================= */
 .archwrap{position:relative}
-.scanline{position:absolute;left:0;right:0;height:96px;pointer-events:none;z-index:2;
-  background:linear-gradient(180deg,rgba(214,35,48,0),rgba(214,35,48,.05) 55%,rgba(214,35,48,0));
-  animation:scan 8s cubic-bezier(.5,0,.5,1) infinite}
-.scanline::after{content:'';position:absolute;left:0;right:0;bottom:38px;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(214,35,48,.34),transparent)}
-@keyframes scan{0%{top:-12%;opacity:0}12%{opacity:1}88%{opacity:1}100%{top:102%;opacity:0}}
 #arch .gbox{fill:#fff;stroke:var(--gc);stroke-opacity:.2;stroke-width:1.2;
   filter:drop-shadow(0 8px 20px rgba(16,18,24,.06))}
 #arch .gtint{fill:var(--gc);opacity:.028}
@@ -385,10 +395,10 @@ h1 .red{color:var(--r600)}
       <div class="toc rv" data-d="2" id="toc">
         <button data-i="2"><div class="n">01</div><div class="t">What Is It</div></button>
         <button data-i="3"><div class="n">02</div><div class="t">Why It's Novel</div></button>
-        <button data-i="4"><div class="n">03</div><div class="t">End-to-End Workflow</div></button>
-        <button data-i="5"><div class="n">04</div><div class="t">Architecture</div></button>
-        <button data-i="6"><div class="n">05</div><div class="t">Platform Roles</div></button>
-        <button data-i="7"><div class="n">06</div><div class="t">In Practice: Inapp</div></button>
+        <button data-i="4"><div class="n">03</div><div class="t">In Practice: Inapp</div></button>
+        <button data-i="5"><div class="n">04</div><div class="t">End-to-End Workflow</div></button>
+        <button data-i="6"><div class="n">05</div><div class="t">Architecture</div></button>
+        <button data-i="7"><div class="n">06</div><div class="t">Platform Roles</div></button>
       </div>
     </div>
   </section>
@@ -453,7 +463,42 @@ h1 .red{color:var(--r600)}
     </div>
   </section>
 
-  <!-- ============ 05 WORKFLOW ============ -->
+  <!-- ============ 05 IN PRACTICE ============ -->
+  <section class="slide" data-title="In Practice: Inapp">
+    <div class="fit" style="--fitw:1120px">
+      <div class="eyebrow rv">Example · One Organization</div>
+      <h2 class="rv" data-d="1">In Practice: Inapp</h2>
+      <p class="lede rv" data-d="2">How Inapp's HR team turns resumes into structured candidate data.</p>
+      <div class="steps rv" data-d="2">
+        <div class="step" style="--c:var(--role-1);--i:0">
+          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
+          <div class="cap">System Admin</div>
+          <h3>Approves Inapp's request</h3>
+          <p>Reviews Inapp's request to fine-tune a resume-screening model.</p>
+        </div>
+        <div class="step" style="--c:var(--role-2);--i:1">
+          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
+          <div class="cap">Tenant Admin</div>
+          <h3>Defines resume fields</h3>
+          <p>Sets up candidate name, employer, degree, and skills as entity types.</p>
+        </div>
+        <div class="step" style="--c:var(--role-3);--i:2">
+          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
+          <div class="cap">Annotator</div>
+          <h3>Labels sample resumes</h3>
+          <p>Marks the spans across past resumes that train the model.</p>
+        </div>
+        <div class="step" style="--c:var(--role-4);--i:3">
+          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
+          <div class="cap">Business User · HR</div>
+          <h3>Screens new candidates</h3>
+          <p>Uploads incoming resumes, extracts fields instantly, and asks the assistant which candidates fit the role.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 06 WORKFLOW ============ -->
   <section class="slide" data-title="End-to-End Workflow">
     <div class="fit" style="--fitw:1400px">
       <div class="eyebrow rv">End-to-End Workflow</div>
@@ -461,16 +506,12 @@ h1 .red{color:var(--r600)}
       <div class="diagram-shell rv" data-d="2">
         <div class="diagram-bar">
           <span class="title">Swimlane · role handoffs — tenant creation through to a business user querying results</span>
-          <div class="legend">
-            <span><i></i> Process flow</span>
-            <span><i class="dash"></i> Model reference</span>
-          </div>
           <button class="btn" data-replay>
-            <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg> Replay
+            <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg> Reset
           </button>
         </div>
         <div class="scroll-x">
-        <svg id="flow" class="dgm anim" viewBox="0 0 1300 530" role="img" aria-label="End-to-end workflow swimlane diagram">
+        <svg id="flow" class="dgm anim" data-max-step="11" viewBox="0 0 1300 530" role="img" aria-label="End-to-end workflow swimlane diagram">
           <defs>
             <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8f1626"/><stop offset="1" stop-color="#640d1a"/></linearGradient>
             <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e12c39"/><stop offset="1" stop-color="#b21b28"/></linearGradient>
@@ -511,99 +552,97 @@ h1 .red{color:var(--r600)}
           </g>
 
           <!-- edges -->
-          <path class="edge" style="--i:1"  d="M320,67 H335 V197 H350"          marker-end="url(#arw)"  pathLength="1"/>
-          <path class="edge" style="--i:3"  d="M515,197 H545"                   marker-end="url(#arw)"  pathLength="1"/>
-          <path class="edge" style="--i:5"  d="M570,226 V327 H590"              marker-end="url(#arw)"  pathLength="1"/>
-          <path class="edge" style="--i:7"  d="M775,327 H820 V226"              marker-end="url(#arw)"  pathLength="1"/>
-          <path class="edge" style="--i:9"  d="M885,168 V96"                    marker-end="url(#arw)"  pathLength="1"/>
-          <path class="edge red" style="--i:11" stroke-dasharray="6 4" d="M955,67 H1000" marker-end="url(#arwR)" pathLength="1"/>
-          <path class="edge" style="--i:13" d="M1075,96 V132 H1165 V168"        marker-end="url(#arw)"  pathLength="1"/>
-          <path class="edge" style="--i:15" d="M1240,226 V406 H782 V428"        marker-end="url(#arw)"  pathLength="1"/>
-          <path class="edge red" style="--i:15" stroke-dasharray="6 4" d="M1160,226 V370 H992 V428" marker-end="url(#arwR)" pathLength="1"/>
-          <path class="edge" style="--i:17" d="M865,457 H895"                   marker-end="url(#arw)"  pathLength="1"/>
-          <path class="edge" style="--i:19" d="M1100,457 H1120"                 marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" data-step="2"  d="M320,67 H335 V197 H350"          marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" data-step="3"  d="M515,197 H545"                   marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" data-step="4"  d="M570,226 V327 H590"              marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" data-step="5"  d="M775,327 H820 V226"              marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" data-step="6"  d="M885,168 V96"                    marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge red" data-step="7" stroke-dasharray="6 4" d="M955,67 H1000" marker-end="url(#arwR)" pathLength="1"/>
+          <path class="edge" data-step="8" d="M1075,96 V132 H1165 V168"        marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" data-step="9" d="M1240,226 V406 H782 V428"        marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge red" data-step="9" stroke-dasharray="6 4" d="M1160,226 V370 H992 V428" marker-end="url(#arwR)" pathLength="1"/>
+          <path class="edge" data-step="10" d="M865,457 H895"                   marker-end="url(#arw)"  pathLength="1"/>
+          <path class="edge" data-step="11" d="M1100,457 H1120"                 marker-end="url(#arw)"  pathLength="1"/>
 
-          <text class="elabel halo" style="--i:11" x="977"  y="30"  text-anchor="middle">Training executes</text>
-          <text class="elabel halo" style="--i:15" x="1076" y="362" text-anchor="middle">Latest promoted model</text>
+          <text class="elabel halo" data-step="7" x="977"  y="30"  text-anchor="middle">Training executes</text>
+          <text class="elabel halo" data-step="9" x="1076" y="362" text-anchor="middle">Latest promoted model</text>
 
           <!-- nodes -->
-          <g class="grp" style="--i:0;--nc:var(--role-1)">
+          <g class="grp" data-step="1" style="--nc:var(--role-1)">
             <rect class="box" x="170" y="38" width="150" height="58" rx="12"/>
             <text class="t1" x="245" y="72" text-anchor="middle">Create Tenant</text>
             <g class="badge"><circle cx="188" cy="38" r="11"/><text x="188" y="41.8" text-anchor="middle">1</text></g>
           </g>
-          <g class="grp" style="--i:2;--nc:var(--role-2)">
+          <g class="grp" data-step="2" style="--nc:var(--role-2)">
             <rect class="box" x="350" y="168" width="165" height="58" rx="12"/>
             <text class="t1" x="433" y="194" text-anchor="middle">Upload Documents</text>
             <text class="t2" x="433" y="211" text-anchor="middle">for finetuning</text>
             <g class="badge"><circle cx="368" cy="168" r="11"/><text x="368" y="171.8" text-anchor="middle">2</text></g>
           </g>
-          <g class="grp" style="--i:4;--nc:var(--role-2)">
+          <g class="grp" data-step="3" style="--nc:var(--role-2)">
             <rect class="box" x="545" y="168" width="205" height="58" rx="12"/>
             <text class="t1" x="648" y="194" text-anchor="middle">Assign Documents</text>
             <text class="t2" x="648" y="211" text-anchor="middle">to annotator + entity fields</text>
             <g class="badge"><circle cx="563" cy="168" r="11"/><text x="563" y="171.8" text-anchor="middle">3</text></g>
           </g>
-          <g class="grp" style="--i:6;--nc:var(--role-3)">
+          <g class="grp" data-step="4" style="--nc:var(--role-3)">
             <rect class="box" x="590" y="298" width="185" height="58" rx="12"/>
             <text class="t1" x="683" y="324" text-anchor="middle">Annotate Documents</text>
             <text class="t2" x="683" y="341" text-anchor="middle">to entity fields</text>
             <g class="badge"><circle cx="608" cy="298" r="11"/><text x="608" y="301.8" text-anchor="middle">4</text></g>
           </g>
-          <g class="grp" style="--i:8;--nc:var(--role-2)">
+          <g class="grp" data-step="5" style="--nc:var(--role-2)">
             <rect class="box" x="790" y="168" width="190" height="58" rx="12"/>
             <text class="t1" x="885" y="194" text-anchor="middle">Submit Training Job</text>
             <text class="t2" x="885" y="211" text-anchor="middle">with annotated documents</text>
             <g class="badge"><circle cx="808" cy="168" r="11"/><text x="808" y="171.8" text-anchor="middle">5</text></g>
           </g>
-          <g class="grp" style="--i:10;--nc:var(--role-1)">
+          <g class="grp" data-step="6" style="--nc:var(--role-1)">
             <rect class="box" x="760" y="38" width="195" height="58" rx="12"/>
             <text class="t1" x="858" y="72" text-anchor="middle">Approve Training Job</text>
             <g class="badge"><circle cx="778" cy="38" r="11"/><text x="778" y="41.8" text-anchor="middle">6</text></g>
           </g>
-          <g class="grp" style="--i:12;--nc:var(--role-1)">
+          <g class="grp" data-step="7" style="--nc:var(--role-1)">
             <rect class="box" x="1000" y="38" width="150" height="58" rx="12"/>
             <text class="t1" x="1075" y="72" text-anchor="middle">Training Runs</text>
             <g class="badge"><circle cx="1018" cy="38" r="11"/><text x="1018" y="41.8" text-anchor="middle">7</text></g>
           </g>
-          <g class="grp" style="--i:14;--nc:var(--role-2)">
+          <g class="grp" data-step="8" style="--nc:var(--role-2)">
             <rect class="box" x="1080" y="168" width="175" height="58" rx="12"/>
             <text class="t1" x="1168" y="194" text-anchor="middle">Promote Finetuned</text>
             <text class="t2" x="1168" y="211" text-anchor="middle">model</text>
             <g class="badge"><circle cx="1098" cy="168" r="11"/><text x="1098" y="171.8" text-anchor="middle">8</text></g>
           </g>
-          <g class="grp" style="--i:16;--nc:var(--role-4)">
+          <g class="grp" data-step="9" style="--nc:var(--role-4)">
             <rect class="box" x="700" y="428" width="165" height="58" rx="12"/>
             <text class="t1" x="783" y="462" text-anchor="middle">Upload Documents</text>
             <g class="badge"><circle cx="718" cy="428" r="11"/><text x="718" y="431.8" text-anchor="middle">9</text></g>
           </g>
-          <g class="grp" style="--i:18;--nc:var(--role-4)">
+          <g class="grp" data-step="10" style="--nc:var(--role-4)">
             <rect class="box" x="895" y="428" width="205" height="58" rx="12"/>
             <text class="t1" x="998" y="454" text-anchor="middle">Perform NER Extraction</text>
             <text class="t2" x="998" y="471" text-anchor="middle">latest promoted model</text>
             <g class="badge"><circle cx="913" cy="428" r="11"/><text x="913" y="431.8" text-anchor="middle">10</text></g>
           </g>
-          <g class="grp" style="--i:20;--nc:var(--role-4)">
+          <g class="grp" data-step="11" style="--nc:var(--role-4)">
             <rect class="box" x="1120" y="428" width="170" height="58" rx="12"/>
             <text class="t1" x="1205" y="462" text-anchor="middle">Query Documents</text>
             <g class="badge"><circle cx="1138" cy="428" r="11"/><text x="1138" y="431.8" text-anchor="middle">11</text></g>
           </g>
 
           <!-- travelling pulses -->
-          <g class="spark">
-            <circle r="3.6" fill="#7a1220"><animateMotion dur="3.4s" repeatCount="indefinite" path="M320,67 H335 V197 H350"/></circle>
-            <circle r="3.6" fill="#ff6b4a"><animateMotion dur="3s"   repeatCount="indefinite" path="M570,226 V327 H590"/></circle>
-            <circle r="3.6" fill="#d62330"><animateMotion dur="2.6s" repeatCount="indefinite" path="M775,327 H820 V226"/></circle>
-            <circle r="3.6" fill="#2a2e37"><animateMotion dur="3.2s" repeatCount="indefinite" path="M1240,226 V406 H782 V428"/></circle>
-            <circle r="3.2" fill="#d62330"><animateMotion dur="2.8s" repeatCount="indefinite" path="M1160,226 V370 H992 V428"/></circle>
-          </g>
+          <g class="spark" data-step="2"><circle r="3.6" fill="#7a1220"><animateMotion dur="3.4s" repeatCount="indefinite" path="M320,67 H335 V197 H350"/></circle></g>
+          <g class="spark" data-step="4"><circle r="3.6" fill="#ff6b4a"><animateMotion dur="3s"   repeatCount="indefinite" path="M570,226 V327 H590"/></circle></g>
+          <g class="spark" data-step="5"><circle r="3.6" fill="#d62330"><animateMotion dur="2.6s" repeatCount="indefinite" path="M775,327 H820 V226"/></circle></g>
+          <g class="spark" data-step="9"><circle r="3.6" fill="#2a2e37"><animateMotion dur="3.2s" repeatCount="indefinite" path="M1240,226 V406 H782 V428"/></circle></g>
+          <g class="spark" data-step="9"><circle r="3.2" fill="#d62330"><animateMotion dur="2.8s" repeatCount="indefinite" path="M1160,226 V370 H992 V428"/></circle></g>
         </svg>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ============ 06 ARCHITECTURE ============ -->
+  <!-- ============ 07 ARCHITECTURE ============ -->
   <section class="slide" data-title="Architecture">
     <div class="fit" style="--fitw:1400px">
       <div class="eyebrow rv">Detailed Architecture</div>
@@ -611,19 +650,13 @@ h1 .red{color:var(--r600)}
       <div class="diagram-shell rv" data-d="2">
         <div class="diagram-bar">
           <span class="title">NER Platform — System Architecture</span>
-          <div class="legend">
-            <span><i></i> Request / process flow</span>
-            <span><i class="data"></i> Data read / write</span>
-            <span><i class="async"></i> Async tasks (Celery / Redis)</span>
-          </div>
           <button class="btn" data-replay>
-            <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg> Replay
+            <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg> Reset
           </button>
         </div>
         <div class="archwrap">
-        <div class="scanline"></div>
         <div class="scroll-x">
-        <svg id="arch" class="dgm anim" viewBox="0 0 1400 750" role="img" aria-label="NER platform system architecture diagram">
+        <svg id="arch" class="dgm anim" data-max-step="7" viewBox="0 0 1400 750" role="img" aria-label="NER platform system architecture diagram">
           <defs>
             <pattern id="dotbg2" width="20" height="20" patternUnits="userSpaceOnUse">
               <circle cx="1.2" cy="1.2" r="0.9" fill="#e6e9ef"/>
@@ -639,143 +672,137 @@ h1 .red{color:var(--r600)}
           <rect x="0" y="0" width="1400" height="750" fill="url(#dotbg2)" opacity=".55"/>
 
           <!-- ============ FRONTEND ============ -->
-          <g class="grp" style="--i:0;--gc:var(--graphite)">
+          <g class="grp" data-step="1" style="--gc:var(--graphite)">
             <rect class="gbox" x="550" y="4" width="300" height="58" rx="12"/>
             <text class="gcap" x="700" y="24" text-anchor="middle">FRONTEND</text>
             <text class="u1" x="700" y="42" text-anchor="middle" style="font-size:13.5px">Web / Admin Portal · Next.js + React</text>
           </g>
 
-          <path class="edge" style="--i:1" d="M700,62 V96" marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" data-step="2" d="M700,62 V96" marker-end="url(#ap)" pathLength="1"/>
 
           <!-- ============ API GATEWAY ============ -->
-          <g class="grp" style="--i:2;--gc:var(--r600)">
+          <g class="grp" data-step="2" style="--gc:var(--r600)">
             <rect class="gbox" x="470" y="96" width="460" height="58" rx="12"/>
             <text class="gcap" x="700" y="116" text-anchor="middle">API GATEWAY · SINGLE ENTRY POINT</text>
             <text class="u1" x="700" y="134" text-anchor="middle" style="font-size:13.5px">FastAPI · JWT Auth · Tenant Context</text>
           </g>
 
           <!-- ============ fan-out to the four pipelines ============ -->
-          <path class="edge" style="--i:3" d="M700,154 V172" pathLength="1"/>
-          <path class="edge" style="--i:4" d="M173,172 H1226" pathLength="1"/>
-          <path class="edge" style="--i:5" d="M173,172 V196"  marker-end="url(#ap)" pathLength="1"/>
-          <path class="edge" style="--i:5" d="M524,172 V196"  marker-end="url(#ap)" pathLength="1"/>
-          <path class="edge" style="--i:5" d="M875,172 V196"  marker-end="url(#ap)" pathLength="1"/>
-          <path class="edge" style="--i:5" d="M1226,172 V196" marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" data-step="3" d="M700,154 V172" pathLength="1"/>
+          <path class="edge" data-step="3" d="M173,172 H1226" pathLength="1"/>
+          <path class="edge" data-step="3" d="M173,172 V196"  marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" data-step="3" d="M524,172 V196"  marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" data-step="3" d="M875,172 V196"  marker-end="url(#ap)" pathLength="1"/>
+          <path class="edge" data-step="3" d="M1226,172 V196" marker-end="url(#ap)" pathLength="1"/>
 
-          <!-- ============ G1 · DOCUMENT PIPELINE ============ -->
-          <g class="grp" style="--i:6;--gc:var(--r800)">
+          <!-- ============ G1 · DOCUMENT PIPELINE (compressed — click header to expand) ============ -->
+          <g class="grp pipeline" data-step="3" data-pipe="doc" style="--gc:var(--r800)">
             <rect class="gbox" x="15" y="196" width="315" height="244" rx="13"/>
             <rect class="gtint" x="15" y="196" width="315" height="244" rx="13"/>
             <rect class="gtop" x="15" y="196" width="315" height="4" rx="2"/>
             <text class="gcap" x="30" y="222">DOCUMENT PIPELINE</text>
-            <rect class="unit" x="27" y="264" width="291" height="54" rx="9"/>
-            <text class="u1" x="172" y="286" text-anchor="middle">Document Processing</text>
-            <text class="u2" x="172" y="303" text-anchor="middle">FastAPI + OCR</text>
-            <rect class="unit" x="27" y="330" width="291" height="54" rx="9"/>
-            <text class="u1" x="172" y="352" text-anchor="middle">Annotation Service</text>
-            <text class="u2" x="172" y="369" text-anchor="middle">Pre-label · Review · BIO Export</text>
+            <text class="hint2" x="303" y="222" text-anchor="end">click to expand ›</text>
+            <g class="punits">
+              <rect class="unit" x="27" y="264" width="291" height="54" rx="9"/>
+              <text class="u1" x="172" y="286" text-anchor="middle">Document Processing</text>
+              <text class="u2" x="172" y="303" text-anchor="middle">OCR</text>
+              <rect class="unit" x="27" y="330" width="291" height="54" rx="9"/>
+              <text class="u1" x="172" y="352" text-anchor="middle">Annotation Service</text>
+              <text class="u2" x="172" y="369" text-anchor="middle">Label · BIO Export</text>
+            </g>
           </g>
 
-          <!-- ============ G2 · ML PIPELINE ============ -->
-          <g class="grp" style="--i:7;--gc:var(--r700)">
+          <!-- ============ G2 · ML PIPELINE (compressed — click header to expand) ============ -->
+          <g class="grp pipeline" data-step="3" data-pipe="ml" style="--gc:var(--r700)">
             <rect class="gbox" x="366" y="196" width="315" height="244" rx="13"/>
             <rect class="gtint" x="366" y="196" width="315" height="244" rx="13"/>
             <rect class="gtop" x="366" y="196" width="315" height="4" rx="2"/>
             <text class="gcap" x="381" y="222">ML PIPELINE</text>
-            <rect class="unit" x="378" y="230" width="291" height="54" rx="9"/>
-            <text class="u1" x="524" y="252" text-anchor="middle">Training Orchestrator</text>
-            <text class="u2" x="524" y="269" text-anchor="middle">PyTorch fine-tuning, ONNX export</text>
-            <rect class="unit" x="378" y="296" width="291" height="54" rx="9"/>
-            <text class="u1" x="524" y="318" text-anchor="middle">MLflow Registry</text>
-            <text class="u2" x="524" y="335" text-anchor="middle">Version · Promote · Rollback</text>
-            <rect class="unit" x="378" y="362" width="291" height="54" rx="9"/>
-            <text class="u1" x="524" y="384" text-anchor="middle">Model Serving</text>
-            <text class="u2" x="524" y="401" text-anchor="middle">ONNX Runtime</text>
+            <text class="hint2" x="654" y="222" text-anchor="end">click to expand ›</text>
+            <g class="punits">
+              <rect class="unit" x="378" y="230" width="291" height="54" rx="9"/>
+              <text class="u1" x="524" y="252" text-anchor="middle">Training Orchestrator</text>
+              <text class="u2" x="524" y="269" text-anchor="middle">PyTorch fine-tuning</text>
+              <rect class="unit" x="378" y="296" width="291" height="54" rx="9"/>
+              <text class="u1" x="524" y="318" text-anchor="middle">MLflow Registry</text>
+              <text class="u2" x="524" y="335" text-anchor="middle">Version · Promote · Rollback</text>
+              <rect class="unit" x="378" y="362" width="291" height="54" rx="9"/>
+              <text class="u1" x="524" y="393" text-anchor="middle">Model Serving</text>
+              <path class="edge" d="M524,284 V296" marker-end="url(#ap)" pathLength="1"/>
+              <path class="edge" d="M524,350 V362" marker-end="url(#ap)" pathLength="1"/>
+            </g>
           </g>
 
-          <!-- ============ G3 · EXTRACTION & ANALYTICS ============ -->
-          <g class="grp" style="--i:8;--gc:var(--r600)">
+          <!-- ============ G3 · EXTRACTION & ANALYTICS (compressed — click header to expand) ============ -->
+          <g class="grp pipeline" data-step="3" data-pipe="extract" style="--gc:var(--r600)">
             <rect class="gbox" x="717" y="196" width="315" height="244" rx="13"/>
             <rect class="gtint" x="717" y="196" width="315" height="244" rx="13"/>
             <rect class="gtop" x="717" y="196" width="315" height="4" rx="2"/>
             <text class="gcap" x="732" y="222">EXTRACTION &amp; ANALYTICS</text>
-            <rect class="unit" x="729" y="264" width="291" height="54" rx="9"/>
-            <text class="u1" x="874" y="286" text-anchor="middle">Extraction Service</text>
-            <text class="u2" x="874" y="303" text-anchor="middle">NER + Confidence Filter</text>
-            <rect class="unit" x="729" y="330" width="291" height="54" rx="9"/>
-            <text class="u1" x="874" y="352" text-anchor="middle">Analytics Service</text>
-            <text class="u2" x="874" y="369" text-anchor="middle">Materialized Views from PostgreSQL</text>
+            <text class="hint2" x="1005" y="222" text-anchor="end">click to expand ›</text>
+            <g class="punits">
+              <rect class="unit" x="729" y="306" width="291" height="54" rx="9"/>
+              <text class="u1" x="874" y="328" text-anchor="middle">Extraction Service</text>
+              <text class="u2" x="874" y="345" text-anchor="middle">Perform NER</text>
+            </g>
           </g>
 
-          <!-- ============ G4 · ANALYTICS & CHATBOT ============ -->
-          <g class="grp" style="--i:9;--gc:var(--graphite)">
+          <!-- ============ G4 · ANALYTICS & CHATBOT (compressed — click header to expand) ============ -->
+          <g class="grp pipeline" data-step="3" data-pipe="chat" style="--gc:var(--graphite)">
             <rect class="gbox" x="1068" y="196" width="315" height="244" rx="13"/>
             <rect class="gtint" x="1068" y="196" width="315" height="244" rx="13"/>
             <rect class="gtop" x="1068" y="196" width="315" height="4" rx="2"/>
             <text class="gcap" x="1083" y="222">ANALYTICS &amp; CHATBOT</text>
-            <rect class="unit" x="1080" y="230" width="291" height="54" rx="9"/>
-            <text class="u1" x="1226" y="261" text-anchor="middle">Intent Orchestrator</text>
-            <rect class="unit" x="1080" y="296" width="125" height="54" rx="9"/>
-            <text class="u1" x="1142" y="317" text-anchor="middle" style="font-size:11.6px">LLM · NL → SQL</text>
-            <text class="u2" x="1142" y="332" text-anchor="middle" style="font-size:10px">queries postgresql</text>
-            <text class="orlbl" x="1226" y="326" text-anchor="middle">or</text>
-            <rect class="unit" x="1246" y="296" width="125" height="54" rx="9"/>
-            <text class="u1" x="1308" y="317" text-anchor="middle" style="font-size:11.6px">Vector Search</text>
-            <text class="u2" x="1308" y="332" text-anchor="middle" style="font-size:10px">queries vector db</text>
-            <rect class="unit" x="1080" y="362" width="291" height="54" rx="9"/>
-            <text class="u1" x="1226" y="393" text-anchor="middle">Response Generator</text>
+            <text class="hint2" x="1356" y="222" text-anchor="end">click to expand ›</text>
+            <g class="punits">
+              <rect class="unit" x="1080" y="230" width="291" height="54" rx="9"/>
+              <text class="u1" x="1226" y="261" text-anchor="middle">Intent Orchestrator</text>
+              <rect class="unit" x="1080" y="296" width="125" height="54" rx="9"/>
+              <text class="u1" x="1142" y="317" text-anchor="middle" style="font-size:11.6px">LLM · NL → SQL</text>
+              <text class="u2" x="1142" y="332" text-anchor="middle" style="font-size:10px">queries postgresql</text>
+              <text class="orlbl" x="1226" y="326" text-anchor="middle">or</text>
+              <rect class="unit" x="1246" y="296" width="125" height="54" rx="9"/>
+              <text class="u1" x="1308" y="317" text-anchor="middle" style="font-size:11.6px">Vector Search</text>
+              <text class="u2" x="1308" y="332" text-anchor="middle" style="font-size:10px">queries vector db</text>
+              <rect class="unit" x="1080" y="362" width="291" height="54" rx="9"/>
+              <text class="u1" x="1226" y="393" text-anchor="middle">Response Generator</text>
+              <path class="edge" d="M1160,284 V290 H1142 V296" marker-end="url(#ap)" pathLength="1"/>
+              <path class="edge" d="M1292,284 V290 H1308 V296" marker-end="url(#ap)" pathLength="1"/>
+              <path class="edge" d="M1142,350 V356 H1184 V362" marker-end="url(#ap)" pathLength="1"/>
+              <path class="edge" d="M1308,350 V356 H1268 V362" marker-end="url(#ap)" pathLength="1"/>
+            </g>
           </g>
 
-          <!-- ============ internal chains ============ -->
-          <path class="edge" style="--i:10" d="M524,284 V296" marker-end="url(#ap)" pathLength="1"/>
-          <path class="edge" style="--i:10" d="M524,350 V362" marker-end="url(#ap)" pathLength="1"/>
-          <path class="edge" style="--i:10" d="M1160,284 V290 H1142 V296" marker-end="url(#ap)" pathLength="1"/>
-          <path class="edge" style="--i:10" d="M1292,284 V290 H1308 V296" marker-end="url(#ap)" pathLength="1"/>
-          <path class="edge" style="--i:10" d="M1142,350 V356 H1184 V362" marker-end="url(#ap)" pathLength="1"/>
-          <path class="edge" style="--i:10" d="M1308,350 V356 H1268 V362" marker-end="url(#ap)" pathLength="1"/>
-
           <!-- ============ cross-pipeline flow (wide 36px gutters) ============ -->
-          <path class="edge" style="--i:11" d="M318,357 H348 V257 H378" marker-end="url(#ap)" pathLength="1"/>
-          <text class="elabel halo" style="--i:11" x="348" y="307" text-anchor="middle"
-                transform="rotate(-90 348 307)">GET /annotation-export</text>
+          <path class="edge" data-step="4" d="M318,357 H348 V257 H378" marker-end="url(#ap)" pathLength="1"/>
+          <text class="elabel halo" data-step="4" x="348" y="307" text-anchor="middle"
+                transform="rotate(-90 348 307)">annotation-export</text>
 
-          <path class="edge" style="--i:12" d="M669,389 H699 V291 H729" marker-end="url(#ap)" pathLength="1"/>
-          <text class="elabel halo" style="--i:12" x="699" y="340" text-anchor="middle"
+          <path class="edge" data-step="4" d="M669,389 H699 V333 H729" marker-end="url(#ap)" pathLength="1"/>
+          <text class="elabel halo" data-step="4" x="699" y="360" text-anchor="middle"
                 transform="rotate(-90 699 340)">inference</text>
 
           <!-- ============ ROUTING CHANNEL · pipelines (440) → data row (580), 140px, lettered lanes ============ -->
 
           <!-- async · celery, dashed coral -->
-          <path class="edge async" style="--i:13" stroke-dasharray="6 4" d="M100,580 V440" marker-end="url(#aa)" pathLength="1"/>
-          <text class="elabel halo" style="--i:13" x="70" y="512" text-anchor="middle" transform="rotate(-90 70 512)">task queue</text>
-
-          <path class="edge async" style="--i:14" stroke-dasharray="6 4" d="M195,580 V452 H480 V440" marker-end="url(#aa)" pathLength="1"/>
-          <text class="elabel halo" style="--i:14" x="338" y="448" text-anchor="middle">model training</text>
-
-          <path class="edge async" style="--i:14" stroke-dasharray="6 4" d="M255,580 V480 H845 V440" marker-end="url(#aa)" pathLength="1"/>
-          <text class="elabel halo" style="--i:14" x="560" y="476" text-anchor="middle">batch extraction only</text>
+          <path class="edge async" data-step="7" stroke-dasharray="6 4" d="M150,580 V456 H524 V440" marker-end="url(#aa)" pathLength="1"/>
+          <text class="elabel halo" data-step="7" x="337" y="452" text-anchor="middle">model training</text>
 
           <!-- data read / write, thin grey -->
-          <path class="edge thin" style="--i:15" d="M172,440 V466 H420 V580" marker-end="url(#ad)" pathLength="1"/>
-          <text class="elabel halo" style="--i:15" x="296" y="462" text-anchor="middle">store documents</text>
+          <path class="edge thin" data-step="7" d="M450,580 V496 H600 V440" marker-end="url(#ad)" pathLength="1"/>
+          <text class="elabel halo" data-step="7" x="525" y="492" text-anchor="middle">retrieve finetuned model</text>
 
-          <path class="edge thin" style="--i:15" d="M450,580 V508 H600 V440" marker-end="url(#ad)" pathLength="1"/>
-          <text class="elabel halo" style="--i:15" x="525" y="504" text-anchor="middle">retrieve finetuned model</text>
+          <path class="edge thin" data-step="7" d="M740,580 V568 H150 V440" marker-end="url(#ad)" pathLength="1"/>
+          <text class="elabel halo" data-step="7" x="445" y="564" text-anchor="middle">retrieve annotation metadata</text>
 
-          <path class="edge thin" style="--i:15" d="M740,580 V536 H150 V440" marker-end="url(#ad)" pathLength="1"/>
-          <text class="elabel halo" style="--i:15" x="445" y="532" text-anchor="middle">retrieve annotation metadata</text>
+          <path class="edge thin" data-step="7" d="M845,440 V580" marker-end="url(#ad)" pathLength="1"/>
+          <text class="elabel halo" data-step="7" x="833" y="462" text-anchor="end">store</text>
 
-          <path class="edge thin" style="--i:15" d="M845,440 V580" marker-end="url(#ad)" pathLength="1"/>
-          <text class="elabel halo" style="--i:15" x="833" y="462" text-anchor="end">store</text>
-
-          <path class="edge thin" style="--i:15" d="M915,580 V440" marker-end="url(#ad)" pathLength="1"/>
-          <text class="elabel halo" style="--i:15" x="927" y="462">retrieve</text>
-
-          <path class="edge thin" style="--i:15" d="M1246,440 V580" marker-end="url(#ad)" pathLength="1"/>
-          <text class="elabel halo" style="--i:15" x="1258" y="462">store document embeddings</text>
+          <path class="edge thin" data-step="7" d="M1010,440 V480 H1246 V580" marker-end="url(#ad)" pathLength="1"/>
+          <text class="elabel halo" data-step="7" x="1128" y="476" text-anchor="middle">store document embeddings</text>
 
           <!-- ============ DATA LAYER ============ -->
-          <g class="grp" style="--i:16;--gc:var(--graphite)">
+          <g class="grp" data-step="5" style="--gc:var(--graphite)">
             <rect class="gbox" x="330" y="580" width="1055" height="110" rx="13"/>
             <rect class="gtint" x="330" y="580" width="1055" height="110" rx="13"/>
             <rect class="gtop" x="330" y="580" width="1055" height="4" rx="2"/>
@@ -804,7 +831,7 @@ h1 .red{color:var(--r600)}
           </g>
 
           <!-- ============ ASYNC TASKS ============ -->
-          <g class="grp" style="--i:17;--gc:var(--r400)">
+          <g class="grp" data-step="6" style="--gc:var(--r400)">
             <rect class="gbox" x="15" y="580" width="300" height="110" rx="13"/>
             <rect class="gtint" x="15" y="580" width="300" height="110" rx="13"/>
             <rect class="gtop" x="15" y="580" width="300" height="4" rx="2"/>
@@ -817,13 +844,10 @@ h1 .red{color:var(--r600)}
           </g>
 
           <!-- ============ travelling pulses ============ -->
-          <g class="spark">
-            <circle r="3.4" fill="#d62330"><animateMotion dur="2.4s" repeatCount="indefinite" path="M700,62 V96"/></circle>
-            <circle r="3.4" fill="#a81726"><animateMotion dur="3s"   repeatCount="indefinite" path="M318,357 H348 V257 H378"/></circle>
-            <circle r="3.4" fill="#d62330"><animateMotion dur="3s"   repeatCount="indefinite" path="M669,389 H699 V291 H729"/></circle>
-            <circle r="3.2" fill="#ff6b4a"><animateMotion dur="3.4s" repeatCount="indefinite" path="M195,580 V452 H480 V440"/></circle>
-            <circle r="3.2" fill="#ff6b4a"><animateMotion dur="4s"   repeatCount="indefinite" path="M255,580 V480 H845 V440"/></circle>
-          </g>
+          <g class="spark" data-step="2"><circle r="3.4" fill="#d62330"><animateMotion dur="2.4s" repeatCount="indefinite" path="M700,62 V96"/></circle></g>
+          <g class="spark" data-step="4"><circle r="3.4" fill="#a81726"><animateMotion dur="3s"   repeatCount="indefinite" path="M318,357 H348 V257 H378"/></circle></g>
+          <g class="spark" data-step="4"><circle r="3.4" fill="#d62330"><animateMotion dur="3s"   repeatCount="indefinite" path="M669,389 H699 V333 H729"/></circle></g>
+          <g class="spark" data-step="7"><circle r="3.2" fill="#ff6b4a"><animateMotion dur="3.4s" repeatCount="indefinite" path="M150,580 V456 H524 V440"/></circle></g>
         </svg>
         </div>
         </div>
@@ -831,7 +855,7 @@ h1 .red{color:var(--r600)}
     </div>
   </section>
 
-  <!-- ============ 07 ROLES ============ -->
+  <!-- ============ 08 ROLES ============ -->
   <section class="slide" data-title="Platform Roles">
     <div class="fit" style="--fitw:1120px">
       <div class="eyebrow rv">Platform Roles</div>
@@ -862,42 +886,15 @@ h1 .red{color:var(--r600)}
     </div>
   </section>
 
-  <!-- ============ 08 IN PRACTICE ============ -->
-  <section class="slide" data-title="In Practice: Inapp">
-    <div class="fit" style="--fitw:1120px">
-      <div class="eyebrow rv">Example · One Organization</div>
-      <h2 class="rv" data-d="1">In Practice: Inapp</h2>
-      <p class="lede rv" data-d="2">How Inapp's HR team turns resumes into structured candidate data.</p>
-      <div class="steps rv" data-d="2">
-        <div class="step" style="--c:var(--role-1);--i:0">
-          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
-          <div class="cap">System Admin</div>
-          <h3>Approves Inapp's request</h3>
-          <p>Reviews Inapp's request to fine-tune a resume-screening model.</p>
-        </div>
-        <div class="step" style="--c:var(--role-2);--i:1">
-          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
-          <div class="cap">Tenant Admin</div>
-          <h3>Defines resume fields</h3>
-          <p>Sets up candidate name, employer, degree, and skills as entity types.</p>
-        </div>
-        <div class="step" style="--c:var(--role-3);--i:2">
-          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
-          <div class="cap">Annotator</div>
-          <h3>Labels sample resumes</h3>
-          <p>Marks the spans across past resumes that train the model.</p>
-        </div>
-        <div class="step" style="--c:var(--role-4);--i:3">
-          <div class="rail"><span class="fill"></span><span class="marker"></span></div>
-          <div class="cap">Business User · HR</div>
-          <h3>Screens new candidates</h3>
-          <p>Uploads incoming resumes, extracts fields instantly, and asks the assistant which candidates fit the role.</p>
-        </div>
-      </div>
+  <!-- ============ 09 DEMO ============ -->
+  <section class="slide" data-title="Demo">
+    <div class="fit closing-inner" style="--fitw:840px">
+      <h2 class="rv">Live <span class="red">Demo</span></h2>
+      <p class="rv" data-d="1">Switching over to the live platform.</p>
     </div>
   </section>
 
-  <!-- ============ 09 THANK YOU ============ -->
+  <!-- ============ 10 THANK YOU ============ -->
   <section class="slide" data-title="Thank you">
     <div class="fit closing-inner" style="--fitw:840px">
       <h2 class="rv">Thank <span class="red">you!</span></h2>
@@ -1021,16 +1018,51 @@ slides.forEach((s, i) => {
 });
 const dotBtns = [...dotsBox.children];
 
-/* replay any animated diagram (swimlane, architecture) */
-function playSvg(svg){
+/* ===========================================================
+   Click-to-reveal diagram staging (swimlane, architecture)
+   =========================================================== */
+function applyStep(svg){
+  const step = +svg.dataset.step || 0;
+  svg.querySelectorAll('[data-step]').forEach(el => {
+    el.classList.toggle('shown', +el.dataset.step <= step);
+  });
+  const shell = svg.closest('.diagram-shell');
+  const max = +svg.dataset.maxStep || 0;
+  const hint = shell && shell.querySelector('[data-hint]');
+  if (shell) shell.classList.toggle('done', step >= max);
+  if (hint){
+    hint.textContent = step >= max
+      ? 'All stages revealed · Reset to replay'
+      : (step === 0 ? 'Click the diagram to reveal stage 1 of ' + max : 'Click to reveal stage ' + (step + 1) + ' of ' + max);
+  }
+}
+function resetSvg(svg){
   if (!svg) return;
-  svg.classList.remove('play');
-  void svg.getBoundingClientRect();
-  svg.classList.add('play');
+  svg.dataset.step = 0;
+  svg.querySelectorAll('.pipeline').forEach(g => g.classList.remove('expanded'));
+  applyStep(svg);
 }
-function playSlideDiagrams(slide){
-  slide.querySelectorAll('svg.anim').forEach(playSvg);
+function advanceSvg(svg){
+  const max = +svg.dataset.maxStep || 0;
+  const step = Math.min(max, (+svg.dataset.step || 0) + 1);
+  svg.dataset.step = step;
+  applyStep(svg);
 }
+document.querySelectorAll('svg.anim').forEach(svg => {
+  resetSvg(svg);
+  svg.addEventListener('click', e => {
+    const pipe = e.target.closest('.pipeline');
+    if (pipe){
+      e.stopPropagation();
+      pipe.classList.toggle('expanded');
+      return;
+    }
+    advanceSvg(svg);
+  });
+});
+document.querySelectorAll('[data-replay]').forEach(b => b.addEventListener('click', () => {
+  resetSvg(b.closest('.diagram-shell').querySelector('svg.anim'));
+}));
 
 function activate(i){
   if (i === index && slides[i].classList.contains('active')) return;
@@ -1041,7 +1073,6 @@ function activate(i){
   document.getElementById('progress').style.width = (i / (slides.length - 1) * 100) + '%';
   prevBtn.disabled = i === 0;
   nextBtn.disabled = i === slides.length - 1;
-  playSlideDiagrams(slides[i]);
 }
 
 function goto(i){
@@ -1060,9 +1091,6 @@ deck.addEventListener('scroll', () => {
 prevBtn.addEventListener('click', () => goto(index - 1));
 nextBtn.addEventListener('click', () => goto(index + 1));
 document.querySelectorAll('#toc button').forEach(b => b.addEventListener('click', () => goto(+b.dataset.i)));
-document.querySelectorAll('[data-replay]').forEach(b => b.addEventListener('click', () => {
-  playSvg(b.closest('.diagram-shell').querySelector('svg.anim'));
-}));
 
 /* wheel → horizontal, one slide per gesture */
 deck.addEventListener('wheel', e => {

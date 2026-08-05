@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from "react";
 import { authFetch } from "@/lib/auth-fetch";
 import { GATEWAY_URL } from "@/lib/api";
+import { FilterSelect } from "@/components/ui/filter-select";
 
 interface User {
   id: string;
@@ -182,18 +183,12 @@ export default function UsersPage() {
       )}
 
       <div className="mb-4 flex items-center gap-3">
-        <label className="text-sm" style={{ color: "var(--ink-2)" }}>Filter by role:</label>
-        <select
+        <FilterSelect
           value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="rounded-md px-3 py-1.5 text-sm"
-          style={{ border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
-        >
-          <option value="">All roles</option>
-          {ROLES.map((r) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
+          onChange={setRoleFilter}
+          options={[{ value: "", label: "All roles" }, ...ROLES.map((r) => ({ value: r, label: r }))]}
+          ariaLabel="Filter by role"
+        />
       </div>
 
       {loading ? (

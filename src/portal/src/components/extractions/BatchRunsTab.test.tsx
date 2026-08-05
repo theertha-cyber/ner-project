@@ -18,6 +18,11 @@ vi.mock("@/hooks/use-model-versions", () => ({
   useModelVersions: () => mockUseModelVersions(),
 }));
 
+const mockUseEligibleDocuments = vi.fn();
+vi.mock("@/hooks/use-eligible-documents", () => ({
+  useEligibleDocuments: (...args: unknown[]) => mockUseEligibleDocuments(...args),
+}));
+
 const RUN_A: BatchRun = {
   run_id: "run-aaa-111",
   status: "completed",
@@ -45,6 +50,10 @@ describe("BatchRunsTab", () => {
     mockAuthFetch.mockReset();
     mockUseBatchRuns.mockReturnValue({ runs: [RUN_A, RUN_B], triggerBatch: vi.fn() });
     mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 2 } });
+    mockUseEligibleDocuments.mockReturnValue({
+      documents: [{ id: "doc-1", filename: "doc-1.pdf", already_extracted: false }],
+      isLoading: false,
+    });
   });
 
   it("Test 7: run cards render with ID, status, progress bar, and footer", () => {
@@ -80,9 +89,11 @@ describe("BatchRunsTab", () => {
     render(<BatchRunsTab />);
 
     fireEvent.click(screen.getByText(/new batch run/i));
+    fireEvent.click(screen.getByLabelText("doc-1.pdf"));
+    fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
 
     await waitFor(() => {
-      expect(triggerBatch).toHaveBeenCalled();
+      expect(triggerBatch).toHaveBeenCalledWith(["doc-1"]);
     });
   });
 
@@ -150,7 +161,7 @@ describe("BatchRunsTab", () => {
     expect(triggerBatch).not.toHaveBeenCalled();
   });
 
-  it("confirming the dialog proceeds with the batch run", async () => {
+  it("confirming the dialog proceeds to the document-selection modal", async () => {
     mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 0 } });
     const newRun: BatchRun = { run_id: "run-new-999", status: "queued" };
     const triggerBatch = vi.fn().mockResolvedValue(newRun);
@@ -160,6 +171,9 @@ describe("BatchRunsTab", () => {
     fireEvent.click(screen.getByText(/new batch run/i));
     fireEvent.click(screen.getByRole("button", { name: /use base model/i }));
 
-    await waitFor(() => expect(triggerBatch).toHaveBeenCalled());
+    fireEvent.click(screen.getByLabelText("doc-1.pdf"));
+    fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
+
+    await waitFor(() => expect(triggerBatch).toHaveBeenCalledWith(["doc-1"]));
   });
 });

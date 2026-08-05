@@ -65,6 +65,7 @@ async def upload_document(
         )
 
     tenant_id = get_tenant_id(request)
+    uploaded_by = getattr(request.state, "user_id", None)
     doc_id = generate_uuid()
     ext = get_extension(file.filename or "").lstrip(".")
     blob_path = f"tenants/{tenant_id}/documents/{doc_id}.{ext}"
@@ -74,8 +75,8 @@ async def upload_document(
 
     await session.execute(
         text(f"""
-            INSERT INTO {_schema(tenant_id)}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose)
-            VALUES (:id, :tid, :filename, :content_type, :file_size, 'pending', :blob_path, :purpose)
+            INSERT INTO {_schema(tenant_id)}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose, uploaded_by)
+            VALUES (:id, :tid, :filename, :content_type, :file_size, 'pending', :blob_path, :purpose, :uploaded_by)
         """),
         {
             "id": doc_id,
@@ -85,6 +86,7 @@ async def upload_document(
             "file_size": len(file_data),
             "blob_path": blob_path,
             "purpose": purpose,
+            "uploaded_by": uploaded_by,
         },
     )
     await session.commit()
@@ -104,14 +106,21 @@ async def upload_document(
 async def list_documents(
     status_filter: str | None = Query(None, alias="status"),
     purpose: str | None = Query(None),
+    search: str | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
     tenant_id = get_tenant_id(request)
+    role = getattr(request.state, "role", None)
+    user_id = getattr(request.state, "user_id", None)
     conditions = ["tenant_id = :tid"]
     params = {"tid": tenant_id}
+
+    if role != "tenant_admin":
+        conditions.append("uploaded_by = :uploaded_by")
+        params["uploaded_by"] = user_id
 
     if status_filter:
         conditions.append("status = :status")
@@ -120,6 +129,10 @@ async def list_documents(
     if purpose:
         conditions.append("purpose = :purpose")
         params["purpose"] = purpose
+
+    if search:
+        conditions.append("filename ILIKE :search")
+        params["search"] = f"%{search}%"
 
     where = " AND ".join(conditions)
     offset = (page - 1) * per_page

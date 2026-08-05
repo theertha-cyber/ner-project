@@ -1,5 +1,15 @@
-import { ModelRegistryPage } from "@/components/model-registry/ModelRegistryPage";
+"use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+// Model registry merged into the Models & Training section.
 export default function ModelsPage() {
-  return <ModelRegistryPage />;
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/training-jobs");
+  }, [router]);
+
+  return null;
 }

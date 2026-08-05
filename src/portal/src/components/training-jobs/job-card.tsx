@@ -7,9 +7,9 @@ export interface JobCardProps {
   onClick: () => void;
 }
 
-function formatHyperparams(job: TrainingJob): string | null {
+function formatHyperparams(job: TrainingJob): string {
   const hp = job.hyperparams;
-  if (!hp) return null;
+  if (!hp) return "awaiting hyperparameters";
   return `lr ${hp.learning_rate} · ${hp.num_epochs}ep · bs ${hp.batch_size}`;
 }
 
@@ -43,11 +43,9 @@ export function JobCard({ job, isSelected, onClick }: JobCardProps) {
         <Badge variant={job.status} />
       </div>
       <div className="flex items-center justify-between">
-        {hyperparamLine && (
-          <p className="font-mono text-xs" style={{ color: "var(--ink-3)" }}>
-            {hyperparamLine}
-          </p>
-        )}
+        <p className="font-mono text-xs" style={{ color: "var(--ink-3)" }}>
+          {hyperparamLine}
+        </p>
         <p className="font-mono text-xs" style={{ color: "var(--ink-2)" }}>
           F1 {formatF1(job)}
         </p>

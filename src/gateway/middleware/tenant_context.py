@@ -7,6 +7,7 @@ from src.shared.auth import decode_token
 from src.shared.exceptions import TenantNotFoundError, TenantInactiveError, TenantMismatchError, AuthError
 
 TENANT_URL_PATTERN = re.compile(r"^/api/v1/tenants/([^/]+)")
+WIDGET_PATHS = {"/api/v1/public/widget.js", "/api/v1/public/chat"}
 
 
 class TenantContextMiddleware(BaseHTTPMiddleware):
@@ -18,8 +19,8 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
 
         path = request.url.path
 
-        exempt_paths = {"/health", "/api/v1/auth/login", "/api/v1/auth/refresh", "/docs", "/redoc", "/openapi.json"}
-        if path in exempt_paths:
+        exempt_paths = {"/health", "/health/live", "/api/v1/auth/login", "/api/v1/auth/refresh", "/docs", "/redoc", "/openapi.json"}
+        if path in exempt_paths or path in WIDGET_PATHS or request.method == "OPTIONS":
             response = await call_next(request)
             response.headers["X-Request-ID"] = request_id
             return response

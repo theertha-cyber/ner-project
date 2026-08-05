@@ -4,6 +4,10 @@ from datetime import datetime
 
 
 class TrainingJobCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
+
+class ApproveJobRequest(BaseModel):
     learning_rate: float = Field(..., gt=0, description="Learning rate for fine-tuning")
     num_epochs: int = Field(..., ge=1, le=50, description="Number of training epochs")
     batch_size: int = Field(..., ge=1, description="Training batch size")

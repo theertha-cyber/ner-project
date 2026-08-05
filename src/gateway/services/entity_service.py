@@ -2,7 +2,16 @@ import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from src.gateway.models import generate_uuid, validate_base_label_mapping
+from src.extraction_service.services.semantic_normalizer import SUPPORTED_KINDS
 from src.shared.exceptions import ValidationError, NotFoundError
+
+
+def _validate_value_kind(value_kind) -> str | None:
+    if value_kind is None:
+        return None
+    if value_kind not in SUPPORTED_KINDS:
+        return f"value_kind must be one of {sorted(SUPPORTED_KINDS)}, got '{value_kind}'"
+    return None
 
 
 class EntityService:
@@ -15,14 +24,18 @@ class EntityService:
         if validation_error:
             raise ValidationError(validation_error)
 
+        value_kind_error = _validate_value_kind(payload.get("value_kind"))
+        if value_kind_error:
+            raise ValidationError(value_kind_error)
+
         entity_id = generate_uuid()
         await self.db.execute(
             text("""
                 INSERT INTO public.entity_definitions
                     (id, tenant_id, name, description, examples, validation_rule,
-                     target_table, base_label_mapping, required_flag, version)
+                     target_table, base_label_mapping, value_kind, value_unit, required_flag, is_active, version)
                 VALUES (:id, :tid, :name, :desc, :examples, :rule,
-                        :target, :mapping, :required, 1)
+                        :target, :mapping, :value_kind, :value_unit, :required, :active, 1)
             """),
             {
                 "id": entity_id,
@@ -33,6 +46,9 @@ class EntityService:
                 "rule": payload.get("validation_rule"),
                 "target": payload.get("target_table"),
                 "mapping": json.dumps(mapping) if isinstance(mapping, dict) else mapping,
+                "value_kind": payload.get("value_kind"),
+                "value_unit": payload.get("value_unit"),
+                "active": payload.get("is_active", True),
                 "required": payload.get("required_flag", False),
             },
         )
@@ -51,7 +67,7 @@ class EntityService:
         result = await self.db.execute(
             text(f"""
                 SELECT id, name, description, examples, validation_rule, target_table,
-                       base_label_mapping, version, required_flag, is_active, created_at, updated_at
+                       base_label_mapping, value_kind, value_unit, version, required_flag, is_active, created_at, updated_at
                 FROM public.entity_definitions WHERE {where}
                 ORDER BY created_at DESC
             """),
@@ -78,9 +94,14 @@ class EntityService:
             if validation_error:
                 raise ValidationError(validation_error)
 
+        if "value_kind" in payload:
+            value_kind_error = _validate_value_kind(payload.get("value_kind"))
+            if value_kind_error:
+                raise ValidationError(value_kind_error)
+
         allowed_fields = {
             "description", "examples", "validation_rule", "target_table",
-            "base_label_mapping", "required_flag",
+            "base_label_mapping", "required_flag", "value_kind", "value_unit",
         }
         updates = {k: v for k, v in payload.items() if k in allowed_fields}
 
@@ -130,7 +151,7 @@ class EntityService:
         result = await self.db.execute(
             text("""
                 SELECT id, name, description, examples, validation_rule, target_table,
-                       base_label_mapping, version, required_flag, is_active, created_at, updated_at
+                       base_label_mapping, value_kind, value_unit, version, required_flag, is_active, created_at, updated_at
                 FROM public.entity_definitions
                 WHERE name = :name AND tenant_id = :tid
             """),
@@ -150,6 +171,8 @@ class EntityService:
             "validation_rule": r.validation_rule,
             "target_table": r.target_table,
             "base_label_mapping": json.loads(r.base_label_mapping) if isinstance(r.base_label_mapping, str) else (r.base_label_mapping or {}),
+            "value_kind": r.value_kind or "text",
+            "value_unit": r.value_unit,
             "version": r.version,
             "required_flag": r.required_flag,
             "is_active": r.is_active,

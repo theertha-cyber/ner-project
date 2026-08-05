@@ -95,4 +95,12 @@ describe("JobCard", () => {
     render(<JobCard job={job} isSelected={false} onClick={vi.fn()} />);
     expect(screen.getByText("tj_1a2b")).toBeDefined();
   });
+
+  it("shows a placeholder instead of undefined/null when hyperparams is null", () => {
+    const job: TrainingJob = { ...baseJob, id: "tj_new1", status: "pending_approval", hyperparams: null };
+    render(<JobCard job={job} isSelected={false} onClick={vi.fn()} />);
+    expect(screen.getByText("awaiting hyperparameters")).toBeDefined();
+    expect(screen.queryByText(/undefined/i)).toBeNull();
+    expect(screen.queryByText(/^null$/i)).toBeNull();
+  });
 });

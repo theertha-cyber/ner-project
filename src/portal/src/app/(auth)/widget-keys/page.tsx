@@ -84,8 +84,6 @@ export default function WidgetKeysPage() {
     }
   }
 
-  const slug = user?.tenantSlug ?? "{slug}";
-
   return (
     <div
       className="animate-fade-up"
@@ -93,16 +91,6 @@ export default function WidgetKeysPage() {
     >
       {/* Page header */}
       <div style={{ marginBottom: 24 }}>
-        <div
-          style={{
-            fontFamily: "var(--font-mono, monospace)",
-            fontSize: 11,
-            color: "var(--ink-3)",
-            marginBottom: 6,
-          }}
-        >
-          /api/v1/tenants/{slug}/widget-keys · port 8006
-        </div>
         <h1
           style={{
             fontFamily: "var(--font-display, sans-serif)",
@@ -169,7 +157,7 @@ export default function WidgetKeysPage() {
               marginBottom: 8,
             }}
           >
-            Key created — copy it now, it won't be shown again.
+            Key created — copy it now, it won&apos;t be shown again.
           </div>
           <div
             style={{

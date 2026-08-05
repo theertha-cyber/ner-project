@@ -11,7 +11,7 @@ def _schema(tenant_id: str) -> str:
 class TrainingJobRepository:
 
     @staticmethod
-    async def create(session: AsyncSession, tenant_id: str, job_id: str, hyperparams: dict, celery_task_id: str | None = None) -> dict:
+    async def create(session: AsyncSession, tenant_id: str, job_id: str, hyperparams: dict | None, celery_task_id: str | None = None) -> dict:
         schema = _schema(tenant_id)
         now = datetime.now(timezone.utc)
         # Serialize run_number assignment per tenant so concurrent submissions can't collide.
@@ -80,6 +80,19 @@ class TrainingJobRepository:
         await session.execute(
             text(f"UPDATE {schema}.training_jobs SET {set_sql} WHERE id = :id AND tenant_id = :tenant_id"),
             field_map,
+        )
+        await session.commit()
+
+    @staticmethod
+    async def approve(session: AsyncSession, tenant_id: str, job_id: str, hyperparams: dict, celery_task_id: str) -> None:
+        schema = _schema(tenant_id)
+        await session.execute(
+            text(f"""
+                UPDATE {schema}.training_jobs
+                SET status = 'queued', hyperparams = CAST(:hyperparams AS jsonb), celery_task_id = :celery_task_id
+                WHERE id = :id AND tenant_id = :tenant_id
+            """),
+            {"id": job_id, "tenant_id": tenant_id, "hyperparams": json.dumps(hyperparams), "celery_task_id": celery_task_id},
         )
         await session.commit()
 

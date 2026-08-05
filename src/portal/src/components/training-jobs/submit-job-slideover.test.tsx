@@ -132,24 +132,33 @@ describe("SubmitJobSlideover", () => {
     });
   });
 
-  it("keeps the epoch control a range slider and batch/seq as dropdowns with unchanged option sets", async () => {
+  it("renders no hyperparameter inputs and submits a hyperparameter-free body", async () => {
+    mockFetch
+      .mockResolvedValueOnce(new Response("span1\nspan2\n", { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "new-job", status: "pending_approval" }), { status: 201 }),
+      );
+
     const { container } = render(
       <SubmitJobSlideover open={true} onClose={vi.fn()} />,
       { wrapper: createWrapper() },
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/3 confirmed spans/)).toBeDefined();
+      expect(screen.getByText(/2 confirmed spans/)).toBeDefined();
     });
 
-    const rangeInput = container.querySelector('input[type="range"]');
-    expect(rangeInput).not.toBeNull();
+    expect(container.querySelector('input[type="range"]')).toBeNull();
+    expect(container.querySelectorAll("select")).toHaveLength(0);
+    expect(screen.queryByLabelText(/learning rate/i)).toBeNull();
 
-    const selects = container.querySelectorAll("select");
-    expect(selects).toHaveLength(2);
-    const batchOptions = Array.from(selects[0].options).map((o) => o.value);
-    const seqOptions = Array.from(selects[1].options).map((o) => o.value);
-    expect(batchOptions).toEqual(["4", "8", "16", "32"]);
-    expect(seqOptions).toEqual(["64", "128", "256"]);
+    fireEvent.click(screen.getByRole("button", { name: /submit training job/i }));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/v1/training-jobs",
+        expect.objectContaining({ method: "POST", body: JSON.stringify({}) }),
+      );
+    });
   });
 });

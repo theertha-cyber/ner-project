@@ -5,6 +5,8 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
 from src.shared.config import settings
+from src.shared.database import get_engine, wait_for_database
+from src.shared.readiness import check_database, check_minio, build_readiness_body
 from src.document_service.middleware.tenant_context import TenantContextMiddleware
 from src.document_service.api.v1 import documents
 
@@ -27,6 +29,8 @@ def add_bearer_security(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.db_factory = get_engine
+    await wait_for_database()
     yield
 
 
@@ -68,4 +72,16 @@ app.include_router(documents.router)
 
 @app.get("/health")
 async def health():
+    checks = {
+        "database": await check_database(get_engine()),
+        "minio": await check_minio(
+            settings.minio_endpoint, settings.minio_access_key, settings.minio_secret_key, settings.minio_bucket
+        ),
+    }
+    status_code, body = build_readiness_body(checks)
+    return JSONResponse(status_code=status_code, content=body)
+
+
+@app.get("/health/live")
+async def health_live():
     return {"status": "ok"}

@@ -1,9 +1,13 @@
 import logging
+import re
+from datetime import datetime, timezone
+import httpx
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from src.gateway.dependencies import get_db, require_tenant_role, get_request_tenant_id
+from src.shared.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,9 @@ class ActivityRow(BaseModel):
     tag: str
     tk: str
     go: str
+    icon: str = ""
+    time: str = ""
+    id: str = ""
 
 
 class SideMetric(BaseModel):
@@ -37,6 +44,16 @@ class SideRow(BaseModel):
     val: str
     pct: float
     c: str
+
+
+class ResponseQualityCard(BaseModel):
+    status: str  # "healthy" | "monitor" | "needs_attention" | "no_data"
+    satisfactionPct: float | None
+    positive: int
+    negative: int
+    rated: int
+    total: int
+    recommendation: str
 
 
 class DashboardData(BaseModel):
@@ -55,6 +72,7 @@ class DashboardData(BaseModel):
     sideMetrics: list[SideMetric]
     sideBot: str
     sideRows: list[SideRow]
+    responseQuality: ResponseQualityCard | None = None
 
 
 class DashboardSourceStatus(BaseModel):
@@ -66,16 +84,20 @@ class DashboardSummaryResponse(BaseModel):
     sources: dict[str, bool]
 
 
+class DashboardActivityResponse(BaseModel):
+    rows: list[ActivityRow]
+
+
 _ROLE_SERVICES: dict[str, list[str]] = {
     "system_admin": ["tenants", "training"],
     "tenant_admin": ["documents", "annotations", "training", "models"],
     "annotator": ["annotations", "documents"],
-    "business_user": ["extraction", "models"],
+    "business_user": ["conversations", "feedback", "assistant_health"],
 }
 
 
 def _null_sources() -> dict[str, bool]:
-    return {"tenants": False, "training": False, "documents": False, "annotations": False, "models": False, "extraction": False}
+    return {"tenants": False, "training": False, "documents": False, "annotations": False, "models": False, "extraction": False, "feedback": False, "conversations": False, "assistant_health": False}
 
 
 def _stat(label: str, value: str | None, unit: str, sub: str, delta: str, dir_: str | None = None) -> StatItem:
@@ -156,7 +178,7 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
             for s in schemas:
                 try:
                     r = await db.execute(
-                        text(f"SELECT metrics->>'f1' FROM {s}.model_versions WHERE status = 'promoted' ORDER BY promoted_at DESC LIMIT 1")
+                        text(f"SELECT COALESCE(metrics->>'f1', metrics->>'eval_f1') FROM {s}.model_versions WHERE status = 'promoted' ORDER BY promoted_at DESC LIMIT 1")
                     )
                     val = r.scalar()
                     if val is not None:
@@ -208,16 +230,15 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
     return data, sources
 
 
-async def _tenant_admin_data(db: AsyncSession, tenant_id: str) -> tuple[DashboardData, dict[str, bool]]:
+async def _tenant_admin_data(db: AsyncSession, tenant_id: str, auth_header: str | None = None) -> tuple[DashboardData, dict[str, bool]]:
     sources = _null_sources()
     schema = _tenant_schema(tenant_id)
 
     doc_count: str | None = None
     ann_pct: str | None = None
-    model_f1: str | None = None
     training_count: str | None = None
 
-    # Documents: total count + delta (added in last 24h) + quota subtext
+    # Documents: used/capacity fraction + delta (added in last 24h) + quota % subtext
     doc_sub = "service unavailable"
     doc_delta = "\u2014"
     doc_dir: str | None = None
@@ -246,6 +267,7 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
             )
             max_docs = r.scalar()
             if max_docs:
+                doc_count = f"{doc_total}/{max_docs}"
                 doc_sub = f"{round(doc_total / max_docs * 100)}% of quota"
             else:
                 doc_sub = "active"
@@ -255,23 +277,28 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
     except Exception:
         pass
 
-    # Annotation: completion % + docs remaining subtext + tasks completed in 24h delta
+    # Annotation: documents annotated / documents uploaded for annotation + delta
     ann_sub = "service unavailable"
     ann_delta = "\u2014"
     ann_dir: str | None = None
     try:
         result = await db.execute(
             text(f"""
+                WITH latest_task AS (
+                    SELECT DISTINCT ON (document_id) document_id, status
+                    FROM {schema}.annotation_tasks
+                    ORDER BY document_id, created_at DESC
+                )
                 SELECT
-                    (COUNT(DISTINCT document_id) FILTER (WHERE status = 'completed'))::float
-                        / NULLIF(COUNT(DISTINCT document_id), 0) * 100 AS pct,
-                    COUNT(DISTINCT document_id) FILTER (WHERE status != 'completed') AS remaining
-                FROM {schema}.annotation_tasks
+                    COUNT(*) FILTER (WHERE status = 'completed') AS done,
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE status != 'completed') AS remaining
+                FROM latest_task
             """)
         )
         row = result.fetchone()
-        if row and row.pct is not None:
-            ann_pct = f"{row.pct:.0f}"
+        if row and row.total:
+            ann_pct = f"{int(row.done or 0)}/{int(row.total)}"
             ann_sub = f"{int(row.remaining or 0)} docs left"
             sources["annotations"] = True
         try:
@@ -287,27 +314,12 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
     except Exception:
         pass
 
-    # Active model: promoted F1 + version subtext + improvement over previous version delta
-    model_sub = "service unavailable"
-    model_delta = "\u2014"
-    model_dir: str | None = None
-    try:
-        result = await db.execute(
-            text(f"SELECT version, metrics->>'f1' FROM {schema}.model_versions WHERE status = 'promoted' ORDER BY promoted_at DESC LIMIT 2")
-        )
-        rows = result.fetchall()
-        if rows and rows[0][1] is not None:
-            current_f1 = float(rows[0][1])
-            model_f1 = f"{current_f1 * 100:.1f}"
-            model_sub = f"v{rows[0][0]} promoted"
-            sources["models"] = True
-            if len(rows) > 1 and rows[1][1] is not None:
-                diff = current_f1 - float(rows[1][1])
-                if abs(diff) >= 0.0005:
-                    model_delta = f"{'+' if diff >= 0 else '-'}{abs(diff):.2f}".replace("0.", ".")
-                    model_dir = "up" if diff >= 0 else "warn"
-    except Exception:
-        pass
+    # Active model: fetched from training_service (MLflow-backed), not Postgres \u2014
+    # see _fetch_active_model for why the Postgres model_versions.status column
+    # can't be trusted here.
+    active_model = await _fetch_active_model(auth_header)
+    if active_model:
+        sources["models"] = True
 
     # Training: jobs active in the last 24h (value unchanged), with a running-now
     # badge derived from a separate live-status count.
@@ -329,88 +341,276 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
         except Exception:
             await db.rollback()
         if running > 0:
-            train_sub = "running now"
+            train_sub = f"{running} job{'s' if running != 1 else ''} running"
             train_delta = "live"
             train_dir = "warn"
         else:
-            train_sub = "idle"
+            train_sub = "No training in progress"
     except Exception:
         pass
 
     pipeline_rows: list[ActivityRow] = []
     try:
-        pipeline_rows = await _tenant_pipeline_activity(db, schema)
+        pipeline_rows = await _tenant_curated_activity(db, schema, tenant_id, 4)
     except Exception:
         pipeline_rows = [
-            ActivityRow(title="No recent activity", sub="Activity will appear as pipeline runs", tag="\u2014", tk="queued", go="documents"),
+            ActivityRow(title="No recent activity", sub="Activity will appear as your workspace runs", tag="\u2014", tk="queued", go="documents"),
             ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="documents"),
             ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="documents"),
             ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="documents"),
         ]
 
-    side_metrics, big_val, side_rows = await _tenant_side_panel(db, schema, tenant_id)
+    side_metrics, big_val, model_side_meta = _model_side_panel_from_active(active_model)
+    response_quality = await _tenant_response_quality_card(db, schema)
+    if response_quality is not None:
+        sources["feedback"] = True
 
     stats = [
         _stat("Documents", doc_count, "", doc_sub, doc_delta, doc_dir),
-        _stat("Annotation", ann_pct, "%", ann_sub, ann_delta, ann_dir),
-        _stat("Active model", model_f1, "F1", model_sub, model_delta, model_dir),
+        _stat("Annotation", ann_pct, "", ann_sub, ann_delta, ann_dir),
         _stat("Training", training_count, "", train_sub, train_delta, train_dir),
     ]
 
     data = DashboardData(
         kicker="Good morning",
-        title="Pipeline overview.",
-        line="Your tenant's document processing and training pipeline at a glance.",
+        title="Workspace overview.",
+        line="Monitor your AI workspace, model performance, and dataset readiness.",
         stats=stats,
-        pTitle="Pipeline activity",
-        pMeta="last 24h",
+        pTitle="Recent Activity",
+        pMeta="recent activity",
         pRows=pipeline_rows,
         sideTop="Active model",
-        sideMeta="no model promoted" if big_val == "\u2014" else "eval metrics",
+        sideMeta=model_side_meta,
         big=big_val,
         bigUnit="eval F1",
         bar=0,
         sideMetrics=side_metrics,
-        sideBot="Quota usage",
-        sideRows=side_rows,
+        sideBot="",
+        sideRows=[],
+        responseQuality=response_quality,
     )
     return data, sources
 
 
-async def _tenant_pipeline_activity(db: AsyncSession, schema: str) -> list[ActivityRow]:
-    rows: list[ActivityRow] = []
-    result = await db.execute(
-        text(f"""
-            (SELECT 'training_job' AS kind, id, status, started_at AS ts, NULL AS title_str
-             FROM {schema}.training_jobs
-             WHERE started_at >= NOW() - INTERVAL '24 hours')
-            UNION ALL
-            (SELECT 'document' AS kind, id, status, created_at AS ts, filename AS title_str
-             FROM {schema}.documents
-             WHERE created_at >= NOW() - INTERVAL '24 hours')
-            ORDER BY ts DESC
-            LIMIT 4
-        """)
+# Reused for the annotator "Dataset readiness" panel (_annotator_side_panel)
+# and the tenant_admin "Dataset reached training readiness" activity event \u2014
+# a single source of truth for the entity count that unlocks training.
+DATASET_READINESS_ENTITY_THRESHOLD = 500
+
+# Documents at or above this size are surfaced as a "Large document upload
+# completed" event in the tenant_admin activity feed.
+LARGE_DOCUMENT_UPLOAD_BYTES = 20 * 1024 * 1024
+
+
+def _relative_time(dt: datetime | None) -> str:
+    """Formats a timestamp as a short relative string ("2 hours ago",
+    "Yesterday", "3 days ago") for the tenant_admin activity feed. Backend
+    formats this once per request rather than shipping a raw ISO timestamp
+    and a client-side date library \u2014 see design.md Decision 5."""
+    if dt is None:
+        return "\u2014"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    seconds = (datetime.now(timezone.utc) - dt).total_seconds()
+    if seconds < 60:
+        return "just now"
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    hours = int(seconds // 3600)
+    if hours < 24:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    days = int(seconds // 86400)
+    if days == 1:
+        return "Yesterday"
+    return f"{days} days ago"
+
+
+async def _tenant_curated_activity(db: AsyncSession, schema: str, tenant_id: str, limit: int) -> list[ActivityRow]:
+    """Curated operational activity feed for tenant_admin: training
+    lifecycle events, model deployment, batch extraction, dataset
+    readiness, large uploads, and user-added events \u2014 derived from
+    existing status columns rather than raw per-record activity (no
+    audit-log table exists yet; see design.md Decision 1)."""
+    events: list[tuple[datetime | None, ActivityRow]] = []
+
+    async def _add(query: str, params: dict, build_row) -> None:
+        try:
+            result = await db.execute(text(query), params)
+            for row in result:
+                ts, activity_row = build_row(row)
+                events.append((ts, activity_row))
+        except Exception:
+            await db.rollback()
+
+    await _add(
+        f"SELECT id, status, created_at, started_at, completed_at, failed_at FROM {schema}.training_jobs "
+        f"WHERE status IN ('pending_approval', 'failed', 'completed') OR (status = 'queued' AND started_at IS NULL)",
+        {},
+        lambda row: (
+            {
+                "pending_approval": row.created_at,
+                "queued": row.created_at,
+                "failed": row.failed_at,
+                "completed": row.completed_at,
+            }[row.status],
+            ActivityRow(
+                title={
+                    "pending_approval": "Model training requested",
+                    "queued": "Model training approved",
+                    "failed": "Model training failure",
+                    "completed": "Model training completed",
+                }[row.status],
+                sub=f"Job {row.id[:8]}...",
+                tag={"pending_approval": "requested", "queued": "approved", "failed": "failed", "completed": "completed"}[row.status],
+                tk={"pending_approval": "pending_approval", "queued": "queued", "failed": "failed", "completed": "completed"}[row.status],
+                go="training",
+                icon="failure" if row.status == "failed" else "training",
+                time=_relative_time({
+                    "pending_approval": row.created_at,
+                    "queued": row.created_at,
+                    "failed": row.failed_at,
+                    "completed": row.completed_at,
+                }[row.status]),
+            ),
+        ),
     )
-    for row in result:
-        kind = row.kind
-        status = row.status or "queued"
-        if kind == "training_job":
-            title = f"Training {status}"
-            sub = f"Job {row.id[:8]}..."
-        elif kind == "document":
-            title = row.title_str or "Document upload"
-            sub = f"Status: {status}"
-        else:
-            title = "Activity"
-            sub = ""
-        tag = status
-        tk = _activity_tag_colour(status)
-        go = "training" if kind == "training_job" else "documents"
-        rows.append(ActivityRow(title=title, sub=sub, tag=tag, tk=tk, go=go))
-    while len(rows) < 4:
-        rows.append(ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="documents"))
-    return rows[:4]
+
+    await _add(
+        f"SELECT id, promoted_at FROM {schema}.model_versions WHERE status = 'promoted' AND promoted_at IS NOT NULL "
+        f"ORDER BY promoted_at DESC LIMIT 20",
+        {},
+        lambda row: (
+            row.promoted_at,
+            ActivityRow(title="Model deployment", sub=f"Version {row.id[:8]}... deployed", tag="deployed", tk="promoted", go="models", icon="deploy", time=_relative_time(row.promoted_at)),
+        ),
+    )
+
+    await _add(
+        f"""
+            SELECT date_trunc('minute', er.completed_at) AS bucket, COUNT(*) AS n, MAX(er.completed_at) AS ts
+            FROM {schema}.extraction_runs er
+            WHERE er.status = 'completed' AND er.completed_at IS NOT NULL
+            GROUP BY bucket
+            HAVING COUNT(*) >= 2
+            ORDER BY bucket DESC
+            LIMIT 20
+        """,
+        {},
+        lambda row: (
+            row.ts,
+            ActivityRow(title="Batch extraction completed", sub=f"{row.n} documents processed", tag="completed", tk="completed", go="extractions", icon="batch", time=_relative_time(row.ts)),
+        ),
+    )
+
+    await _add(
+        f"SELECT id, filename, file_size_bytes, created_at FROM {schema}.documents "
+        f"WHERE status != 'error' AND file_size_bytes >= :threshold ORDER BY created_at DESC LIMIT 20",
+        {"threshold": LARGE_DOCUMENT_UPLOAD_BYTES},
+        lambda row: (
+            row.created_at,
+            ActivityRow(title="Large document upload completed", sub=row.filename or f"Document {row.id[:8]}...", tag="uploaded", tk="completed", go="documents", icon="upload", time=_relative_time(row.created_at)),
+        ),
+    )
+
+    await _add(
+        f"""
+            SELECT crossing_ts FROM (
+                SELECT created_at AS crossing_ts, ROW_NUMBER() OVER (ORDER BY created_at) AS rn
+                FROM {schema}.spans
+            ) ranked
+            WHERE rn = :threshold
+        """,
+        {"threshold": DATASET_READINESS_ENTITY_THRESHOLD},
+        lambda row: (
+            row.crossing_ts,
+            ActivityRow(title="Dataset reached training readiness", sub=f"{DATASET_READINESS_ENTITY_THRESHOLD}+ entities annotated", tag="ready", tk="completed", go="annotation", icon="dataset", time=_relative_time(row.crossing_ts)),
+        ),
+    )
+
+    await _add(
+        "SELECT id, role, created_at FROM public.tenant_users WHERE tenant_id = :tid AND role IN ('business_user', 'annotator') ORDER BY created_at DESC LIMIT 20",
+        {"tid": tenant_id},
+        lambda row: (
+            row.created_at,
+            ActivityRow(
+                title="Business User added" if row.role == "business_user" else "Annotator added",
+                sub="New user added to the workspace",
+                tag="added",
+                tk="active",
+                go="users",
+                icon="user",
+                time=_relative_time(row.created_at),
+            ),
+        ),
+    )
+
+    events.sort(key=lambda e: e[0] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    rows = [row for _, row in events[:limit]]
+    while len(rows) < limit:
+        rows.append(ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="documents", icon="\u2014", time="\u2014"))
+    return rows
+
+
+async def _fetch_active_model(auth_header: str | None) -> dict | None:
+    """The Postgres model_versions.status column is not updated by
+    promote/demote (those only move MLflow's registry stage), so it can't
+    be trusted as the source of truth for the currently active model.
+    Ask training_service directly — same MLflow-backed source the Model
+    Registry page uses."""
+    if not auth_header:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.training_service_url}/api/v1/models/active",
+                headers={"Authorization": auth_header},
+            )
+        if resp.status_code != 200:
+            return None
+        if resp.headers.get("x-info") == "no-promoted-model":
+            return None
+        return resp.json()
+    except Exception:
+        logger.exception("dashboard: failed to fetch active model from training_service")
+        return None
+
+
+def _model_side_panel_from_active(active: dict | None) -> tuple[list[SideMetric], str, str]:
+    side_metrics = [
+        SideMetric(k="prec", v="—"),
+        SideMetric(k="rec", v="—"),
+        SideMetric(k="loss", v="—"),
+    ]
+    big_val = "—"
+    if not active:
+        return side_metrics, big_val, "no model promoted"
+
+    metrics = active.get("metrics") or {}
+    f1 = metrics.get("eval_f1", metrics.get("f1"))
+    prec = metrics.get("eval_precision", metrics.get("precision"))
+    rec = metrics.get("eval_recall", metrics.get("recall"))
+    loss = metrics.get("eval_loss", metrics.get("loss"))
+
+    if f1 is not None:
+        big_val = f"{float(f1):.4f}"
+    if prec is not None:
+        side_metrics[0] = SideMetric(k="prec", v=f"{float(prec):.4f}")
+    if rec is not None:
+        side_metrics[1] = SideMetric(k="rec", v=f"{float(rec):.4f}")
+    if loss is not None:
+        side_metrics[2] = SideMetric(k="loss", v=f"{float(loss):.4f}")
+
+    run_name = active.get("run_name")
+    version_number = active.get("version_number")
+    if run_name:
+        side_meta = run_name
+    elif version_number:
+        side_meta = f"v{version_number}"
+    else:
+        side_meta = "eval metrics" if big_val != "—" else "no model promoted"
+
+    return side_metrics, big_val, side_meta
 
 
 def _activity_tag_colour(status: str) -> str:
@@ -426,96 +626,76 @@ def _activity_tag_colour(status: str) -> str:
     return mapping.get(status.lower(), "queued")
 
 
-async def _tenant_side_panel(db: AsyncSession, schema: str, tenant_id: str) -> tuple[list[SideMetric], str, list[SideRow]]:
-    side_metrics: list[SideMetric] = [
-        SideMetric(k="prec", v="\u2014"),
-        SideMetric(k="rec", v="\u2014"),
-        SideMetric(k="loss", v="\u2014"),
-    ]
-    big_val = "\u2014"
-    side_rows: list[SideRow] = []
+def _response_quality_status(rated: int, positive: int) -> str:
+    if rated == 0:
+        return "no_data"
+    pct = positive / rated * 100
+    if pct >= 80:
+        return "healthy"
+    if pct >= 60:
+        return "monitor"
+    return "needs_attention"
 
+
+_RECOMMENDATIONS = {
+    "healthy": "No retraining recommended. Business users are consistently rating responses positively.",
+    "monitor": "Keep an eye on response quality. Consider gathering more feedback before deciding on retraining.",
+    "needs_attention": "Consider retraining the model. Business users are reporting low response quality.",
+    "no_data": "Not enough feedback yet to assess model performance.",
+}
+
+
+async def _tenant_response_quality_card(db: AsyncSession, schema: str) -> ResponseQualityCard | None:
+    """Builds the Response Quality card: a status derived from the satisfaction
+    ratio (positive / rated, never positive / total — per design.md Decision 4),
+    the underlying counts, and a plain-language recommendation, so a Tenant
+    Admin can judge model health and whether retraining is warranted without
+    interpreting raw numbers themselves. Only feeds `responseQuality`; the
+    Active model eval-metrics panel (sideTop/big/bigUnit/bar/sideMetrics) is
+    untouched."""
+    total = 0
+    rated = 0
+    positive = 0
     try:
-        result = await db.execute(
-            text(f"SELECT metrics->>'f1', metrics->>'precision', metrics->>'recall', metrics->>'loss' FROM {schema}.model_versions WHERE status = 'promoted' ORDER BY promoted_at DESC LIMIT 1")
+        # Defensive: an earlier query elsewhere in this request (e.g. the
+        # Annotation block above) may have failed and left the shared `db`
+        # session's transaction aborted without rolling back. Clear that state
+        # before running our own queries so a prior, unrelated failure doesn't
+        # also blank out this card.
+        await db.rollback()
+        r = await db.execute(
+            text(f"SELECT COUNT(*) FROM {schema}.chat_messages WHERE role = 'assistant' AND answer_kind = 'answer'")
         )
-        row = result.fetchone()
-        if row and row[0] is not None:
-            big_val = f"{float(row[0]) * 100:.1f}"
-            prec = row[1]
-            rec = row[2]
-            loss = row[3]
-            if prec is not None:
-                side_metrics[0] = SideMetric(k="prec", v=f"{float(prec):.3f}")
-            if rec is not None:
-                side_metrics[1] = SideMetric(k="rec", v=f"{float(rec):.3f}")
-            if loss is not None:
-                side_metrics[2] = SideMetric(k="loss", v=f"{float(loss):.4f}")
-    except Exception:
-        pass
+        total = r.scalar() or 0
 
-    side_rows = await _tenant_quota_rows(db, schema, tenant_id)
-
-    return side_metrics, big_val, side_rows
-
-
-async def _tenant_quota_rows(db: AsyncSession, schema: str, tenant_id: str) -> list[SideRow]:
-    """Build the Quota usage panel rows: documents, storage, and model versions
-    against the tenant's configured plan limits."""
-    limits = {"max_documents": None, "max_storage_gb": None, "max_model_versions": None}
-    try:
-        result = await db.execute(
-            text("SELECT max_documents, max_storage_gb, max_model_versions FROM public.tenants WHERE id = :tid"),
-            {"tid": tenant_id},
+        r = await db.execute(
+            text(f"""
+                SELECT COUNT(*), COUNT(*) FILTER (WHERE f.rating = 'up')
+                FROM {schema}.chat_messages m
+                JOIN {schema}.chat_message_feedback f ON f.message_id = m.id
+                WHERE m.role = 'assistant' AND m.answer_kind = 'answer'
+            """)
         )
-        row = result.fetchone()
-        if row:
-            limits["max_documents"] = row[0]
-            limits["max_storage_gb"] = row[1]
-            limits["max_model_versions"] = row[2]
+        row = r.fetchone()
+        rated = row[0] or 0
+        positive = row[1] or 0
     except Exception:
         await db.rollback()
-        return []
+        return None
 
-    rows: list[SideRow] = []
+    negative = rated - positive
+    status = _response_quality_status(rated, positive)
+    satisfaction_pct = round(positive / rated * 100, 1) if rated > 0 else None
 
-    def _bar_colour(pct: float) -> str:
-        if pct >= 90:
-            return "var(--color-delta-warn, #b45309)"
-        return "var(--color-brand-primary, #d64818)"
-
-    # Documents used vs quota
-    if limits["max_documents"]:
-        try:
-            r = await db.execute(text(f"SELECT COUNT(*) FROM {schema}.documents WHERE status != 'error'"))
-            used = r.scalar() or 0
-            pct = round(min(used / limits["max_documents"] * 100, 100), 1)
-            rows.append(SideRow(label="Documents", val=f"{used} / {limits['max_documents']}", pct=pct, c=_bar_colour(pct)))
-        except Exception:
-            await db.rollback()
-
-    # Storage used vs quota (bytes -> GB)
-    if limits["max_storage_gb"]:
-        try:
-            r = await db.execute(text(f"SELECT COALESCE(SUM(file_size_bytes), 0) FROM {schema}.documents"))
-            used_bytes = r.scalar() or 0
-            used_gb = used_bytes / (1024 ** 3)
-            pct = round(min(used_gb / limits["max_storage_gb"] * 100, 100), 1)
-            rows.append(SideRow(label="Storage", val=f"{used_gb:.1f} / {limits['max_storage_gb']} GB", pct=pct, c=_bar_colour(pct)))
-        except Exception:
-            await db.rollback()
-
-    # Model versions used vs quota
-    if limits["max_model_versions"]:
-        try:
-            r = await db.execute(text(f"SELECT COUNT(*) FROM {schema}.model_versions"))
-            used = r.scalar() or 0
-            pct = round(min(used / limits["max_model_versions"] * 100, 100), 1)
-            rows.append(SideRow(label="Model versions", val=f"{used} / {limits['max_model_versions']}", pct=pct, c=_bar_colour(pct)))
-        except Exception:
-            await db.rollback()
-
-    return rows
+    return ResponseQualityCard(
+        status=status,
+        satisfactionPct=satisfaction_pct,
+        positive=positive,
+        negative=negative,
+        rated=rated,
+        total=total,
+        recommendation=_RECOMMENDATIONS[status],
+    )
 
 
 async def _annotator_data(db: AsyncSession, tenant_id: str, user_id: str) -> tuple[DashboardData, dict[str, bool]]:
@@ -524,7 +704,6 @@ async def _annotator_data(db: AsyncSession, tenant_id: str, user_id: str) -> tup
 
     task_count: str | None = None
     span_count: str | None = None
-    suggestion_count: str | None = None
     completion_pct: str | None = None
 
     try:
@@ -540,12 +719,6 @@ async def _annotator_data(db: AsyncSession, tenant_id: str, user_id: str) -> tup
     try:
         result = await db.execute(text(f"SELECT COUNT(*) FROM {schema}.spans"))
         span_count = str(result.scalar())
-    except Exception:
-        pass
-
-    try:
-        result = await db.execute(text(f"SELECT COUNT(*) FROM {schema}.suggested_spans"))
-        suggestion_count = str(result.scalar())
     except Exception:
         pass
 
@@ -573,12 +746,19 @@ async def _annotator_data(db: AsyncSession, tenant_id: str, user_id: str) -> tup
             ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="annotation"),
         ]
 
-    side_big, side_metrics_list, side_rows = await _annotator_side_panel(db, schema)
+    total_spans, bar_pct, side_metrics_list, side_rows = await _annotator_side_panel(db, schema)
+
+    remaining = max(DATASET_READINESS_ENTITY_THRESHOLD - total_spans, 0)
+    if remaining > 0:
+        side_meta = f"{remaining} more entities needed"
+        side_bot = f"{DATASET_READINESS_ENTITY_THRESHOLD} entities unlocks training"
+    else:
+        side_meta = "Training threshold reached"
+        side_bot = f"Training unlocked at {DATASET_READINESS_ENTITY_THRESHOLD} entities"
 
     stats = [
         _stat("Assigned tasks", task_count, "", "active" if task_count is not None else "service unavailable", "\u2014"),
-        _stat("Spans confirmed", span_count, "", "active" if span_count is not None else "service unavailable", "\u2014"),
-        _stat("Suggestions", suggestion_count, "", "active" if suggestion_count is not None else "service unavailable", "\u2014", "warn" if suggestion_count is not None else None),
+        _stat("Entities Annotated", span_count, "", "active" if span_count is not None else "service unavailable", "\u2014"),
         _stat("Completion", completion_pct, "%", "active" if completion_pct is not None else "service unavailable", "\u2014"),
     ]
 
@@ -591,12 +771,12 @@ async def _annotator_data(db: AsyncSession, tenant_id: str, user_id: str) -> tup
         pMeta="annotator",
         pRows=task_rows,
         sideTop="Dataset readiness",
-        sideMeta="toward training",
-        big=side_big,
-        bigUnit="/ 500 spans",
-        bar=0,
+        sideMeta=side_meta,
+        big=f"{round(bar_pct)}",
+        bigUnit="% to training-ready",
+        bar=bar_pct,
         sideMetrics=side_metrics_list,
-        sideBot="Spans by entity type",
+        sideBot=side_bot,
         sideRows=side_rows,
     )
     return data, sources
@@ -627,7 +807,7 @@ async def _annotator_task_activity(db: AsyncSession, schema: str, user_id: str) 
     return rows[:4]
 
 
-async def _annotator_side_panel(db: AsyncSession, schema: str) -> tuple[str, list[SideMetric], list[SideRow]]:
+async def _annotator_side_panel(db: AsyncSession, schema: str) -> tuple[int, float, list[SideMetric], list[SideRow]]:
     total_spans = 0
     doc_count = 0
     type_count = 0
@@ -686,181 +866,171 @@ async def _annotator_side_panel(db: AsyncSession, schema: str) -> tuple[str, lis
     except Exception:
         pass
 
-    bar_pct = min(total_spans / 500 * 100, 100) if total_spans > 0 else 0
-    big_text = str(total_spans)
+    bar_pct = round(min(total_spans / DATASET_READINESS_ENTITY_THRESHOLD * 100, 100) if total_spans > 0 else 0, 1)
     side_metrics = [
         SideMetric(k="docs", v=str(doc_count)),
         SideMetric(k="types", v=str(type_count)),
         SideMetric(k="today", v=str(today_spans)),
     ]
 
-    return big_text, side_metrics, span_by_type
+    return total_spans, bar_pct, side_metrics, span_by_type
 
 
-async def _business_user_data(db: AsyncSession, tenant_id: str) -> tuple[DashboardData, dict[str, bool]]:
+async def _business_user_data(db: AsyncSession, tenant_id: str, user_id: str) -> tuple[DashboardData, dict[str, bool]]:
     sources = _null_sources()
     schema = _tenant_schema(tenant_id)
 
-    doc_count: str | None = None
-    entity_count: str | None = None
-    avg_conf: str | None = None
-    auto_cleared_pct: str | None = None
+    conversation_count: str | None = None
+    message_count: str | None = None
+    helpful_count: str | None = None
 
     try:
         result = await db.execute(
-            text(f"SELECT COUNT(DISTINCT document_id) FROM {schema}.extracted_entities")
+            text(f"SELECT COUNT(*) FROM {schema}.conversations WHERE user_id = :user_id"),
+            {"user_id": user_id},
         )
-        doc_count = str(result.scalar())
-        sources["extraction"] = True
+        conversation_count = str(result.scalar())
+        sources["conversations"] = True
     except Exception:
         pass
 
-    try:
-        result = await db.execute(text(f"SELECT COUNT(*) FROM {schema}.extracted_entities"))
-        entity_count = str(result.scalar())
-    except Exception:
-        pass
-
-    avg_conf_sub = "service unavailable"
-    try:
-        result = await db.execute(
-            text(f"SELECT AVG(confidence) FROM {schema}.extracted_entities")
-        )
-        val = result.scalar()
-        if val is not None:
-            avg_conf = f"{float(val) * 100:.0f}"
-            avg_conf_sub = "active"
-        else:
-            avg_conf = "0"
-            avg_conf_sub = "no extractions yet"
-    except Exception:
-        pass
-
-    auto_cleared_sub = "service unavailable"
     try:
         result = await db.execute(
             text(f"""
-                SELECT (COUNT(*) FILTER (WHERE review_status = 'auto_cleared'))::float / NULLIF(COUNT(*), 0) * 100
-                FROM {schema}.extracted_entities
-            """)
+                SELECT COUNT(*) FROM {schema}.chat_messages cm
+                JOIN {schema}.conversations c ON c.id = cm.conversation_id
+                WHERE c.user_id = :user_id AND cm.role = 'user'
+            """),
+            {"user_id": user_id},
         )
-        val = result.scalar()
-        if val is not None:
-            auto_cleared_pct = f"{val:.1f}"
-            auto_cleared_sub = "active"
-        else:
-            auto_cleared_pct = "0.0"
-            auto_cleared_sub = "no extractions yet"
+        message_count = str(result.scalar())
     except Exception:
         pass
 
-    extraction_rows: list[ActivityRow] = []
     try:
-        extraction_rows = await _business_extraction_activity(db, schema)
+        result = await db.execute(
+            text(f"SELECT COUNT(*) FROM {schema}.chat_message_feedback WHERE user_id = :user_id AND rating = 'up'"),
+            {"user_id": user_id},
+        )
+        helpful_count = str(result.scalar())
+        sources["feedback"] = True
     except Exception:
-        extraction_rows = [
-            ActivityRow(title="No extractions yet", sub="Extractions will appear once documents are processed", tag="\u2014", tk="queued", go="extractions"),
-            ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="extractions"),
-            ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="extractions"),
-            ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="extractions"),
+        pass
+
+    conversation_rows: list[ActivityRow] = []
+    try:
+        conversation_rows = await _business_conversation_activity(db, schema, user_id)
+    except Exception:
+        conversation_rows = [
+            ActivityRow(title="No conversations yet", sub="Conversations will appear here once you start chatting", tag="\u2014", tk="queued", go="chat"),
+            ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="chat"),
+            ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="chat"),
+            ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="chat"),
         ]
 
-    side_big, side_metrics_list, side_rows = await _business_side_panel(db, schema)
+    assistant_status, assistant_meta, assistant_healthy = await _fetch_assistant_health()
+    sources["assistant_health"] = assistant_healthy
+    side_metrics_list = [
+        SideMetric(k="status", v=assistant_status),
+        SideMetric(k="updated", v=assistant_meta),
+        SideMetric(k="resp time", v="\u2014"),
+    ]
+    side_rows = await _business_topic_frequency(db, schema, user_id)
 
     stats = [
-        _stat("Docs extracted", doc_count, "", "active" if doc_count is not None else "service unavailable", "\u2014"),
-        _stat("Entities found", entity_count, "", "active" if entity_count is not None else "service unavailable", "\u2014"),
-        _stat("Avg confidence", avg_conf, "%", avg_conf_sub, "\u2014"),
-        _stat("Auto-cleared", auto_cleared_pct, "%", auto_cleared_sub, "\u2014"),
+        _stat("Conversations", conversation_count, "", "active" if conversation_count is not None else "service unavailable", "\u2014"),
+        _stat("Messages Sent", message_count, "", "active" if message_count is not None else "service unavailable", "\u2014"),
+        _stat("Helpful Responses", helpful_count, "", "active" if helpful_count is not None else "service unavailable", "\u2014"),
     ]
 
     data = DashboardData(
-        kicker="Extraction intelligence",
-        title=f"{doc_count} documents processed." if doc_count is not None else "No documents processed yet.",
-        line="Review extraction results and model performance across your documents.",
+        kicker="Your AI assistant workspace",
+        title=f"{conversation_count} conversations started." if conversation_count is not None else "No conversations yet.",
+        line="Search, explore, and interact with your organization's knowledge through the AI assistant.",
         stats=stats,
-        pTitle="Recent extractions",
+        pTitle="Recent Conversations",
         pMeta="business_user",
-        pRows=extraction_rows,
-        sideTop="Active model",
-        sideMeta="no model promoted" if side_big == "\u2014" else "eval metrics",
-        big=side_big,
-        bigUnit="eval F1",
+        pRows=conversation_rows,
+        sideTop="AI Assistant Status",
+        sideMeta=assistant_status,
+        big=assistant_status,
+        bigUnit="",
         bar=0,
         sideMetrics=side_metrics_list,
-        sideBot="Top extracted fields",
+        sideBot="Frequently Asked Topics",
         sideRows=side_rows,
     )
     return data, sources
 
 
-async def _business_extraction_activity(db: AsyncSession, schema: str) -> list[ActivityRow]:
+async def _business_conversation_activity(db: AsyncSession, schema: str, user_id: str) -> list[ActivityRow]:
     rows: list[ActivityRow] = []
     result = await db.execute(
         text(f"""
-            SELECT er.id, er.status, er.started_at, d.filename,
-                   (SELECT COUNT(*) FROM {schema}.extracted_entities ee WHERE ee.run_id = er.id) AS entity_count,
-                   (SELECT AVG(confidence) FROM {schema}.extracted_entities ee WHERE ee.run_id = er.id) AS avg_conf
-            FROM {schema}.extraction_runs er
-            LEFT JOIN {schema}.documents d ON d.id = er.document_id
-            ORDER BY er.started_at DESC NULLS LAST
+            SELECT c.id, c.title, c.updated_at, c.created_at,
+                   (SELECT COUNT(*) FROM {schema}.chat_messages cm WHERE cm.conversation_id = c.id) AS message_count
+            FROM {schema}.conversations c
+            WHERE c.user_id = :user_id
+            ORDER BY COALESCE(c.updated_at, c.created_at) DESC
             LIMIT 4
-        """)
+        """),
+        {"user_id": user_id},
     )
     for row in result:
-        title = row.filename or f"Run {row.id[:8]}..."
-        sub = f"{row.entity_count or 0} entities"
-        if row.avg_conf is not None:
-            sub += f", {float(row.avg_conf) * 100:.0f}% conf"
-        tag = row.status or "queued"
-        tk = _activity_tag_colour(row.status or "queued")
-        go = "extractions"
-        rows.append(ActivityRow(title=title, sub=sub, tag=tag, tk=tk, go=go))
+        title = row.title or "New conversation"
+        last_interaction = row.updated_at or row.created_at
+        sub = f"{row.message_count} messages"
+        if last_interaction is not None:
+            sub = f"{last_interaction} \u00b7 {sub}"
+        rows.append(ActivityRow(title=title, sub=sub, tag="conversation", tk="completed", go="chat", id=row.id))
     while len(rows) < 4:
-        rows.append(ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="extractions"))
+        rows.append(ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="chat"))
     return rows[:4]
 
 
-async def _business_side_panel(db: AsyncSession, schema: str) -> tuple[str, list[SideMetric], list[SideRow]]:
-    side_metrics: list[SideMetric] = [
-        SideMetric(k="prec", v="\u2014"),
-        SideMetric(k="rec", v="\u2014"),
-        SideMetric(k="loss", v="\u2014"),
-    ]
-    big_val = "\u2014"
+_TOPIC_STOPWORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "what", "when", "where", "who",
+    "why", "how", "do", "does", "did", "of", "in", "on", "for", "to", "and", "or",
+    "with", "about", "my", "me", "i", "you", "your", "can", "could", "please",
+    "new", "conversation",
+}
+
+
+async def _business_topic_frequency(db: AsyncSession, schema: str, user_id: str) -> list[SideRow]:
     side_rows: list[SideRow] = []
-
     try:
         result = await db.execute(
-            text(f"SELECT metrics->>'f1', metrics->>'precision', metrics->>'recall', metrics->>'loss' FROM {schema}.model_versions WHERE status = 'promoted' ORDER BY promoted_at DESC LIMIT 1")
+            text(f"SELECT title FROM {schema}.conversations WHERE user_id = :user_id AND title IS NOT NULL"),
+            {"user_id": user_id},
         )
-        row = result.fetchone()
-        if row and row[0] is not None:
-            big_val = f"{float(row[0]) * 100:.1f}"
-            if row[1] is not None:
-                side_metrics[0] = SideMetric(k="prec", v=f"{float(row[1]):.3f}")
-            if row[2] is not None:
-                side_metrics[1] = SideMetric(k="rec", v=f"{float(row[2]):.3f}")
-            if row[3] is not None:
-                side_metrics[2] = SideMetric(k="loss", v=f"{float(row[3]):.4f}")
+        counts: dict[str, int] = {}
+        for row in result:
+            for word in re.findall(r"[A-Za-z']+", row.title.lower()):
+                if word in _TOPIC_STOPWORDS or len(word) < 3:
+                    continue
+                counts[word] = counts.get(word, 0) + 1
+
+        top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        total = sum(cnt for _, cnt in top) or 1
+        for word, cnt in top:
+            pct = round(cnt / total * 100, 1)
+            side_rows.append(SideRow(label=word, val=str(cnt), pct=pct, c="blue"))
     except Exception:
         pass
 
-    try:
-        result = await db.execute(
-            text(f"SELECT entity_id, COUNT(*) AS cnt FROM {schema}.extracted_entities GROUP BY entity_id ORDER BY cnt DESC LIMIT 5")
-        )
-        total = sum(r.cnt for r in result) or 1
-        result = await db.execute(
-            text(f"SELECT entity_id, COUNT(*) AS cnt FROM {schema}.extracted_entities GROUP BY entity_id ORDER BY cnt DESC LIMIT 5")
-        )
-        for r in result:
-            pct = round(r.cnt / total * 100, 1)
-            side_rows.append(SideRow(label=r.entity_id, val=str(r.cnt), pct=pct, c="blue"))
-    except Exception:
-        pass
+    return side_rows
 
-    return big_val, side_metrics, side_rows
+
+async def _fetch_assistant_health() -> tuple[str, str, bool]:
+    now = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{settings.chat_api_url}/health")
+        if resp.status_code == 200:
+            return "Online", now, True
+        return "Offline", now, False
+    except Exception:
+        return "Offline", now, False
 
 
 _ROLE_DATA: dict[str, callable] = {
@@ -879,13 +1049,36 @@ async def get_dashboard_summary(
     tenant_id: str = Depends(get_request_tenant_id),
 ):
     user_id = getattr(request.state, "user_id", None)
+    auth_header = request.headers.get("Authorization")
     handler = _ROLE_DATA.get(role, _business_user_data)
 
-    if role == "annotator":
+    if role in ("annotator", "business_user"):
         data, sources = await handler(db, tenant_id, user_id)
     elif role == "system_admin":
         data, sources = await handler(db, tenant_id)
+    elif role == "tenant_admin":
+        data, sources = await handler(db, tenant_id, auth_header)
     else:
         data, sources = await handler(db, tenant_id)
 
     return DashboardSummaryResponse(data=data, sources=sources)
+
+
+@router.get("/activity", response_model=DashboardActivityResponse)
+async def get_dashboard_activity(
+    db: AsyncSession = Depends(get_db),
+    role: str = Depends(require_tenant_role),
+    tenant_id: str = Depends(get_request_tenant_id),
+):
+    """Full pipeline activity history for tenant admins, including
+    annotator and business-user activity, not just the last 24h."""
+    if role != "tenant_admin":
+        return DashboardActivityResponse(rows=[])
+
+    schema = _tenant_schema(tenant_id)
+    try:
+        rows = await _tenant_curated_activity(db, schema, tenant_id, 200)
+    except Exception:
+        logger.exception("dashboard activity: full history fetch failed for schema %s", schema)
+        rows = []
+    return DashboardActivityResponse(rows=rows)

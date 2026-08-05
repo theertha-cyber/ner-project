@@ -76,12 +76,6 @@ export function EntityTypesPage() {
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
-          <p
-            className="text-secondary mb-1"
-            style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}
-          >
-            /api/v1/entity-types
-          </p>
           <h1 className="text-xl font-semibold text-primary">Entity Types</h1>
           {!isLoading && (
             <p className="text-sm text-secondary mt-0.5">

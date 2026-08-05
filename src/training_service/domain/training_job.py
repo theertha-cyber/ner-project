@@ -15,7 +15,7 @@ class TrainingJob(Base):
     id = Column(String, primary_key=True, default=_generate_uuid)
     tenant_id = Column(String, nullable=False)
     status = Column(String(20), nullable=False, default="queued")
-    hyperparams = Column(JSON, nullable=False, default={})
+    hyperparams = Column(JSON, nullable=True, default=None)
     current_epoch = Column(Integer, nullable=True)
     current_loss = Column(Float, nullable=True)
     metrics = Column(JSON, nullable=True)

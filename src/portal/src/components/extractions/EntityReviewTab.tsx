@@ -17,8 +17,8 @@ function cleanEntityType(label: string): string {
   return label.replace(/^[BI]-/, "");
 }
 
-function groupEntities(entities: { entity_id: string; [key: string]: unknown }[]): Map<string, typeof entities> {
-  const groups = new Map<string, typeof entities>();
+function groupEntities<T extends { entity_id: string }>(entities: T[]): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
   for (const entity of entities) {
     const type = cleanEntityType(entity.entity_id);
     if (!groups.has(type)) groups.set(type, []);

@@ -1,9 +1,11 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/lib/auth";
 import { useDarkMode } from "@/hooks";
 import { SCREEN_TITLES, SCREEN_TITLES_FALLBACK } from "@/lib/nav-config";
+import { Sun, Moon } from "lucide-react";
 
 function resolveScreen(pathname: string): [string, string] {
   for (const [, value] of Object.entries(SCREEN_TITLES)) {
@@ -14,10 +16,6 @@ function resolveScreen(pathname: string): [string, string] {
   return SCREEN_TITLES_FALLBACK;
 }
 
-function userInitials(email: string): string {
-  return email.slice(0, 2).toUpperCase();
-}
-
 export function Topbar() {
   const { user } = useAuth();
   const pathname = usePathname();
@@ -25,8 +23,7 @@ export function Topbar() {
 
   if (!user) return null;
 
-  const [title, path] = resolveScreen(pathname);
-  const initials = userInitials(user.email);
+  const [title] = resolveScreen(pathname);
 
   return (
     <header
@@ -44,7 +41,6 @@ export function Topbar() {
         gap: 16,
       }}
     >
-      {/* Screen title + path — side by side with baseline alignment */}
       <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
         <span
           style={{
@@ -57,20 +53,19 @@ export function Topbar() {
         >
           {title}
         </span>
-        <span
-          style={{
-            fontFamily: "var(--font-mono, monospace)",
-            fontSize: 11,
-            color: "var(--ink-3)",
-            lineHeight: 1,
-          }}
-        >
-          {path}
-        </span>
       </div>
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* In-app logo */}
+      <Image
+        src="/inapp-logo.svg"
+        alt="NER Platform"
+        width={82}
+        height={36}
+        style={{ objectFit: "contain", flexShrink: 0 }}
+      />
 
       {/* Dark mode toggle */}
       <button
@@ -86,34 +81,12 @@ export function Topbar() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 16,
           color: "var(--ink-3)",
           flexShrink: 0,
         }}
       >
-        {dark ? "☀" : "☽"}
+        {dark ? <Sun size={17} strokeWidth={2} /> : <Moon size={17} strokeWidth={2} />}
       </button>
-
-      {/* Avatar */}
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          background: "linear-gradient(135deg, var(--primary), var(--primary-2))",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "var(--font-display, sans-serif)",
-          fontWeight: 700,
-          fontSize: 13,
-          color: "#fff",
-          flexShrink: 0,
-          cursor: "default",
-        }}
-      >
-        {initials}
-      </div>
     </header>
   );
 }

@@ -29,10 +29,6 @@ export function AnnotationToolbar({
   currentStatus,
   confirmedCount,
   suggestedCount,
-  layoutMode,
-  isPrelabeling,
-  onLayoutChange,
-  onPrelabel,
 }: AnnotationToolbarProps) {
   const resolvedStatus = currentStatus;
 
@@ -111,66 +107,6 @@ export function AnnotationToolbar({
         </span>
       )}
 
-      {/* Pre-label button */}
-      <button
-        onClick={onPrelabel}
-        disabled={isPrelabeling || !task}
-        data-testid="prelabel-btn"
-        style={{
-          padding: "5px 12px",
-          borderRadius: 6,
-          border: "1px solid var(--color-border)",
-          background: "var(--color-surface-raised)",
-          color: isPrelabeling || !task ? "var(--color-text-secondary)" : "var(--color-text-primary)",
-          fontSize: 12,
-          cursor: isPrelabeling || !task ? "not-allowed" : "pointer",
-          opacity: isPrelabeling || !task ? 0.6 : 1,
-          pointerEvents: isPrelabeling ? "none" : "auto",
-          whiteSpace: "nowrap",
-          flexShrink: 0,
-        }}
-      >
-        ✦ Pre-label
-      </button>
-
-      {/* View-mode toggle */}
-      <div
-        style={{
-          display: "flex",
-          borderRadius: 9,
-          border: "1px solid var(--color-border)",
-          background: "var(--color-surface-raised)",
-          padding: 3,
-          gap: 2,
-          flexShrink: 0,
-        }}
-        data-testid="layout-toggle"
-      >
-        {(["3pane", "focus"] as LayoutMode[]).map((mode) => {
-          const isActive = layoutMode === mode;
-          return (
-            <button
-              key={mode}
-              onClick={() => onLayoutChange(mode)}
-              data-testid={`layout-btn-${mode}`}
-              style={{
-                padding: "3px 10px",
-                borderRadius: 6,
-                border: "none",
-                background: isActive ? "var(--color-surface-overlay)" : "transparent",
-                boxShadow: isActive ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
-                color: isActive ? "var(--color-text-primary)" : "var(--color-text-secondary)",
-                fontSize: 12,
-                fontWeight: isActive ? 600 : 400,
-                cursor: "pointer",
-                transition: "all 0.15s",
-              }}
-            >
-              {mode === "3pane" ? "3-pane" : "Focus"}
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }

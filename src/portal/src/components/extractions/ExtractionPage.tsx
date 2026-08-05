@@ -19,7 +19,6 @@ export function ExtractionPage() {
   return (
     <div style={{ padding: "28px 32px 60px", maxWidth: 1180, margin: "0 auto" }}>
       <header className="mb-6">
-        <p className="font-mono text-xs text-text-secondary mb-1">/api/v1/extract · port 8005</p>
         <h1 className="font-display text-[34px] font-extrabold text-text-primary leading-none">
           Extraction
         </h1>

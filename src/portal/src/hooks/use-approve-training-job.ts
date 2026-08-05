@@ -1,15 +1,19 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
-import type { TrainingJob } from "@/types/training-jobs";
+import type { ApproveJobPayload, TrainingJob } from "@/types/training-jobs";
 
 export function useApproveTrainingJob() {
   const queryClient = useQueryClient();
 
-  return useMutation<TrainingJob, Error, { jobId: string; tenantId: string }>({
-    mutationFn: async ({ jobId, tenantId }) => {
+  return useMutation<TrainingJob, Error, { jobId: string; tenantId: string; hyperparams: ApproveJobPayload }>({
+    mutationFn: async ({ jobId, tenantId, hyperparams }) => {
       const res = await authFetch(
         `/api/v1/training-jobs/${jobId}/approve?tenant_id=${tenantId}`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(hyperparams),
+        },
       );
       if (!res.ok) {
         const body = await res.json().catch(() => null);

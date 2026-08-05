@@ -43,6 +43,16 @@ class BatchRunListResponse(BaseModel):
     runs: list[BatchRunListItem]
 
 
+class EligibleDocument(BaseModel):
+    id: str
+    filename: str
+    already_extracted: bool
+
+
+class EligibleDocumentListResponse(BaseModel):
+    documents: list[EligibleDocument]
+
+
 class EntityQueryParams(BaseModel):
     documentId: str | None = None
     type: str | None = None

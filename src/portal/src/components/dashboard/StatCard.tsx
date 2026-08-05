@@ -14,6 +14,7 @@ const deltaColor: Record<string, string> = {
 export function StatCard({ item }: StatCardProps) {
   const displayValue = item.value === null ? "\u2014" : String(item.value);
   const deltaFg = item.dir ? deltaColor[item.dir] : null;
+  const [fracUsed, fracTotal] = displayValue.includes("/") ? displayValue.split("/") : [null, null];
 
   return (
     <div
@@ -57,17 +58,35 @@ export function StatCard({ item }: StatCardProps) {
         )}
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-        <span
-          style={{
-            fontFamily: "var(--font-display, 'Hanken Grotesk', sans-serif)",
-            fontSize: 30,
-            fontWeight: 800,
-            color: "var(--color-text-primary)",
-            lineHeight: 1,
-          }}
-        >
-          {displayValue}
-        </span>
+        {fracUsed !== null ? (
+          <span
+            style={{
+              fontFamily: "var(--font-display, 'Hanken Grotesk', sans-serif)",
+              fontSize: 28,
+              fontWeight: 800,
+              lineHeight: 1,
+              display: "inline-flex",
+              alignItems: "baseline",
+              gap: 3,
+            }}
+          >
+            <span style={{ color: "var(--color-text-primary)" }}>{fracUsed}</span>
+            <span style={{ color: "var(--color-text-tertiary, #94a3b8)", fontSize: 18, fontWeight: 600 }}>/</span>
+            <span style={{ color: "var(--color-text-secondary)", fontSize: 18, fontWeight: 600 }}>{fracTotal}</span>
+          </span>
+        ) : (
+          <span
+            style={{
+              fontFamily: "var(--font-display, 'Hanken Grotesk', sans-serif)",
+              fontSize: 30,
+              fontWeight: 800,
+              color: "var(--color-text-primary)",
+              lineHeight: 1,
+            }}
+          >
+            {displayValue}
+          </span>
+        )}
         {item.unit && item.value !== null && (
           <span
             style={{

@@ -56,7 +56,7 @@ describe("Sidebar", () => {
     const nav = screen.getByRole("navigation");
     expect(within(nav).getByText("Dashboard")).toBeInTheDocument();
     expect(within(nav).getByText("Documents")).toBeInTheDocument();
-    expect(within(nav).getByText("Users")).toBeInTheDocument();
+    expect(within(nav).getByText("Create User")).toBeInTheDocument();
     expect(within(nav).queryByText("Settings")).not.toBeInTheDocument();
   });
 
@@ -75,7 +75,7 @@ describe("Sidebar", () => {
     mockUser = createUser("business_user");
     render(<Sidebar effectiveRole="business_user" />);
     const nav = screen.getByRole("navigation");
-    const navItems = ["Overview", "Documents", "Extractions", "Models"];
+    const navItems = ["Overview", "Documents", "Extractions", "Models & Training"];
     for (const label of navItems) {
       expect(within(nav).getByText(label)).toBeInTheDocument();
     }

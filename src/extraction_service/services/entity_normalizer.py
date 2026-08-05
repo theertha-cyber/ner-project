@@ -1,5 +1,6 @@
 import unicodedata
 import re
+from datetime import date
 from dataclasses import dataclass
 
 
@@ -12,6 +13,14 @@ class NormalizedEntity:
     page_number: int | None = None
     char_start: int | None = None
     char_end: int | None = None
+    # Semantic normalization fields (populated by semantic_normalizer.apply_semantic_normalization,
+    # never by this module) — see structured-entity-value-normalization design.md Decision 1.
+    value_kind: str | None = None
+    value_number: float | None = None
+    value_number_high: float | None = None
+    value_unit: str | None = None
+    value_date: date | None = None
+    value_date_high: date | None = None
 
 
 # Static alias map keyed on the *already deterministically-normalized* form of a

@@ -1,6 +1,7 @@
 import io
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
+from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 from src.shared.config import settings
 
 
@@ -16,6 +17,12 @@ class MinioStorageClient:
         self.bucket = settings.minio_bucket
         self._ensure_bucket()
 
+    @retry(
+        retry=retry_if_exception_type((ClientError, EndpointConnectionError)),
+        wait=wait_exponential(multiplier=settings.retry_initial_delay_seconds, max=settings.retry_max_delay_seconds),
+        stop=stop_after_delay(settings.retry_max_total_seconds),
+        reraise=True,
+    )
     def _ensure_bucket(self):
         try:
             self.client.head_bucket(Bucket=self.bucket)

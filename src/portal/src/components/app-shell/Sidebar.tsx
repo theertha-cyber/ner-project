@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
 import { navFor } from "@/lib/nav-config";
+import { Settings, LogOut, ChevronDown } from "lucide-react";
 
 function userInitials(email: string): string {
   return email.slice(0, 2).toUpperCase();
@@ -49,43 +50,52 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
         borderRight: "1px solid var(--line)",
       }}
     >
-      {/* Logo block */}
-      <div style={{ padding: "20px 16px 12px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 8,
-              background: "var(--primary)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontFamily: "var(--font-display, sans-serif)",
-              fontWeight: 800,
-              fontSize: 17,
-              color: "#fff",
-              flexShrink: 0,
-            }}
-          >
-            n
-          </div>
-          <span
-            style={{
-              fontFamily: "var(--font-display, sans-serif)",
-              fontWeight: 700,
-              fontSize: 16,
-              color: "var(--ink)",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            NER Platform
-          </span>
+      {/* Logo block — height matches Topbar (62px) so the two bottom borders line up */}
+      <div
+        style={{
+          height: 62,
+          minHeight: 62,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "0 16px",
+          borderBottom: "1px solid var(--line)",
+        }}
+      >
+        <div
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            background: "var(--primary)",
+            display: "grid",
+            placeItems: "center",
+            fontFamily: "var(--font-display, sans-serif)",
+            fontWeight: 800,
+            fontSize: 17,
+            lineHeight: 1,
+            color: "#fff",
+            flexShrink: 0,
+          }}
+        >
+          n
         </div>
+        <span
+          style={{
+            fontFamily: "var(--font-display, sans-serif)",
+            fontWeight: 700,
+            fontSize: 16,
+            lineHeight: 1.2,
+            color: "var(--ink)",
+            letterSpacing: "-0.02em",
+          }}
+        >
+          NER Platform
+        </span>
       </div>
 
       {/* Nav section */}
-      <nav style={{ flex: 1, overflowY: "auto", padding: "4px 12px" }}>
+      <nav style={{ flex: 1, overflowY: "auto", padding: "10px 12px" }}>
         {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
@@ -123,7 +133,7 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
                 }
               }}
             >
-              <span style={{ fontSize: 15, lineHeight: 1, flexShrink: 0 }}>{item.icon}</span>
+              <item.icon size={16} strokeWidth={2} style={{ flexShrink: 0 }} />
               <span style={{ flex: 1 }}>{item.label}</span>
               {item.badge != null && (
                 <span
@@ -217,13 +227,12 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
               display: "grid",
               placeItems: "center",
               color: "var(--ink-2)",
-              fontSize: 9,
               flexShrink: 0,
               transition: "transform 0.18s ease",
               transform: menuOpen ? "rotate(180deg)" : "rotate(0deg)",
             }}
           >
-            ▾
+            <ChevronDown size={13} strokeWidth={2.25} />
           </span>
         </button>
       </div>
@@ -281,7 +290,7 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
           >
-            <span style={{ fontSize: 15, lineHeight: 1 }}>⚙</span>
+            <Settings size={15} strokeWidth={2} />
             <span>Settings</span>
           </button>
           <button
@@ -304,7 +313,7 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--bad-soft)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
           >
-            <span style={{ fontSize: 15, lineHeight: 1 }}>⎋</span>
+            <LogOut size={15} strokeWidth={2} />
             <span>Logout</span>
           </button>
         </div>

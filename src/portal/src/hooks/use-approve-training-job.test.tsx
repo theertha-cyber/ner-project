@@ -24,11 +24,13 @@ describe("useApproveTrainingJob", () => {
 
     const { result } = renderHook(() => useApproveTrainingJob(), { wrapper: createWrapper() });
 
-    result.current.mutate({ jobId: "job-1", tenantId: "tenant-1" });
+    const hyperparams = { learning_rate: 2e-5, num_epochs: 3, batch_size: 8, max_seq_length: 128 };
+    result.current.mutate({ jobId: "job-1", tenantId: "tenant-1", hyperparams });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    const callUrl = String(mockFetch.mock.calls[0][0]);
-    expect(callUrl).toContain("tenant_id=tenant-1");
+    const [callUrl, callOptions] = mockFetch.mock.calls[0];
+    expect(String(callUrl)).toContain("tenant_id=tenant-1");
+    expect(JSON.parse(callOptions.body)).toEqual(hyperparams);
     expect(result.current.data).toEqual(updated);
   });
 });

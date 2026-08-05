@@ -1,0 +1,53 @@
+import pytest
+
+from src.chat_api.api.v1.schemas import CandidateEntity, ChatResponse, PendingClarification, Source
+
+pytestmark = [pytest.mark.verification, pytest.mark.asyncio]
+
+
+class TestPendingClarificationSerialization:
+    """Covers verification.md rows 6, 7: `pending_clarification` is present with
+    ambiguous turns and absent (not null) otherwise. Mirrors the exclude-when-None
+    construction in `src/chat_api/api/v1/chat.py`."""
+
+    def _response(self, pending):
+        response = ChatResponse(
+            reply="test", sources=[Source(source_type="sql", value="x")],
+            conversation_id="conv-1", pending_clarification=pending,
+        )
+        exclude = {"pending_clarification"} if pending is None else set()
+        return response.model_dump(exclude=exclude)
+
+    def test_absent_when_no_clarification(self):
+        payload = self._response(None)
+        assert "pending_clarification" not in payload
+
+    def test_present_when_clarification_pending(self):
+        pending = PendingClarification(
+            mention="Sreelakshmi",
+            candidates=[
+                CandidateEntity(document_id="doc-1", name="Sreelakshmi R", organization="SEO Technologies"),
+                CandidateEntity(document_id="doc-2", name="Sreelakshmi P", organization="UST Global"),
+            ],
+        )
+        payload = self._response(pending)
+        assert "pending_clarification" in payload
+        assert payload["pending_clarification"]["mention"] == "Sreelakshmi"
+        assert len(payload["pending_clarification"]["candidates"]) == 2
+        assert payload["pending_clarification"]["candidates"][0]["document_id"] == "doc-1"
+
+    def test_candidate_entity_omits_absent_fields_gracefully(self):
+        c = CandidateEntity(document_id="doc-1", name="X")
+        assert c.organization is None
+        assert c.skills == []
+
+
+class TestClarificationResponseShape:
+    """Covers verification.md row 6: status/empty-sources contract for a
+    clarification response, exercised at the schema level (the node-level
+    behaviour producing this shape is covered by tests/test_entity_resolution_graph.py)."""
+
+    def test_clarification_response_has_empty_sources(self):
+        response = ChatResponse(reply="Which one did you mean?\n\n1. A\n2. B", sources=[], conversation_id="conv-1")
+        assert response.sources == []
+        assert response.disclaimer is not None

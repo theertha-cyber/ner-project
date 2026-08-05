@@ -1,5 +1,7 @@
 "use client";
 
+import { FilterSelect } from "@/components/ui/filter-select";
+
 export type FilterTab = "all" | "pending" | "processing" | "processed" | "failed";
 
 export interface StatusFilterTabsProps {
@@ -17,37 +19,10 @@ const TABS: { value: FilterTab; label: string }[] = [
 ];
 
 export function StatusFilterTabs({ selected, onChange, counts }: StatusFilterTabsProps) {
-  return (
-    <div className="flex gap-1 border-b pb-2" style={{ borderColor: "var(--line)" }}>
-      {TABS.map((tab) => (
-        <button
-          key={tab.value}
-          type="button"
-          onClick={() => onChange(tab.value)}
-          className={[
-            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-            selected === tab.value
-              ? "bg-brand-primary text-white"
-              : "",
-          ].join(" ")}
-          style={selected !== tab.value ? { color: "var(--ink-2)" } : undefined}
-        >
-          {tab.label}
-          {counts && (
-            <span
-              className={[
-                "inline-flex size-5 items-center justify-center rounded-full text-xs",
-                selected === tab.value
-                  ? "bg-white/20 text-white"
-                  : "",
-              ].join(" ")}
-              style={selected !== tab.value ? { background: "var(--surface-3)", color: "var(--ink-2)" } : undefined}
-            >
-              {counts[tab.value]}
-            </span>
-          )}
-        </button>
-      ))}
-    </div>
-  );
+  const options = TABS.map((tab) => ({
+    value: tab.value,
+    label: counts ? `${tab.label} (${counts[tab.value]})` : tab.label,
+  }));
+
+  return <FilterSelect value={selected} onChange={onChange} options={options} ariaLabel="Filter by status" />;
 }

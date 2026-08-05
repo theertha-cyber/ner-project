@@ -6,12 +6,16 @@ from src.shared.retrieval.orchestrator import RetrievalPlan
 
 
 class ChatState(TypedDict, total=False):
-    # inputs — set once by the adapter, never mutated
+    # inputs — set once by the adapter. `message` is the one exception: when entity
+    # resolution resumes a clarified turn, entity_resolution_node overwrites it with
+    # `original_message` so every downstream node (which reads only `message`) answers
+    # the original request without any node-by-node change.
     message: str
     tenant_id: str
     schema: str
     jwt_token: str | None
     conversation_context: list[dict] | None
+    conversation_id: str | None
 
     # runtime context — not serializable, excluded from any future checkpointer
     session: AsyncSession
@@ -21,6 +25,12 @@ class ChatState(TypedDict, total=False):
 
     # orchestrator outcome
     retrieval_plan: RetrievalPlan
+
+    # entity resolution outcome (present only when entity_resolution_enabled)
+    entity_resolution_outcome: str | None
+    resolved_document_ids: list[str]
+    pending_clarification: dict | None
+    original_message: str | None
 
     # stage outputs
     sql_results: list[dict] | None

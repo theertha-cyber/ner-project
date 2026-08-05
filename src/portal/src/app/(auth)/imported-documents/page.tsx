@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useReducer } from "react";
+import { useState, useEffect, useMemo, useCallback, useReducer, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 import { useEntityTypes } from "@/hooks/use-entity-types";
 import { authFetch } from "@/lib/auth-fetch";
@@ -14,6 +14,16 @@ import {
   nextSpanId,
 } from "@/components/annotation/token-range-reducer";
 import type { TokenRangeSpan } from "@/components/annotation/token-range-reducer";
+import { AnnotationImportPreview } from "@/components/annotation/AnnotationImportPreview";
+import { AnnotationImportResult } from "@/components/annotation/AnnotationImportResult";
+import { useAnnotationImport } from "@/hooks/use-annotation-import";
+import { FilterSelect } from "@/components/ui/filter-select";
+
+const REVIEWED_FILTER_OPTIONS = [
+  { value: "", label: "All" },
+  { value: "true", label: "Reviewed" },
+  { value: "false", label: "Unreviewed" },
+];
 
 const ENTITY_COLORS = [
   "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6",
@@ -60,10 +70,15 @@ function ImportedDocumentsList({
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [sourceFileFilter, setSourceFileFilter] = useState("");
-  const [entityTypeFilter, setEntityTypeFilter] = useState("");
   const [reviewedFilter, setReviewedFilter] = useState<string>("");
   const perPage = 20;
+
+  const canImport = user?.role === "annotator" || user?.role === "tenant_admin";
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isResultOpen, setIsResultOpen] = useState(false);
+  const { state: importState, importAnnotations, reset: resetImport } = useAnnotationImport();
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -71,8 +86,6 @@ function ImportedDocumentsList({
       const params = new URLSearchParams();
       params.set("page", String(page));
       params.set("per_page", String(perPage));
-      if (sourceFileFilter) params.set("source_file", sourceFileFilter);
-      if (entityTypeFilter) params.set("entity_type", entityTypeFilter);
       if (reviewedFilter) params.set("reviewed", reviewedFilter);
 
       const res = await authFetch(`/api/v1/imported-annotations?${params.toString()}`);
@@ -82,7 +95,7 @@ function ImportedDocumentsList({
     } finally {
       setLoading(false);
     }
-  }, [page, sourceFileFilter, entityTypeFilter, reviewedFilter]);
+  }, [page, reviewedFilter]);
 
   useEffect(() => {
     fetchList();
@@ -93,35 +106,73 @@ function ImportedDocumentsList({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b px-6 py-3" style={{ borderColor: "var(--line)" }}>
-        <h1 className="text-xl font-semibold" style={{ color: "var(--ink)" }}>Imported Documents</h1>
+        <p className="text-sm" style={{ color: "var(--ink-3)" }}>
+          Files with existing entity annotations, imported for review
+        </p>
+        {canImport && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 rounded-md bg-brand-primary px-3 py-1.5 text-sm font-medium text-white"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-4">
+              <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+            </svg>
+            Import file
+          </button>
+        )}
       </div>
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".txt,.json,.jsonl"
+        style={{ display: "none" }}
+        data-testid="import-file-input"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) {
+            setPreviewFile(f);
+            setIsPreviewOpen(true);
+          }
+          e.target.value = "";
+        }}
+      />
+
       <div className="flex items-center gap-3 border-b px-6 py-3" style={{ borderColor: "var(--line)" }}>
-        <input
-          placeholder="Filter by source file"
-          value={sourceFileFilter}
-          onChange={(e) => { setSourceFileFilter(e.target.value); setPage(1); }}
-          className="rounded border px-3 py-1.5 text-sm"
-          style={{ borderColor: "var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
-        />
-        <input
-          placeholder="Filter by entity type"
-          value={entityTypeFilter}
-          onChange={(e) => { setEntityTypeFilter(e.target.value); setPage(1); }}
-          className="rounded border px-3 py-1.5 text-sm"
-          style={{ borderColor: "var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
-        />
-        <select
+        <FilterSelect
           value={reviewedFilter}
-          onChange={(e) => { setReviewedFilter(e.target.value); setPage(1); }}
-          className="rounded border px-3 py-1.5 text-sm"
-          style={{ borderColor: "var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
-        >
-          <option value="">All</option>
-          <option value="true">Reviewed</option>
-          <option value="false">Unreviewed</option>
-        </select>
+          onChange={(v) => { setReviewedFilter(v); setPage(1); }}
+          options={REVIEWED_FILTER_OPTIONS}
+          ariaLabel="Filter by review status"
+        />
       </div>
+
+      {/* Import preview slide-over */}
+      <AnnotationImportPreview
+        open={isPreviewOpen}
+        file={previewFile}
+        onConfirm={async (f) => {
+          setIsPreviewOpen(false);
+          setIsResultOpen(true);
+          await importAnnotations(f);
+        }}
+        onClose={() => {
+          setIsPreviewOpen(false);
+          setPreviewFile(null);
+        }}
+      />
+
+      {/* Import result slide-over */}
+      <AnnotationImportResult
+        open={isResultOpen}
+        state={importState}
+        onDone={() => {
+          setIsResultOpen(false);
+          resetImport();
+          if (importState.status === "success") fetchList();
+        }}
+      />
 
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (

@@ -5,6 +5,8 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
 from src.shared.config import settings
+from src.shared.database import get_engine, wait_for_database
+from src.shared.readiness import check_database, check_redis, build_readiness_body
 from src.training_service.middleware.tenant_context import TenantContextMiddleware
 from src.training_service.celery_app import celery_app
 from src.training_service.api.v1 import training_jobs, models
@@ -12,6 +14,8 @@ from src.training_service.api.v1 import training_jobs, models
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.db_factory = get_engine
+    await wait_for_database()
     yield
 
 
@@ -70,4 +74,14 @@ app.include_router(models.router)
 
 @app.get("/health")
 async def health():
+    checks = {
+        "database": await check_database(get_engine()),
+        "celery_broker": await check_redis(settings.celery_broker_url),
+    }
+    status_code, body = build_readiness_body(checks)
+    return JSONResponse(status_code=status_code, content=body)
+
+
+@app.get("/health/live")
+async def health_live():
     return {"status": "ok"}

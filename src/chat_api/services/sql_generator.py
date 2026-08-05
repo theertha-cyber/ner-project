@@ -8,7 +8,7 @@ from src.shared.config import settings
 logger = logging.getLogger(__name__)
 
 WHITELISTED_TABLES = {
-    "document_entities": {"id", "document_id", "entity_type", "entity_value", "normalized_value", "confidence", "page_number", "char_start", "char_end", "created_at"},
+    "document_entities": {"id", "document_id", "entity_type", "entity_value", "normalized_value", "confidence", "page_number", "char_start", "char_end", "created_at", "value_kind", "value_number", "value_number_high", "value_unit", "value_date", "value_date_high"},
     "document_chunks": {"id", "document_id", "chunk_index", "chunk_text", "created_at"},
     "documents": {"id", "tenant_id", "filename", "mime_type", "file_size_bytes", "status", "created_at"},
     "document_text_spans": {"id", "document_id", "page_no", "block_no", "text", "start_offset", "end_offset"},
@@ -18,9 +18,44 @@ WHITELISTED_TABLES = {
 MAX_SQL_LENGTH = 2000
 DEFAULT_LIMIT = 100
 
+_DOCUMENT_NAME_RE = re.compile(r'(?P<as>\bAS\s+)?\bdocument_name\b', re.IGNORECASE)
+
 
 class SQLValidationError(Exception):
     pass
+
+
+def _fix_document_name_reference(sql: str) -> str:
+    """Deterministically repairs a `document_name` reference the LLM forgot to alias.
+    The generator prompt tells the model to JOIN documents AS d and select
+    `d.filename AS document_name`, but it sometimes selects the bare, nonexistent
+    `document_name` column instead — this only surfaces as a Postgres
+    UndefinedColumnError at execution time, which the guardrail then swallows into
+    a generic "no sources" reply. Fixed here instead of relying on the LLM."""
+    if not re.search(r'\bdocument_entities\b', sql, re.IGNORECASE):
+        return sql
+    if not _DOCUMENT_NAME_RE.search(sql):
+        return sql
+
+    join_match = re.search(r'\bJOIN\s+documents\s+(?:AS\s+)?(\w+)', sql, re.IGNORECASE)
+    if join_match:
+        alias = join_match.group(1)
+    else:
+        entities_match = re.search(r'\bFROM\s+document_entities\s+(?:AS\s+)?(\w+)?', sql, re.IGNORECASE)
+        if not entities_match:
+            return sql
+        entities_alias = entities_match.group(1) or "document_entities"
+        alias = "d"
+        join_clause = f" JOIN documents AS {alias} ON {alias}.id = {entities_alias}.document_id"
+        insert_pos = entities_match.end()
+        sql = sql[:insert_pos] + join_clause + sql[insert_pos:]
+
+    def _replace(m: re.Match) -> str:
+        if m.group("as"):
+            return m.group(0)  # "AS document_name" names a target alias — already correct
+        return f"{alias}.filename AS document_name"
+
+    return _DOCUMENT_NAME_RE.sub(_replace, sql)
 
 
 class SQLGenerator:
@@ -50,7 +85,16 @@ Always include a LIMIT clause.
 Never use DDL, INSERT, UPDATE, DELETE, DROP, ALTER, or GRANT.
 Never use UNION, subqueries without whitelisted tables, or JOINs on non-whitelisted tables.
 When querying `document_entities`, you SHOULD JOIN with `documents` AS d ON d.id = document_entities.document_id and include `d.filename AS document_name` in the SELECT clause.
-`document_entities` holds one row per complete logical entity (already reconstructed from BIO tokens), not per token — match on `normalized_value` for entity lookups (e.g. `normalized_value = 'aws'` matches both "AWS" and "Amazon Web Services").
+`document_entities` holds one row per complete logical entity (already reconstructed from BIO tokens), not per token — match on `normalized_value` for entity lookups (e.g. `normalized_value = 'aws'` matches both "AWS" and "Amazon Web Services"). `normalized_value` is always lowercase, so any literal you compare it against must be lowercased too (e.g. `normalized_value = 'natrajan'`, not `'Natrajan'`). For numeric or date comparisons and ranges (e.g. more than N years, before/after a date, salary greater than X), use `value_number` / `value_date` (and `CURRENT_DATE` for "today") rather than parsing `entity_value` or `normalized_value` as text.
+
+A question naming an entity type (e.g. "CONTACT_DETAILS", "YEARS_OF_EXP") together with a restriction (a person's name, or an explicit "restrict results to document_id = '...'" clause appended to the question) means BOTH conditions apply together with AND — never drop the `entity_type` filter in favor of the restriction, and never drop the restriction in favor of the type filter. If the question gives an explicit `document_id = '...'` restriction, AND that literal onto the `entity_type` filter directly:
+  "CONTACT_DETAILS of Natrajan (restrict results to document_id = 'b7dc4012-...')"
+    -> WHERE de.entity_type = 'CONTACT_DETAILS' AND de.document_id = 'b7dc4012-...'
+If instead the question only names a person with no explicit document_id restriction, resolve the person to their document via a self-join on `document_entities` before filtering by type:
+  "CONTACT_DETAILS of Natrajan"
+    -> SELECT de.entity_value, ... FROM document_entities de
+       JOIN document_entities person ON person.document_id = de.document_id AND person.normalized_value = 'natrajan'
+       WHERE de.entity_type = 'CONTACT_DETAILS'
 
 Available tables and columns:
 {tables_desc}
@@ -62,7 +106,7 @@ Return ONLY the SQL query, no explanations:"""
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
+            temperature=0,
             max_tokens=500,
         )
 
@@ -73,6 +117,8 @@ Return ONLY the SQL query, no explanations:"""
         return sql
 
     def validate_sql(self, sql: str) -> str:
+        sql = _fix_document_name_reference(sql)
+
         if len(sql) > MAX_SQL_LENGTH:
             raise SQLValidationError(f"SQL exceeds maximum length of {MAX_SQL_LENGTH}")
 

@@ -1,6 +1,7 @@
-"""Integration tests for training-jobs API: submission, run_number assignment, status/list."""
+"""Integration tests for training-jobs API: submission, approval, run_number assignment, status/list."""
 import os
 import uuid
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -86,6 +87,7 @@ async def setup_schema(engine):
     yield tid, schema
     async with engine.begin() as conn:
         await conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
+        await conn.execute(text("DELETE FROM public.audit_events WHERE tenant_id = :id"), {"id": tid})
         await conn.execute(text("DELETE FROM public.tenants WHERE id = :id"), {"id": tid})
 
 
@@ -97,6 +99,21 @@ async def client(engine):
         yield ac
 
 
+@pytest.fixture(autouse=True)
+def fake_celery_send_task(monkeypatch):
+    """Approval enqueues a Celery task; tests don't depend on a live broker."""
+    from src.training_service.api.v1 import training_jobs as training_jobs_module
+
+    calls = []
+
+    def _fake_send_task(name, args=None, **kwargs):
+        calls.append({"name": name, "args": args})
+        return SimpleNamespace(id=f"fake-task-{len(calls)}")
+
+    monkeypatch.setattr(training_jobs_module.celery_app, "send_task", _fake_send_task)
+    return calls
+
+
 VALID_HYPERPARAMS = {"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128}
 
 
@@ -105,10 +122,11 @@ async def test_submit_valid_job_returns_run_number_and_run_name(client, engine, 
     monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
     tid, schema = setup_schema
     token = make_token(tid)
-    resp = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     assert resp.status_code == 201
     data = resp.json()
     assert data["status"] == "pending_approval"
+    assert data["hyperparams"] is None
     assert "celery_task_id" not in data
     assert data["run_number"] == 1
     assert data["run_name"].startswith("run-001-")
@@ -119,7 +137,7 @@ async def test_submit_insufficient_entities_422(client, engine, setup_schema, mo
     monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "500")
     tid, schema = setup_schema
     token = make_token(tid)
-    resp = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     assert resp.status_code == 422
 
 
@@ -127,17 +145,17 @@ async def test_submit_insufficient_entities_422(client, engine, setup_schema, mo
 async def test_submit_as_non_admin_403(client, engine, setup_schema):
     tid, schema = setup_schema
     token = make_token(tid, role="annotator")
-    resp = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_submit_invalid_hyperparams_422(client, engine, setup_schema, monkeypatch):
+async def test_submit_with_hyperparameters_is_ignored_or_rejected(client, engine, setup_schema, monkeypatch):
     monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
     tid, schema = setup_schema
     token = make_token(tid)
-    body = {**VALID_HYPERPARAMS, "num_epochs": -1}
-    resp = await client.post("/api/v1/training-jobs", json=body, headers=auth_header(token))
+    resp = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    # TrainingJobCreate forbids extra fields, so a body containing hyperparameters is rejected outright.
     assert resp.status_code == 422
 
 
@@ -148,7 +166,7 @@ async def test_sequential_run_numbers_per_tenant(client, engine, setup_schema, m
     token = make_token(tid)
     run_numbers = []
     for _ in range(3):
-        resp = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+        resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
         assert resp.status_code == 201
         run_numbers.append(resp.json()["run_number"])
     assert run_numbers == [1, 2, 3]
@@ -159,11 +177,11 @@ async def test_run_number_not_reused_after_cancel(client, engine, setup_schema, 
     monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
     tid, schema = setup_schema
     token = make_token(tid)
-    first = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    first = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     job_id = first.json()["id"]
     cancel = await client.post(f"/api/v1/training-jobs/{job_id}/cancel", headers=auth_header(token))
     assert cancel.status_code == 200
-    second = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    second = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     assert second.json()["run_number"] == 2
 
 
@@ -172,7 +190,7 @@ async def test_get_status_queued_job(client, engine, setup_schema, monkeypatch):
     monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
     tid, schema = setup_schema
     token = make_token(tid)
-    created = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    created = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     job_id = created.json()["id"]
     async with engine.begin() as conn:
         await conn.execute(
@@ -192,7 +210,7 @@ async def test_get_job_as_non_owner_tenant_404(client, engine, setup_schema, mon
     monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
     tid, schema = setup_schema
     token = make_token(tid)
-    created = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    created = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     job_id = created.json()["id"]
 
     other_tid = str(uuid.uuid4())
@@ -206,7 +224,7 @@ async def test_system_admin_get_job_with_correct_tenant_id(client, engine, setup
     monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
     tid, schema = setup_schema
     token = make_token(tid)
-    created = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    created = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     job_id = created.json()["id"]
 
     admin_token = make_token(tid, role="system_admin")
@@ -220,7 +238,7 @@ async def test_system_admin_get_job_without_tenant_id_400(client, engine, setup_
     monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
     tid, schema = setup_schema
     token = make_token(tid)
-    created = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    created = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     job_id = created.json()["id"]
 
     admin_token = make_token(tid, role="system_admin")
@@ -233,10 +251,122 @@ async def test_system_admin_get_job_with_wrong_tenant_id_404(client, engine, set
     monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
     tid, schema = setup_schema
     token = make_token(tid)
-    created = await client.post("/api/v1/training-jobs", json=VALID_HYPERPARAMS, headers=auth_header(token))
+    created = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     job_id = created.json()["id"]
 
     other_tid = str(uuid.uuid4())
     admin_token = make_token(tid, role="system_admin")
     resp = await client.get(f"/api/v1/training-jobs/{job_id}", params={"tenant_id": other_tid}, headers=auth_header(admin_token))
     assert resp.status_code == 404
+
+
+# --- Approval (System Admin sets hyperparameters) ---
+
+
+@pytest.mark.asyncio
+async def test_approve_pending_job_with_valid_hyperparameters(client, engine, setup_schema, monkeypatch, fake_celery_send_task):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    tid, schema = setup_schema
+    token = make_token(tid)
+    created = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
+    job_id = created.json()["id"]
+    assert created.json()["hyperparams"] is None
+
+    admin_token = make_token(tid, role="system_admin")
+    resp = await client.post(
+        f"/api/v1/training-jobs/{job_id}/approve",
+        params={"tenant_id": tid},
+        json=VALID_HYPERPARAMS,
+        headers=auth_header(admin_token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "queued"
+    assert data["hyperparams"] == VALID_HYPERPARAMS
+    assert len(fake_celery_send_task) == 1
+    assert fake_celery_send_task[0]["name"] == "fine_tune_model"
+    assert fake_celery_send_task[0]["args"] == [tid, job_id, VALID_HYPERPARAMS]
+
+
+@pytest.mark.asyncio
+async def test_approve_without_hyperparameters_422(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    tid, schema = setup_schema
+    token = make_token(tid)
+    created = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
+    job_id = created.json()["id"]
+
+    admin_token = make_token(tid, role="system_admin")
+    resp = await client.post(
+        f"/api/v1/training-jobs/{job_id}/approve",
+        params={"tenant_id": tid},
+        headers=auth_header(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_approve_with_invalid_hyperparameters_422(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    tid, schema = setup_schema
+    token = make_token(tid)
+    created = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
+    job_id = created.json()["id"]
+
+    admin_token = make_token(tid, role="system_admin")
+    body = {**VALID_HYPERPARAMS, "num_epochs": -1}
+    resp = await client.post(
+        f"/api/v1/training-jobs/{job_id}/approve",
+        params={"tenant_id": tid},
+        json=body,
+        headers=auth_header(admin_token),
+    )
+    assert resp.status_code == 422
+
+    # Job remains pending_approval with hyperparams unchanged.
+    check = await client.get(f"/api/v1/training-jobs/{job_id}", params={"tenant_id": tid}, headers=auth_header(admin_token))
+    assert check.json()["status"] == "pending_approval"
+    assert check.json()["hyperparams"] is None
+
+
+@pytest.mark.asyncio
+async def test_approve_job_not_pending_approval_422(client, engine, setup_schema, monkeypatch, fake_celery_send_task):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    tid, schema = setup_schema
+    token = make_token(tid)
+    created = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
+    job_id = created.json()["id"]
+
+    admin_token = make_token(tid, role="system_admin")
+    first_approve = await client.post(
+        f"/api/v1/training-jobs/{job_id}/approve",
+        params={"tenant_id": tid},
+        json=VALID_HYPERPARAMS,
+        headers=auth_header(admin_token),
+    )
+    assert first_approve.status_code == 200
+
+    second_approve = await client.post(
+        f"/api/v1/training-jobs/{job_id}/approve",
+        params={"tenant_id": tid},
+        json=VALID_HYPERPARAMS,
+        headers=auth_header(admin_token),
+    )
+    assert second_approve.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_approve_as_non_system_admin_403(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    tid, schema = setup_schema
+    token = make_token(tid)
+    created = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
+    job_id = created.json()["id"]
+
+    resp = await client.post(
+        f"/api/v1/training-jobs/{job_id}/approve",
+        params={"tenant_id": tid},
+        json=VALID_HYPERPARAMS,
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 403

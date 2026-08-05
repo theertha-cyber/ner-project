@@ -57,7 +57,9 @@ class TestBackfillDocumentEntities:
                 CREATE TABLE "{schema}".document_entities (
                     id VARCHAR PRIMARY KEY, document_id VARCHAR NOT NULL, entity_type TEXT NOT NULL,
                     entity_value TEXT NOT NULL, normalized_value TEXT NOT NULL, confidence DOUBLE PRECISION NOT NULL,
-                    page_number INTEGER, char_start INTEGER, char_end INTEGER, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    page_number INTEGER, char_start INTEGER, char_end INTEGER, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    value_kind TEXT, value_number DOUBLE PRECISION, value_number_high DOUBLE PRECISION,
+                    value_unit TEXT, value_date DATE, value_date_high DATE
                 )
             """))
 

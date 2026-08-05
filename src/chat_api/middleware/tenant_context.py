@@ -8,7 +8,7 @@ from src.shared.exceptions import AuthError
 from src.shared.database import get_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-PUBLIC_PATHS = {"/health", "/docs", "/redoc", "/openapi.json"}
+PUBLIC_PATHS = {"/health", "/health/live", "/docs", "/redoc", "/openapi.json"}
 WIDGET_PATHS = {"/api/v1/public/widget.js", "/api/v1/public/chat"}
 
 

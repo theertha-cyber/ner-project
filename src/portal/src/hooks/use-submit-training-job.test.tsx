@@ -26,7 +26,7 @@ describe("useSubmitTrainingJob", () => {
 
     const { result } = renderHook(() => useSubmitTrainingJob(), { wrapper: createWrapper() });
 
-    result.current.mutate({ learning_rate: 2e-5, num_epochs: 3, batch_size: 8, max_seq_length: 128 });
+    result.current.mutate(undefined);
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(created);
@@ -37,7 +37,7 @@ describe("useSubmitTrainingJob", () => {
 
     const { result } = renderHook(() => useSubmitTrainingJob(), { wrapper: createWrapper() });
 
-    result.current.mutate({ learning_rate: 2e-5, num_epochs: -1, batch_size: 8, max_seq_length: 128 });
+    result.current.mutate(undefined);
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error?.message).toBe("Bad request");

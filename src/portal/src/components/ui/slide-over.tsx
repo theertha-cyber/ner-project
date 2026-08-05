@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, ReactNode } from "react";
+import { useEffect, useRef, useState, ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 const FOCUSABLE = [
   "a[href]",
@@ -21,6 +22,11 @@ export interface SlideOverProps {
 export function SlideOver({ open, onClose, width = 480, children }: SlideOverProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<Element | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -69,7 +75,9 @@ export function SlideOver({ open, onClose, width = 480, children }: SlideOverPro
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -94,6 +102,7 @@ export function SlideOver({ open, onClose, width = 480, children }: SlideOverPro
       >
         {children}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

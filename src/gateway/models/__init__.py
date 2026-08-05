@@ -82,6 +82,10 @@ class EntityDefinition(Base):
     validation_rule = Column(String(500), nullable=True)
     target_table = Column(String(255), nullable=True)
     base_label_mapping = Column(JSON, nullable=True)
+    # Semantic normalization config. NULL value_kind means "text" — no semantic
+    # normalization — which is how every entity type predating this column behaves.
+    value_kind = Column(String(32), nullable=True)
+    value_unit = Column(String(32), nullable=True)
     version = Column(Integer, default=1, nullable=False)
     required_flag = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)

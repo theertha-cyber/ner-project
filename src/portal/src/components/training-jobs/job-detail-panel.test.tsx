@@ -93,6 +93,16 @@ describe("JobDetailPanel", () => {
     expect(grid?.className).toContain("grid-cols-4");
   });
 
+  it("shows a placeholder instead of an empty grid when hyperparams is null", () => {
+    const job = { ...baseJob, hyperparams: null };
+    render(
+      <JobDetailPanel job={job} isLoading={false} isError={false} />,
+      { wrapper: createWrapper() },
+    );
+    expect(screen.getByText(/awaiting system admin approval/i)).toBeDefined();
+    expect(screen.queryByText("Learning Rate")).toBeNull();
+  });
+
   it("shows the full job id and creation date in the header", () => {
     render(
       <JobDetailPanel job={baseJob} isLoading={false} isError={false} />,
@@ -165,7 +175,7 @@ describe("JobDetailPanel", () => {
       { wrapper: createWrapper() },
     );
 
-    expect(await screen.findByText("v3")).toBeDefined();
+    expect((await screen.findAllByText("v3")).length).toBeGreaterThan(0);
   });
 
   it("passes the job's own tenant_id as a query param when viewed by system_admin", async () => {
@@ -189,7 +199,7 @@ describe("JobDetailPanel", () => {
       { wrapper: createWrapper() },
     );
 
-    expect(await screen.findByText("v5")).toBeDefined();
+    expect((await screen.findAllByText("v5")).length).toBeGreaterThan(0);
     const modelsCall = mockFetch.mock.calls.find(([url]) => String(url).includes("/api/v1/models?"));
     expect(modelsCall).toBeDefined();
     expect(String(modelsCall![0])).toContain("tenant_id=tenant-b");
@@ -265,6 +275,6 @@ describe("JobDetailPanel", () => {
     );
 
     expect(screen.getAllByText("job-1").length).toBeGreaterThan(0);
-    expect(await screen.findByText("v1")).toBeDefined();
+    expect((await screen.findAllByText("v1")).length).toBeGreaterThan(0);
   });
 });

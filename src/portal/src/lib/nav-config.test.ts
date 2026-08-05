@@ -2,15 +2,15 @@ import { describe, it, expect } from "vitest";
 import { navFor } from "./nav-config";
 
 describe("navFor", () => {
-  it("system_admin returns 5 items including no Settings", () => {
+  it("system_admin returns 4 items including no Settings", () => {
     const items = navFor("system_admin");
-    expect(items).toHaveLength(5);
+    expect(items).toHaveLength(4);
     expect(items.find((i) => i.id === "settings")).toBeUndefined();
   });
 
-  it("tenant_admin returns 8 items including no Settings", () => {
+  it("tenant_admin returns 9 items including no Settings", () => {
     const items = navFor("tenant_admin");
-    expect(items).toHaveLength(8);
+    expect(items).toHaveLength(9);
     expect(items.find((i) => i.id === "settings")).toBeUndefined();
   });
 

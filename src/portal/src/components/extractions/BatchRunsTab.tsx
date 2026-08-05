@@ -6,6 +6,7 @@ import { useModelVersions } from "@/hooks/use-model-versions";
 import { BatchRunCard } from "./BatchRunCard";
 import { BatchRunDetail } from "./BatchRunDetail";
 import { BaseModelConfirmDialog } from "./BaseModelConfirmDialog";
+import { BatchDocumentSelectModal } from "./BatchDocumentSelectModal";
 import type { BatchRun } from "@/types/extraction";
 
 export function BatchRunsTab() {
@@ -14,6 +15,7 @@ export function BatchRunsTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [showBaseModelConfirm, setShowBaseModelConfirm] = useState(false);
+  const [showDocumentSelect, setShowDocumentSelect] = useState(false);
 
   // Auto-select the most recent run on mount or when runs change
   useEffect(() => {
@@ -25,10 +27,10 @@ export function BatchRunsTab() {
   const selectedRun: BatchRun | undefined =
     runs.find((r) => r.run_id === selectedId);
 
-  async function handleNewBatchRun() {
+  async function handleRunExtraction(documentIds: string[]) {
     setTriggering(true);
     try {
-      const newRun = await triggerBatch();
+      const newRun = await triggerBatch(documentIds);
       setSelectedId(newRun.run_id);
     } finally {
       setTriggering(false);
@@ -40,7 +42,7 @@ export function BatchRunsTab() {
       setShowBaseModelConfirm(true);
       return;
     }
-    handleNewBatchRun();
+    setShowDocumentSelect(true);
   }
 
   return (
@@ -64,19 +66,32 @@ export function BatchRunsTab() {
         <BaseModelConfirmDialog
           onConfirm={() => {
             setShowBaseModelConfirm(false);
-            handleNewBatchRun();
+            setShowDocumentSelect(true);
           }}
           onCancel={() => setShowBaseModelConfirm(false)}
         />
       )}
 
+      {showDocumentSelect && (
+        <BatchDocumentSelectModal
+          onConfirm={(documentIds) => {
+            setShowDocumentSelect(false);
+            handleRunExtraction(documentIds);
+          }}
+          onCancel={() => setShowDocumentSelect(false)}
+        />
+      )}
+
       {/* Two-column layout */}
       <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 18 }}>
-        {/* Left: run list */}
-        <div className="flex flex-col gap-2">
+        {/* Left: run list — bounded height, scrolls independently of the page */}
+        <div
+          className="flex flex-col gap-2 overflow-y-auto"
+          style={{ maxHeight: "calc(100vh - 260px)" }}
+        >
           {runs.length === 0 ? (
             <p className="py-12 text-center text-sm text-text-secondary">
-              No batch runs yet. Click "New batch run" to start.
+              No batch runs yet. Click &quot;New batch run&quot; to start.
             </p>
           ) : (
             runs.map((run) => (

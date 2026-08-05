@@ -5,7 +5,8 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
 from src.shared.config import settings
-from src.shared.database import get_engine
+from src.shared.database import get_engine, wait_for_database
+from src.shared.readiness import check_database, check_http_dependency, build_readiness_body
 from src.chat_api.middleware.tenant_context import TenantContextMiddleware
 from src.chat_api.api.v1 import chat, widget_keys, public
 
@@ -13,6 +14,7 @@ from src.chat_api.api.v1 import chat, widget_keys, public
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.db_factory = get_engine
+    await wait_for_database()
     yield
 
 
@@ -72,4 +74,14 @@ app.include_router(public.router)
 
 @app.get("/health")
 async def health():
+    checks = {
+        "database": await check_database(get_engine()),
+        "model_serving": await check_http_dependency(settings.model_serving_url),
+    }
+    status_code, body = build_readiness_body(checks)
+    return JSONResponse(status_code=status_code, content=body)
+
+
+@app.get("/health/live")
+async def health_live():
     return {"status": "ok"}

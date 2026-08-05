@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "@/hooks";
 
 const mockReplace = vi.fn();
 
@@ -25,7 +26,11 @@ globalThis.fetch = mockFetch;
 function createWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    return (
+      <QueryClientProvider client={qc}>
+        <ToastProvider>{children}</ToastProvider>
+      </QueryClientProvider>
+    );
   };
 }
 
@@ -40,26 +45,16 @@ describe("TrainingJobsPage", () => {
     );
   });
 
-  it("renders the page header", async () => {
+  it("renders the view switcher parallel to the submit job button", async () => {
     render(<TrainingJobsPage />, { wrapper: createWrapper() });
     expect(screen.getByText("Training Jobs")).toBeDefined();
-  });
-
-  it("renders the h1 heading in font-display at weight >= 700", async () => {
-    render(<TrainingJobsPage />, { wrapper: createWrapper() });
-    const heading = screen.getByRole("heading", { level: 1, name: "Training Jobs" });
-    expect(heading.className).toContain("font-display");
-    expect(heading.className).toMatch(/font-(bold|extrabold|black)/);
+    expect(screen.getByText("Model Versions")).toBeDefined();
+    expect(screen.getByText("+ Submit job")).toBeDefined();
   });
 
   it("renders submit job button", async () => {
     render(<TrainingJobsPage />, { wrapper: createWrapper() });
     expect(screen.getByText("+ Submit job")).toBeDefined();
-  });
-
-  it("renders the API-path breadcrumb above the heading", async () => {
-    render(<TrainingJobsPage />, { wrapper: createWrapper() });
-    expect(screen.getByText("/api/v1/training-jobs")).toBeDefined();
   });
 
   it("renders filter tabs", async () => {
@@ -169,6 +164,54 @@ describe("TrainingJobsPage", () => {
       );
       expect(approveCall).toBeDefined();
       expect(String(approveCall![0])).toContain("tenant_id=tenant-b");
+    });
+  });
+
+  describe("Model Versions tab", () => {
+    it("surfaces Promote for a completed model version with no linked training job", async () => {
+      vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams("view=models&model=mv-2") as any);
+      vi.mocked(useAuth).mockReturnValue({
+        user: { role: "tenant_admin", tenantId: "t1", userId: "u1", email: "a@b.com", tenantSlug: null },
+      } as any);
+
+      mockFetch.mockImplementation((url: string) => {
+        if (String(url).includes("/models/active")) {
+          return Promise.resolve(new Response(JSON.stringify({ model: null }), { status: 200 }));
+        }
+        if (String(url).includes("/api/v1/models")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    id: "mv-2",
+                    version_number: 2,
+                    status: "completed",
+                    training_job_id: null,
+                    created_at: "2026-07-29T06:33:11.795Z",
+                    metrics: { eval_f1: 0.71, eval_precision: 0.68, eval_recall: 0.74, eval_loss: 0.7 },
+                    mlflow_run_id: null,
+                    mlflow_run_url: null,
+                    artifact_path: "tenants/t1/models/v2/",
+                    run_number: null,
+                    run_name: null,
+                  },
+                ],
+                total: 1,
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify({ items: [], total: 0, page: 1, per_page: 50 }), { status: 200 }),
+        );
+      });
+
+      render(<TrainingJobsPage />, { wrapper: createWrapper() });
+
+      expect(await screen.findAllByText("v2")).toHaveLength(2); // list card + detail header
+      expect(await screen.findByText("Promote")).toBeDefined();
     });
   });
 });

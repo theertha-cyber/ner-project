@@ -1,11 +1,51 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import text
+from sqlalchemy import text, create_engine
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.shared.config import settings
 
 
 def _schema(tenant_id: str) -> str:
     return f"tenant_{tenant_id.replace('-', '_')}"
+
+
+def _get_sync_engine():
+    return create_engine(settings.database_url_sync)
+
+
+def get_already_extracted(tenant_id: str, doc_ids: list[str], model_version: str) -> set[str]:
+    """Documents (of the given IDs) already extracted under the given model version,
+    determined via extracted_entities joined to extraction_runs.model_version — NOT
+    extraction_runs.document_id, which is NULL for batch runs. Shared by the batch
+    extraction worker (to decide what to skip) and the eligible-documents endpoint
+    (to decide what to disable), so both agree on what "already extracted" means."""
+    if not doc_ids:
+        return set()
+    engine = _get_sync_engine()
+    schema = _schema(tenant_id)
+    placeholders = ", ".join(f"'{d}'" for d in doc_ids)
+    with engine.connect() as conn:
+        result = conn.execute(
+            text(f"""
+                SELECT DISTINCT e.document_id
+                FROM {schema}.extracted_entities e
+                JOIN {schema}.extraction_runs r ON e.run_id = r.id
+                WHERE e.document_id IN ({placeholders})
+                AND r.model_version = :model_version
+            """),
+            {"model_version": model_version},
+        )
+        return {row[0] for row in result.fetchall()}
+
+
+async def list_processed_document_ids(db: AsyncSession, tenant_id: str) -> list[dict]:
+    """Documents in `processed` status for a tenant, with filename, for display in
+    the batch-extraction document picker."""
+    schema = _schema(tenant_id)
+    result = await db.execute(
+        text(f"SELECT id, filename FROM {schema}.documents WHERE status = 'processed'")
+    )
+    return [{"id": row[0], "filename": row[1]} for row in result.fetchall()]
 
 
 async def create_extraction_run(

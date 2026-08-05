@@ -50,8 +50,9 @@ export function useBatchRuns() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const triggerBatch = useCallback(async () => {
-    const res = await authFetch("/api/v1/extract-batch", { method: "POST" });
+  const triggerBatch = useCallback(async (documentIds: string[]) => {
+    const qs = new URLSearchParams({ documentIds: documentIds.join(",") }).toString();
+    const res = await authFetch(`/api/v1/extract-batch?${qs}`, { method: "POST" });
     if (!res.ok) throw new Error(`Batch trigger failed: ${res.status}`);
     const data = await res.json();
     const newRun: BatchRun = {

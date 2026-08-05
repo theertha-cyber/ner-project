@@ -15,7 +15,11 @@ interface BatchItem {
   error?: string;
 }
 
-export function DocumentUpload() {
+interface DocumentUploadProps {
+  allowPurposeSelection?: boolean;
+}
+
+export function DocumentUpload({ allowPurposeSelection = true }: DocumentUploadProps) {
   const [dragOver, setDragOver] = useState(false);
   const [batch, setBatch] = useState<BatchItem[]>([]);
   const [batchIndex, setBatchIndex] = useState<number | null>(null);
@@ -162,28 +166,30 @@ export function DocumentUpload() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-4 text-sm" style={{ color: "var(--ink-2)" }}>
-        <label className="flex cursor-pointer items-center gap-1.5">
-          <input
-            type="radio"
-            name="upload-purpose"
-            value="query"
-            checked={purpose === "query"}
-            onChange={() => setPurpose("query")}
-          />
-          Query (chat-searchable)
-        </label>
-        <label className="flex cursor-pointer items-center gap-1.5">
-          <input
-            type="radio"
-            name="upload-purpose"
-            value="training"
-            checked={purpose === "training"}
-            onChange={() => setPurpose("training")}
-          />
-          Training (for annotation)
-        </label>
-      </div>
+      {allowPurposeSelection && (
+        <div className="flex items-center gap-4 text-sm" style={{ color: "var(--ink-2)" }}>
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="radio"
+              name="upload-purpose"
+              value="query"
+              checked={purpose === "query"}
+              onChange={() => setPurpose("query")}
+            />
+            Query (chat-searchable)
+          </label>
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="radio"
+              name="upload-purpose"
+              value="training"
+              checked={purpose === "training"}
+              onChange={() => setPurpose("training")}
+            />
+            Training (for annotation)
+          </label>
+        </div>
+      )}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}

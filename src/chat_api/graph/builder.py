@@ -1,4 +1,5 @@
 from langgraph.graph import StateGraph, END
+from src.shared.config import settings
 from src.chat_api.graph.state import ChatState
 from src.chat_api.graph.nodes import build_nodes
 
@@ -9,14 +10,28 @@ def _route_after_guardrail(state: ChatState):
     return "orchestrator"
 
 
+def _route_after_entity_resolution(state: ChatState):
+    if "reply" in state:
+        return "end"
+    return "retrieval_execution"
+
+
 def build_chat_graph(orchestrator):
-    """Compiles the single, fixed chat graph topology:
+    """Compiles the chat graph topology. With `entity_resolution_enabled` off (the
+    default), this is byte-for-byte the pre-existing fixed topology:
 
     guardrail -> (END | orchestrator) -> retrieval_execution -> source_assembly ->
     prompt_assembly -> generation -> END.
 
-    The guardrail decline is the only conditional edge in the graph; there is no
-    build-time or runtime setting that selects a different topology."""
+    With the flag on, one additional node and one additional conditional edge are
+    inserted between `orchestrator` and `retrieval_execution`:
+
+    orchestrator -> entity_resolution -> (END | retrieval_execution) -> ...
+
+    The routing decision at both conditional edges is a pure function of state
+    (whether a terminal `reply` is already present), never of an LLM's choice of
+    next node — see design.md Decision 1 and the `chat-orchestration-graph` delta
+    spec's "Routing is not model-decided" requirement."""
     nodes = build_nodes(orchestrator)
 
     graph = StateGraph(ChatState)
@@ -34,7 +49,18 @@ def build_chat_graph(orchestrator):
         _route_after_guardrail,
         {"end": END, "orchestrator": "orchestrator"},
     )
-    graph.add_edge("orchestrator", "retrieval_execution")
+
+    if settings.entity_resolution_enabled:
+        graph.add_node("entity_resolution", nodes["entity_resolution"])
+        graph.add_edge("orchestrator", "entity_resolution")
+        graph.add_conditional_edges(
+            "entity_resolution",
+            _route_after_entity_resolution,
+            {"end": END, "retrieval_execution": "retrieval_execution"},
+        )
+    else:
+        graph.add_edge("orchestrator", "retrieval_execution")
+
     graph.add_edge("retrieval_execution", "source_assembly")
     graph.add_edge("source_assembly", "prompt_assembly")
     graph.add_edge("prompt_assembly", "generation")

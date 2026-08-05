@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS {schema}.annotation_tasks (
     id VARCHAR PRIMARY KEY,
     document_id VARCHAR NOT NULL REFERENCES {schema}.documents(id) ON DELETE CASCADE,
     assignee VARCHAR,
+    annotator_user_id VARCHAR,
     status VARCHAR(20) DEFAULT 'unannotated',
     reviewer VARCHAR,
     dataset_version INTEGER,
@@ -134,8 +135,10 @@ CREATE TABLE IF NOT EXISTS {schema}.training_jobs (
     hyperparameters JSONB,
     status VARCHAR(20) DEFAULT 'queued',
     metrics_uri VARCHAR(500),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
     started_at TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ
+    completed_at TIMESTAMPTZ,
+    failed_at TIMESTAMPTZ
 );
 CREATE TABLE IF NOT EXISTS {schema}.model_versions (
     id VARCHAR PRIMARY KEY,
@@ -155,7 +158,8 @@ CREATE TABLE IF NOT EXISTS {schema}.extraction_runs (
     document_id VARCHAR NOT NULL REFERENCES {schema}.documents(id) ON DELETE CASCADE,
     model_version VARCHAR,
     status VARCHAR(20) DEFAULT 'queued',
-    started_at TIMESTAMPTZ
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
 );
 CREATE TABLE IF NOT EXISTS {schema}.extracted_entities (
     id VARCHAR PRIMARY KEY,
@@ -170,6 +174,32 @@ CREATE TABLE IF NOT EXISTS {schema}.extracted_entities (
     corrected_by VARCHAR,
     correction_notes TEXT,
     document_id VARCHAR
+);
+CREATE TABLE IF NOT EXISTS {schema}.conversations (
+    id VARCHAR PRIMARY KEY,
+    tenant_id VARCHAR NOT NULL,
+    user_id VARCHAR NOT NULL,
+    title VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS {schema}.chat_messages (
+    id VARCHAR PRIMARY KEY,
+    conversation_id VARCHAR NOT NULL REFERENCES {schema}.conversations(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    sources JSONB,
+    answer_kind TEXT NOT NULL DEFAULT 'answer',
+    model_version TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS {schema}.chat_message_feedback (
+    id VARCHAR PRIMARY KEY,
+    message_id VARCHAR NOT NULL UNIQUE REFERENCES {schema}.chat_messages(id) ON DELETE CASCADE,
+    tenant_id VARCHAR NOT NULL,
+    user_id VARCHAR NOT NULL,
+    rating TEXT NOT NULL CHECK (rating IN ('up', 'down')),
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 """
 

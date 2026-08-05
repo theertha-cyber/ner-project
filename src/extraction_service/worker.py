@@ -10,6 +10,11 @@ from src.extraction_service.services.entity_normalizer import (
     merge_wordpieces,
     reconstruct_entities,
 )
+from src.extraction_service.services.entity_store import get_already_extracted
+from src.extraction_service.services.semantic_normalizer import (
+    apply_semantic_normalization,
+    load_entity_type_config,
+)
 
 _TOKEN_RE = re.compile(r"\S+")
 
@@ -84,24 +89,6 @@ def _get_documents_to_process(tenant_id: str, doc_ids: list[str]) -> list[str]:
         return [row[0] for row in result.fetchall()]
 
 
-def _get_already_extracted(tenant_id: str, doc_ids: list[str], model_version: str) -> set[str]:
-    engine = _get_sync_engine()
-    schema = _schema(tenant_id)
-    placeholders = ", ".join(f"'{d}'" for d in doc_ids)
-    with engine.connect() as conn:
-        result = conn.execute(
-            text(f"""
-                SELECT DISTINCT e.document_id
-                FROM {schema}.extracted_entities e
-                JOIN {schema}.extraction_runs r ON e.run_id = r.id
-                WHERE e.document_id IN ({placeholders})
-                AND r.model_version = :model_version
-            """),
-            {"model_version": model_version},
-        )
-        return {row[0] for row in result.fetchall()}
-
-
 def _get_active_model_version(tenant_id: str) -> str | None:
     engine = _get_sync_engine()
     schema = _schema(tenant_id)
@@ -145,7 +132,7 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
         return
 
     docs = _get_documents_to_process(tenant_id, doc_ids)
-    already = _get_already_extracted(tenant_id, doc_ids, model_version)
+    already = get_already_extracted(tenant_id, doc_ids, model_version)
 
     to_process = [d for d in docs if d not in already]
     skipped = [d for d in docs if d in already]
@@ -206,6 +193,12 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
             aligned_predictions = _align_predictions_with_offsets(predictions, token_records)
             merged_predictions = merge_wordpieces(aligned_predictions)
             normalized_entities = reconstruct_entities(merged_predictions)
+
+            with engine.connect() as conn:
+                type_config = load_entity_type_config(conn, tenant_id)
+            normalized_entities, unparseable_count = apply_semantic_normalization(normalized_entities, type_config)
+            if unparseable_count:
+                print(f"WORKER: doc={doc_id} semantic_unparseable={unparseable_count}", flush=True)
 
             with engine.begin() as conn:
                 for pred in predictions:

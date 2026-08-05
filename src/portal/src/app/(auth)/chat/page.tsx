@@ -6,6 +6,8 @@ import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { MessageThread } from "@/components/chat/MessageThread";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { authFetch } from "@/lib/auth-fetch";
+import { useAuth } from "@/lib/auth";
+import type { Feedback } from "@/components/chat/MessageFeedback";
 
 interface Message {
   id: string;
@@ -14,6 +16,9 @@ interface Message {
   sources?: Source[];
   created_at: string;
   isThinking?: boolean;
+  answer_kind?: "answer" | "clarification" | "guardrail_blocked" | "out_of_domain" | null;
+  model_version?: string | null;
+  feedback?: Feedback | null;
 }
 
 interface Source {
@@ -37,6 +42,7 @@ interface Conversation {
 const CHAT_API_BASE = "/api/v1/chat";
 
 function ChatPageInner() {
+  const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -218,6 +224,27 @@ function ChatPageInner() {
     }
   }, [activeConvId, messages, loadConversations, showError]);
 
+  const handleRateMessage = useCallback(async (messageId: string, rating: "up" | "down") => {
+    try {
+      const resp = await authFetch(CHAT_API_BASE + "/messages/" + messageId + "/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating }),
+      });
+      if (resp.ok || resp.status === 409) {
+        const data = await resp.json();
+        const feedback: Feedback = resp.ok ? data : data.detail;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, feedback } : m))
+        );
+      } else {
+        showError("Failed to submit feedback. Please try again.");
+      }
+    } catch {
+      showError("Network error. Please check your connection and try again.");
+    }
+  }, [showError]);
+
   return (
     <div className="animate-fade-up flex h-full" style={{ overflow: "hidden", position: "relative" }}>
       {errorToast && (
@@ -254,7 +281,12 @@ function ChatPageInner() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         {activeConvId ? (
           <>
-            <MessageThread messages={messages} loading={loading} />
+            <MessageThread
+              messages={messages}
+              loading={loading}
+              canRate={user?.role === "business_user"}
+              onRateMessage={handleRateMessage}
+            />
             <ChatInput onSend={handleSendMessage} disabled={sending} />
           </>
         ) : (

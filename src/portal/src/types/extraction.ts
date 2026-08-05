@@ -46,3 +46,13 @@ export interface EntityListResponse {
   page: number;
   per_page: number;
 }
+
+export interface EligibleDocument {
+  id: string;
+  filename: string;
+  already_extracted: boolean;
+}
+
+export interface EligibleDocumentListResponse {
+  documents: EligibleDocument[];
+}

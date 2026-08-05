@@ -1,9 +1,13 @@
+import re
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://ner:ner@localhost:5432/ner_dev?ssl=disable"
     database_url_sync: str = "postgresql://ner:ner@localhost:5432/ner_dev?sslmode=disable"
+    database_ssl_mode: str = "disable"
     redis_url: str = "redis://localhost:6379/0"
     jwt_secret: str
     jwt_algorithm: str = "HS256"
@@ -49,6 +53,11 @@ class Settings(BaseSettings):
     retrieval_deadline_seconds: float = 8.0
     candidate_document_filtering_enabled: bool = False
 
+    entity_resolution_enabled: bool = False
+    entity_resolution_max_candidates: int = 5
+    entity_resolution_person_types: str = "PER,PERSON"
+    entity_resolution_max_skills: int = 3
+
     context_token_budget: int = 6000
     context_max_chunks: int | None = None
     conversation_history_turns: int = 5
@@ -58,7 +67,26 @@ class Settings(BaseSettings):
     cors_origin_regex: str = r"http://(localhost|127\.0\.0\.1)(:\d+)?"
     cors_allow_private_network: bool = True
 
+    retry_initial_delay_seconds: float = 0.5
+    retry_backoff_multiplier: float = 2.0
+    retry_max_delay_seconds: float = 10.0
+    retry_max_total_seconds: float = 30.0
+
     model_config = {"env_prefix": "NER_", "env_file": ".env", "extra": "ignore"}
+
+    @model_validator(mode="after")
+    def _apply_database_ssl_mode(self) -> "Settings":
+        """Inject database_ssl_mode into the default connection URLs when the
+        URLs themselves were not explicitly overridden, so operators can
+        toggle SSL via one env var instead of reconstructing the whole URL."""
+        fields_set = self.model_fields_set
+        if "database_url" not in fields_set:
+            self.database_url = re.sub(r"ssl=[^&]*", f"ssl={self.database_ssl_mode}", self.database_url)
+        if "database_url_sync" not in fields_set:
+            self.database_url_sync = re.sub(
+                r"sslmode=[^&]*", f"sslmode={self.database_ssl_mode}", self.database_url_sync
+            )
+        return self
 
 
 settings = Settings()

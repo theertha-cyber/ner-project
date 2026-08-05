@@ -46,8 +46,8 @@ class TestDashboardSummaryShape:
         assert status == 200
         d = body["data"]
         assert d["kicker"] == "Good morning"
-        assert len(d["stats"]) == 4
-        assert d["pTitle"] == "Pipeline activity"
+        assert len(d["stats"]) == 3
+        assert d["pTitle"] == "Recent Activity"
         assert d["sideTop"] == "Active model"
 
     async def test_annotator_returns_correct_shape(self):
@@ -63,10 +63,12 @@ class TestDashboardSummaryShape:
         status, body = await _get("business_user")
         assert status == 200
         d = body["data"]
-        assert d["kicker"] == "Extraction intelligence"
-        assert len(d["stats"]) == 4
-        assert d["pTitle"] == "Recent extractions"
-        assert d["sideTop"] == "Active model"
+        assert d["kicker"] == "Your AI assistant workspace"
+        assert len(d["stats"]) == 3
+        assert [s["label"] for s in d["stats"]] == ["Conversations", "Messages Sent", "Helpful Responses"]
+        assert d["pTitle"] == "Recent Conversations"
+        assert d["sideTop"] == "AI Assistant Status"
+        assert d["sideBot"] == "Frequently Asked Topics"
 
     async def test_system_admin_tenant_count_is_wired(self):
         status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
@@ -136,27 +138,29 @@ async def _seed_spans(engine, schema: str, count: int = 45):
             )
 
 
-async def _seed_extractions(engine, schema: str, doc_count: int = 25, entity_count: int = 340, auto_cleared: int = 200):
+async def _seed_conversations(engine, schema: str, user_id: str, conversation_count: int = 3, messages_per: int = 2, up_ratings: int = 1):
     async with engine.begin() as conn:
-        for i in range(doc_count):
-            doc_id = f"bd-{i}"
+        for i in range(conversation_count):
+            conv_id = f"conv-{i}"
             await conn.execute(
-                text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, status) VALUES (:id, :tid, :fn, 'processed') ON CONFLICT (id) DO NOTHING"),
-                {"id": doc_id, "tid": "test-tenant", "fn": f"report-{i}.pdf"},
+                text(f"INSERT INTO {schema}.conversations (id, tenant_id, user_id, title) VALUES (:id, :tid, :uid, :title) ON CONFLICT (id) DO NOTHING"),
+                {"id": conv_id, "tid": "test-tenant", "uid": user_id, "title": f"Question about topic {i}"},
             )
-        run_id = "er-1"
-        await conn.execute(
-            text(f"INSERT INTO {schema}.extraction_runs (id, tenant_id, status, started_at) VALUES (:id, :tid, 'completed', NOW()) ON CONFLICT (id) DO NOTHING"),
-            {"id": run_id, "tid": "test-tenant"},
-        )
-        for i in range(entity_count):
-            rs = "auto_cleared" if i < auto_cleared else "unreviewed"
-            conf = 0.5 + (i / entity_count) * 0.5
-            doc_id = f"bd-{i % doc_count}"
+            for m in range(messages_per):
+                msg_id = f"msg-{i}-{m}"
+                await conn.execute(
+                    text(f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content) VALUES (:id, :cid, 'user', :content) ON CONFLICT (id) DO NOTHING"),
+                    {"id": msg_id, "cid": conv_id, "content": f"message {m}"},
+                )
+        rated = 0
+        for i in range(conversation_count):
+            if rated >= up_ratings:
+                break
             await conn.execute(
-                text(f"INSERT INTO {schema}.extracted_entities (id, run_id, entity_id, value, confidence, review_status, document_id) VALUES (:id, :rid, :eid, :val, :conf, :rs, :did) ON CONFLICT (id) DO NOTHING"),
-                {"id": f"ee-{i}", "rid": run_id, "eid": "PERSON_NAME", "val": "John", "conf": conf, "rs": rs, "did": doc_id},
+                text(f"INSERT INTO {schema}.chat_message_feedback (id, message_id, tenant_id, user_id, rating) VALUES (:id, :mid, :tid, :uid, 'up') ON CONFLICT (id) DO NOTHING"),
+                {"id": f"fb-{i}", "mid": f"msg-{i}-0", "tid": "test-tenant", "uid": user_id},
             )
+            rated += 1
 
 
 @pytest.mark.asyncio
@@ -175,24 +179,28 @@ class TestTenantAdminQueries:
         assert s[0]["value"] == "15"
         assert sources["documents"] is True
 
-        expected_pct = f"{9 / 15 * 100:.0f}"
-        assert s[1]["value"] == expected_pct
-
         expected_f1 = f"{0.872 * 100:.1f}"
-        assert s[2]["value"] == expected_f1
+        assert body["data"]["big"] == expected_f1
 
-        assert s[3]["value"] == "2"
+        assert s[2]["value"] == "2"
 
     async def test_annotation_progress_calculates_correctly(self, engine, tenant_schema):
         tid, schema = tenant_schema
-        await _seed_docs(engine, schema, 20, 12)
+        await _seed_docs(engine, schema, 20)
+        async with engine.begin() as conn:
+            for i in range(20):
+                task_status = "completed" if i < 12 else "open"
+                await conn.execute(
+                    text(f"INSERT INTO {schema}.annotation_tasks (id, document_id, status) VALUES (:id, :did, :st) ON CONFLICT (id) DO NOTHING"),
+                    {"id": f"annt-{i}", "did": f"doc-{i}", "st": task_status},
+                )
 
         status, body = await _get("tenant_admin", tid)
         assert status == 200
         s = body["data"]["stats"]
 
-        assert s[1]["value"] == "60"
-        assert s[1]["unit"] == "%"
+        assert s[1]["value"] == "12/20"
+        assert s[1]["unit"] == ""
 
     async def test_active_model_f1_from_promoted_model(self, engine, tenant_schema):
         tid, schema = tenant_schema
@@ -201,9 +209,8 @@ class TestTenantAdminQueries:
 
         status, body = await _get("tenant_admin", tid)
         assert status == 200
-        s = body["data"]["stats"]
 
-        assert s[2]["value"] == "87.2"
+        assert body["data"]["big"] == "87.2"
 
     async def test_pipeline_activity_rows_populated(self, engine, tenant_schema):
         tid, schema = tenant_schema
@@ -227,7 +234,7 @@ class TestTenantAdminQueries:
         s = body["data"]["stats"]
         sources = body["sources"]
 
-        assert s[3]["value"] is None
+        assert s[2]["value"] is None
         assert sources["training"] is False
 
 
@@ -275,55 +282,48 @@ class TestAnnotatorQueries:
 
 @pytest.mark.asyncio
 class TestBusinessUserQueries:
-    async def test_stats_return_extraction_counts_and_confidence(self, engine, tenant_schema):
+    async def test_stats_return_conversation_message_and_feedback_counts(self, engine, tenant_schema):
         tid, schema = tenant_schema
-        await _seed_extractions(engine, schema, 25, 340, 200)
+        user_id = "biz-user-shape"
+        await _seed_conversations(engine, schema, user_id, conversation_count=3, messages_per=2, up_ratings=2)
 
-        status, body = await _get("business_user", tid)
+        status, body = await _get("business_user", tid, user_id)
         assert status == 200
         s = body["data"]["stats"]
         sources = body["sources"]
 
-        assert s[0]["value"] == "25"
-        assert s[1]["value"] == "340"
-        assert sources["extraction"] is True
+        assert s[0]["value"] == "3"
+        assert s[1]["value"] == "6"
+        assert s[2]["value"] == "2"
+        assert sources["conversations"] is True
+        assert sources["feedback"] is True
 
-    async def test_auto_cleared_percentage(self, engine, tenant_schema):
+    async def test_conversation_activity_rows(self, engine, tenant_schema):
         tid, schema = tenant_schema
-        await _seed_extractions(engine, schema, 25, 340, 200)
+        user_id = "biz-user-activity"
+        await _seed_conversations(engine, schema, user_id, conversation_count=3, messages_per=1)
 
-        status, body = await _get("business_user", tid)
-        assert status == 200
-        s = body["data"]["stats"]
-
-        expected = f"{200 / 340 * 100:.1f}"
-        assert s[3]["value"] == expected
-        assert s[3]["unit"] == "%"
-
-    async def test_extraction_activity_rows(self, engine, tenant_schema):
-        tid, schema = tenant_schema
-        await _seed_extractions(engine, schema, 3, 10, 5)
-
-        status, body = await _get("business_user", tid)
+        status, body = await _get("business_user", tid, user_id)
         assert status == 200
         rows = body["data"]["pRows"]
-        non_placeholder = [r for r in rows if r["title"] not in ("\u2014", "No extractions yet")]
+        non_placeholder = [r for r in rows if r["title"] not in ("\u2014", "No conversations yet")]
         assert len(non_placeholder) > 0
         for r in non_placeholder:
-            assert r["go"] == "extractions"
+            assert r["go"] == "chat"
+            assert r["id"]
 
-    async def test_business_user_side_panel_active_model(self, engine, tenant_schema):
+    async def test_business_user_side_panel_no_eval_metrics(self, engine, tenant_schema):
         tid, schema = tenant_schema
-        await _seed_extractions(engine, schema, 5, 20)
+        user_id = "biz-user-panel"
+        await _seed_conversations(engine, schema, user_id, conversation_count=2)
         await _seed_promoted_model(engine, schema, 0.89)
 
-        status, body = await _get("business_user", tid)
+        status, body = await _get("business_user", tid, user_id)
         assert status == 200
         d = body["data"]
 
-        expected_f1 = f"{0.89 * 100:.1f}"
-        assert d["big"] == expected_f1
-        assert d["bigUnit"] == "eval F1"
+        assert d["bigUnit"] == ""
+        assert d["big"] in ("Online", "Offline")
 
 
 @pytest.mark.asyncio

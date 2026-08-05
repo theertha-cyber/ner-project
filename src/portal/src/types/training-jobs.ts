@@ -41,7 +41,9 @@ export interface TrainingJobListResponse {
   per_page: number;
 }
 
-export interface SubmitJobPayload {
+export type SubmitJobPayload = Record<string, never> | undefined;
+
+export interface ApproveJobPayload {
   learning_rate: number;
   num_epochs: number;
   batch_size: number;

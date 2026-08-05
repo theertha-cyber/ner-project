@@ -90,6 +90,11 @@ class GuardrailService:
             return True
 
     def enforce_sources(self, reply: str, sources: list[Source | Citation]) -> tuple[str, list[Source | Citation]]:
+        """Only `generation_node` calls this. An entity-resolution clarification reply
+        never reaches `generation_node` — `entity_resolution_node` routes straight to
+        END on ambiguity — so a clarification's empty `sources` is never subject to
+        this check by construction, not by a special case here. See design.md
+        Decision 1 and the `chat-api` delta spec's guardrail exemption requirement."""
         if not sources:
             logger.warning("Guardrail: empty sources detected, returning fallback reply")
             return FALLBACK_REPLY, []

@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
 from src.shared.exceptions import NotFoundError
-from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse
+from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator
 from src.chat_api.services.guardrails import GuardrailService
 from src.chat_api.services.rate_limiter import rate_limiter, INTERNAL_RATE_LIMIT, INTERNAL_WINDOW
@@ -103,7 +104,9 @@ async def chat(
 
     auth_header = request.headers.get("Authorization", "")
     jwt_token = auth_header.removeprefix("Bearer ")
-    reply, sources = await orchestrator.execute(body.message, session, schema, tenant_id, jwt_token, conversation_context)
+    reply, sources, pending_clarification, answer_kind, model_version = await orchestrator.execute_with_clarification(
+        body.message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id,
+    )
 
     disclaimer = guardrails.inject_disclaimer()
     sources_data = json.dumps([s.model_dump() for s in sources]) if sources else None
@@ -113,8 +116,11 @@ async def chat(
         {"id": str(uuid.uuid4()), "cid": conversation_id, "content": body.message},
     )
     await session.execute(
-        text(f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources) VALUES (:id, :cid, 'assistant', :content, :sources)"),
-        {"id": message_id, "cid": conversation_id, "content": reply, "sources": sources_data},
+        text(
+            f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources, answer_kind, model_version) "
+            "VALUES (:id, :cid, 'assistant', :content, :sources, :answer_kind, :model_version)"
+        ),
+        {"id": message_id, "cid": conversation_id, "content": reply, "sources": sources_data, "answer_kind": answer_kind, "model_version": model_version},
     )
     await session.execute(
         text(f"UPDATE {schema}.conversations SET updated_at = NOW() WHERE id = :cid"),
@@ -123,15 +129,17 @@ async def chat(
     await session.commit()
 
     headers = rate_limiter.get_headers(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
-    return JSONResponse(
-        content=ChatResponse(
-            reply=reply,
-            sources=sources,
-            conversation_id=conversation_id,
-            disclaimer=disclaimer,
-        ).model_dump(),
-        headers=headers,
+    response = ChatResponse(
+        reply=reply,
+        sources=sources,
+        conversation_id=conversation_id,
+        disclaimer=disclaimer,
+        pending_clarification=pending_clarification,
     )
+    # pending_clarification is additive: omit it entirely from the payload when
+    # absent instead of serializing it as null, so existing clients see no change.
+    exclude = {"pending_clarification"} if pending_clarification is None else set()
+    return JSONResponse(content=response.model_dump(exclude=exclude), headers=headers)
 
 
 @router.post("/conversations", status_code=201)
@@ -223,7 +231,14 @@ async def get_conversation(
         raise NotFoundError("Conversation", conv_id)
 
     msg_result = await session.execute(
-        text(f"SELECT id, role, content, sources, created_at FROM {schema}.chat_messages WHERE conversation_id = :cid ORDER BY created_at ASC"),
+        text(f"""
+            SELECT m.id, m.role, m.content, m.sources, m.created_at, m.answer_kind, m.model_version,
+                   f.rating AS feedback_rating, f.created_at AS feedback_created_at
+            FROM {schema}.chat_messages m
+            LEFT JOIN {schema}.chat_message_feedback f ON f.message_id = m.id
+            WHERE m.conversation_id = :cid
+            ORDER BY m.created_at ASC
+        """),
         {"cid": conv_id},
     )
     messages = []
@@ -235,9 +250,70 @@ async def get_conversation(
                 sources_list = [_parse_persisted_source(s) for s in (json.loads(r.sources) if isinstance(r.sources, str) else r.sources)]
             except (json.JSONDecodeError, TypeError):
                 pass
-        messages.append(MessageResponse(id=r.id, role=r.role, content=r.content, sources=sources_list, created_at=str(r.created_at)))
+        feedback = None
+        if r.feedback_rating:
+            feedback = FeedbackOut(message_id=r.id, rating=r.feedback_rating, created_at=str(r.feedback_created_at))
+        messages.append(MessageResponse(
+            id=r.id, role=r.role, content=r.content, sources=sources_list, created_at=str(r.created_at),
+            answer_kind=r.answer_kind if r.role == "assistant" else None,
+            model_version=r.model_version if r.role == "assistant" else None,
+            feedback=feedback,
+        ))
 
     return ConversationDetail(id=conv.id, title=conv.title, created_at=str(conv.created_at), messages=messages)
+
+
+@router.post("/messages/{message_id}/feedback", status_code=201)
+async def submit_message_feedback(
+    message_id: str,
+    body: FeedbackCreate,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    tenant_id = getattr(request.state, "tenant_id", None)
+    user_id = getattr(request.state, "user_id", None)
+    role = getattr(request.state, "role", None)
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context not available")
+    if role != "business_user":
+        raise HTTPException(status_code=403, detail="Only business users may submit feedback")
+
+    schema = _schema(tenant_id)
+    msg_result = await session.execute(
+        text(f"SELECT id, role, answer_kind FROM {schema}.chat_messages WHERE id = :mid"),
+        {"mid": message_id},
+    )
+    message = msg_result.fetchone()
+    if not message or message.role != "assistant" or message.answer_kind != "answer":
+        raise NotFoundError("Message", message_id)
+
+    feedback_id = str(uuid.uuid4())
+    try:
+        result = await session.execute(
+            text(
+                f"INSERT INTO {schema}.chat_message_feedback (id, message_id, tenant_id, user_id, rating) "
+                "VALUES (:id, :mid, :tid, :uid, :rating) RETURNING created_at"
+            ),
+            {"id": feedback_id, "mid": message_id, "tid": tenant_id, "uid": user_id, "rating": body.rating},
+        )
+        created_at = result.fetchone()[0]
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        existing = await session.execute(
+            text(f"SELECT rating, created_at FROM {schema}.chat_message_feedback WHERE message_id = :mid"),
+            {"mid": message_id},
+        )
+        row = existing.fetchone()
+        raise HTTPException(
+            status_code=409,
+            detail=FeedbackOut(message_id=message_id, rating=row.rating, created_at=str(row.created_at)).model_dump(),
+        )
+
+    return JSONResponse(
+        content=FeedbackOut(message_id=message_id, rating=body.rating, created_at=str(created_at)).model_dump(),
+        status_code=201,
+    )
 
 
 @router.patch("/conversations/{conv_id}", response_model=ConversationRenameResponse)

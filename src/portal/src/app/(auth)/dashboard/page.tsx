@@ -8,16 +8,13 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { StatCardSkeleton } from "@/components/dashboard/StatCardSkeleton";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { MetricsPanel } from "@/components/dashboard/MetricsPanel";
-
-function formatRoleLabel(role: string): string {
-  return role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
+import { ResponseQualityCard } from "@/components/dashboard/ResponseQualityCard";
 
 export default function DashboardPage() {
   const { data, isLoading } = useDashboardData();
   const { user } = useAuth();
   const variant = heroVariant(user?.role ?? "annotator");
-  const roleLabel = formatRoleLabel(user?.role ?? "annotator");
+  const isTenantAdmin = user?.role === "tenant_admin";
 
   return (
     <div
@@ -32,18 +29,6 @@ export default function DashboardPage() {
         margin: "0 auto",
       }}
     >
-      {/* Breadcrumb */}
-      <div
-        style={{
-          fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-          fontSize: 11,
-          color: "var(--color-text-secondary)",
-          letterSpacing: "0.06em",
-        }}
-      >
-        DASHBOARD ◦ {roleLabel}
-      </div>
-
       {/* Hero */}
       <div>
         {data ? (
@@ -63,14 +48,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Stat card strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        {isLoading || !data
-          ? Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
-          : data.stats.map((stat, i) => <StatCard key={i} item={stat} />)}
-      </div>
-
-      {/* Two-column panel grid: activity 1.5fr, metrics 1fr */}
+      {/* Two-column panel grid: stat cards + pipeline activity (1.5fr), active model + quota (1fr) */}
       <div
         style={{
           display: "grid",
@@ -80,33 +58,55 @@ export default function DashboardPage() {
       >
         {data ? (
           <>
-            <ActivityPanel
-              pTitle={data.pTitle}
-              pMeta={data.pMeta}
-              pRows={data.pRows}
-            />
-            <MetricsPanel
-              sideTop={data.sideTop}
-              sideMeta={data.sideMeta}
-              big={data.big}
-              bigUnit={data.bigUnit}
-              bar={data.bar}
-              sideMetrics={data.sideMetrics}
-              sideBot={data.sideBot}
-              sideRows={data.sideRows}
-            />
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${data.stats.length}, 1fr)`,
+                  gap: 14,
+                }}
+              >
+                {data.stats.map((stat, i) => <StatCard key={i} item={stat} />)}
+              </div>
+              <ActivityPanel
+                pTitle={data.pTitle}
+                pMeta={data.pMeta}
+                pRows={data.pRows}
+                expandable={isTenantAdmin}
+              />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+              <MetricsPanel
+                sideTop={data.sideTop}
+                sideMeta={data.sideMeta}
+                big={data.big}
+                bigUnit={data.bigUnit}
+                bar={data.bar}
+                sideMetrics={data.sideMetrics}
+                sideBot={data.sideBot}
+                sideRows={data.sideRows}
+              />
+              {isTenantAdmin && data.responseQuality && (
+                <ResponseQualityCard data={data.responseQuality} />
+              )}
+            </div>
           </>
         ) : (
           <>
-            <div
-              style={{
-                background: "var(--color-surface-raised)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-lg, 12px)",
-                height: 220,
-                animation: "sk-shimmer 1.4s ease infinite",
-              }}
-            />
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+                {Array.from({ length: 3 }).map((_, i) => <StatCardSkeleton key={i} />)}
+              </div>
+              <div
+                style={{
+                  background: "var(--color-surface-raised)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-lg, 12px)",
+                  height: 220,
+                  animation: "sk-shimmer 1.4s ease infinite",
+                }}
+              />
+            </div>
             <div
               style={{
                 background: "var(--color-surface-raised)",

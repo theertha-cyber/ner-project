@@ -70,6 +70,11 @@ async def proxy_delete_conversation(conv_id: str, request: Request):
     return await _proxy("DELETE", f"/api/v1/chat/conversations/{conv_id}", request)
 
 
+@router.post("/chat/messages/{message_id}/feedback")
+async def proxy_submit_message_feedback(message_id: str, request: Request):
+    return await _proxy("POST", f"/api/v1/chat/messages/{message_id}/feedback", request)
+
+
 @router.post("/tenants/{tenant_slug}/widget-keys")
 async def proxy_create_widget_key(tenant_slug: str, request: Request):
     return await _proxy("POST", "/api/v1/widget-keys", request)

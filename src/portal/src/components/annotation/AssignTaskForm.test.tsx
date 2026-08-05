@@ -235,7 +235,7 @@ describe("Scenario 9 — Cancel collapses form without submitting", () => {
     expect(onCancel).toHaveBeenCalled();
     // No POST to annotation-tasks should have been made
     const postCall = mockAuthFetch.mock.calls.find(
-      (args) => args[0] === "/api/v1/annotation-tasks",
+      (args) => args[0] === "/api/v1/annotation-tasks" && (args[1] as RequestInit | undefined)?.method === "POST",
     );
     expect(postCall).toBeUndefined();
   });

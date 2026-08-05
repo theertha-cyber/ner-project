@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CitationChips } from "./CitationChips";
+import { MessageFeedback, type Feedback } from "./MessageFeedback";
 
 interface Source {
   source_type: string;
@@ -35,11 +36,16 @@ interface Message {
   sources?: (Source | Citation)[];
   created_at: string;
   isThinking?: boolean;
+  answer_kind?: "answer" | "clarification" | "guardrail_blocked" | "out_of_domain" | null;
+  model_version?: string | null;
+  feedback?: Feedback | null;
 }
 
 interface MessageThreadProps {
   messages: Message[];
   loading: boolean;
+  canRate?: boolean;
+  onRateMessage?: (messageId: string, rating: "up" | "down") => void;
 }
 
 function isCitation(s: Source | Citation): s is Citation {
@@ -60,7 +66,7 @@ function toCitation(s: Source | Citation): Citation {
   };
 }
 
-export function MessageThread({ messages, loading }: MessageThreadProps) {
+export function MessageThread({ messages, loading, canRate, onRateMessage }: MessageThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -124,6 +130,9 @@ export function MessageThread({ messages, loading }: MessageThreadProps) {
             </div>
             {!msg.isThinking && msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
               <CitationChips citations={msg.sources.map(toCitation)} />
+            )}
+            {!msg.isThinking && msg.role === "assistant" && msg.answer_kind === "answer" && canRate && onRateMessage && (
+              <MessageFeedback messageId={msg.id} feedback={msg.feedback} onRate={onRateMessage} />
             )}
           </div>
         </div>

@@ -109,8 +109,16 @@ PUBLIC_TABLES = [
         name VARCHAR(255) NOT NULL,
         description TEXT,
         examples JSON,
+        validation_rule VARCHAR(500),
+        target_table VARCHAR(255),
+        base_label_mapping JSON,
+        value_kind VARCHAR(32),
+        value_unit VARCHAR(32),
+        version INTEGER NOT NULL DEFAULT 1,
+        required_flag BOOLEAN DEFAULT FALSE,
         is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )
     """,
 ]

@@ -2,15 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type { DocumentListResponse } from "@/types/documents";
 
-export function useDocuments(page: number, perPage: number = 25, status?: string) {
+export function useDocuments(page: number, perPage: number = 25, status?: string, search?: string) {
   const params = new URLSearchParams();
   params.set("page", String(page));
   params.set("per_page", String(perPage));
   if (status && status !== "all") params.set("status", status);
+  if (search) params.set("search", search);
   const qs = params.toString();
 
   return useQuery<DocumentListResponse>({
-    queryKey: ["documents", { page, perPage, status: status ?? "all" }],
+    queryKey: ["documents", { page, perPage, status: status ?? "all", search: search ?? "" }],
     queryFn: async () => {
       const res = await authFetch(`/api/v1/documents?${qs}`);
       if (!res.ok) throw new Error(`Failed to fetch documents: ${res.status}`);

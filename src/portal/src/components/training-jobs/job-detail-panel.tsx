@@ -4,6 +4,7 @@ import { useModelVersions } from "@/hooks/use-model-versions";
 import { JobTimeline } from "./job-timeline";
 import { JobMetrics } from "./job-metrics";
 import { JobProgress } from "./job-progress";
+import { ModelVersionSection } from "./model-version-section";
 import { Spinner, Badge, LineageFlow } from "@/components/ui";
 
 export interface JobDetailPanelProps {
@@ -27,7 +28,7 @@ export function JobDetailPanel({
   defaultEpochs = 3,
   viewerRole,
 }: JobDetailPanelProps) {
-  const { data: modelVersions } = useModelVersions(viewerRole, job?.tenant_id);
+  const { data: modelVersions, activeModel } = useModelVersions(viewerRole, job?.tenant_id);
 
   if (isLoading) {
     return (
@@ -128,11 +129,11 @@ export function JobDetailPanel({
       )}
 
       {/* Hyperparameters */}
-      {hyperparams && (
-        <section>
-          <h3 className="mb-2 font-body text-sm font-semibold" style={{ color: "var(--ink-2)" }}>
-            Hyperparameters
-          </h3>
+      <section>
+        <h3 className="mb-2 font-body text-sm font-semibold" style={{ color: "var(--ink-2)" }}>
+          Hyperparameters
+        </h3>
+        {hyperparams ? (
           <div className="grid grid-cols-4 gap-2 text-xs">
             <div className="rounded p-2" style={{ background: "var(--surface-3)" }}>
               <span className="font-body" style={{ color: "var(--ink-3)" }}>Learning Rate</span>
@@ -151,11 +152,26 @@ export function JobDetailPanel({
               <p className="font-mono font-medium" style={{ color: "var(--ink)" }}>{hyperparams.max_seq_length}</p>
             </div>
           </div>
-        </section>
-      )}
+        ) : (
+          <p
+            className="rounded-lg p-3 font-body text-sm"
+            style={{ background: "var(--surface-3)", border: "1px solid var(--line)", color: "var(--ink-3)" }}
+          >
+            Hyperparameters not yet set — awaiting System Admin approval
+          </p>
+        )}
+      </section>
 
       {/* Metrics */}
       {job.metrics && <JobMetrics metrics={job.metrics} />}
+
+      {/* Model version produced by this job */}
+      {matchedVersion && (
+        <ModelVersionSection
+          model={matchedVersion}
+          isActive={activeModel?.id === matchedVersion.id}
+        />
+      )}
 
       {/* Error */}
       {job.status === "failed" && job.error_message && (

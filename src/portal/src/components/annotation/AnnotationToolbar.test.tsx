@@ -28,10 +28,6 @@ const defaultProps = {
   currentStatus: "in-progress" as AnnotationTask["status"],
   confirmedCount: 3,
   suggestedCount: 2,
-  layoutMode: "3pane" as const,
-  isPrelabeling: false,
-  onLayoutChange: vi.fn(),
-  onPrelabel: vi.fn(),
 };
 
 beforeEach(() => {
@@ -57,7 +53,7 @@ describe("Scenario 6 — Toolbar shows document filename", () => {
 // ── Scenario 1 — Toolbar renders all elements for an active task ─────────────
 
 describe("Scenario 1 — Toolbar renders all elements for an active task", () => {
-  it("shows filename, status badge, span counter, pre-label button, and layout toggle", () => {
+  it("shows filename, status badge, and span counter", () => {
     render(<AnnotationToolbar {...defaultProps} />);
 
     expect(screen.getByText("invoice-2026-00417.pdf")).toBeInTheDocument();
@@ -65,12 +61,6 @@ describe("Scenario 1 — Toolbar renders all elements for an active task", () =>
     expect(screen.getByTestId("status-badge")).toHaveTextContent("in_progress");
 
     expect(screen.getByTestId("span-counter")).toHaveTextContent("3 confirmed · 2 suggested");
-
-    expect(screen.getByTestId("prelabel-btn")).toBeInTheDocument();
-    expect(screen.getByTestId("prelabel-btn")).not.toBeDisabled();
-
-    expect(screen.getByTestId("layout-btn-3pane")).toBeInTheDocument();
-    expect(screen.getByTestId("layout-btn-focus")).toBeInTheDocument();
   });
 });
 
@@ -96,16 +86,5 @@ describe("Scenario 3 — Badge reflects completed status without offering a tran
 
     expect(screen.getByTestId("status-badge")).toHaveTextContent("completed");
     expect(screen.queryByTestId("status-group")).not.toBeInTheDocument();
-  });
-});
-
-// ── Pre-label button disabled during in-flight ────────────────────────────────
-
-describe("Pre-label button disabled while in-flight", () => {
-  it("is disabled and non-interactive when isPrelabeling=true", () => {
-    render(<AnnotationToolbar {...defaultProps} isPrelabeling />);
-    const btn = screen.getByTestId("prelabel-btn");
-    expect(btn).toBeDisabled();
-    expect(btn).toHaveStyle({ opacity: "0.6" });
   });
 });

@@ -11,9 +11,17 @@ from src.extraction_service.api.v1.schemas import (
     BatchRunStatus,
     BatchRunListItem,
     BatchRunListResponse,
+    EligibleDocument,
+    EligibleDocumentListResponse,
 )
 from src.extraction_service.services.extraction_engine import infer
-from src.extraction_service.services.entity_store import get_extraction_run, list_extraction_runs
+from src.extraction_service.services.entity_store import (
+    get_extraction_run,
+    list_extraction_runs,
+    list_processed_document_ids,
+    get_already_extracted,
+)
+from src.extraction_service.worker import _get_active_model_version
 from src.extraction_service.dependencies import get_db
 from src.shared.config import settings
 
@@ -89,6 +97,33 @@ async def extract_entities(
     entities.sort(key=lambda e: e.confidence, reverse=True)
 
     return ExtractResponse(entities=entities, model_version=model_version)
+
+
+@router.get("/extract-batch/eligible-documents", response_model=EligibleDocumentListResponse)
+async def list_eligible_documents(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = _get_tenant_id(request)
+
+    role = _get_role(request)
+    if role not in ("tenant_admin", "business_user"):
+        raise HTTPException(status_code=403, detail="Only tenant admins and business users can list eligible documents")
+
+    docs = await list_processed_document_ids(db, tenant_id)
+    model_version = _get_active_model_version(tenant_id)
+    already = get_already_extracted(tenant_id, [d["id"] for d in docs], model_version)
+
+    return EligibleDocumentListResponse(
+        documents=[
+            EligibleDocument(
+                id=doc["id"],
+                filename=doc["filename"],
+                already_extracted=doc["id"] in already,
+            )
+            for doc in docs
+        ]
+    )
 
 
 @router.post("/extract-batch", response_model=BatchExtractResponse, status_code=202)

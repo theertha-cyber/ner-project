@@ -66,6 +66,28 @@ class TestExtractionGatewayProxy:
             called_url = mock_client.get.call_args.args[0]
             assert called_url.endswith("/api/v1/extract-batch")
 
+    @patch("src.gateway.api.v1.extraction_proxy.httpx.AsyncClient")
+    async def test_gateway_forwards_documentids_query_param_on_batch_post(self, mock_httpx):
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_httpx.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 202
+        mock_response.json.return_value = {"run_id": "r1", "status": "queued"}
+        mock_response.text = '{"run_id": "r1", "status": "queued"}'
+        mock_client.post.return_value = mock_response
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/extract-batch?documentIds=doc1,doc2",
+                headers=auth_header("test-tenant"),
+            )
+            assert resp.status_code == 202
+            forwarded_params = mock_client.post.call_args.kwargs["params"]
+            assert forwarded_params.get("documentIds") == "doc1,doc2"
+
     async def test_gateway_rejects_missing_jwt(self):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:

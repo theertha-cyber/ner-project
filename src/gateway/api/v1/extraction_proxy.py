@@ -14,13 +14,14 @@ async def _proxy(method: str, path: str, request: Request, body: dict | None = N
     headers.pop("host", None)
     headers.pop("content-length", None)
 
+    params = dict(request.query_params)
     async with httpx.AsyncClient(timeout=60) as client:
         if method == "GET":
-            resp = await client.get(url, headers=headers, params=dict(request.query_params))
+            resp = await client.get(url, headers=headers, params=params)
         elif method == "POST":
-            resp = await client.post(url, headers=headers, json=body or {})
+            resp = await client.post(url, headers=headers, params=params, json=body or {})
         elif method == "PATCH":
-            resp = await client.patch(url, headers=headers, json=body or {})
+            resp = await client.patch(url, headers=headers, params=params, json=body or {})
         else:
             raise HTTPException(status_code=405, detail="Method not allowed")
 
@@ -34,6 +35,11 @@ async def _proxy(method: str, path: str, request: Request, body: dict | None = N
 async def proxy_extract(request: Request):
     body = await request.json() if request.headers.get("content-type") == "application/json" else None
     return await _proxy("POST", "/api/v1/extract", request, body)
+
+
+@router.get("/extract-batch/eligible-documents")
+async def proxy_eligible_documents(request: Request):
+    return await _proxy("GET", "/api/v1/extract-batch/eligible-documents", request)
 
 
 @router.post("/extract-batch")

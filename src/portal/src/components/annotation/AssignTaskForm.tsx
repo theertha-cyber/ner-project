@@ -48,8 +48,28 @@ export function AssignTaskForm({ onAssign, onCancel }: AssignTaskFormProps) {
     },
   });
 
-  // Task 2.2 — filter client-side to processed only
-  const processedDocuments = (documentsData ?? []).filter((d) => d.status === "processed");
+  // Fetch existing tasks so documents with an active (non-completed) task
+  // are excluded from the dropdown — prevents assigning the same document twice.
+  const { data: tasksData } = useQuery({
+    queryKey: ["assign-form-active-tasks"],
+    queryFn: async () => {
+      const res = await authFetch("/api/v1/annotation-tasks");
+      if (!res.ok) throw new Error("Failed to load tasks");
+      const data = await res.json();
+      return (Array.isArray(data) ? data : []) as AnnotationTask[];
+    },
+  });
+
+  const documentIdsWithActiveTask = new Set(
+    (tasksData ?? [])
+      .filter((t) => t.status === "unannotated" || t.status === "in-progress")
+      .map((t) => t.document_id)
+  );
+
+  // Task 2.2 — filter client-side to processed only, excluding docs already assigned
+  const processedDocuments = (documentsData ?? []).filter(
+    (d) => d.status === "processed" && !documentIdsWithActiveTask.has(d.id)
+  );
 
   // Task 2.3 — filter client-side to annotator role only
   const annotatorUsers = (usersData ?? []).filter((u) => u.role === "annotator");
@@ -94,7 +114,7 @@ export function AssignTaskForm({ onAssign, onCancel }: AssignTaskFormProps) {
 
       // Task 2.6 — success
       const newTask = await res.json();
-      toast("Task assigned successfully", "good");
+      toast("Task assigned successfully", "ok");
       onAssign(newTask as AnnotationTask);
     } catch {
       setInlineError("Network error. Please try again.");

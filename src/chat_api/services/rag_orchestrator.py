@@ -37,6 +37,61 @@ class RAGOrchestrator:
 
     async def execute(self, message: str, session: AsyncSession, schema: str, tenant_id: str,
                       jwt_token: str | None = None, conversation_context: list[dict] | None = None) -> tuple[str, list[Source | Citation]]:
+        result = await self._run_graph(message, session, schema, tenant_id, jwt_token, conversation_context)
+        return result["reply"], result.get("sources", [])
+
+    async def execute_with_clarification(
+        self, message: str, session: AsyncSession, schema: str, tenant_id: str,
+        jwt_token: str | None = None, conversation_context: list[dict] | None = None,
+        conversation_id: str | None = None,
+    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None]:
+        """Same as `execute`, but additionally surfaces `pending_clarification`,
+        `answer_kind`, and `model_version`, and requires `conversation_id` so entity
+        resolution can read and persist its per-conversation state. Used by
+        `src/chat_api/api/v1/chat.py`; the widget endpoint keeps calling `execute`,
+        whose signature is unchanged."""
+        result = await self._run_graph(message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id)
+        sources = result.get("sources", [])
+        return (
+            result["reply"],
+            sources,
+            result.get("pending_clarification"),
+            self._classify_answer_kind(result),
+            self._extract_model_version(sources),
+        )
+
+    @staticmethod
+    def _classify_answer_kind(result: dict) -> str:
+        """Derives the persisted `answer_kind` from the terminal graph state, per
+        design.md Decision 5: reuses the classification the graph already computed
+        (blocked_reason, pending_clarification, entity_resolution_outcome) rather
+        than re-deriving it from message content."""
+        if result.get("pending_clarification"):
+            return "clarification"
+        if result.get("entity_resolution_outcome") == "over_cap":
+            return "clarification"
+        blocked_reason = result.get("blocked_reason")
+        if blocked_reason == "out_of_domain":
+            return "out_of_domain"
+        if blocked_reason:
+            return "guardrail_blocked"
+        return "answer"
+
+    @staticmethod
+    def _extract_model_version(sources: list[Source | Citation]) -> str | None:
+        """Per design.md Decision 6: reuses the `model_version` identifier already
+        returned by model-serving inference (InferResponse.model_version) when a
+        turn's sources include an NER-inference-derived source. `None` when no such
+        source is present (the turn was answered without an NER inference call)."""
+        for s in sources:
+            model_version = getattr(s, "model_version", None)
+            if model_version:
+                return model_version
+        return None
+
+    async def _run_graph(self, message: str, session: AsyncSession, schema: str, tenant_id: str,
+                         jwt_token: str | None = None, conversation_context: list[dict] | None = None,
+                         conversation_id: str | None = None) -> dict:
         if getattr(self, "_graph", None) is None:
             self._graph = build_chat_graph(self)
 
@@ -46,10 +101,10 @@ class RAGOrchestrator:
             "schema": schema,
             "jwt_token": jwt_token,
             "conversation_context": conversation_context,
+            "conversation_id": conversation_id,
             "session": session,
         }
-        result = await self._graph.ainvoke(state)
-        return result["reply"], result.get("sources", [])
+        return await self._graph.ainvoke(state)
 
     async def _sql_source(self, message: str, session: AsyncSession, schema: str,
                           conversation_context: list[dict] | None) -> list[dict] | None:
@@ -115,5 +170,6 @@ class RAGOrchestrator:
                 context_snippet=context,
                 page_number=s.page_number,
                 source_type=s.source_type,
+                model_version=s.model_version,
             ))
         return enriched

@@ -14,6 +14,7 @@ export { useDemoteModel } from "./use-demote-model";
 export { useWarmupModel } from "./use-warmup-model";
 export { useExtract } from "./use-extract";
 export { useBatchRuns } from "./use-batch-runs";
+export { useEligibleDocuments } from "./use-eligible-documents";
 export { useEntities } from "./use-entities";
 export type { ReviewFilter } from "./use-entities";
 export { useAuditLog } from "./use-audit-log";

@@ -34,7 +34,8 @@ const mimeLabel: Record<string, string> = {
   "image/tiff": "TIFF",
 };
 
-function contentTypeLabel(ct: string): string {
+function contentTypeLabel(ct: string | null | undefined): string {
+  if (!ct) return "—";
   return mimeLabel[ct] ?? ct.split("/").pop()?.toUpperCase() ?? ct;
 }
 
@@ -71,7 +72,7 @@ export function DocumentRow({ doc, onDelete, isDeleting, isRemoving }: DocumentR
         </span>
       </td>
       <td className="px-4 py-3 text-sm" style={{ color: "var(--ink-3)" }}>{formatDate(doc.created_at)}</td>
-      <td className="px-4 py-3 text-sm">
+      <td className="px-4 py-3 text-right text-sm">
         <button
           type="button"
           onClick={handleDelete}

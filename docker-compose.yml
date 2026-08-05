@@ -41,6 +41,11 @@ services:
       - "9001:9001"
     volumes:
       - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -73,7 +78,7 @@ services:
       postgres-test:
         condition: service_healthy
       minio:
-        condition: service_started
+        condition: service_healthy
 
   gateway:
     build:
@@ -90,8 +95,9 @@ services:
       NER_DOCUMENT_SERVICE_URL: "http://document_service:8000"
       NER_EXTRACTION_SERVICE_URL: "http://extraction_service:8000"
       NER_MODEL_SERVING_URL: "http://model_serving:8000"
+      NER_TRAINING_SERVICE_URL: "http://training_service:8000"
       NER_CHAT_API_PORT: 8006
-      NER_CHAT_API_URL: "http://host.docker.internal:8006"
+      NER_CHAT_API_URL: "http://chat_api:8000"
       NER_ANALYTICS_SERVICE_URL: "http://analytics_service:8000"
     depends_on:
       postgres-test:
@@ -100,6 +106,10 @@ services:
         condition: service_healthy
       db-init:
         condition: service_completed_successfully
+      chat_api:
+        condition: service_started
+      training_service:
+        condition: service_started
 
   chat_api:
     build:
@@ -114,6 +124,7 @@ services:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
       NER_MODEL_SERVING_URL: "http://model_serving:8000"
       NER_CHAT_API_PORT: 8006
+      NER_ENTITY_RESOLUTION_ENABLED: "true"
     depends_on:
       postgres-test:
         condition: service_healthy
@@ -147,6 +158,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
       NER_REDIS_URL: "redis://redis:6379/0"
       NER_CELERY_BROKER_URL: "redis://redis:6379/0"
       NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
@@ -173,6 +185,13 @@ services:
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
       NER_TRAINING_SERVICE_URL: "http://training_service:8000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
 
   annotation_service:
     build:
@@ -290,6 +309,25 @@ services:
         condition: service_started
       db-init:
         condition: service_completed_successfully
+
+  portal:
+    build:
+      context: src/portal
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://gateway:8000"
+        NEXT_PUBLIC_GATEWAY_URL: "http://localhost:8000"
+        NEXT_PUBLIC_DOCUMENT_URL: "http://localhost:8001"
+        NEXT_PUBLIC_ANNOTATION_URL: "http://localhost:8005"
+        NEXT_PUBLIC_TRAINING_URL: "http://localhost:8003"
+        NEXT_PUBLIC_MODEL_SERVING_URL: "http://localhost:8004"
+        NEXT_PUBLIC_EXTRACTION_URL: "http://localhost:8002"
+        NEXT_PUBLIC_ANALYTICS_URL: "http://localhost:8007"
+    ports:
+      - "3000:3000"
+    depends_on:
+      gateway:
+        condition: service_started
 
 volumes:
   minio-data:

@@ -10,8 +10,10 @@ def insert_document_entities(conn: Connection, schema: str, document_id: str, en
         conn.execute(
             text(f"""
                 INSERT INTO {schema}.document_entities
-                    (id, document_id, entity_type, entity_value, normalized_value, confidence, page_number, char_start, char_end)
-                VALUES (:id, :document_id, :entity_type, :entity_value, :normalized_value, :confidence, :page_number, :char_start, :char_end)
+                    (id, document_id, entity_type, entity_value, normalized_value, confidence, page_number, char_start, char_end,
+                     value_kind, value_number, value_number_high, value_unit, value_date, value_date_high)
+                VALUES (:id, :document_id, :entity_type, :entity_value, :normalized_value, :confidence, :page_number, :char_start, :char_end,
+                        :value_kind, :value_number, :value_number_high, :value_unit, :value_date, :value_date_high)
             """),
             {
                 "id": str(uuid.uuid4()),
@@ -23,6 +25,12 @@ def insert_document_entities(conn: Connection, schema: str, document_id: str, en
                 "page_number": entity.page_number,
                 "char_start": entity.char_start,
                 "char_end": entity.char_end,
+                "value_kind": entity.value_kind,
+                "value_number": entity.value_number,
+                "value_number_high": entity.value_number_high,
+                "value_unit": entity.value_unit,
+                "value_date": entity.value_date,
+                "value_date_high": entity.value_date_high,
             },
         )
 

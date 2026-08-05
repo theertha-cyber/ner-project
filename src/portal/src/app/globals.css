@@ -155,9 +155,46 @@
 
 /* ─── Base ──────────────────────────────────────────────────────────────────── */
 
+html,
+body {
+  overflow-x: hidden;
+}
+
 body {
   background: var(--color-surface-page);
   color: var(--color-text-primary);
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--ink-3);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-2);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* ─── Animations ─────────────────────────────────────────────────────────────── */

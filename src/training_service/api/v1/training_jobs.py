@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from src.shared.database import get_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from src.training_service.api.v1.schemas import TrainingJobCreate, TrainingJobResponse, TrainingJobListResponse, RejectJobRequest
+from src.training_service.api.v1.schemas import TrainingJobCreate, TrainingJobResponse, TrainingJobListResponse, RejectJobRequest, ApproveJobRequest
 from src.training_service.infra.repository import TrainingJobRepository, ModelVersionRepository
 from src.training_service.celery_app import celery_app
 
@@ -134,7 +134,7 @@ async def create_training_job(
 
     job_id = str(uuid.uuid4())
 
-    await TrainingJobRepository.create(session, tenant_id, job_id, body.model_dump(), celery_task_id=None)
+    await TrainingJobRepository.create(session, tenant_id, job_id, None, celery_task_id=None)
     await _record_audit(
         session,
         actor=getattr(request.state, "user_email", ""),
@@ -226,6 +226,7 @@ async def get_training_job(
 @router.post("/{job_id}/approve", response_model=TrainingJobResponse)
 async def approve_training_job(
     job_id: str,
+    body: ApproveJobRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
     tenant_id: str = Query(..., description="Tenant ID that owns the job"),
@@ -241,10 +242,10 @@ async def approve_training_job(
             detail=f"Cannot approve job in '{row['status']}' status",
         )
 
-    task = celery_app.send_task("fine_tune_model", args=[tenant_id, job_id, row.get("hyperparams") or {}])
-    await TrainingJobRepository.update_status(
-        session, tenant_id, job_id, "queued",
-        celery_task_id=task.id,
+    hyperparams = body.model_dump()
+    task = celery_app.send_task("fine_tune_model", args=[tenant_id, job_id, hyperparams])
+    await TrainingJobRepository.approve(
+        session, tenant_id, job_id, hyperparams, celery_task_id=task.id,
     )
     await _record_audit(
         session,
