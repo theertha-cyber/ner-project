@@ -58,7 +58,8 @@ def _create_tables_sql(schema: str) -> list:
         f"""
             CREATE TABLE IF NOT EXISTS {schema}.spans (
                 id VARCHAR PRIMARY KEY,
-                document_id VARCHAR NOT NULL
+                document_id VARCHAR NOT NULL,
+                entity_type VARCHAR(255)
             )
         """,
     ]
@@ -139,6 +140,111 @@ async def test_submit_insufficient_entities_422(client, engine, setup_schema, mo
     token = make_token(tid)
     resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(token))
     assert resp.status_code == 422
+
+
+async def _seed_per_type_spans(engine, tid, schema, counts: dict, define: bool = True):
+    """Documents + spans per entity type, and matching active entity
+    definitions, so the per-type gate has something to evaluate."""
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.documents (id, tenant_id) VALUES ('gate-doc', :tid) ON CONFLICT (id) DO NOTHING"),
+            {"tid": tid},
+        )
+        for entity_type, n in counts.items():
+            if define:
+                await conn.execute(
+                    text(
+                        "INSERT INTO public.entity_definitions (id, tenant_id, name, is_active, version) "
+                        "VALUES (:id, :tid, :name, true, 1)"
+                    ),
+                    {"id": str(uuid.uuid4()), "tid": tid, "name": entity_type},
+                )
+            for _ in range(n):
+                await conn.execute(
+                    text(f"INSERT INTO {schema}.spans (id, document_id, entity_type) VALUES (:id, 'gate-doc', :et)"),
+                    {"id": str(uuid.uuid4()), "et": entity_type},
+                )
+
+
+@pytest.mark.asyncio
+async def test_per_type_gate_inert_by_default(client, engine, setup_schema, monkeypatch):
+    monkeypatch.delenv("NER_MIN_ENTITIES_PER_TYPE", raising=False)
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    tid, schema = setup_schema
+    await _seed_per_type_spans(engine, tid, schema, {"ONLY_TYPE": 3})
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(make_token(tid)))
+    assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_per_type_gate_rejects_short_type_and_names_it(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    monkeypatch.setenv("NER_MIN_ENTITIES_PER_TYPE", "200")
+    tid, schema = setup_schema
+    await _seed_per_type_spans(
+        engine, tid, schema,
+        {"PROGRAMMING_LANGUAGE": 400, "JOB_TITLE": 210, "CONTACT_DETAILS": 40},
+    )
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(make_token(tid)))
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert "CONTACT_DETAILS" in detail and "40" in detail
+    assert "PROGRAMMING_LANGUAGE" not in detail
+    assert "JOB_TITLE" not in detail
+
+
+@pytest.mark.asyncio
+async def test_per_type_gate_rejects_type_with_zero_spans(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    monkeypatch.setenv("NER_MIN_ENTITIES_PER_TYPE", "200")
+    tid, schema = setup_schema
+    await _seed_per_type_spans(engine, tid, schema, {"SKILL": 200, "EDUCATION": 0})
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(make_token(tid)))
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert "EDUCATION" in detail and "(0)" in detail
+
+
+@pytest.mark.asyncio
+async def test_per_type_gate_accepts_when_all_types_meet_minimum(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    monkeypatch.setenv("NER_MIN_ENTITIES_PER_TYPE", "200")
+    tid, schema = setup_schema
+    await _seed_per_type_spans(engine, tid, schema, {"SKILL": 200, "EDUCATION": 250})
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(make_token(tid)))
+    assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_per_type_gate_ignores_inactive_types(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    monkeypatch.setenv("NER_MIN_ENTITIES_PER_TYPE", "200")
+    tid, schema = setup_schema
+    await _seed_per_type_spans(engine, tid, schema, {"SKILL": 200})
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO public.entity_definitions (id, tenant_id, name, is_active, version) "
+                "VALUES (:id, :tid, 'LEGACY_FIELD', false, 1)"
+            ),
+            {"id": str(uuid.uuid4()), "tid": tid},
+        )
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(make_token(tid)))
+    assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_both_gates_apply_independently(client, engine, setup_schema, monkeypatch):
+    """900 total spans clears the total-count gate, but one starved type must
+    still block submission."""
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "500")
+    monkeypatch.setenv("NER_MIN_ENTITIES_PER_TYPE", "200")
+    tid, schema = setup_schema
+    await _seed_per_type_spans(engine, tid, schema, {"BULK_TYPE": 850, "STARVED": 50})
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(make_token(tid)))
+    assert resp.status_code == 422
+    assert "per type" in resp.json()["detail"]
+    assert "STARVED" in resp.json()["detail"]
 
 
 @pytest.mark.asyncio

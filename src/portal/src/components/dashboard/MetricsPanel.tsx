@@ -14,6 +14,15 @@ interface MetricsPanelProps {
   sideRows: SideRow[];
 }
 
+/**
+ * The readiness breakdown now enumerates every entity type the tenant cares
+ * about, including ones with no annotations, so a tenant with many configured
+ * labels would otherwise push an unbounded list into a side panel. Rows arrive
+ * least-progressed first, so truncating the tail keeps exactly the ones worth
+ * acting on.
+ */
+const MAX_SIDE_ROWS = 6;
+
 function GrowBar({ pct, color }: { pct: number; color?: string }) {
   const fillRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -202,7 +211,7 @@ export function MetricsPanel({
             {sideBot}
           </span>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {sideRows.map((row, i) => (
+            {sideRows.slice(0, MAX_SIDE_ROWS).map((row, i) => (
               <div key={i} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span
@@ -227,6 +236,17 @@ export function MetricsPanel({
                 <MiniGrowBar pct={row.pct} color={row.c} />
               </div>
             ))}
+            {sideRows.length > MAX_SIDE_ROWS && (
+              <span
+                style={{
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                  fontSize: 11,
+                  color: "var(--color-text-tertiary, #94a3b8)",
+                }}
+              >
+                +{sideRows.length - MAX_SIDE_ROWS} more
+              </span>
+            )}
           </div>
         </div>
       )}

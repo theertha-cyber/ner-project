@@ -64,7 +64,8 @@ def _create_tables_sql(schema: str) -> list:
                 text_content VARCHAR NOT NULL,
                 confidence FLOAT NOT NULL DEFAULT 1.0,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
-                updated_at TIMESTAMPTZ
+                updated_at TIMESTAMPTZ,
+                bio_tags TEXT[]
             )
         """,
         f"""
@@ -747,6 +748,89 @@ async def test_7_15_task_complete_no_spans_422(seeded_document, client):
     )
 
     assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "NO_SPANS"
+
+
+@pytest.mark.asyncio
+async def test_task_pending_can_be_started(seeded_document, client):
+    """'pending' is written by the tenant seed path but was missing from the
+    transition table, so seeded tasks could not be started by any route."""
+    tid = seeded_document["tid"]
+    schema = seeded_document["schema"]
+    doc_id = seeded_document["doc_id"]
+    token = make_token(tid)
+    task_id = str(uuid.uuid4())
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.annotation_tasks (id, document_id, annotator_user_id, status) VALUES (:id, :doc_id, :uid, 'pending')"),
+            {"id": task_id, "doc_id": doc_id, "uid": "user-456"},
+        )
+    await engine.dispose()
+
+    resp = await client.patch(
+        f"/api/v1/annotation-tasks/{task_id}",
+        json={"status": "in-progress"},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "in-progress"
+
+
+@pytest.mark.asyncio
+async def test_task_pending_cannot_skip_to_completed(seeded_document, client):
+    tid = seeded_document["tid"]
+    schema = seeded_document["schema"]
+    doc_id = seeded_document["doc_id"]
+    token = make_token(tid)
+    task_id = str(uuid.uuid4())
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.annotation_tasks (id, document_id, annotator_user_id, status) VALUES (:id, :doc_id, :uid, 'pending')"),
+            {"id": task_id, "doc_id": doc_id, "uid": "user-456"},
+        )
+    await engine.dispose()
+
+    resp = await client.patch(
+        f"/api/v1/annotation-tasks/{task_id}",
+        json={"status": "completed"},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "INVALID_TRANSITION"
+
+
+@pytest.mark.asyncio
+async def test_task_completed_cannot_move_to_pending(seeded_document, client):
+    """'completed' stays terminal — adding 'pending' as a source must not make
+    it a valid target."""
+    tid = seeded_document["tid"]
+    schema = seeded_document["schema"]
+    doc_id = seeded_document["doc_id"]
+    token = make_token(tid)
+    task_id = str(uuid.uuid4())
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.annotation_tasks (id, document_id, annotator_user_id, status) VALUES (:id, :doc_id, :uid, 'completed')"),
+            {"id": task_id, "doc_id": doc_id, "uid": "user-456"},
+        )
+    await engine.dispose()
+
+    resp = await client.patch(
+        f"/api/v1/annotation-tasks/{task_id}",
+        json={"status": "pending"},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "INVALID_TRANSITION"
 
 
 @pytest.mark.asyncio

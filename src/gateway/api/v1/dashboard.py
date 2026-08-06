@@ -46,6 +46,19 @@ class SideRow(BaseModel):
     c: str
 
 
+class ContinueWork(BaseModel):
+    """The task an annotator should return to. `mode` drives the card's action
+    label: "resume" (in-progress), "start" (assigned but not begun), "review"
+    (already submitted — shown only when nothing else remains, so the card never
+    invites an accidental edit to finished work while real work waits)."""
+    taskId: str
+    documentId: str
+    documentName: str
+    status: str
+    spanCount: int
+    mode: str  # "resume" | "start" | "review"
+
+
 class ResponseQualityCard(BaseModel):
     status: str  # "healthy" | "monitor" | "needs_attention" | "no_data"
     satisfactionPct: float | None
@@ -84,6 +97,7 @@ class DashboardData(BaseModel):
     sideRows: list[SideRow]
     responseQuality: ResponseQualityCard | None = None
     activeModel: ActiveModelInfo | None = None
+    continueWork: ContinueWork | None = None
 
 
 class DashboardSourceStatus(BaseModel):
@@ -289,11 +303,11 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
         title=f"{tenant_count} tenants. {title_suffix}" if tenant_count is not None else "Platform overview.",
         line="Monitor tenant onboarding, platform health, and approvals across the platform.",
         stats=[
-            _stat("Active Tenants", tenant_count, "", "active", "+2", "up") if tenant_count is not None
+            _stat("Active Tenants", tenant_count, "", "", "+2", "up") if tenant_count is not None
             else _stat("Active Tenants", None, "", "unavailable", "\u2014"),
-            _stat("Active Users", active_user_count, "", "active" if active_user_count is not None else "service unavailable", "\u2014"),
+            _stat("Active Users", active_user_count, "", "" if active_user_count is not None else "service unavailable", "\u2014"),
             _stat("Pending Approvals", pending_approvals, "", pending_sub, "now", "warn"),
-            _stat("Training Jobs Running", training_jobs_running, "", "active" if training_jobs_running is not None else "service unavailable", "\u2014"),
+            _stat("Training Jobs Running", training_jobs_running, "", "" if training_jobs_running is not None else "service unavailable", "\u2014"),
         ],
         pTitle="Platform Activity",
         pMeta="system_admin",
@@ -367,10 +381,10 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str, auth_header: str 
                 doc_count = f"{doc_total}/{max_docs}"
                 doc_sub = f"{round(doc_total / max_docs * 100)}% of quota"
             else:
-                doc_sub = "active"
+                doc_sub = ""
         except Exception:
             await db.rollback()
-            doc_sub = "active"
+            doc_sub = ""
     except Exception:
         pass
 
@@ -500,7 +514,18 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str, auth_header: str 
 # Reused for the annotator "Dataset readiness" panel (_annotator_side_panel)
 # and the tenant_admin "Dataset reached training readiness" activity event \u2014
 # a single source of truth for the entity count that unlocks training.
-DATASET_READINESS_ENTITY_THRESHOLD = 500
+#
+# This is a PER ENTITY TYPE target, not a tenant-wide total. NER model quality
+# is bounded by the weakest label: 500 spans made almost entirely of one type
+# trains one usable recogniser and leaves the rest unusable, which is what the
+# previous tenant-wide 500 threshold measured. See ADR-010.
+DATASET_READINESS_ENTITIES_PER_TYPE = 200
+
+# Task status vocabularies meaning "assigned but not begun". Three are in play
+# and none of the sources agree: migration 002 defaults to 'open', migration 004
+# and annotation_service write 'unannotated', and gateway/seed.py writes
+# 'pending'. Live data currently contains only 'pending'.
+NOT_STARTED_TASK_STATUSES = ("unannotated", "open", "pending")
 
 # Documents at or above this size are surfaced as a "Large document upload
 # completed" event in the tenant_admin activity feed.
@@ -618,18 +643,36 @@ async def _tenant_curated_activity(db: AsyncSession, schema: str, tenant_id: str
         ),
     )
 
+    # Readiness is per entity type, so the dataset becomes training-ready at the
+    # moment the LAST evaluated type crosses the threshold — not when the Nth
+    # span overall is written. The HAVING clause is what enforces "all types":
+    # the query yields no row while any type is still short.
     await _add(
         f"""
-            SELECT crossing_ts FROM (
-                SELECT created_at AS crossing_ts, ROW_NUMBER() OVER (ORDER BY created_at) AS rn
+            WITH counts AS (
+                SELECT entity_type, COUNT(*) AS cnt FROM {schema}.spans GROUP BY entity_type
+            ),
+            types AS (
+                SELECT name AS entity_type FROM public.entity_definitions
+                WHERE tenant_id = :tid AND is_active = true
+                UNION
+                SELECT entity_type FROM counts
+            ),
+            ranked AS (
+                SELECT entity_type, created_at,
+                       ROW_NUMBER() OVER (PARTITION BY entity_type ORDER BY created_at) AS rn
                 FROM {schema}.spans
-            ) ranked
-            WHERE rn = :threshold
+            ),
+            crossings AS (
+                SELECT entity_type, created_at FROM ranked WHERE rn = :threshold
+            )
+            SELECT MAX(created_at) AS crossing_ts FROM crossings
+            HAVING COUNT(*) > 0 AND COUNT(*) = (SELECT COUNT(*) FROM types)
         """,
-        {"threshold": DATASET_READINESS_ENTITY_THRESHOLD},
+        {"threshold": DATASET_READINESS_ENTITIES_PER_TYPE, "tid": tenant_id},
         lambda row: (
             row.crossing_ts,
-            ActivityRow(title="Dataset reached training readiness", sub=f"{DATASET_READINESS_ENTITY_THRESHOLD}+ entities annotated", tag="ready", tk="completed", go="annotation", icon="dataset", time=_relative_time(row.crossing_ts)),
+            ActivityRow(title="Dataset reached training readiness", sub=f"{DATASET_READINESS_ENTITIES_PER_TYPE}+ entities for every type", tag="ready", tk="completed", go="annotation", icon="dataset", time=_relative_time(row.crossing_ts)),
         ),
     )
 
@@ -835,25 +878,32 @@ async def _annotator_data(db: AsyncSession, tenant_id: str, user_id: str) -> tup
     sources = _null_sources()
     schema = _tenant_schema(tenant_id)
 
-    task_count: str | None = None
-    span_count: str | None = None
+    task_fraction: str | None = None
+    task_sub = "service unavailable"
     completion_pct: str | None = None
 
+    # Completed over total assigned. Defining it this way keeps the denominator
+    # correct regardless of which "not started" vocabulary a row carries.
     try:
         result = await db.execute(
-            text(f"SELECT COUNT(*) FROM {schema}.annotation_tasks WHERE annotator_user_id = :user_id"),
+            text(f"""
+                SELECT COUNT(*) FILTER (WHERE status = 'completed') AS done, COUNT(*) AS total
+                FROM {schema}.annotation_tasks WHERE annotator_user_id = :user_id
+            """),
             {"user_id": user_id},
         )
-        task_count = str(result.scalar())
+        row = result.fetchone()
+        done = int(row.done or 0) if row else 0
+        total = int(row.total or 0) if row else 0
+        task_fraction = f"{done}/{total}"
+        remaining = total - done
+        if total == 0:
+            task_sub = "no tasks assigned"
+        else:
+            task_sub = f"{remaining} remaining"
         sources["annotations"] = True
     except Exception:
-        pass
-
-    try:
-        result = await db.execute(text(f"SELECT COUNT(*) FROM {schema}.spans"))
-        span_count = str(result.scalar())
-    except Exception:
-        pass
+        await db.rollback()
 
     try:
         result = await db.execute(
@@ -866,7 +916,16 @@ async def _annotator_data(db: AsyncSession, tenant_id: str, user_id: str) -> tup
         val = result.scalar()
         completion_pct = f"{val:.0f}" if val is not None else None
     except Exception:
-        pass
+        await db.rollback()
+
+    # Own try/except with rollback recovery: a failure here degrades this one
+    # card to null and must not blank the stats or the readiness panel.
+    continue_work: ContinueWork | None = None
+    try:
+        continue_work = await _annotator_continue_work(db, schema, user_id)
+    except Exception:
+        logger.exception("annotator dashboard: continue-work query failed for schema %s", schema)
+        await db.rollback()
 
     task_rows: list[ActivityRow] = []
     try:
@@ -879,25 +938,43 @@ async def _annotator_data(db: AsyncSession, tenant_id: str, user_id: str) -> tup
             ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="annotation"),
         ]
 
-    total_spans, bar_pct, side_metrics_list, side_rows = await _annotator_side_panel(db, schema)
+    total_spans, bar_pct, ready_types, total_types, side_metrics_list, side_rows = await _annotator_side_panel(
+        db, schema, tenant_id
+    )
 
-    remaining = max(DATASET_READINESS_ENTITY_THRESHOLD - total_spans, 0)
-    if remaining > 0:
-        side_meta = f"{remaining} more entities needed"
-        side_bot = f"{DATASET_READINESS_ENTITY_THRESHOLD} entities unlocks training"
+    threshold = DATASET_READINESS_ENTITIES_PER_TYPE
+    if bar_pct is None:
+        side_meta = "no entity types configured yet"
+        side_bot = f"{threshold} entities per type unlocks training"
+        big = "\u2014"
+        big_unit = ""
+        bar_value = 0.0
     else:
-        side_meta = "Training threshold reached"
-        side_bot = f"Training unlocked at {DATASET_READINESS_ENTITY_THRESHOLD} entities"
+        short = total_types - ready_types
+        if short > 0:
+            side_meta = f"{ready_types} of {total_types} entity types ready"
+            side_bot = f"{threshold} entities per type unlocks training"
+        else:
+            side_meta = "Training threshold reached"
+            side_bot = f"Training unlocked at {threshold} entities per type"
+        big = f"{round(bar_pct)}"
+        big_unit = "% to training-ready"
+        bar_value = bar_pct
 
     stats = [
-        _stat("Assigned tasks", task_count, "", "active" if task_count is not None else "service unavailable", "\u2014"),
-        _stat("Entities Annotated", span_count, "", "active" if span_count is not None else "service unavailable", "\u2014"),
-        _stat("Completion", completion_pct, "%", "active" if completion_pct is not None else "service unavailable", "\u2014"),
+        _stat("Assigned tasks", task_fraction, "", task_sub, "\u2014"),
+        _stat("Completion", completion_pct, "%", "" if completion_pct is not None else "service unavailable", "\u2014"),
     ]
+
+    if task_fraction is not None:
+        done, total = task_fraction.split("/")
+        title = f"{done} of {total} tasks complete." if total != "0" else "No tasks assigned yet."
+    else:
+        title = "No tasks assigned yet."
 
     data = DashboardData(
         kicker="Your annotation queue",
-        title=f"{task_count} tasks assigned." if task_count is not None else "No tasks assigned yet.",
+        title=title,
         line="Track your annotation progress and dataset readiness.",
         stats=stats,
         pTitle="My tasks",
@@ -905,14 +982,85 @@ async def _annotator_data(db: AsyncSession, tenant_id: str, user_id: str) -> tup
         pRows=task_rows,
         sideTop="Dataset readiness",
         sideMeta=side_meta,
-        big=f"{round(bar_pct)}",
-        bigUnit="% to training-ready",
-        bar=bar_pct,
+        big=big,
+        bigUnit=big_unit,
+        bar=bar_value,
         sideMetrics=side_metrics_list,
         sideBot=side_bot,
         sideRows=side_rows,
+        continueWork=continue_work,
     )
     return data, sources
+
+
+async def _annotator_continue_work(db: AsyncSession, schema: str, user_id: str) -> ContinueWork | None:
+    """Selects the task the annotator should return to.
+
+    Precedence: most recently worked `in-progress` task, else the oldest task
+    that has not been started, else the most recently worked `completed` task,
+    else nothing. Unstarted work outranks finished work \u2014 pointing someone at a
+    document they already submitted while their queue still holds untouched
+    tasks is unhelpful \u2014 but a completed task is still better than a blank card.
+
+    "Most recently worked" cannot rely on `annotation_tasks.updated_at`: nothing
+    writes it (the only UPDATE on the table sets `status`), so it is always NULL
+    in practice. Falling through to the document's latest span timestamp
+    reconstructs the ordering from data that is actually maintained."""
+    result = await db.execute(
+        text(f"""
+            SELECT
+                at.id,
+                at.document_id,
+                at.status,
+                d.filename,
+                COALESCE(
+                    at.updated_at,
+                    (SELECT MAX(s.updated_at) FROM {schema}.spans s WHERE s.document_id = at.document_id),
+                    at.created_at
+                ) AS worked_at,
+                at.created_at,
+                (SELECT COUNT(*) FROM {schema}.spans s2 WHERE s2.document_id = at.document_id) AS span_count
+            FROM {schema}.annotation_tasks at
+            LEFT JOIN {schema}.documents d ON d.id = at.document_id
+            WHERE at.annotator_user_id = :user_id
+        """),
+        {"user_id": user_id},
+    )
+    rows = result.fetchall()
+    if not rows:
+        return None
+
+    def _build(row, mode: str) -> ContinueWork:
+        return ContinueWork(
+            taskId=row.id,
+            documentId=row.document_id or "",
+            documentName=row.filename or f"Task {str(row.id)[:8]}...",
+            status=row.status or "",
+            spanCount=int(row.span_count or 0),
+            mode=mode,
+        )
+
+    _floor = datetime.min.replace(tzinfo=timezone.utc)
+
+    def _worked(row):
+        return row.worked_at or _floor
+
+    def _created(row):
+        return row.created_at or _floor
+
+    in_progress = [r for r in rows if r.status == "in-progress"]
+    if in_progress:
+        return _build(max(in_progress, key=_worked), "resume")
+
+    not_started = [r for r in rows if (r.status or "") in NOT_STARTED_TASK_STATUSES]
+    if not_started:
+        return _build(min(not_started, key=_created), "start")
+
+    completed = [r for r in rows if r.status == "completed"]
+    if completed:
+        return _build(max(completed, key=_worked), "review")
+
+    return None
 
 
 async def _annotator_task_activity(db: AsyncSession, schema: str, user_id: str) -> list[ActivityRow]:
@@ -940,30 +1088,80 @@ async def _annotator_task_activity(db: AsyncSession, schema: str, user_id: str) 
     return rows[:4]
 
 
-async def _annotator_side_panel(db: AsyncSession, schema: str) -> tuple[int, float, list[SideMetric], list[SideRow]]:
+def _readiness_row_colour(pct: float) -> str:
+    """Progress-based colouring so a starved entity type is distinguishable at a
+    glance from a satisfied one. The previous panel hardcoded a single colour
+    across every row, which made the breakdown decorative rather than directive."""
+    if pct >= 100:
+        return "var(--color-delta-up, #15803d)"
+    if pct >= 50:
+        return "var(--warn, #b45309)"
+    return "var(--bad, #b91c1c)"
+
+
+async def _annotator_type_counts(db: AsyncSession, schema: str, tenant_id: str) -> list[tuple[str, int]]:
+    """Span counts for every entity type the tenant cares about, least-annotated
+    first.
+
+    The set of types is the UNION of the tenant's active entity definitions and
+    the entity types that already have spans. Both halves are load-bearing:
+    enumerating only `spans` cannot surface a configured-but-never-tagged label
+    (the defect this panel exists to fix), while enumerating only
+    `entity_definitions` blanks the panel for a tenant that has real annotations
+    but never configured its label list. See design.md Decision 1.
+
+    `entity_definitions` lives in `public` keyed by tenant_id while spans live in
+    the tenant schema, so the tenant_id filter here is the isolation boundary
+    (ADR-001) — without it this would aggregate across tenants."""
+    result = await db.execute(
+        text(f"""
+            WITH counts AS (
+                SELECT entity_type, COUNT(*) AS cnt
+                FROM {schema}.spans
+                GROUP BY entity_type
+            ),
+            types AS (
+                SELECT name AS entity_type
+                FROM public.entity_definitions
+                WHERE tenant_id = :tid AND is_active = true
+                UNION
+                SELECT entity_type FROM counts
+            )
+            SELECT t.entity_type, COALESCE(c.cnt, 0) AS cnt
+            FROM types t
+            LEFT JOIN counts c ON c.entity_type = t.entity_type
+            ORDER BY cnt ASC, t.entity_type ASC
+        """),
+        {"tid": tenant_id},
+    )
+    return [(r.entity_type, int(r.cnt or 0)) for r in result]
+
+
+async def _annotator_side_panel(
+    db: AsyncSession, schema: str, tenant_id: str
+) -> tuple[int, float | None, int, int, list[SideMetric], list[SideRow]]:
+    """Returns (total_spans, bar_pct, ready_types, total_types, metrics, rows).
+
+    `bar_pct` is None when readiness cannot be assessed at all — the tenant has
+    neither active entity definitions nor any spans. That is reported as
+    unavailable rather than as 0% (which reads as "you have work to do") or
+    100% (which reads as "you are done")."""
     total_spans = 0
     doc_count = 0
-    type_count = 0
     today_spans = 0
-    span_by_type: list[SideRow] = []
+    rows: list[SideRow] = []
 
     try:
         result = await db.execute(text(f"SELECT COUNT(*) FROM {schema}.spans"))
         total_spans = result.scalar() or 0
     except Exception:
-        pass
+        await db.rollback()
 
     try:
         result = await db.execute(text(f"SELECT COUNT(DISTINCT document_id) FROM {schema}.spans"))
         doc_count = result.scalar() or 0
     except Exception:
-        pass
-
-    try:
-        result = await db.execute(text(f"SELECT COUNT(DISTINCT entity_type) FROM {schema}.spans"))
-        type_count = result.scalar() or 0
-    except Exception:
-        pass
+        await db.rollback()
 
     try:
         result = await db.execute(
@@ -971,42 +1169,45 @@ async def _annotator_side_panel(db: AsyncSession, schema: str) -> tuple[int, flo
         )
         today_spans = result.scalar() or 0
     except Exception:
-        pass
+        await db.rollback()
 
+    type_counts: list[tuple[str, int]] = []
     try:
-        result = await db.execute(
-            text(f"""
-                SELECT entity_type, COUNT(*) AS cnt
-                FROM {schema}.spans
-                GROUP BY entity_type
-                ORDER BY cnt DESC
-                LIMIT 5
-            """)
-        )
-        total = sum(r.cnt for r in result) or 1
-        result = await db.execute(
-            text(f"""
-                SELECT entity_type, COUNT(*) AS cnt
-                FROM {schema}.spans
-                GROUP BY entity_type
-                ORDER BY cnt DESC
-                LIMIT 5
-            """)
-        )
-        for r in result:
-            pct = round(r.cnt / total * 100, 1)
-            span_by_type.append(SideRow(label=r.entity_type, val=str(r.cnt), pct=pct, c="blue"))
+        type_counts = await _annotator_type_counts(db, schema, tenant_id)
     except Exception:
-        pass
+        logger.exception("annotator dashboard: per-type readiness query failed for schema %s", schema)
+        await db.rollback()
 
-    bar_pct = round(min(total_spans / DATASET_READINESS_ENTITY_THRESHOLD * 100, 100) if total_spans > 0 else 0, 1)
+    ready_types = 0
+    bar_pct: float | None = None
+    if type_counts:
+        progress = []
+        for entity_type, cnt in type_counts:
+            frac = min(cnt / DATASET_READINESS_ENTITIES_PER_TYPE, 1.0)
+            progress.append(frac)
+            if cnt >= DATASET_READINESS_ENTITIES_PER_TYPE:
+                ready_types += 1
+            pct = round(frac * 100, 1)
+            rows.append(
+                SideRow(
+                    label=entity_type,
+                    val=f"{cnt}/{DATASET_READINESS_ENTITIES_PER_TYPE}",
+                    pct=pct,
+                    c=_readiness_row_colour(pct),
+                )
+            )
+        # Mean of per-type progress with each type capped at 100%: the cap is what
+        # stops an over-annotated label compensating for a starved one, which is
+        # the exact defect the tenant-wide total had.
+        bar_pct = round(sum(progress) / len(progress) * 100, 1)
+
     side_metrics = [
         SideMetric(k="docs", v=str(doc_count)),
-        SideMetric(k="types", v=str(type_count)),
+        SideMetric(k="types", v=str(len(type_counts))),
         SideMetric(k="today", v=str(today_spans)),
     ]
 
-    return total_spans, bar_pct, side_metrics, span_by_type
+    return total_spans, bar_pct, ready_types, len(type_counts), side_metrics, rows
 
 
 async def _business_user_data(db: AsyncSession, tenant_id: str, user_id: str) -> tuple[DashboardData, dict[str, bool]]:
