@@ -47,22 +47,26 @@ class AuditService:
             "created_at": str(now),
         }
 
-    async def list_events(self, page: int = 1, per_page: int = 50) -> dict:
+    async def list_events(self, page: int = 1, per_page: int = 50, tenant_id: str | None = None) -> dict:
         offset = (page - 1) * per_page
+        where_clause = "WHERE tenant_id = :tenant_id" if tenant_id else ""
+        params: dict = {"tenant_id": tenant_id} if tenant_id else {}
 
         count_result = await self.db.execute(
-            text("SELECT COUNT(*) FROM public.audit_events"),
+            text(f"SELECT COUNT(*) FROM public.audit_events {where_clause}"),
+            params,
         )
         total = count_result.scalar()
 
         result = await self.db.execute(
-            text("""
+            text(f"""
                 SELECT id, actor, role, action, target, kind, tenant_id, created_at
                 FROM public.audit_events
+                {where_clause}
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :offset
             """),
-            {"limit": per_page, "offset": offset},
+            {**params, "limit": per_page, "offset": offset},
         )
         rows = result.fetchall()
 

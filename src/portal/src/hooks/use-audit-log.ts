@@ -19,14 +19,15 @@ export interface AuditLogResponse {
   per_page: number;
 }
 
-export function useAuditLog(page: number, perPage: number = 50) {
+export function useAuditLog(page: number, perPage: number = 50, tenantId: string | null = null) {
   const params = new URLSearchParams();
   params.set("page", String(page));
   params.set("per_page", String(perPage));
+  if (tenantId) params.set("tenant_id", tenantId);
   const qs = params.toString();
 
   return useQuery<AuditLogResponse>({
-    queryKey: ["audit-log", { page, perPage }],
+    queryKey: ["audit-log", { page, perPage, tenantId }],
     queryFn: async () => {
       const res = await authFetch(`/api/v1/admin/audit-log?${qs}`);
       if (!res.ok) throw new Error(`Failed to fetch audit log: ${res.status}`);

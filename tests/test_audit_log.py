@@ -141,6 +141,66 @@ class TestAuditServiceListEvents:
         assert result["total"] == 0
         assert result["page"] == 1
 
+    async def test_tenant_filter_returns_only_matching_tenant_events(self, db_session):
+        svc = AuditService(db_session)
+        for i in range(5):
+            await svc.record(
+                actor=f"user{i}@test.com",
+                role="tenant_admin",
+                action=f"test.action.{i}",
+                target=f"target-{i}",
+                kind=AuditEventKind.create,
+                tenant_id="test-tenant",
+            )
+        for i in range(3):
+            await svc.record(
+                actor=f"other{i}@test.com",
+                role="tenant_admin",
+                action=f"other.action.{i}",
+                target=f"other-target-{i}",
+                kind=AuditEventKind.create,
+                tenant_id="tenant-b",
+            )
+
+        result = await svc.list_events(tenant_id="test-tenant")
+
+        assert result["total"] == 5
+        assert len(result["events"]) == 5
+        assert all(e["tenant_id"] == "test-tenant" for e in result["events"])
+        timestamps = [e["created_at"] for e in result["events"]]
+        assert timestamps == sorted(timestamps, reverse=True)
+
+    async def test_tenant_filter_with_no_matching_events(self, db_session):
+        svc = AuditService(db_session)
+        await svc.record(
+            actor="admin@test.com",
+            role="system_admin",
+            action="tenant.deactivate",
+            target="test-tenant",
+            kind=AuditEventKind.reject,
+            tenant_id="test-tenant",
+        )
+
+        result = await svc.list_events(tenant_id="tenant-does-not-exist")
+
+        assert result["events"] == []
+        assert result["total"] == 0
+
+    async def test_no_tenant_filter_returns_all_tenants(self, db_session):
+        svc = AuditService(db_session)
+        await svc.record(
+            actor="a@test.com", role="tenant_admin", action="a.action",
+            target="a-target", kind=AuditEventKind.create, tenant_id="test-tenant",
+        )
+        await svc.record(
+            actor="b@test.com", role="tenant_admin", action="b.action",
+            target="b-target", kind=AuditEventKind.create, tenant_id="tenant-b",
+        )
+
+        result = await svc.list_events()
+
+        assert result["total"] == 2
+
 
 class TestAuditLogAPI:
     async def test_system_admin_can_list_events(self, client, db_session, system_admin_header):
@@ -193,3 +253,24 @@ class TestAuditLogAPI:
         assert len(body["events"]) == 3
         assert body["page"] == 1
         assert body["per_page"] == 3
+
+    async def test_tenant_id_query_param_filters_results(self, client, db_session, system_admin_header):
+        svc = AuditService(db_session)
+        await svc.record(
+            actor="a@test.com", role="tenant_admin", action="a.action",
+            target="a-target", kind=AuditEventKind.create, tenant_id="test-tenant",
+        )
+        await svc.record(
+            actor="b@test.com", role="tenant_admin", action="b.action",
+            target="b-target", kind=AuditEventKind.create, tenant_id="tenant-b",
+        )
+
+        resp = await client.get(
+            "/api/v1/admin/audit-log?tenant_id=test-tenant", headers=system_admin_header
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 1
+        assert len(body["events"]) == 1
+        assert body["events"][0]["tenant_id"] == "test-tenant"

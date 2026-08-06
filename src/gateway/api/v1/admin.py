@@ -122,9 +122,10 @@ async def create_tenant_user(
 async def list_audit_log(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=100),
+    tenant_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _: str = Depends(require_system_admin),
 ):
     service = AuditService(db)
-    return await service.list_events(page=page, per_page=per_page)
+    return await service.list_events(page=page, per_page=per_page, tenant_id=tenant_id)
 

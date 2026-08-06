@@ -11,7 +11,6 @@ import {
   Database,
   Upload,
   UserPlus,
-  Circle,
   type LucideIcon,
 } from "lucide-react";
 import type { ActivityRow } from "@/types/dashboard";
@@ -89,8 +88,8 @@ function ActivityRowList({ rows }: ActivityRowListProps) {
               background: tagStyle(row.tk).background,
             }}
           />
-          {row.icon && (() => {
-            const Icon = ROW_ICONS[row.icon] ?? Circle;
+          {row.icon && ROW_ICONS[row.icon] && (() => {
+            const Icon = ROW_ICONS[row.icon];
             return (
               <Icon size={14} strokeWidth={2} style={{ flexShrink: 0, color: "var(--color-text-secondary)" }} />
             );

@@ -89,6 +89,34 @@ describe("useAuditLog", () => {
     expect(result.current.data).toHaveProperty("per_page");
   });
 
+  it("includes tenant_id in query string when tenantId is provided", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ events: [], total: 0, page: 1, per_page: 50 }), {
+        status: 200,
+      }),
+    );
+
+    const { result } = renderHook(() => useAuditLog(1, 50, "test-tenant"), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const callUrl = String(mockFetch.mock.calls[0][0]);
+    expect(callUrl).toContain("tenant_id=test-tenant");
+  });
+
+  it("omits tenant_id from query string when tenantId is null", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ events: [], total: 0, page: 1, per_page: 50 }), {
+        status: 200,
+      }),
+    );
+
+    const { result } = renderHook(() => useAuditLog(1, 50, null), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const callUrl = String(mockFetch.mock.calls[0][0]);
+    expect(callUrl).not.toContain("tenant_id");
+  });
+
   it("throws on error response", async () => {
     mockFetch.mockResolvedValue(
       new Response(null, { status: 500 }),

@@ -223,7 +223,11 @@ def _platform_health_status(gateway: str, chat_api: str, extraction: str, traini
 async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[DashboardData, dict[str, bool]]:
     sources = _null_sources()
     tenant_count: str | None = None
-    active_user_count: str | None = None
+    active_tenant_count: int | None = None
+    new_tenants_24h = 0
+    active_user_count: int | None = None
+    total_user_count: int | None = None
+    new_users_24h = 0
     pending_approvals: str | None = None
     training_jobs_running: str | None = None
 
@@ -232,13 +236,41 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
         tenant_count = str(result.scalar())
         sources["tenants"] = True
     except Exception:
-        pass
+        await db.rollback()
+
+    try:
+        result = await db.execute(text("SELECT COUNT(*) FROM public.tenants WHERE status = 'active'"))
+        active_tenant_count = result.scalar() or 0
+    except Exception:
+        await db.rollback()
+
+    try:
+        result = await db.execute(
+            text("SELECT COUNT(*) FROM public.tenants WHERE created_at >= NOW() - INTERVAL '24 hours'")
+        )
+        new_tenants_24h = result.scalar() or 0
+    except Exception:
+        await db.rollback()
+
+    try:
+        result = await db.execute(text("SELECT COUNT(*) FROM public.tenant_users"))
+        total_user_count = result.scalar() or 0
+    except Exception:
+        await db.rollback()
 
     try:
         result = await db.execute(text("SELECT COUNT(*) FROM public.tenant_users WHERE status = 'active'"))
-        active_user_count = str(result.scalar())
+        active_user_count = result.scalar() or 0
     except Exception:
-        pass
+        await db.rollback()
+
+    try:
+        result = await db.execute(
+            text("SELECT COUNT(*) FROM public.tenant_users WHERE created_at >= NOW() - INTERVAL '24 hours'")
+        )
+        new_users_24h = result.scalar() or 0
+    except Exception:
+        await db.rollback()
 
     schemas = []
     try:
@@ -284,19 +316,44 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
     pending_sub = "needs review" if pending_approvals is not None else "service unavailable"
     title_suffix = f"{pending_approvals} jobs await approval." if pending_approvals and pending_approvals != "0" else "No pending approvals."
 
+    # Active Tenants: "<active>/<total>" usage-style metric; the +N onboarding
+    # count lives in the supporting text, so the top-right delta corner stays empty.
+    if tenant_count is not None and active_tenant_count is not None:
+        tenant_stat = _stat(
+            "Active Tenants",
+            f"{active_tenant_count}/{tenant_count}",
+            "",
+            f"+{new_tenants_24h} in the last 24h",
+            "",
+        )
+    else:
+        tenant_stat = _stat("Active Tenants", None, "", "unavailable", "\u2014")
+
+    # Active Users: "<active>/<total>" usage-style metric; the +N onboarding
+    # count lives in the supporting text, same structure as the tenants card.
+    if active_user_count is not None and total_user_count is not None:
+        user_stat = _stat(
+            "Active Users",
+            f"{active_user_count}/{total_user_count}",
+            "",
+            f"+{new_users_24h} in the last 24h",
+            "",
+        )
+    else:
+        user_stat = _stat("Active Users", None, "", "service unavailable", "")
+
     data = DashboardData(
         kicker="Platform control plane",
         title=f"{tenant_count} tenants. {title_suffix}" if tenant_count is not None else "Platform overview.",
         line="Monitor tenant onboarding, platform health, and approvals across the platform.",
         stats=[
-            _stat("Active Tenants", tenant_count, "", "active", "+2", "up") if tenant_count is not None
-            else _stat("Active Tenants", None, "", "unavailable", "\u2014"),
-            _stat("Active Users", active_user_count, "", "active" if active_user_count is not None else "service unavailable", "\u2014"),
-            _stat("Pending Approvals", pending_approvals, "", pending_sub, "now", "warn"),
-            _stat("Training Jobs Running", training_jobs_running, "", "active" if training_jobs_running is not None else "service unavailable", "\u2014"),
+            tenant_stat,
+            user_stat,
+            _stat("Pending Approvals", pending_approvals, "", pending_sub, ""),
+            _stat("Training Jobs Running", training_jobs_running, "", "active" if training_jobs_running is not None else "service unavailable", ""),
         ],
         pTitle="Platform Activity",
-        pMeta="system_admin",
+        pMeta="",
         pRows=pRows,
         sideTop="Platform Health",
         sideMeta="live service checks",

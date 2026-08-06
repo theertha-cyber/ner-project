@@ -40,6 +40,14 @@ describe("StatCard (dashboard)", () => {
     expect(topRow.style.justifyContent).toBe("space-between");
   });
 
+  it("distributes content across card height with generous vertical gaps", () => {
+    const { container } = render(<StatCard item={makeStat()} />);
+    const card = container.firstChild as HTMLElement;
+    expect(card.style.flexDirection).toBe("column");
+    expect(card.style.justifyContent).toBe("space-between");
+    expect(Number.parseFloat(card.style.gap)).toBeGreaterThanOrEqual(10);
+  });
+
   it("hover effect uses border-color transition (not box-shadow)", () => {
     const { container } = render(<StatCard item={makeStat()} />);
     const card = container.firstChild as HTMLElement;

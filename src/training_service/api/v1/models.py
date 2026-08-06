@@ -189,6 +189,8 @@ async def promote_model(
 
     await _warmup_model(tenant_id, version_number, request)
 
+    run_name = _compute_run_name(version.get("run_number"), version.get("created_at")) or f"v{version_number}"
+
     engine = get_engine()
     async with async_sessionmaker(engine)() as session:
         event_id = str(uuid.uuid4())
@@ -203,7 +205,7 @@ async def promote_model(
                 "actor": getattr(request.state, "user_email", ""),
                 "role": getattr(request.state, "role", ""),
                 "action": "model_version.promote",
-                "target": version_id,
+                "target": run_name,
                 "kind": "promote",
                 "tenant_id": tenant_id,
                 "created_at": now,

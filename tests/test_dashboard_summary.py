@@ -592,9 +592,125 @@ class TestSystemAdminStats:
         status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
         assert status == 200
         s = body["data"]["stats"]
-        assert s[1]["value"] == "1"
+        # Active Tenants: "<active>/<total>" — baseline fixture registers 4 active tenants.
+        assert s[0]["value"] == "4/4"
+        assert s[0]["sub"] == "+4 in the last 24h"
+        assert s[0]["delta"] == ""
+        # Active Users: "<active>/<total>"; the seeded users have no created_at, so the
+        # 24-hour onboarding count is 0 and the +N lives in the sub, not a header badge.
+        assert s[1]["value"] == "1/2"
+        assert s[1]["sub"] == "+0 in the last 24h"
+        assert s[1]["delta"] == ""
+        # Pending Approvals / Training Jobs Running keep their counts but drop their badges.
         assert s[2]["value"] == "1"
+        assert s[2]["delta"] == ""
         assert s[3]["value"] == "1"
+        assert s[3]["delta"] == ""
+
+
+@pytest.mark.asyncio
+class TestSystemAdminStatMetrics:
+    async def test_active_tenants_shows_active_over_total_with_24h_delta(self, engine, setup_database):
+        async with engine.begin() as conn:
+            await conn.execute(text("DELETE FROM public.tenants"))
+            await conn.execute(
+                text(
+                    "INSERT INTO public.tenants (id, name, slug, status, created_at) VALUES "
+                    "(:id, :name, :slug, 'active', NOW())"
+                ),
+                {"id": "t-new", "name": "New Tenant", "slug": "new-tenant"},
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO public.tenants (id, name, slug, status, created_at) VALUES "
+                    "(:id, :name, :slug, 'active', NOW() - INTERVAL '30 days')"
+                ),
+                {"id": "t-old", "name": "Old Tenant", "slug": "old-tenant"},
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO public.tenants (id, name, slug, status, created_at) VALUES "
+                    "(:id, :name, :slug, 'inactive', NOW())"
+                ),
+                {"id": "t-inactive", "name": "Inactive Tenant", "slug": "inactive-tenant"},
+            )
+
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        tenants = body["data"]["stats"][0]
+        assert tenants["label"] == "Active Tenants"
+        # 2 active of 3 total; 2 tenants (active-new + inactive-new) created in the last 24h.
+        assert tenants["value"] == "2/3"
+        assert tenants["delta"] == ""
+        assert tenants["sub"] == "+2 in the last 24h"
+
+    async def test_active_users_shows_active_over_total_with_24h_sub(self, engine, setup_database):
+        async with engine.begin() as conn:
+            await conn.execute(text("DELETE FROM public.tenant_users"))
+            await conn.execute(
+                text(
+                    "INSERT INTO public.tenant_users (id, tenant_id, email, password_hash, role, status, created_at) VALUES "
+                    "(:id, :tid, :email, :hash, 'business_user', 'active', NOW())"
+                ),
+                {"id": "tu-active-new", "tid": "test-tenant", "email": "a@x.com", "hash": "x"},
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO public.tenant_users (id, tenant_id, email, password_hash, role, status, created_at) VALUES "
+                    "(:id, :tid, :email, :hash, 'business_user', 'active', NOW() - INTERVAL '30 days')"
+                ),
+                {"id": "tu-active-old", "tid": "test-tenant", "email": "b@x.com", "hash": "x"},
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO public.tenant_users (id, tenant_id, email, password_hash, role, status, created_at) VALUES "
+                    "(:id, :tid, :email, :hash, 'business_user', 'suspended', NOW())"
+                ),
+                {"id": "tu-suspended", "tid": "test-tenant", "email": "c@x.com", "hash": "x"},
+            )
+
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        users = body["data"]["stats"][1]
+        assert users["label"] == "Active Users"
+        # 2 active of 3 total; 2 users (active-new + suspended) onboarded in the last 24h.
+        assert users["value"] == "2/3"
+        assert users["sub"] == "+2 in the last 24h"
+        assert users["delta"] == ""
+
+    async def test_active_users_shows_single_onboarded_user_in_sub(self, engine, setup_database):
+        async with engine.begin() as conn:
+            await conn.execute(text("DELETE FROM public.tenant_users"))
+            await conn.execute(
+                text(
+                    "INSERT INTO public.tenant_users (id, tenant_id, email, password_hash, role, status, created_at) VALUES "
+                    "(:id, :tid, :email, :hash, 'business_user', 'active', NOW())"
+                ),
+                {"id": "tu-one", "tid": "test-tenant", "email": "a@x.com", "hash": "x"},
+            )
+
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        users = body["data"]["stats"][1]
+        assert users["value"] == "1/1"
+        assert users["sub"] == "+1 in the last 24h"
+        assert users["delta"] == ""
+
+    async def test_pending_approvals_badge_removed(self, engine, setup_database):
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        pending = body["data"]["stats"][2]
+        assert pending["label"] == "Pending Approvals"
+        assert pending["delta"] == ""
+        assert pending.get("dir") is None
+
+    async def test_training_jobs_running_badge_removed(self, engine, setup_database):
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        training = body["data"]["stats"][3]
+        assert training["label"] == "Training Jobs Running"
+        assert training["delta"] == ""
+        assert training.get("dir") is None
 
 
 def test_platform_health_status_healthy_when_all_online():

@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import AuditPage from "./page";
 import type { AuditLogResponse } from "@/hooks/use-audit-log";
+import type { TenantsResponse } from "@/hooks/use-tenants";
 
 const mockEvents: AuditLogResponse = {
   events: [
@@ -41,20 +43,38 @@ const mockEvents: AuditLogResponse = {
   per_page: 50,
 };
 
+const mockTenants: TenantsResponse = {
+  tenants: [
+    { id: "test-tenant", name: "Test Tenant", slug: "test-tenant", status: "active" },
+    { id: "tenant-b", name: "Tenant B", slug: "tenant-b", status: "active" },
+  ],
+  total: 2,
+  page: 1,
+  per_page: 100,
+};
+
 let mockData: AuditLogResponse | undefined = mockEvents;
 let mockIsLoading = false;
 let mockIsError = false;
 let mockError: Error | null = null;
 const mockRefetch = vi.fn();
+const mockUseAuditLog = vi.fn();
 
 vi.mock("@/hooks/use-audit-log", () => ({
-  useAuditLog: vi.fn(() => ({
-    data: mockData,
-    isLoading: mockIsLoading,
-    isError: mockIsError,
-    error: mockError,
-    refetch: mockRefetch,
-  })),
+  useAuditLog: (...args: unknown[]) => {
+    mockUseAuditLog(...args);
+    return {
+      data: mockData,
+      isLoading: mockIsLoading,
+      isError: mockIsError,
+      error: mockError,
+      refetch: mockRefetch,
+    };
+  },
+}));
+
+vi.mock("@/hooks/use-tenants", () => ({
+  useTenants: vi.fn(() => ({ data: mockTenants })),
 }));
 
 describe("AuditPage", () => {
@@ -64,6 +84,7 @@ describe("AuditPage", () => {
     mockIsError = false;
     mockError = null;
     mockRefetch.mockClear();
+    mockUseAuditLog.mockClear();
     vi.clearAllMocks();
   });
 
@@ -125,5 +146,52 @@ describe("AuditPage", () => {
     render(<AuditPage />);
     expect(screen.getByText("No events recorded yet")).toBeDefined();
     expect(screen.getByText((content) => content.includes("0 events"))).toBeDefined();
+  });
+
+  it("defaults the tenant filter to All Tenants and requests unfiltered events", () => {
+    render(<AuditPage />);
+    expect(screen.getByRole("combobox", { name: "Filter by tenant" })).toHaveValue("All Tenants");
+    expect(mockUseAuditLog).toHaveBeenCalledWith(1, 50, null);
+  });
+
+  it("selecting a tenant refetches with that tenant and resets to page 1", async () => {
+    render(<AuditPage />);
+    const combobox = screen.getByRole("combobox", { name: "Filter by tenant" });
+    await userEvent.click(combobox);
+    await userEvent.click(screen.getByRole("option", { name: "Tenant B" }));
+
+    expect(mockUseAuditLog).toHaveBeenLastCalledWith(1, 50, "tenant-b");
+  });
+
+  it("returning to All Tenants restores the unfiltered request", async () => {
+    render(<AuditPage />);
+    const combobox = screen.getByRole("combobox", { name: "Filter by tenant" });
+    await userEvent.click(combobox);
+    await userEvent.click(screen.getByRole("option", { name: "Tenant B" }));
+    await userEvent.click(combobox);
+    await userEvent.click(screen.getByRole("option", { name: "All Tenants" }));
+
+    expect(mockUseAuditLog).toHaveBeenLastCalledWith(1, 50, null);
+  });
+
+  it("shows a tenant-specific empty state and hides pagination when a filtered tenant has no events", async () => {
+    mockData = { events: [], total: 0, page: 1, per_page: 50 };
+    render(<AuditPage />);
+    const combobox = screen.getByRole("combobox", { name: "Filter by tenant" });
+    await userEvent.click(combobox);
+    await userEvent.click(screen.getByRole("option", { name: "Tenant B" }));
+
+    expect(screen.getByText("No audit events for this tenant")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Previous|Next/ })).toBeNull();
+  });
+
+  it("tenant filter narrows options as the admin types", async () => {
+    render(<AuditPage />);
+    const combobox = screen.getByRole("combobox", { name: "Filter by tenant" });
+    await userEvent.click(combobox);
+    await userEvent.type(combobox, "Tenant B");
+
+    expect(screen.getByRole("option", { name: "Tenant B" })).toBeDefined();
+    expect(screen.queryByRole("option", { name: "Test Tenant" })).toBeNull();
   });
 });

@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { useAuditLog } from "@/hooks/use-audit-log";
 import type { AuditEvent } from "@/hooks/use-audit-log";
+import { useTenants } from "@/hooks/use-tenants";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
+
+const ALL_TENANTS_VALUE = "";
 
 const KIND_COLORS: Record<string, { dot: string; badge: string; text: string }> = {
   create: { dot: "#3b82f6", badge: "#3b82f6", text: "#ffffff" },
@@ -110,7 +114,19 @@ function AuditEventRow({ event }: { event: AuditEvent }) {
 
 export default function AuditPage() {
   const [page, setPage] = useState(1);
-  const { data, isLoading, isError, error } = useAuditLog(page);
+  const [selectedTenantId, setSelectedTenantId] = useState<string>(ALL_TENANTS_VALUE);
+  const { data, isLoading, isError, error } = useAuditLog(page, 50, selectedTenantId || null);
+  const { data: tenantsData } = useTenants();
+
+  const tenantOptions = [
+    { value: ALL_TENANTS_VALUE, label: "All Tenants" },
+    ...(tenantsData?.tenants.map((t) => ({ value: t.id, label: t.name })) ?? []),
+  ];
+
+  function handleTenantChange(tenantId: string) {
+    setSelectedTenantId(tenantId);
+    setPage(1);
+  }
 
   const totalPages = data ? Math.ceil(data.total / data.per_page) : 0;
 
@@ -156,10 +172,20 @@ export default function AuditPage() {
           color: "var(--color-text-secondary)",
           fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
           marginTop: 4,
-          marginBottom: 24,
+          marginBottom: 16,
         }}
       >
         tenant.audit_log · {data ? `${data.total} events` : "\u00A0"}
+      </div>
+
+      <div style={{ marginBottom: 24, maxWidth: 320 }}>
+        <SearchableCombobox
+          value={selectedTenantId}
+          onChange={handleTenantChange}
+          options={tenantOptions}
+          ariaLabel="Filter by tenant"
+          placeholder="Search tenants..."
+        />
       </div>
 
       {isLoading && (
@@ -183,7 +209,7 @@ export default function AuditPage() {
             fontSize: 13,
           }}
         >
-          No events recorded yet
+          {selectedTenantId ? "No audit events for this tenant" : "No events recorded yet"}
         </div>
       )}
 
