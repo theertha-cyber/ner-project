@@ -188,14 +188,29 @@ h1 .red{color:var(--r600)}
 /* ================= stage cards ================= */
 .stages{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:36px}
 @media(max-width:900px){.stages{grid-template-columns:1fr}}
-.stage{padding:24px 22px 26px;border:1px solid var(--hair);border-radius:var(--r);background:var(--card);
-  box-shadow:var(--shadow-sm);position:relative;overflow:hidden;
-  transition:transform .5s var(--ease),box-shadow .45s,border-color .35s}
-.stage:hover{transform:translateY(-5px);box-shadow:var(--shadow-lg);border-color:rgba(214,35,48,.22)}
-.stage::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--c)}
-.stage .ico{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--tint);margin-bottom:16px}
-.stage .ico svg{width:19px;height:19px;stroke:var(--c);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.stage{padding:22px 20px 24px;border:1px dashed var(--hair-2);border-radius:12px;background:var(--card);position:relative}
 .stage .lbl{font-family:'Space Grotesk',sans-serif;font-size:9.6px;letter-spacing:.2em;text-transform:uppercase;color:var(--c);font-weight:700}
+.stage-viz{width:100%;height:auto;display:block;margin-top:16px}
+.stage-viz .viz-upload,.stage-viz .viz-dash,.stage-viz .viz-chip,.stage-viz .viz-span,
+.stage-viz .viz-ring,.stage-viz .viz-check,.stage-viz .viz-scan,.stage-viz .viz-draw{
+  animation-play-state:paused}
+.slide.active .stage-viz .viz-upload{animation:vizBounce 1.7s ease-in-out .3s infinite;animation-play-state:running}
+.slide.active .stage-viz .viz-dash{animation:vizMarch 1s linear infinite;animation-play-state:running}
+.slide.active .stage-viz .viz-chip{opacity:0;transform:translateX(-6px);transform-box:fill-box;transform-origin:left;
+  animation:vizChipIn .6s var(--ease) forwards;animation-play-state:running}
+.slide.active .stage-viz .viz-span{opacity:0;animation:vizFadeIn .5s var(--ease) forwards;animation-play-state:running}
+.slide.active .stage-viz .viz-ring{animation:vizRing 1.5s var(--ease) .3s forwards;animation-play-state:running}
+.slide.active .stage-viz .viz-check{animation:vizCheck .5s ease 1.5s forwards;animation-play-state:running}
+.slide.active .stage-viz .viz-scan{transform-box:fill-box;transform-origin:center;
+  animation:vizScan 2.6s ease-in-out .2s infinite;animation-play-state:running}
+.slide.active .stage-viz .viz-draw{animation:vizCheck 1.4s var(--ease) .5s infinite;animation-play-state:running}
+@keyframes vizBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes vizMarch{to{stroke-dashoffset:-7}}
+@keyframes vizChipIn{to{opacity:1;transform:translateX(0)}}
+@keyframes vizFadeIn{to{opacity:1}}
+@keyframes vizRing{to{stroke-dashoffset:46}}
+@keyframes vizCheck{0%{stroke-dashoffset:1}45%,100%{stroke-dashoffset:0}}
+@keyframes vizScan{0%,100%{transform:translate(0,0)}50%{transform:translate(-5px,4px)}}
 .stage h3{font-size:19px;font-weight:600;margin:8px 0 10px;letter-spacing:-.025em}
 .stage p{color:var(--muted);font-size:14px;margin:0;line-height:1.62}
 
@@ -209,6 +224,20 @@ h1 .red{color:var(--r600)}
 .ncard .lbl{font-family:'Space Grotesk',sans-serif;font-size:9.2px;letter-spacing:.19em;text-transform:uppercase;color:var(--c);font-weight:700;margin-top:18px}
 .ncard h3{font-size:16.5px;font-weight:600;margin:9px 0 10px;line-height:1.3;letter-spacing:-.02em}
 .ncard p{color:var(--muted);font-size:13.3px;margin:0;line-height:1.6}
+
+/* ================= broken chain / unified platform ================= */
+.chain{display:flex;gap:16px;margin-top:36px}
+.chain .seg{flex:1;padding:18px 16px 20px;border:1px dashed var(--hair-2);border-radius:12px;background:var(--card);position:relative}
+.chain .seg .cat{font-family:'Space Grotesk',sans-serif;font-size:9.4px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim);font-weight:700}
+.chain .seg .ex{font-size:11.8px;color:var(--ink-2);margin-top:9px;line-height:1.5;min-height:34px}
+.chain .seg .stop{margin-top:13px;display:inline-flex;align-items:center;gap:5px;font-size:9.8px;font-weight:700;color:var(--r600);letter-spacing:.05em;text-transform:uppercase}
+.chain .seg .stop::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--r600);flex:none}
+.chips{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap}
+.chips span{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;
+  border:1px solid var(--r100);background:var(--r50);font-size:12px;color:var(--r800);font-weight:500}
+.chips span b{color:var(--r600);font-weight:700}
+.tagline{margin-top:22px;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.tagline .red{color:var(--r600)}
 
 /* ================= diagram shell ================= */
 .diagram-shell{margin-top:26px;border:1px solid var(--hair);border-radius:18px;background:var(--card);
@@ -349,6 +378,10 @@ h1 .red{color:var(--r600)}
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important}
   #deck{scroll-behavior:auto}
 }
+
+/* ================= brand logo ================= */
+#brand-logo{position:fixed;top:16px;right:38px;z-index:36;height:52px;pointer-events:none}
+@media(max-width:960px){#brand-logo{height:37px;right:14px;top:10px}}
 </style>
 </head>
 <body>
@@ -357,6 +390,7 @@ h1 .red{color:var(--r600)}
 <div class="aurora"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
 <div class="veil"></div>
 <div id="progress"></div>
+<img id="brand-logo" src="inapp-logo.svg" alt="Inapp" />
 
 <button class="arrow prev" id="prev" aria-label="Previous slide">
   <svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg>
@@ -375,7 +409,6 @@ h1 .red{color:var(--r600)}
   <!-- ============ 01 HERO ============ -->
   <section class="slide" data-title="Title">
     <div class="fit" style="--fitw:1000px">
-      <div class="tag rv"><span class="sq"></span> <b>Four roles</b>&nbsp;· one end-to-end workflow</div>
       <h1 class="rv" data-d="1">Multi&#8209;tenant<br><span class="red">NER Platform</span></h1>
       <p class="hero-sub rv" data-d="2">A platform where teams define their own data types, label documents, train a model, and extract structured information from it.</p>
       <div class="hero-meta rv" data-d="3">
@@ -383,7 +416,6 @@ h1 .red{color:var(--r600)}
         <div><div class="k"><em>4</em> roles</div><div class="v">One continuous loop</div></div>
         <div><div class="k"><em>0</em></div><div class="v">Tools to stitch</div></div>
       </div>
-      <div class="swipe-hint rv" data-d="4"><span class="track"></span> Swipe or press →</div>
     </div>
   </section>
 
@@ -393,8 +425,8 @@ h1 .red{color:var(--r600)}
       <div class="eyebrow rv">Contents</div>
       <h2 class="rv" data-d="1">What's Ahead</h2>
       <div class="toc rv" data-d="2" id="toc">
-        <button data-i="2"><div class="n">01</div><div class="t">What Is It</div></button>
-        <button data-i="3"><div class="n">02</div><div class="t">Why It's Novel</div></button>
+        <button data-i="2"><div class="n">01</div><div class="t">The Missing Pieces</div></button>
+        <button data-i="3"><div class="n">02</div><div class="t">Meet the Platform</div></button>
         <button data-i="4"><div class="n">03</div><div class="t">In Practice: Inapp</div></button>
         <button data-i="5"><div class="n">04</div><div class="t">End-to-End Workflow</div></button>
         <button data-i="6"><div class="n">05</div><div class="t">Architecture</div></button>
@@ -403,61 +435,96 @@ h1 .red{color:var(--r600)}
     </div>
   </section>
 
-  <!-- ============ 03 WHAT IS IT ============ -->
-  <section class="slide" data-title="What Is It">
-    <div class="fit" style="--fitw:1080px">
-      <div class="eyebrow rv">Overview</div>
-      <h2 class="rv" data-d="1">What Is It</h2>
-      <p class="lede rv" data-d="2">A managed platform for building custom Named Entity Recognition models: it takes an organization's own documents, turns human-labeled examples into training data, fine-tunes a model on that data, and serves it for extraction — all under one workspace per tenant.</p>
-      <div class="stages">
-        <div class="stage rv" data-d="1" style="--c:var(--r800);--tint:#fdeced">
-          <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
-          <div class="lbl">Ingest</div>
-          <h3>Upload &amp; define schema</h3>
-          <p>Load source documents and define the entity types (fields) specific to the organization.</p>
-        </div>
-        <div class="stage rv" data-d="2" style="--c:var(--r600);--tint:#ffeced">
-          <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.2"/></svg></div>
-          <div class="lbl">Annotate &amp; Fine-tune</div>
-          <h3>Label, train, approve</h3>
-          <p>Annotators produce labeled spans; a training job fine-tunes the base model on them, gated by admin approval.</p>
-        </div>
-        <div class="stage rv" data-d="3" style="--c:var(--r400);--tint:#fff0eb">
-          <div class="ico"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.4"/><path d="m20 20-4.4-4.4"/><path d="M9 11h4"/></svg></div>
-          <div class="lbl">Serve</div>
-          <h3>Extract &amp; query</h3>
-          <p>The promoted model runs inference on new documents, returning structured, queryable entity data.</p>
-        </div>
+  <!-- ============ 03 THE MISSING PIECES ============ -->
+  <section class="slide" data-title="The Missing Pieces">
+    <div class="fit" style="--fitw:1160px">
+      <div class="eyebrow rv">Market Reality</div>
+      <h2 class="rv" data-d="1">The Missing Pieces</h2>
+      <p class="lede rv" data-d="2">Most platforms extract information. Few transform it into knowledge your organization can actually use.</p>
+
+      <div class="chain rv" data-d="2">
+        <div class="seg"><div class="cat">OCR</div><div class="ex">Textract · Azure Vision · Tesseract</div><div class="stop">Stops at text</div></div>
+        <div class="seg"><div class="cat">Annotation</div><div class="ex">Label Studio · Labelbox · Prodigy</div><div class="stop">Stops at export</div></div>
+        <div class="seg"><div class="cat">Training</div><div class="ex">SageMaker · Vertex AI AutoML</div><div class="stop">Stops at API</div></div>
+        <div class="seg"><div class="cat">Registry</div><div class="ex">MLflow · Weights &amp; Biases</div><div class="stop">Built for ML engineers</div></div>
+        <div class="seg"><div class="cat">Search</div><div class="ex">Elasticsearch · Pinecone</div><div class="stop">Doesn't know entities</div></div>
+        <div class="seg"><div class="cat">Business App</div><div class="ex">You build this yourself</div><div class="stop">Every time, from scratch</div></div>
       </div>
+
+      <p class="tagline rv" data-d="3">We're not a better annotation tool or another MLflow. <span class="red">We're the piece nobody sells</span> — the one that connects all six.</p>
+
     </div>
   </section>
 
-  <!-- ============ 04 WHY NOVEL ============ -->
-  <section class="slide" data-title="Why It's Novel">
-    <div class="fit" style="--fitw:1120px">
-      <div class="eyebrow rv">Why It's Novel</div>
-      <h2 class="rv" data-d="1">Why It's Novel</h2>
-      <p class="lede rv" data-d="2">A generic entity extractor doesn't know your documents. This platform is built so every tenant's does.</p>
-      <div class="novel rv" data-d="2">
-        <div class="ncard" style="--c:var(--r800)">
-          <div class="num">01</div><div class="lbl">Isolation</div>
-          <h3>Every tenant gets its own model</h3>
-          <p>Entities, documents, and training runs never cross organization lines.</p>
+  <!-- ============ 04 MEET THE PLATFORM ============ -->
+  <section class="slide" data-title="Meet the Platform">
+    <div class="fit" style="--fitw:1080px">
+      <div class="eyebrow rv">Overview</div>
+      <h2 class="rv" data-d="1">Meet the Platform</h2>
+      <p class="lede rv" data-d="2">A multi-tenant SaaS platform that goes beyond extracting entities by transforming an organization's documents into intelligent, searchable knowledge through annotation, custom model training, deployment, and AI-powered querying—all within a single governed workspace.</p>
+      <div class="stages">
+        <div class="stage rv" data-d="1" style="--c:var(--r800);--tint:#fdeced">
+          <div class="lbl">Ingest</div>
+          <svg class="stage-viz" viewBox="0 0 260 150">
+            <rect x="20" y="18" width="72" height="94" rx="8" fill="#fff" stroke="#c3c9d4" stroke-width="1.4"/>
+            <rect x="34" y="36" width="44" height="5" rx="2.5" fill="#dde1e8"/>
+            <rect x="34" y="50" width="44" height="5" rx="2.5" fill="#dde1e8"/>
+            <rect x="34" y="64" width="30" height="5" rx="2.5" fill="#dde1e8"/>
+            <rect x="34" y="78" width="38" height="5" rx="2.5" fill="#dde1e8"/>
+            <g class="viz-upload" stroke="var(--c)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M56 138v-24m-11 11 11-11 11 11"/>
+            </g>
+            <path class="viz-dash" d="M96 60 H126" stroke="#c3c9d4" stroke-width="1.6" stroke-dasharray="3 4"/>
+            <g class="viz-chip" style="animation-delay:.15s"><circle cx="140" cy="38" r="4" fill="var(--c)"/><rect x="150" y="34" width="80" height="9" rx="4.5" fill="var(--tint)"/></g>
+            <g class="viz-chip" style="animation-delay:.4s"><circle cx="140" cy="60" r="4" fill="var(--c)"/><rect x="150" y="56" width="64" height="9" rx="4.5" fill="var(--tint)"/></g>
+            <g class="viz-chip" style="animation-delay:.65s"><circle cx="140" cy="82" r="4" fill="var(--c)"/><rect x="150" y="78" width="72" height="9" rx="4.5" fill="var(--tint)"/></g>
+          </svg>
         </div>
-        <div class="ncard" style="--c:var(--r700)">
-          <div class="num">02</div><div class="lbl">Customization</div>
-          <h3>Fine-tuned on your documents</h3>
-          <p>A stock NER model doesn't recognize your invoice codes or clause names — yours does, because it trained on them.</p>
+        <div class="stage rv" data-d="2" style="--c:var(--r600);--tint:#ffeced">
+          <div class="lbl">Annotate &amp; Fine-tune</div>
+          <svg class="stage-viz" viewBox="0 0 260 150">
+            <rect x="16" y="14" width="90" height="106" rx="8" fill="#fff" stroke="#c3c9d4" stroke-width="1.4"/>
+            <rect x="30" y="32" width="18" height="9" rx="3" fill="#eef0f3"/><rect x="52" y="32" width="34" height="9" rx="3" fill="#eef0f3"/>
+            <rect class="viz-span" style="animation-delay:.1s" x="30" y="32" width="18" height="9" rx="3" fill="var(--tint)"/>
+            <rect x="30" y="50" width="40" height="9" rx="3" fill="#eef0f3"/><rect x="74" y="50" width="12" height="9" rx="3" fill="#eef0f3"/>
+            <rect class="viz-span" style="animation-delay:.4s" x="30" y="50" width="40" height="9" rx="3" fill="var(--tint)"/>
+            <rect x="30" y="68" width="24" height="9" rx="3" fill="#eef0f3"/><rect x="58" y="68" width="28" height="9" rx="3" fill="#eef0f3"/>
+            <rect class="viz-span" style="animation-delay:.7s" x="58" y="68" width="28" height="9" rx="3" fill="var(--tint)"/>
+            <rect x="30" y="86" width="56" height="9" rx="3" fill="#eef0f3"/>
+            <g transform="translate(170,64)">
+              <circle r="34" fill="none" stroke="#e7e9ee" stroke-width="7"/>
+              <circle class="viz-ring" r="34" fill="none" stroke="var(--c)" stroke-width="7" stroke-linecap="round"
+                stroke-dasharray="176" stroke-dashoffset="176" transform="rotate(-90)"/>
+              <circle r="19" fill="#fff"/>
+              <path class="viz-check" d="M-8 0l6 6 12-13" stroke="var(--c)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>
+            </g>
+          </svg>
         </div>
-        <div class="ncard" style="--c:var(--r600)">
-          <div class="num">03</div><div class="lbl">Human-in-the-loop</div>
-          <h3>Every model is reviewed before it ships</h3>
-          <p>Annotation and approval gates keep training data accurate and spend accountable.</p>
-        </div>
-        <div class="ncard" style="--c:var(--r400)">
-          <div class="num">04</div><div class="lbl">One Pipeline</div>
-          <h3>Setup to structured data, one platform</h3>
-          <p>No stitching together a labeling tool, a training pipeline, and a separate extraction app.</p>
+        <div class="stage rv" data-d="3" style="--c:var(--r400);--tint:#fff0eb">
+          <div class="lbl">Serve</div>
+          <svg class="stage-viz" viewBox="0 0 260 150">
+            <rect x="14" y="34" width="60" height="78" rx="7" fill="#fff" stroke="#c3c9d4" stroke-width="1.4"/>
+            <rect x="26" y="52" width="36" height="5" rx="2.5" fill="#dde1e8"/>
+            <rect x="26" y="64" width="26" height="5" rx="2.5" fill="#dde1e8"/>
+            <rect x="26" y="76" width="32" height="5" rx="2.5" fill="#dde1e8"/>
+            <g class="viz-scan"><circle cx="66" cy="44" r="15" fill="#fff" stroke="var(--c)" stroke-width="3"/>
+            <path d="M76 54l9 9" stroke="var(--c)" stroke-width="3.2" stroke-linecap="round"/></g>
+            <path class="viz-draw" d="M100 70 H128" stroke="var(--c)" stroke-width="2" stroke-linecap="round" marker-end="url(#svArrow)" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>
+            <defs><marker id="svArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,1 L9,5 L0,9 z" fill="var(--c)"/></marker></defs>
+            <g class="viz-chip" style="animation-delay:.9s">
+              <rect x="136" y="34" width="94" height="20" rx="6" fill="var(--tint)"/>
+              <circle cx="148" cy="44" r="3.4" fill="var(--c)"/><rect x="158" y="40" width="60" height="7" rx="3.5" fill="#fff"/>
+            </g>
+            <g class="viz-chip" style="animation-delay:1.15s">
+              <rect x="136" y="60" width="94" height="20" rx="6" fill="var(--tint)"/>
+              <circle cx="148" cy="70" r="3.4" fill="var(--c)"/><rect x="158" y="66" width="44" height="7" rx="3.5" fill="#fff"/>
+            </g>
+            <g class="viz-chip" style="animation-delay:1.4s">
+              <rect x="136" y="86" width="94" height="20" rx="6" fill="var(--tint)"/>
+              <circle cx="148" cy="96" r="3.4" fill="var(--c)"/><rect x="158" y="92" width="52" height="7" rx="3.5" fill="#fff"/>
+            </g>
+          </svg>
         </div>
       </div>
     </div>
