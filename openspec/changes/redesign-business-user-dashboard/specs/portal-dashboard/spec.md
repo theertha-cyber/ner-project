@@ -28,7 +28,7 @@ The system SHALL define a `DashboardData` TypeScript type that mirrors the mocku
 - **GIVEN** the authenticated user has role `business_user`
 - **WHEN** `GET /api/v1/dashboard/summary` is called
 - **THEN** the response contains `kicker: "Your AI assistant workspace"`, `title` and `line` copy describing the user's assistant usage rather than document extraction
-- **AND** `stats` contains exactly 3 items: "Conversations" (total conversations started by this user), "Messages Sent" (total user-authored messages), and "Helpful Responses" (count derived from this user's `up` ratings in `chat_message_feedback`)
+- **AND** `stats` contains exactly 3 items: "Conversations" (total conversations started by this user), "Messages Sent" (total user-authored messages), and "Responses Marked Helpful" (count derived from this user's `up` ratings in `chat_message_feedback`)
 - **AND** `pTitle: "Recent Conversations"` with up to 4 rows, each row showing the conversation title (or generated summary), last interaction time, and message count, linking to the conversation in chat
 - **AND** the side panel is titled `sideTop: "AI Assistant Status"` showing assistant online/offline status, last updated time, and average response time computed from this user's own `chat_messages.response_time_ms` values (or `—` if no timed messages exist yet) — it SHALL NOT show F1, precision, recall, or loss
 - **AND** `sideBot` and `sideRows` SHALL be empty (no "Frequently Asked Topics" or other secondary chart is shown for this role)
@@ -80,7 +80,7 @@ Each role handler SHALL accept the `db` session and `tenant_id` parameters and e
 - **WHEN** `GET /api/v1/dashboard/summary` is called
 - **THEN** `stats[0].value` ("Conversations") SHALL contain the count of conversations in `{schema}.conversations` where `user_id` matches the caller
 - **AND** `stats[1].value` ("Messages Sent") SHALL contain the count of `role = 'user'` rows in `{schema}.chat_messages` belonging to the caller's conversations
-- **AND** `stats[2].value` ("Helpful Responses") SHALL contain the count of `rating = 'up'` rows in `{schema}.chat_message_feedback` belonging to the caller
+- **AND** `stats[2].value` ("Responses Marked Helpful") SHALL contain the count of `rating = 'up'` rows in `{schema}.chat_message_feedback` belonging to the caller
 - **AND** the query SHALL scope every row to the caller's own `user_id`, not the whole tenant
 
 #### Scenario: business_user summary includes assistant status

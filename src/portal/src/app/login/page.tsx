@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/lib/auth";
 
 /* ─── Animated background — isolated so form re-renders don't reset RAF transforms */
@@ -130,14 +131,20 @@ export default function LoginPage() {
     <div style={{ position: "relative", minHeight: "100vh", overflow: "hidden", display: "flex", alignItems: "center", background: "var(--color-surface-page)" }}>
       <AnimatedBackground />
 
+      <div style={{ position: "absolute", top: 24, right: 40, zIndex: 2 }}>
+        <Image src="/inapp-logo.svg" alt="NER Platform" width={104} height={104} />
+      </div>
+
       <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 1200, margin: "0 auto", padding: "40px 60px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 60 }}>
 
         {/* ── Left: hero copy ── */}
         <div style={{ flex: "1 1 0", color: "#fff", maxWidth: 520 }}>
           {/* Logo */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 64 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: "#fff", display: "grid", placeItems: "center", fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 800, color: "#c2410c", fontSize: 19, flexShrink: 0 }}>n</div>
-            <span style={{ fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 18, letterSpacing: "-0.02em", textShadow: TS_SM }}>NER Platform</span>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <Image src="/logo-light-theme.svg" alt="Logo" width={24} height={24} />
+            </div>
+            <span style={{ fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em", textShadow: TS_SM }}>NER Platform</span>
           </div>
 
           <div style={{ fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 20, textShadow: TS_SM }}>

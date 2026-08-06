@@ -1,15 +1,16 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from src.gateway.models import generate_uuid
+from src.gateway.models import generate_uuid, AuditEventKind
+from src.gateway.services.audit_service import AuditService
 from src.shared.auth import hash_password, validate_password
-from src.shared.exceptions import ValidationError, NotFoundError, ConflictError, QuotaExceededError
+from src.shared.exceptions import ValidationError, NotFoundError, ConflictError, QuotaExceededError, TenantInactiveError
 
 
 class UserService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create_user(self, tenant_id: str, payload: dict) -> dict:
+    async def create_user(self, tenant_id: str, payload: dict, actor_email: str = "", actor_role: str = "") -> dict:
         email = payload["email"]
         password = payload["password"]
         role = payload.get("role", "business_user")
@@ -19,12 +20,14 @@ class UserService:
             raise ValidationError(password_error)
 
         quota = await self.db.execute(
-            text("SELECT max_users FROM public.tenants WHERE id = :tid"),
+            text("SELECT max_users, status FROM public.tenants WHERE id = :tid"),
             {"tid": tenant_id},
         )
         quota_row = quota.fetchone()
         if not quota_row:
             raise NotFoundError("Tenant", tenant_id)
+        if quota_row.status != "active":
+            raise TenantInactiveError(tenant_id)
 
         current_count = await self.db.scalar(
             text("SELECT COUNT(*) FROM public.tenant_users WHERE tenant_id = :tid AND status = 'active'"),
@@ -56,6 +59,16 @@ class UserService:
             },
         )
         await self.db.commit()
+
+        audit = AuditService(self.db)
+        await audit.record(
+            actor=actor_email,
+            role=actor_role,
+            action="user.create",
+            target=email,
+            kind=AuditEventKind.create,
+            tenant_id=tenant_id,
+        )
 
         return {"user": {"id": user_id, "email": email, "role": role, "status": "active"}}
 

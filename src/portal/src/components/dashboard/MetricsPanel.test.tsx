@@ -144,4 +144,70 @@ describe("MetricsPanel", () => {
     expect(top.style.display).toBe("block");
     expect(meta.style.display).toBe("block");
   });
+
+  it("renders an Offline sideMetrics value in the red/bad status colour", () => {
+    const offlineMetrics: [SideMetric, SideMetric, SideMetric] = [
+      { k: "gateway", v: "Online" },
+      { k: "chat api", v: "Offline" },
+      { k: "extraction", v: "Online" },
+    ];
+    render(
+      <MetricsPanel
+        sideTop="Platform Health"
+        sideMeta="live service checks"
+        big="Degraded"
+        bigUnit=""
+        bar={50}
+        sideMetrics={offlineMetrics}
+        sideBot="Backing services"
+        sideRows={[]}
+      />
+    );
+    const value = screen.getByText("Offline");
+    expect(value.style.color).toBe("var(--bad, #b91c1c)");
+  });
+
+  it("renders big status with severity colour for Critical/Degraded/Healthy", () => {
+    const { rerender } = render(
+      <MetricsPanel
+        sideTop="Platform Health"
+        sideMeta="live service checks"
+        big="Critical"
+        bigUnit=""
+        bar={0}
+        sideMetrics={metrics}
+        sideBot="Backing services"
+        sideRows={[]}
+      />
+    );
+    expect(screen.getByText("Critical").style.color).toBe("var(--bad, #b91c1c)");
+
+    rerender(
+      <MetricsPanel
+        sideTop="Platform Health"
+        sideMeta="live service checks"
+        big="Degraded"
+        bigUnit=""
+        bar={50}
+        sideMetrics={metrics}
+        sideBot="Backing services"
+        sideRows={[]}
+      />
+    );
+    expect(screen.getByText("Degraded").style.color).toBe("var(--warn, #b45309)");
+
+    rerender(
+      <MetricsPanel
+        sideTop="Platform Health"
+        sideMeta="live service checks"
+        big="Healthy"
+        bigUnit=""
+        bar={100}
+        sideMetrics={metrics}
+        sideBot="Backing services"
+        sideRows={[]}
+      />
+    );
+    expect(screen.getByText("Healthy").style.color).toBe("var(--color-delta-up, #15803d)");
+  });
 });

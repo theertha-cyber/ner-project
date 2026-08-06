@@ -320,14 +320,14 @@ async def seed():
             ("running", 1),
             ("queued", None),
         ]
-        for status, days_ago in training_statuses:
-            job_id = str(uuid.uuid4())
+        for i, (status, days_ago) in enumerate(training_statuses):
+            job_id = f"{demo_tenant_id}-seed-job-{i}"
             started_at_expr = f"NOW() - interval '{days_ago} days'" if days_ago else "NULL"
             await db.execute(
                 text(f"""
                     INSERT INTO {schema_name}.training_jobs (id, tenant_id, dataset_version, base_model, status, started_at)
                     VALUES (:id, :tid, :dv, 'dslim/bert-base-NER', :st, {started_at_expr})
-                    ON CONFLICT (id) DO NOTHING
+                    ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, started_at = EXCLUDED.started_at
                 """),
                 {"id": job_id, "tid": demo_tenant_id, "dv": (days_ago or 0) + 1, "st": status},
             )

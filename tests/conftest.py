@@ -229,6 +229,7 @@ async def setup_database(engine):
     async with engine.begin() as conn:
         await conn.execute(text("DROP TABLE IF EXISTS public.tenant_users CASCADE"))
         await conn.execute(text("DROP TABLE IF EXISTS public.entity_definitions CASCADE"))
+        await conn.execute(text("DROP TABLE IF EXISTS public.audit_events CASCADE"))
         await conn.execute(text("DROP TABLE IF EXISTS tenant_template.documents CASCADE"))
         baseline_params = {f"id_{i}": tid for i, tid in enumerate(BASELINE_TENANT_IDS)}
         await conn.execute(

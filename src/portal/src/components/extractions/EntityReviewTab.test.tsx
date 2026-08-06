@@ -79,7 +79,7 @@ describe("EntityReviewTab", () => {
     mockAuthFetch.mockResolvedValue(makeEntityListResponse(entities));
     render(<EntityReviewTab />);
 
-    await waitFor(() => expect(screen.getByText("2 entities · 2 types · GET /entities")).toBeDefined());
+    await waitFor(() => expect(screen.getByText("2 entities · 2 types")).toBeDefined());
   });
 
   it("renders groups in alphabetical order", async () => {

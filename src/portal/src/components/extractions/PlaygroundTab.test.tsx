@@ -132,7 +132,7 @@ describe("PlaygroundTab", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /run extraction/i }));
 
-    await waitFor(() => expect(screen.getByText("model v3 · serving")).toBeDefined());
+    await waitFor(() => expect(screen.getByText("v3 · serving")).toBeDefined());
   });
 
   it("prevents API call when textarea is empty", async () => {

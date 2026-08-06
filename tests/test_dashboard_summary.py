@@ -1,10 +1,22 @@
+import asyncio
+import time
+from unittest.mock import patch
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 
 from src.shared.auth import create_access_token
 from src.gateway.main import app
-from src.gateway.api.v1.dashboard import DashboardSummaryResponse, StatItem, ActivityRow, SideMetric, SideRow, DashboardData
+from src.gateway.api.v1.dashboard import (
+    DashboardSummaryResponse,
+    StatItem,
+    ActivityRow,
+    SideMetric,
+    SideRow,
+    DashboardData,
+    _platform_health_status,
+)
 
 
 def auth_header(tenant_id: str, role: str = "tenant_admin", user_id: str = "test-user") -> dict:
@@ -35,11 +47,18 @@ class TestDashboardSummaryShape:
         d = body["data"]
         assert d["kicker"] == "Platform control plane"
         assert isinstance(d["stats"], list) and len(d["stats"]) == 4
-        assert d["pTitle"] == "Approval queue"
-        assert isinstance(d["pRows"], list) and len(d["pRows"]) == 4
-        assert d["sideTop"] == "Platform health"
+        assert [s["label"] for s in d["stats"]] == [
+            "Active Tenants", "Active Users", "Pending Approvals", "Training Jobs Running",
+        ]
+        assert d["pTitle"] == "Platform Activity"
+        assert isinstance(d["pRows"], list)
+        assert d["sideTop"] == "Platform Health"
+        assert d["big"] in ("Healthy", "Degraded", "Critical")
         assert isinstance(d["sideMetrics"], list) and len(d["sideMetrics"]) == 3
         assert isinstance(d["sideRows"], list)
+        payload_str = str(body)
+        for banned in ("f1", "F1", "precision", "recall", "loss", "SLA", "p95", "GPU"):
+            assert banned not in payload_str
 
     async def test_tenant_admin_returns_correct_shape(self):
         status, body = await _get("tenant_admin")
@@ -65,7 +84,7 @@ class TestDashboardSummaryShape:
         d = body["data"]
         assert d["kicker"] == "Your AI assistant workspace"
         assert len(d["stats"]) == 3
-        assert [s["label"] for s in d["stats"]] == ["Conversations", "Messages Sent", "Helpful Responses"]
+        assert [s["label"] for s in d["stats"]] == ["Conversations", "Messages Sent", "Responses Marked Helpful"]
         assert d["pTitle"] == "Recent Conversations"
         assert d["sideTop"] == "AI Assistant Status"
         assert d["sideBot"] == ""
@@ -461,7 +480,8 @@ class TestSystemAdminSchemaFailureRecovery:
                         id VARCHAR PRIMARY KEY,
                         tenant_id VARCHAR NOT NULL,
                         status VARCHAR(20) NOT NULL DEFAULT 'queued',
-                        created_at TIMESTAMPTZ DEFAULT NOW()
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        started_at TIMESTAMPTZ
                     )
                 """)
             )
@@ -487,11 +507,11 @@ class TestSystemAdminSchemaFailureRecovery:
             )
             await conn.execute(
                 text(f"""
-                    INSERT INTO {healthy_schema}.model_versions (id, tenant_id, version, metrics, status, promoted_at)
-                    VALUES ('mv-healthy-1', :tid, 1, :met, 'promoted', NOW())
+                    INSERT INTO {healthy_schema}.training_jobs (id, tenant_id, status, created_at, started_at)
+                    VALUES ('tj-healthy-2', :tid, 'running', NOW(), NOW())
                     ON CONFLICT (id) DO NOTHING
                 """),
-                {"tid": healthy_tid, "met": '{"f1": 0.9}'},
+                {"tid": healthy_tid},
             )
 
         try:
@@ -501,11 +521,233 @@ class TestSystemAdminSchemaFailureRecovery:
             sources = body["sources"]
 
             pending_approvals = s[2]
-            avg_f1 = s[3]
+            training_jobs_running = s[3]
             assert pending_approvals["value"] == "1"
-            assert avg_f1["value"] == "90.0"
-            assert sources["models"] is True
+            assert training_jobs_running["value"] == "1"
+            assert sources["training"] is True
         finally:
             async with engine.begin() as conn:
                 await conn.execute(text(f"DROP SCHEMA IF EXISTS {healthy_schema} CASCADE"))
                 await conn.execute(text("DELETE FROM public.tenants WHERE id = :id"), {"id": healthy_tid})
+
+
+@pytest.mark.asyncio
+class TestSystemAdminActivityFeed:
+    async def test_activity_feed_reflects_multi_tenant_audit_events_ordered(self, engine, setup_database):
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO public.audit_events (id, actor, role, action, target, kind, tenant_id, created_at) VALUES "
+                    "('ae-1', 'admin@x.com', 'system_admin', 'tenant.create', 'tenant-b', 'create', 'tenant-b', NOW() - INTERVAL '2 minutes'),"
+                    "('ae-2', 'admin@x.com', 'system_admin', 'user.create', 'user-1', 'create', 'test-tenant', NOW() - INTERVAL '1 minute')"
+                )
+            )
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        rows = body["data"]["pRows"]
+        titles = [r["title"] for r in rows]
+        assert titles[0] == "User onboarded"
+        assert titles[1] == "Tenant created"
+        tenant_ids_seen = {"tenant-b", "test-tenant"}
+        assert tenant_ids_seen  # multi-tenant seed data above spans two tenants
+
+    async def test_unmapped_action_shows_humanized_fallback_not_dropped(self, engine, setup_database):
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO public.audit_events (id, actor, role, action, target, kind, tenant_id, created_at) VALUES "
+                    "('ae-unmapped', 'admin@x.com', 'system_admin', 'tenant_settings.update', 'tenant-b', 'update', 'tenant-b', NOW())"
+                )
+            )
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        rows = body["data"]["pRows"]
+        matches = [r for r in rows if r["title"] == "tenant settings: update"]
+        assert len(matches) == 1
+
+
+@pytest.mark.asyncio
+class TestSystemAdminStats:
+    async def test_stats_are_active_tenants_users_pending_approvals_training_running(self, engine, tenant_schema):
+        tid, schema = tenant_schema
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO public.tenant_users (id, tenant_id, email, password_hash, role, status) VALUES "
+                    "('tu-1', :tid, 'a@x.com', 'x', 'business_user', 'active'),"
+                    "('tu-2', :tid, 'b@x.com', 'x', 'business_user', 'suspended')"
+                ),
+                {"tid": tid},
+            )
+            await conn.execute(
+                text(f"INSERT INTO {schema}.training_jobs (id, tenant_id, status, created_at) VALUES "
+                     "('tj-p1', :tid, 'pending_approval', NOW())"),
+                {"tid": tid},
+            )
+            await conn.execute(
+                text(f"INSERT INTO {schema}.training_jobs (id, tenant_id, status, created_at, started_at) VALUES "
+                     "('tj-r1', :tid, 'running', NOW(), NOW())"),
+                {"tid": tid},
+            )
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        s = body["data"]["stats"]
+        assert s[1]["value"] == "1"
+        assert s[2]["value"] == "1"
+        assert s[3]["value"] == "1"
+
+
+def test_platform_health_status_healthy_when_all_online():
+    assert _platform_health_status("Online", "Online", "Online", "Online", "Online") == "Healthy"
+
+
+def test_platform_health_status_degraded_when_noncritical_offline():
+    assert _platform_health_status("Online", "Offline", "Online", "Online", "Online") == "Degraded"
+    assert _platform_health_status("Online", "Online", "Offline", "Online", "Online") == "Degraded"
+    assert _platform_health_status("Online", "Online", "Online", "Offline", "Online") == "Degraded"
+
+
+def test_platform_health_status_critical_when_gateway_or_model_serving_offline():
+    assert _platform_health_status("Offline", "Online", "Online", "Online", "Online") == "Critical"
+    assert _platform_health_status("Online", "Online", "Online", "Online", "Offline") == "Critical"
+    assert _platform_health_status("Offline", "Offline", "Offline", "Offline", "Offline") == "Critical"
+    assert _platform_health_status("Offline", "Online", "Online", "Online", "Offline") == "Critical"
+
+
+class _FakeHealthResponse:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+
+class _FakeHealthClient:
+    def __init__(self, responses, delay=0.0, timeout=None):
+        self._responses = responses
+        self._delay = delay
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def get(self, url):
+        if self._delay:
+            await asyncio.sleep(self._delay)
+        for prefix, behavior in self._responses.items():
+            if url.startswith(prefix):
+                if isinstance(behavior, Exception):
+                    raise behavior
+                return _FakeHealthResponse(behavior)
+        return _FakeHealthResponse(200)
+
+
+@pytest.mark.asyncio
+class TestSystemAdminPlatformHealthEndpoint:
+    async def test_one_unreachable_noncritical_service_marks_degraded(self, engine, setup_database):
+        from src.shared.config import settings
+        import functools
+
+        responses = {
+            settings.chat_api_url: 200,
+            settings.extraction_service_url: 200,
+            settings.training_service_url: ConnectionError("unreachable"),
+            settings.model_serving_url: 200,
+        }
+        fake_client = functools.partial(_FakeHealthClient, responses)
+        with patch("src.gateway.api.v1.dashboard.httpx.AsyncClient", fake_client):
+            status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        d = body["data"]
+        assert d["big"] == "Degraded"
+        metrics_by_k = {m["k"]: m["v"] for m in d["sideMetrics"]}
+        rows_by_label = {r["label"]: r["val"] for r in d["sideRows"]}
+        assert metrics_by_k["chat api"] == "Online"
+        assert rows_by_label["Training Service"] == "Offline"
+        assert rows_by_label["Model Serving"] == "Online"
+
+    async def test_unreachable_model_serving_marks_critical_even_with_others_online(self, engine, setup_database):
+        from src.shared.config import settings
+        import functools
+
+        responses = {
+            settings.chat_api_url: 200,
+            settings.extraction_service_url: 200,
+            settings.training_service_url: 200,
+            settings.model_serving_url: ConnectionError("unreachable"),
+        }
+        fake_client = functools.partial(_FakeHealthClient, responses)
+        with patch("src.gateway.api.v1.dashboard.httpx.AsyncClient", fake_client):
+            status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        assert body["data"]["big"] == "Critical"
+
+    async def test_health_checks_run_concurrently_and_isolate_failures(self, engine, setup_database):
+        from src.shared.config import settings
+        import functools
+
+        responses = {
+            settings.chat_api_url: 200,
+            settings.extraction_service_url: 200,
+            settings.training_service_url: TimeoutError("timeout"),
+            settings.model_serving_url: 200,
+        }
+        fake_client = functools.partial(_FakeHealthClient, responses, 0.3)
+        with patch("src.gateway.api.v1.dashboard.httpx.AsyncClient", fake_client):
+            start = time.monotonic()
+            status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+            elapsed = time.monotonic() - start
+        assert status == 200
+        # 4 sequential 0.3s checks would take >=1.2s; concurrent fan-out stays near 0.3s
+        assert elapsed < 0.9
+        metrics_by_k = {m["k"]: m["v"] for m in body["data"]["sideMetrics"]}
+        assert metrics_by_k["gateway"] == "Online"
+
+
+@pytest.mark.asyncio
+class TestSystemAdminSchemaExclusion:
+    async def test_virtual_system_tenant_excluded_from_schema_iteration(self, engine, setup_database):
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO public.tenants (id, name, slug, status, max_users, max_documents, max_storage_gb, max_model_versions) "
+                    "VALUES ('system', 'System', 'system', 'active', 10, 1000, 5, 10) ON CONFLICT (id) DO NOTHING"
+                )
+            )
+        try:
+            status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+            assert status == 200
+        finally:
+            async with engine.begin() as conn:
+                await conn.execute(text("DELETE FROM public.tenants WHERE id = 'system'"))
+
+    async def test_tenant_rows_without_schema_excluded_from_aggregates(self, engine, setup_database):
+        # setup_database's baseline tenants (tenant-b, no-model, no-model-tenant) have no
+        # backing schema created here, so a 200 with zeroed aggregates and no exception is
+        # the assertion that missing schemas contribute nothing and don't blow up the request.
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        s = body["data"]["stats"]
+        assert s[2]["value"] == "0"
+        assert s[3]["value"] == "0"
+
+    async def test_partial_training_aggregate_not_reported_complete(self, engine, tenant_schema):
+        tid, schema = tenant_schema
+        async with engine.begin() as conn:
+            await conn.execute(text(f"DROP TABLE IF EXISTS {schema}.training_jobs CASCADE"))
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        assert body["sources"]["training"] is False
+
+
+@pytest.mark.asyncio
+class TestSystemAdminResponseShape:
+    async def test_full_response_shape_has_no_model_quality_fields(self, engine, setup_database):
+        status, body = await _get("system_admin", "00000000-0000-0000-0000-000000000000")
+        assert status == 200
+        d = body["data"]
+        assert "platform operations" in d["kicker"].lower() or "platform" in d["kicker"].lower()
+        assert d["pTitle"] == "Platform Activity"
+        assert d["sideTop"] == "Platform Health"
+        payload_str = str(body)
+        for banned in ("precision", "recall", "f1", "F1", "SLA", "p95", "GPU"):
+            assert banned not in payload_str

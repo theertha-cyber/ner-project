@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.gateway.services.user_service import UserService
@@ -22,12 +22,15 @@ router = APIRouter(prefix="/api/v1/users", tags=["tenant-users"])
 @router.post("", status_code=201)
 async def create_user(
     payload: CreateUserRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: str = Depends(require_tenant_admin),
     tenant_id: str = Depends(resolve_tenant_from_jwt),
 ):
     service = UserService(db)
-    return await service.create_user(tenant_id, payload.model_dump())
+    actor_email = getattr(request.state, "user_email", "")
+    actor_role = getattr(request.state, "role", "")
+    return await service.create_user(tenant_id, payload.model_dump(), actor_email=actor_email, actor_role=actor_role)
 
 
 @router.get("")

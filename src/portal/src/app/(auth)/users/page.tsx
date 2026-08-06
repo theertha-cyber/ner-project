@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect } from "react";
 import { authFetch } from "@/lib/auth-fetch";
 import { GATEWAY_URL } from "@/lib/api";
 import { FilterSelect } from "@/components/ui/filter-select";
+import { CreateUserForm, CreateUserPayload } from "@/components/users/CreateUserForm";
 
 interface User {
   id: string;
@@ -21,9 +22,6 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({ email: "", password: "", role: "annotator" as Role });
-  const [createError, setCreateError] = useState("");
-  const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState<Role>("annotator");
 
@@ -47,33 +45,19 @@ export default function UsersPage() {
     fetchUsers(roleFilter || undefined);
   }, [roleFilter]);
 
-  const handleCreate = async (e: FormEvent) => {
-    e.preventDefault();
-    setCreateError("");
-    setCreating(true);
-    try {
-      const r = await authFetch(`${GATEWAY_URL}/api/v1/users`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(createForm),
-      });
-      if (!r.ok) {
-        const data = (await r.json()) as { error?: { message?: string } };
-        const msg = data.error?.message ?? "Request failed";
-        if (r.status === 409) setCreateError(`Email already taken: ${msg}`);
-        else if (r.status === 429) setCreateError(`Quota exceeded: ${msg}`);
-        else setCreateError(msg);
-        return;
-      }
-      const data = (await r.json()) as { user: User };
-      setUsers((prev) => [data.user, ...prev]);
-      setCreateForm({ email: "", password: "", role: "annotator" });
-      setShowCreate(false);
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Creation failed");
-    } finally {
-      setCreating(false);
+  const handleCreate = async (payload: CreateUserPayload) => {
+    const r = await authFetch(`${GATEWAY_URL}/api/v1/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const data = (await r.json()) as { error?: { message?: string } };
+      return { ok: false, errorMessage: data.error?.message, status: r.status };
     }
+    const data = (await r.json()) as { user: User };
+    setUsers((prev) => [data.user, ...prev]);
+    return { ok: true };
   };
 
   const handleRoleUpdate = async (userId: string, newRole: Role) => {
@@ -119,7 +103,7 @@ export default function UsersPage() {
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold" style={{ color: "var(--ink)" }}>Users</h1>
         <button
-          onClick={() => { setShowCreate((v) => !v); setCreateError(""); }}
+          onClick={() => setShowCreate((v) => !v)}
           className="rounded-md bg-brand-primary px-4 py-2 text-sm text-white hover:bg-brand-hover"
         >
           {showCreate ? "Cancel" : "Create User"}
@@ -127,59 +111,12 @@ export default function UsersPage() {
       </div>
 
       {showCreate && (
-        <div className="mb-6 rounded-lg border p-4 shadow-sm" style={{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
-          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--ink)" }}>New User</h2>
-          <form onSubmit={handleCreate} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label className="block text-xs" style={{ color: "var(--ink-2)" }}>Email</label>
-              <input
-                type="email"
-                required
-                value={createForm.email}
-                onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
-                style={{ border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
-              />
-            </div>
-            <div>
-              <label className="block text-xs" style={{ color: "var(--ink-2)" }}>Password</label>
-              <input
-                type="password"
-                required
-                value={createForm.password}
-                onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                placeholder="Min 8 characters"
-                className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
-                style={{ border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
-              />
-            </div>
-            <div>
-              <label className="block text-xs" style={{ color: "var(--ink-2)" }}>Role</label>
-              <select
-                value={createForm.role}
-                onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as Role })}
-                className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
-                style={{ border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-            </div>
-            {createError && (
-              <p className="col-span-full text-sm" style={{ color: "var(--bad)" }}>{createError}</p>
-            )}
-            <div className="col-span-full">
-              <button
-                type="submit"
-                disabled={creating}
-                className="rounded-md bg-brand-primary px-4 py-2 text-sm text-white hover:bg-brand-hover disabled:opacity-50"
-              >
-                {creating ? "Creating..." : "Create"}
-              </button>
-            </div>
-          </form>
-        </div>
+        <CreateUserForm
+          roles={ROLES}
+          onSubmit={handleCreate}
+          onSuccess={() => setShowCreate(false)}
+          onCancel={() => setShowCreate(false)}
+        />
       )}
 
       <div className="mb-4 flex items-center gap-3">

@@ -16,9 +16,10 @@ function progressPct(run: BatchRun): number {
 
 export interface BatchRunDetailProps {
   run: BatchRun;
+  modelLabel?: string | null;
 }
 
-export function BatchRunDetail({ run }: BatchRunDetailProps) {
+export function BatchRunDetail({ run, modelLabel }: BatchRunDetailProps) {
   const pct = progressPct(run);
 
   return (
@@ -32,9 +33,9 @@ export function BatchRunDetail({ run }: BatchRunDetailProps) {
         >
           {run.status}
         </span>
-        {run.model_version && (
+        {modelLabel && (
           <span className="text-xs text-text-secondary font-mono">
-            model v{run.model_version}
+            {modelLabel}
           </span>
         )}
       </div>

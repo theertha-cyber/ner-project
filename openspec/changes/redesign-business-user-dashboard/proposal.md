@@ -5,7 +5,7 @@ The `business_user` dashboard currently mirrors the technical roles (`tenant_adm
 ## What Changes
 
 - Hero copy (`kicker`/`title`/`line`) for `business_user` rewritten to frame the page as "your AI assistant workspace" instead of "extraction intelligence".
-- Stat strip replaced: `Docs extracted` / `Entities found` / `Avg confidence` → `Conversations`, `Messages Sent`, `Helpful Responses` (derived from existing `chat_message_feedback.rating` thumbs up/down, which already exists in `chat-api`).
+- Stat strip replaced: `Docs extracted` / `Entities found` / `Avg confidence` → `Conversations`, `Messages Sent`, `Responses Marked Helpful` (derived from existing `chat_message_feedback.rating` thumbs up/down, which already exists in `chat-api`).
 - `Active model` side panel (F1/precision/recall/loss) replaced with an `AI Assistant Status` panel: assistant online/offline, last updated, and average response time — now a real metric, averaged from `chat_messages.response_time_ms` (new column, populated by `chat-api` at reply time), not a placeholder.
 - `pTitle: "Recent extractions"` → `"Recent Conversations"`; rows now list the user's own conversations (title, last interaction time, message count) sourced from `chat-api`'s `conversations`/`chat_messages` tables, linking to `/chat?conversation={id}` instead of `/extractions`.
 - `sideBot: "Top extracted fields"` chart removed for this role entirely (not replaced) — `sideBot`/`sideRows` render empty. The originally proposed "Frequently Asked Topics" keyword-frequency heuristic was implemented, evaluated, and dropped as low-value; no replacement panel was requested.

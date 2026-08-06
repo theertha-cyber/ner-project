@@ -40,6 +40,13 @@ function GrowBar({ pct, color }: { pct: number; color?: string }) {
   );
 }
 
+function statusColor(value: string): string | undefined {
+  if (value === "Online" || value === "Healthy") return "var(--color-delta-up, #15803d)";
+  if (value === "Offline" || value === "Critical") return "var(--bad, #b91c1c)";
+  if (value === "Degraded") return "var(--warn, #b45309)";
+  return undefined;
+}
+
 function MiniGrowBar({ pct, color }: { pct: number; color: string }) {
   const fillRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -121,7 +128,7 @@ export function MetricsPanel({
               fontFamily: "var(--font-display, 'Hanken Grotesk', sans-serif)",
               fontSize: 44,
               fontWeight: 800,
-              color: "var(--color-brand-primary)",
+              color: statusColor(big) ?? "var(--color-brand-primary)",
               lineHeight: 1,
             }}
           >
@@ -160,7 +167,7 @@ export function MetricsPanel({
                   fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
                   fontSize: 11,
                   fontWeight: 600,
-                  color: "var(--color-text-primary)",
+                  color: statusColor(m.v) ?? "var(--color-text-primary)",
                 }}
               >
                 {m.v}
@@ -211,7 +218,7 @@ export function MetricsPanel({
                     style={{
                       fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
                       fontSize: 12,
-                      color: "var(--color-text-secondary)",
+                      color: statusColor(row.val) ?? "var(--color-text-secondary)",
                     }}
                   >
                     {row.val}

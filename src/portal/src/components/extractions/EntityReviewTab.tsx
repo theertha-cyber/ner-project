@@ -64,7 +64,7 @@ export function EntityReviewTab() {
           })}
         </div>
         <span className="ml-auto font-mono text-xs text-text-secondary">
-          {total} entities · {typeCount} types · GET /entities
+          {total} entities · {typeCount} types
         </span>
       </div>
 

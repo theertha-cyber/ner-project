@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-fetch";
 import { GATEWAY_URL } from "@/lib/api";
+import { CreateUserForm, CreateUserPayload } from "@/components/users/CreateUserForm";
+
+const ROLES = ["annotator", "business_user", "tenant_admin"] as const;
 
 interface TenantDetail {
   id: string;
@@ -31,6 +34,7 @@ export default function TenantDetailPage({ params }: { params: { id: string } })
   const [users, setUsers] = useState<TenantUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [showCreateUser, setShowCreateUser] = useState(false);
   const [form, setForm] = useState({
     max_users: 0,
     max_documents: 0,
@@ -75,6 +79,22 @@ export default function TenantDetailPage({ params }: { params: { id: string } })
     } catch (err) {
       alert(err instanceof Error ? err.message : "Update failed");
     }
+  };
+
+  const handleCreateUser = async (payload: CreateUserPayload) => {
+    const r = await authFetch(`${GATEWAY_URL}/api/v1/admin/tenants/${params.id}/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const data = (await r.json()) as { error?: { message?: string } };
+      return { ok: false, errorMessage: data.error?.message, status: r.status };
+    }
+    const data = (await r.json()) as { user: TenantUser };
+    setUsers((prev) => [data.user, ...prev]);
+    setTenant((prev) => (prev ? { ...prev, user_count: prev.user_count + 1 } : prev));
+    return { ok: true };
   };
 
   const handleDeactivate = async () => {
@@ -220,7 +240,26 @@ export default function TenantDetailPage({ params }: { params: { id: string } })
       </div>
 
       <div className="mt-6 rounded-lg bg-white p-6 shadow">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Users</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">Users</h2>
+          <button
+            onClick={() => setShowCreateUser((v) => !v)}
+            className="rounded-md bg-brand-primary px-4 py-2 text-sm text-white hover:bg-brand-hover"
+          >
+            {showCreateUser ? "Cancel" : "Create User"}
+          </button>
+        </div>
+
+        {showCreateUser && (
+          <CreateUserForm
+            roles={ROLES}
+            tenantLabel={`${tenant.name} (${tenant.slug})`}
+            onSubmit={handleCreateUser}
+            onSuccess={() => setShowCreateUser(false)}
+            onCancel={() => setShowCreateUser(false)}
+          />
+        )}
+
         {users.length === 0 ? (
           <p className="text-sm text-gray-500">No users found.</p>
         ) : (

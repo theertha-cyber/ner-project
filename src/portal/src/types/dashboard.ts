@@ -30,6 +30,13 @@ export interface SideMetric {
   v: string;
 }
 
+export interface ActiveModelInfo {
+  name: string;
+  status: string;
+  version: string;
+  deployedAt: string;
+}
+
 export type ResponseQualityStatus = "healthy" | "monitor" | "needs_attention" | "no_data";
 
 export interface ResponseQuality {
@@ -59,6 +66,7 @@ export interface DashboardData {
   sideBot: string;
   sideRows: SideRow[];
   responseQuality?: ResponseQuality | null;
+  activeModel?: ActiveModelInfo | null;
 }
 
 export interface DashboardSummaryResponse {

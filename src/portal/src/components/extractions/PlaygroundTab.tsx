@@ -38,9 +38,15 @@ export function PlaygroundTab() {
   const [text, setText] = useState(SAMPLE_TEXT);
   const [showBaseModelConfirm, setShowBaseModelConfirm] = useState(false);
   const { running, result, modelVersion, run } = useExtract();
-  const { activeModel } = useModelVersions();
+  const { activeModel, data: modelVersions } = useModelVersions();
 
-  const versionLabel = modelVersion ? `model v${modelVersion} · serving` : "— · serving";
+  const currentVersion = modelVersion ?? activeModel?.version_number;
+  const matchedModel =
+    modelVersion != null
+      ? modelVersions?.find((v) => v.version_number === Number(modelVersion))
+      : activeModel;
+  const modelLabel = matchedModel?.run_name ?? (currentVersion != null ? `v${currentVersion}` : null);
+  const versionLabel = modelLabel ? `${modelLabel} · serving` : "— · serving";
 
   function handleRunClick() {
     if (activeModel?.version_number === 0) {
@@ -100,9 +106,6 @@ export function PlaygroundTab() {
           />
         )}
 
-        <p className="text-xs text-text-secondary">
-          Whitespace-tokenized · POST /internal/v1/infer · mapped to char offsets. Not persisted.
-        </p>
       </div>
 
       {/* Right card: results */}

@@ -3,6 +3,11 @@
 import { useState, useEffect } from "react";
 
 const STORAGE_KEY = "portal-theme";
+const listeners = new Set<(dark: boolean) => void>();
+
+function notify(dark: boolean) {
+  listeners.forEach((listener) => listener(dark));
+}
 
 export interface UseDarkModeReturn {
   dark: boolean;
@@ -21,20 +26,23 @@ export function useDarkMode(): UseDarkModeReturn {
     } else {
       document.documentElement.classList.remove("dark");
     }
+
+    listeners.add(setDark);
+    return () => {
+      listeners.delete(setDark);
+    };
   }, []);
 
   function toggle() {
-    setDark((prev) => {
-      const next = !prev;
-      if (next) {
-        document.documentElement.classList.add("dark");
-        localStorage.setItem(STORAGE_KEY, "dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-        localStorage.setItem(STORAGE_KEY, "light");
-      }
-      return next;
-    });
+    const next = !dark;
+    if (next) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem(STORAGE_KEY, "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem(STORAGE_KEY, "light");
+    }
+    notify(next);
   }
 
   return { dark, toggle };

@@ -11,7 +11,7 @@ import type { BatchRun } from "@/types/extraction";
 
 export function BatchRunsTab() {
   const { runs, triggerBatch } = useBatchRuns();
-  const { activeModel } = useModelVersions();
+  const { activeModel, data: modelVersions } = useModelVersions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [showBaseModelConfirm, setShowBaseModelConfirm] = useState(false);
@@ -26,6 +26,12 @@ export function BatchRunsTab() {
 
   const selectedRun: BatchRun | undefined =
     runs.find((r) => r.run_id === selectedId);
+
+  function modelLabelFor(modelVersion: string | null | undefined): string | null {
+    if (!modelVersion) return null;
+    const match = modelVersions?.find((v) => v.version_number === Number(modelVersion));
+    return match?.run_name ?? `v${modelVersion}`;
+  }
 
   async function handleRunExtraction(documentIds: string[]) {
     setTriggering(true);
@@ -46,12 +52,9 @@ export function BatchRunsTab() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" style={{ width: "100%", height: "100%", minHeight: 0 }}>
       {/* Header row */}
-      <div className="flex items-center justify-between gap-4">
-        <span className="font-mono text-xs text-text-secondary">
-          POST /api/v1/extract-batch · async via Celery
-        </span>
+      <div className="flex items-center justify-end gap-4" style={{ flexShrink: 0 }}>
         <button
           type="button"
           disabled={triggering}
@@ -83,12 +86,17 @@ export function BatchRunsTab() {
       )}
 
       {/* Two-column layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 18 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "340px 1fr",
+          gap: 18,
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
         {/* Left: run list — bounded height, scrolls independently of the page */}
-        <div
-          className="flex flex-col gap-2 overflow-y-auto"
-          style={{ maxHeight: "calc(100vh - 260px)" }}
-        >
+        <div className="flex flex-col gap-2 overflow-y-auto" style={{ height: "100%" }}>
           {runs.length === 0 ? (
             <p className="py-12 text-center text-sm text-text-secondary">
               No batch runs yet. Click &quot;New batch run&quot; to start.
@@ -98,6 +106,7 @@ export function BatchRunsTab() {
               <BatchRunCard
                 key={run.run_id}
                 run={run}
+                modelLabel={modelLabelFor(run.model_version)}
                 isSelected={run.run_id === selectedId}
                 onClick={() => setSelectedId(run.run_id)}
               />
@@ -106,9 +115,9 @@ export function BatchRunsTab() {
         </div>
 
         {/* Right: detail panel */}
-        <div>
+        <div style={{ height: "100%", overflowY: "auto" }}>
           {selectedRun ? (
-            <BatchRunDetail run={selectedRun} />
+            <BatchRunDetail run={selectedRun} modelLabel={modelLabelFor(selectedRun.model_version)} />
           ) : (
             <div className="flex items-center justify-center h-48 rounded-xl border border-border">
               <p className="text-sm text-text-secondary">Select a run to view details.</p>

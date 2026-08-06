@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
 import { navFor } from "@/lib/nav-config";
+import { useDarkMode } from "@/hooks";
 import { Settings, LogOut, ChevronDown, PanelLeft } from "lucide-react";
 
 function userInitials(email: string): string {
@@ -17,6 +19,7 @@ interface SidebarProps {
 
 export function Sidebar({ effectiveRole }: SidebarProps) {
   const { user, logout } = useAuth();
+  const { dark } = useDarkMode();
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -67,29 +70,18 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
       >
         {!collapsed && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <div
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 8,
-                background: "var(--primary)",
-                display: "grid",
-                placeItems: "center",
-                fontFamily: "var(--font-display, sans-serif)",
-                fontWeight: 800,
-                fontSize: 17,
-                lineHeight: 1,
-                color: "#fff",
-                flexShrink: 0,
-              }}
-            >
-              n
-            </div>
+            <Image
+              src={dark ? "/logo-dark-theme.svg" : "/logo-light-theme.svg"}
+              alt="Logo"
+              width={30}
+              height={30}
+              style={{ flexShrink: 0 }}
+            />
             <span
               style={{
-                fontFamily: "var(--font-display, sans-serif)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
                 fontWeight: 700,
-                fontSize: 16,
+                fontSize: 13,
                 lineHeight: 1.2,
                 color: "var(--ink)",
                 letterSpacing: "-0.02em",

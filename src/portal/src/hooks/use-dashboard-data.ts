@@ -10,6 +10,7 @@ export const GO_HREF: Record<string, string> = {
   models: "/training-jobs",
   chat: "/chat",
   users: "/users",
+  tenants: "/admin/tenants",
 };
 
 export function goToHref(go: string, id?: string): string {

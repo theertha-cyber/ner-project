@@ -6,6 +6,7 @@ from src.gateway.services.user_service import UserService
 from src.gateway.services.audit_service import AuditService
 from src.gateway.dependencies import get_db, require_system_admin
 from src.gateway.models import AuditEventKind
+from src.gateway.api.v1.users import CreateUserRequest
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -94,6 +95,27 @@ async def list_tenant_users(
     await tenant_service.get_tenant(tenant_id)
     user_service = UserService(db)
     return await user_service.list_users(tenant_id)
+
+
+@router.post("/tenants/{tenant_id}/users", status_code=201)
+async def create_tenant_user(
+    tenant_id: str,
+    payload: CreateUserRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_system_admin),
+):
+    tenant_service = TenantService(db)
+    await tenant_service.get_tenant(tenant_id)
+    user_service = UserService(db)
+    actor_email = getattr(request.state, "user_email", "")
+    actor_role = getattr(request.state, "role", "")
+    return await user_service.create_user(
+        tenant_id,
+        payload.model_dump(),
+        actor_email=actor_email,
+        actor_role=actor_role,
+    )
 
 
 @router.get("/audit-log")

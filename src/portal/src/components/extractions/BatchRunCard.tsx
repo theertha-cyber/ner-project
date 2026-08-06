@@ -16,11 +16,12 @@ function progressPct(run: BatchRun): number {
 
 export interface BatchRunCardProps {
   run: BatchRun;
+  modelLabel?: string | null;
   isSelected: boolean;
   onClick: () => void;
 }
 
-export function BatchRunCard({ run, isSelected, onClick }: BatchRunCardProps) {
+export function BatchRunCard({ run, modelLabel, isSelected, onClick }: BatchRunCardProps) {
   const pct = progressPct(run);
   const dateStr = run.started_at
     ? new Date(run.started_at).toLocaleString(undefined, {
@@ -60,7 +61,7 @@ export function BatchRunCard({ run, isSelected, onClick }: BatchRunCardProps) {
 
       <div className="flex items-center justify-between text-xs text-text-secondary">
         <span>
-          {pct}% docs{run.model_version ? ` · model v${run.model_version}` : ""}
+          {pct}% docs{modelLabel ? ` · ${modelLabel}` : ""}
         </span>
         {dateStr && <span>{dateStr}</span>}
       </div>

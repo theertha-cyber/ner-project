@@ -64,14 +64,15 @@ def _cache_model_version(tenant_id: str, version_data: dict) -> None:
         conn.execute(
             text(f"""
                 INSERT INTO {schema}.model_versions
-                    (id, tenant_id, version_number, training_job_id, status, metrics, artifact_path, mlflow_run_id, created_at)
+                    (id, tenant_id, version_number, training_job_id, status, metrics, artifact_path, mlflow_run_id, created_at, promoted_at)
                 VALUES (:id, :tenant_id, :version_number, :training_job_id, :status,
-                        CAST(:metrics AS jsonb), :artifact_path, :mlflow_run_id, :created_at)
+                        CAST(:metrics AS jsonb), :artifact_path, :mlflow_run_id, :created_at, :promoted_at)
                 ON CONFLICT (id) DO UPDATE SET
                     status = EXCLUDED.status,
                     metrics = EXCLUDED.metrics,
                     artifact_path = EXCLUDED.artifact_path,
-                    mlflow_run_id = EXCLUDED.mlflow_run_id
+                    mlflow_run_id = EXCLUDED.mlflow_run_id,
+                    promoted_at = COALESCE({schema}.model_versions.promoted_at, EXCLUDED.promoted_at)
             """),
             {
                 "id": version_data["id"],
@@ -83,6 +84,7 @@ def _cache_model_version(tenant_id: str, version_data: dict) -> None:
                 "artifact_path": version_data.get("artifact_path"),
                 "mlflow_run_id": version_data.get("mlflow_run_id"),
                 "created_at": version_data.get("created_at", datetime.now(timezone.utc)),
+                "promoted_at": version_data.get("promoted_at") if version_data["status"] == "promoted" else None,
             },
         )
 
@@ -197,6 +199,11 @@ def get_active_model(tenant_id: str) -> tuple[dict | None, str | None]:
             "mlflow_run_id": version.run_id,
             "mlflow_run_url": _mlflow_run_url(version.run_id),
             "created_at": datetime.fromtimestamp(int(version.creation_timestamp) / 1000, tz=timezone.utc) if version.creation_timestamp else None,
+            # last_updated_timestamp bumps whenever this version's stage
+            # transitions (e.g. to Production), so it's the closest available
+            # proxy for "when this version was promoted" — MLflow has no
+            # dedicated promoted-at field.
+            "promoted_at": datetime.fromtimestamp(int(version.last_updated_timestamp) / 1000, tz=timezone.utc) if version.last_updated_timestamp else None,
         }
         try:
             result["run_number"] = _lookup_run_number(tenant_id, result["version_number"])
@@ -253,6 +260,7 @@ def promote_model_version(tenant_id: str, version_number: int) -> dict | None:
         "mlflow_run_id": version.run_id,
         "mlflow_run_url": _mlflow_run_url(version.run_id),
         "created_at": datetime.fromtimestamp(int(version.creation_timestamp) / 1000, tz=timezone.utc) if version.creation_timestamp else None,
+        "promoted_at": datetime.fromtimestamp(int(version.last_updated_timestamp) / 1000, tz=timezone.utc) if version.last_updated_timestamp else None,
     }
     try:
         result["run_number"] = _lookup_run_number(tenant_id, result["version_number"])

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 import httpx
@@ -55,6 +56,16 @@ class ResponseQualityCard(BaseModel):
     recommendation: str
 
 
+class ActiveModelInfo(BaseModel):
+    """Deployment metadata only — which model is currently serving, not how
+    well it performs. Performance/quality now lives exclusively on
+    ResponseQualityCard."""
+    name: str
+    status: str  # "active" | "unavailable"
+    version: str
+    deployedAt: str
+
+
 class DashboardData(BaseModel):
     kicker: str
     title: str
@@ -72,6 +83,7 @@ class DashboardData(BaseModel):
     sideBot: str
     sideRows: list[SideRow]
     responseQuality: ResponseQualityCard | None = None
+    activeModel: ActiveModelInfo | None = None
 
 
 class DashboardSourceStatus(BaseModel):
@@ -120,17 +132,111 @@ async def _all_tenant_schemas(db: AsyncSession) -> list[str]:
     return [_tenant_schema(row[0]) for row in result.fetchall()]
 
 
+_SYSTEM_ACTIVITY_TITLES: dict[str, str] = {
+    "tenant.create": "Tenant created",
+    "tenant.deactivate": "Tenant deactivated",
+    "user.create": "User onboarded",
+    "training_job.submit": "Training job submitted",
+    "training_job.approve": "Training job approved",
+    "training_job.reject": "Training job rejected",
+    "model_version.promote": "Model promoted",
+}
+
+_SYSTEM_ACTIVITY_GO: dict[str, str] = {
+    "user.create": "users",
+    "model_version.promote": "models",
+}
+
+
+def _system_activity_title(action: str) -> str:
+    if action in _SYSTEM_ACTIVITY_TITLES:
+        return _SYSTEM_ACTIVITY_TITLES[action]
+    return action.replace("_", " ").replace(".", ": ")
+
+
+def _system_activity_go(action: str) -> str:
+    if action.startswith("tenant."):
+        return "tenants"
+    if action.startswith("training_job."):
+        return "training"
+    return _SYSTEM_ACTIVITY_GO.get(action, "dashboard")
+
+
+async def _system_activity_feed(db: AsyncSession, limit: int) -> list[ActivityRow]:
+    result = await db.execute(
+        text("""
+            SELECT actor, role, action, target, kind, tenant_id, created_at
+            FROM public.audit_events
+            ORDER BY created_at DESC
+            LIMIT :limit
+        """),
+        {"limit": limit},
+    )
+    rows: list[ActivityRow] = []
+    for row in result:
+        rows.append(
+            ActivityRow(
+                title=_system_activity_title(row.action),
+                sub=f"{row.actor} \u00b7 {row.target}",
+                tag=row.kind,
+                tk=_activity_tag_colour(row.kind),
+                go=_system_activity_go(row.action),
+                icon=row.kind,
+                time=_relative_time(row.created_at),
+            )
+        )
+    return rows
+
+
+async def _platform_service_health() -> dict[str, str]:
+    async def _check(url: str) -> str:
+        try:
+            async with httpx.AsyncClient(timeout=3) as client:
+                resp = await client.get(f"{url}/health")
+            return "Online" if resp.status_code == 200 else "Offline"
+        except Exception:
+            return "Offline"
+
+    chat_api, extraction, training, model_serving = await asyncio.gather(
+        _check(settings.chat_api_url),
+        _check(settings.extraction_service_url),
+        _check(settings.training_service_url),
+        _check(settings.model_serving_url),
+    )
+    return {
+        "gateway": "Online",
+        "chat_api": chat_api,
+        "extraction": extraction,
+        "training": training,
+        "model_serving": model_serving,
+    }
+
+
+def _platform_health_status(gateway: str, chat_api: str, extraction: str, training: str, model_serving: str) -> str:
+    if gateway == "Offline" or model_serving == "Offline":
+        return "Critical"
+    if chat_api == "Offline" or extraction == "Offline" or training == "Offline":
+        return "Degraded"
+    return "Healthy"
+
+
 async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[DashboardData, dict[str, bool]]:
     sources = _null_sources()
     tenant_count: str | None = None
-    doc_count_all: str | None = None
+    active_user_count: str | None = None
     pending_approvals: str | None = None
-    avg_f1: str | None = None
+    training_jobs_running: str | None = None
 
     try:
         result = await db.execute(text("SELECT COUNT(*) FROM public.tenants"))
         tenant_count = str(result.scalar())
         sources["tenants"] = True
+    except Exception:
+        pass
+
+    try:
+        result = await db.execute(text("SELECT COUNT(*) FROM public.tenant_users WHERE status = 'active'"))
+        active_user_count = str(result.scalar())
     except Exception:
         pass
 
@@ -141,55 +247,39 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
         pass
 
     if schemas:
-        total_docs = 0
-        docs_complete = True
-        try:
-            for s in schemas:
-                try:
-                    r = await db.execute(text(f"SELECT COUNT(*) FROM {s}.documents"))
-                    total_docs += r.scalar() or 0
-                except Exception:
-                    logger.exception("system_admin dashboard: documents count failed for schema %s", s)
-                    await db.rollback()
-                    docs_complete = False
-            doc_count_all = str(total_docs)
-            sources["documents"] = docs_complete
-        except Exception:
-            pass
-
         try:
             total_pending = 0
+            total_running = 0
+            training_complete = True
             for s in schemas:
                 try:
                     r = await db.execute(
-                        text(f"SELECT COUNT(*) FROM {s}.training_jobs WHERE status = 'pending_approval'")
+                        text(f"SELECT COUNT(*) FILTER (WHERE status = 'pending_approval'), COUNT(*) FILTER (WHERE status = 'running') FROM {s}.training_jobs")
                     )
-                    total_pending += r.scalar() or 0
+                    row = r.fetchone()
+                    total_pending += row[0] or 0
+                    total_running += row[1] or 0
                 except Exception:
-                    logger.exception("system_admin dashboard: pending-approval count failed for schema %s", s)
+                    logger.exception("system_admin dashboard: training_jobs count failed for schema %s", s)
                     await db.rollback()
+                    training_complete = False
             pending_approvals = str(total_pending)
+            training_jobs_running = str(total_running)
+            sources["training"] = training_complete
         except Exception:
             pass
 
-        try:
-            f1_values: list[float] = []
-            for s in schemas:
-                try:
-                    r = await db.execute(
-                        text(f"SELECT COALESCE(metrics->>'f1', metrics->>'eval_f1') FROM {s}.model_versions WHERE status = 'promoted' ORDER BY promoted_at DESC LIMIT 1")
-                    )
-                    val = r.scalar()
-                    if val is not None:
-                        f1_values.append(float(val))
-                except Exception:
-                    logger.exception("system_admin dashboard: model F1 lookup failed for schema %s", s)
-                    await db.rollback()
-            if f1_values:
-                avg_f1 = f"{(sum(f1_values) / len(f1_values)) * 100:.1f}"
-                sources["models"] = True
-        except Exception:
-            pass
+    pRows: list[ActivityRow] = []
+    try:
+        pRows = await _system_activity_feed(db, 6)
+    except Exception:
+        logger.exception("system_admin dashboard: activity feed fetch failed")
+        await db.rollback()
+
+    health = await _platform_service_health()
+    big = _platform_health_status(
+        health["gateway"], health["chat_api"], health["extraction"], health["training"], health["model_serving"]
+    )
 
     pending_sub = "needs review" if pending_approvals is not None else "service unavailable"
     title_suffix = f"{pending_approvals} jobs await approval." if pending_approvals and pending_approvals != "0" else "No pending approvals."
@@ -197,34 +287,42 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
     data = DashboardData(
         kicker="Platform control plane",
         title=f"{tenant_count} tenants. {title_suffix}" if tenant_count is not None else "Platform overview.",
-        line="Dashboard data for training, documents, and models will appear as services come online.",
+        line="Monitor tenant onboarding, platform health, and approvals across the platform.",
         stats=[
-            _stat("Active tenants", tenant_count, "", "active", "+2", "up") if tenant_count is not None
-            else _stat("Active tenants", None, "", "unavailable", "\u2014"),
-            _stat("Documents (all)", doc_count_all, "", "active" if doc_count_all is not None else "service unavailable", "\u2014"),
-            _stat("Pending approvals", pending_approvals, "", pending_sub, "now", "warn"),
-            _stat("Avg model F1", avg_f1, "%", "active" if avg_f1 is not None else "service unavailable", "\u2014"),
+            _stat("Active Tenants", tenant_count, "", "active", "+2", "up") if tenant_count is not None
+            else _stat("Active Tenants", None, "", "unavailable", "\u2014"),
+            _stat("Active Users", active_user_count, "", "active" if active_user_count is not None else "service unavailable", "\u2014"),
+            _stat("Pending Approvals", pending_approvals, "", pending_sub, "now", "warn"),
+            _stat("Training Jobs Running", training_jobs_running, "", "active" if training_jobs_running is not None else "service unavailable", "\u2014"),
         ],
-        pTitle="Approval queue",
+        pTitle="Platform Activity",
         pMeta="system_admin",
-        pRows=[
-            ActivityRow(title="No jobs pending", sub="Training queue is empty", tag="\u2014", tk="queued", go="training"),
-            ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="training"),
-            ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="training"),
-            ActivityRow(title="\u2014", sub="\u2014", tag="\u2014", tk="queued", go="training"),
-        ],
-        sideTop="Platform health",
-        sideMeta="uptime 30d",
-        big="\u2014",
-        bigUnit="% SLA",
-        bar=0,
+        pRows=pRows,
+        sideTop="Platform Health",
+        sideMeta="live service checks",
+        big=big,
+        bigUnit="",
+        bar=100 if big == "Healthy" else (50 if big == "Degraded" else 0),
         sideMetrics=[
-            SideMetric(k="p95", v="\u2014"),
-            SideMetric(k="err", v="\u2014"),
-            SideMetric(k="GPU", v="\u2014"),
+            SideMetric(k="gateway", v=health["gateway"]),
+            SideMetric(k="chat api", v=health["chat_api"]),
+            SideMetric(k="extraction", v=health["extraction"]),
         ],
-        sideBot="Storage by tenant",
-        sideRows=[],
+        sideBot="Backing services",
+        sideRows=[
+            SideRow(
+                label="Training Service",
+                val=health["training"],
+                pct=100 if health["training"] == "Online" else 0,
+                c="var(--color-delta-up)" if health["training"] == "Online" else "var(--bad)",
+            ),
+            SideRow(
+                label="Model Serving",
+                val=health["model_serving"],
+                pct=100 if health["model_serving"] == "Online" else 0,
+                c="var(--color-delta-up)" if health["model_serving"] == "Online" else "var(--bad)",
+            ),
+        ],
     )
     return data, sources
 
@@ -366,6 +464,7 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str, auth_header: str 
         ]
 
     side_metrics, big_val, model_side_meta = _model_side_panel_from_active(active_model)
+    active_model_card = _active_model_card(active_model)
     response_quality = await _tenant_response_quality_card(db, schema)
     if response_quality is not None:
         sources["feedback"] = True
@@ -393,6 +492,7 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str, auth_header: str 
         sideBot="",
         sideRows=[],
         responseQuality=response_quality,
+        activeModel=active_model_card,
     )
     return data, sources
 
@@ -579,6 +679,34 @@ async def _fetch_active_model(auth_header: str | None) -> dict | None:
     except Exception:
         logger.exception("dashboard: failed to fetch active model from training_service")
         return None
+
+
+def _format_deployed_date(value: str | None) -> str:
+    if not value:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return "—"
+    return dt.strftime("%d %b %Y").lstrip("0")
+
+
+def _active_model_card(active: dict | None) -> ActiveModelInfo | None:
+    """Deployment metadata only (which model is serving) — no eval metrics.
+    Performance/quality lives on ResponseQualityCard."""
+    if not active:
+        return None
+
+    run_name = active.get("run_name")
+    version_number = active.get("version_number")
+    name = run_name or (f"v{version_number}" if version_number is not None else "Active model")
+
+    return ActiveModelInfo(
+        name=name,
+        status="active",
+        version=f"v{version_number}" if version_number is not None else "—",
+        deployedAt=_format_deployed_date(active.get("promoted_at")),
+    )
 
 
 def _model_side_panel_from_active(active: dict | None) -> tuple[list[SideMetric], str, str]:
@@ -945,7 +1073,7 @@ async def _business_user_data(db: AsyncSession, tenant_id: str, user_id: str) ->
     stats = [
         _stat("Conversations", conversation_count, "", "" if conversation_count is not None else "service unavailable", ""),
         _stat("Messages Sent", message_count, "", "" if message_count is not None else "service unavailable", ""),
-        _stat("Helpful Responses", helpful_count, "", "" if helpful_count is not None else "service unavailable", ""),
+        _stat("Responses Marked Helpful", helpful_count, "", "" if helpful_count is not None else "service unavailable", ""),
     ]
 
     data = DashboardData(
@@ -954,7 +1082,7 @@ async def _business_user_data(db: AsyncSession, tenant_id: str, user_id: str) ->
         line="Search, explore, and interact with your organization's knowledge through the AI assistant.",
         stats=stats,
         pTitle="Recent Conversations",
-        pMeta="business_user",
+        pMeta="",
         pRows=conversation_rows,
         sideTop="AI Assistant Status",
         sideMeta=assistant_status,

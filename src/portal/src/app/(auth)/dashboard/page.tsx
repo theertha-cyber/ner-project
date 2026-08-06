@@ -9,6 +9,7 @@ import { StatCardSkeleton } from "@/components/dashboard/StatCardSkeleton";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { MetricsPanel } from "@/components/dashboard/MetricsPanel";
 import { ResponseQualityCard } from "@/components/dashboard/ResponseQualityCard";
+import { ActiveModelCard } from "@/components/dashboard/ActiveModelCard";
 
 export default function DashboardPage() {
   const { data, isLoading } = useDashboardData();
@@ -76,16 +77,20 @@ export default function DashboardPage() {
               />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-              <MetricsPanel
-                sideTop={data.sideTop}
-                sideMeta={data.sideMeta}
-                big={data.big}
-                bigUnit={data.bigUnit}
-                bar={data.bar}
-                sideMetrics={data.sideMetrics}
-                sideBot={data.sideBot}
-                sideRows={data.sideRows}
-              />
+              {isTenantAdmin ? (
+                <ActiveModelCard data={data.activeModel} />
+              ) : (
+                <MetricsPanel
+                  sideTop={data.sideTop}
+                  sideMeta={data.sideMeta}
+                  big={data.big}
+                  bigUnit={data.bigUnit}
+                  bar={data.bar}
+                  sideMetrics={data.sideMetrics}
+                  sideBot={data.sideBot}
+                  sideRows={data.sideRows}
+                />
+              )}
               {isTenantAdmin && data.responseQuality && (
                 <ResponseQualityCard data={data.responseQuality} />
               )}

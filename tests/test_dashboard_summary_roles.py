@@ -28,9 +28,12 @@ class TestDashboardSummaryRoles:
         d = body["data"]
         assert d["kicker"] == "Platform control plane"
         assert len(d["stats"]) == 4
-        assert d["pTitle"] == "Approval queue"
-        assert len(d["pRows"]) == 4
-        assert d["sideTop"] == "Platform health"
+        assert [s["label"] for s in d["stats"]] == [
+            "Active Tenants", "Active Users", "Pending Approvals", "Training Jobs Running",
+        ]
+        assert d["pTitle"] == "Platform Activity"
+        assert d["sideTop"] == "Platform Health"
+        assert d["big"] in ("Healthy", "Degraded", "Critical")
 
     async def test_tenant_admin_summary_returns_pipeline_data(self, engine, tenant_schema):
         tid, _schema = tenant_schema
@@ -110,7 +113,7 @@ class TestDashboardSummaryRoles:
         assert status == 200
         d = body["data"]
         assert d["kicker"] == "Your AI assistant workspace"
-        assert [s["label"] for s in d["stats"]] == ["Conversations", "Messages Sent", "Helpful Responses"]
+        assert [s["label"] for s in d["stats"]] == ["Conversations", "Messages Sent", "Responses Marked Helpful"]
         assert d["pTitle"] == "Recent Conversations"
         assert d["sideTop"] == "AI Assistant Status"
         assert d["sideBot"] == ""
@@ -210,6 +213,37 @@ class TestDashboardSummaryRoles:
         for row in d["pRows"]:
             assert row["icon"] != ""
             assert row["time"] != ""
+
+    async def test_tenant_admin_active_model_card_shows_deployment_info_only(self, engine, tenant_schema):
+        tid, _schema = tenant_schema
+        with patch(
+            "src.gateway.api.v1.dashboard._fetch_active_model",
+            new=AsyncMock(return_value={
+                "run_name": "run-003-20260805",
+                "version_number": 3,
+                "promoted_at": "2026-08-05T10:00:00Z",
+                "metrics": {"eval_f1": 0.87, "eval_precision": 0.9, "eval_recall": 0.85, "eval_loss": 0.1},
+            }),
+        ):
+            status, body = await _get("tenant_admin", tid)
+        assert status == 200
+        active_model = body["data"]["activeModel"]
+        assert active_model["name"] == "run-003-20260805"
+        assert active_model["status"] == "active"
+        assert active_model["version"] == "v3"
+        assert active_model["deployedAt"] == "5 Aug 2026"
+        # deployment-only: no eval metric keys leak into the activeModel payload
+        assert set(active_model.keys()) == {"name", "status", "version", "deployedAt"}
+
+    async def test_tenant_admin_active_model_card_null_when_no_model_deployed(self, engine, tenant_schema):
+        tid, _schema = tenant_schema
+        with patch(
+            "src.gateway.api.v1.dashboard._fetch_active_model",
+            new=AsyncMock(return_value=None),
+        ):
+            status, body = await _get("tenant_admin", tid)
+        assert status == 200
+        assert body["data"]["activeModel"] is None
 
     async def test_tenant_admin_activity_pads_placeholders(self, engine, tenant_schema):
         tid, _schema = tenant_schema

@@ -177,6 +177,39 @@ class TestGetActiveModel:
         assert result["version_number"] == 2
         assert warning == "mlflow-unavailable"
 
+    def test_get_active_includes_promoted_at_from_last_updated_timestamp(self, monkeypatch):
+        class FakeVersion:
+            def __init__(self):
+                self.version = "3"
+                self.current_stage = "Production"
+                self.run_id = "run-3"
+                self.creation_timestamp = 1700000000000
+                self.last_updated_timestamp = 1754000000000
+
+        class FakeRegisteredModel:
+            latest_versions = [FakeVersion()]
+
+        class FakeRun:
+            data = type('obj', (object,), {'metrics': {}, 'params': {}})()
+
+        def mock_client(*args, **kwargs):
+            class MockMlflowClient:
+                def get_registered_model(self, name):
+                    return FakeRegisteredModel()
+
+                def get_run(self, run_id):
+                    return FakeRun()
+
+            return MockMlflowClient()
+
+        monkeypatch.setattr("src.training_service.infra.mlflow_registry.MlflowClient", mock_client)
+        monkeypatch.setattr("src.training_service.infra.mlflow_registry._cache_model_version", lambda *args: None)
+        monkeypatch.setattr("src.training_service.infra.mlflow_registry._lookup_run_number", lambda *args: None)
+
+        result, warning = get_active_model("tenant-x")
+        assert warning is None
+        assert result["promoted_at"] == datetime.fromtimestamp(1754000000, tz=timezone.utc)
+
     def test_get_active_returns_none_when_no_production_version(self, monkeypatch):
         from mlflow.exceptions import RestException
 
