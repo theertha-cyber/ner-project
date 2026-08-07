@@ -1,6 +1,7 @@
 "use client";
 
 import { useReducer, useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useEntityTypes } from "@/hooks/use-entity-types";
@@ -42,6 +43,7 @@ export function AnnotationPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [spanState, dispatch] = useReducer(spanReducer, initialSpanState);
+  const searchParams = useSearchParams();
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("3pane");
   const [selectedTask, setSelectedTask] = useState<AnnotationTask | null>(null);
   const [docText, setDocText] = useState<string | null>(null);
@@ -148,7 +150,10 @@ export function AnnotationPage() {
       dispatch({ type: "DISARM" });
 
       const currentStatus = taskStatuses[task.id] ?? task.status;
-      if (currentStatus === "unannotated" && !sentInProgressRef.current.has(task.id)) {
+      // "pending" is the not-started status the seed path writes; it is startable
+      // just like "unannotated", so opening one must move it to in-progress too.
+      const notStarted = currentStatus === "unannotated" || currentStatus === "pending";
+      if (notStarted && !sentInProgressRef.current.has(task.id)) {
         sentInProgressRef.current.add(task.id);
         const patchRes = await authFetch(`/api/v1/annotation-tasks/${task.id}`, {
           method: "PATCH",
@@ -205,6 +210,21 @@ export function AnnotationPage() {
     },
     [taskStatuses, toast],
   );
+
+  // Deep link from the dashboard's continue-work card: /annotation?task=<id>.
+  // Initial selection only — the ref makes this fire once, so a later click is
+  // never overridden. An unknown id, or one outside this user's visible queue,
+  // falls through to the default (nothing selected) rather than erroring.
+  const appliedTaskParamRef = useRef(false);
+  useEffect(() => {
+    if (appliedTaskParamRef.current) return;
+    const requestedTaskId = searchParams?.get("task");
+    if (!requestedTaskId) return;
+    if (filteredTasks.length === 0) return;
+    appliedTaskParamRef.current = true;
+    const match = filteredTasks.find((t) => t.id === requestedTaskId);
+    if (match) void handleSelectTask(match);
+  }, [searchParams, filteredTasks, handleSelectTask]);
 
   const handleTokenClick = useCallback(
     async (tokenIndex: number) => {

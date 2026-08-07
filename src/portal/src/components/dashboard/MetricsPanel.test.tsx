@@ -210,4 +210,70 @@ describe("MetricsPanel", () => {
     );
     expect(screen.getByText("Healthy").style.color).toBe("var(--color-delta-up, #15803d)");
   });
+  it("renders readiness rows as count-against-threshold with progress-scaled bars", () => {
+    const { container } = render(
+      <MetricsPanel
+        sideTop="Dataset readiness"
+        sideMeta="1 of 2 entity types ready"
+        big="75"
+        bigUnit="% to training-ready"
+        bar={75}
+        sideMetrics={metrics}
+        sideBot="200 entities per type unlocks training"
+        sideRows={[{ label: "JOB_TITLE", val: "100/200", pct: 50, c: "var(--warn, #b45309)" }]}
+      />
+    );
+    expect(screen.getByText("JOB_TITLE")).toBeInTheDocument();
+    expect(screen.getByText("100/200")).toBeInTheDocument();
+    const bars = container.querySelectorAll('div[style*="height: 6px"] > div');
+    expect(bars.length).toBe(1);
+  });
+
+  it("gives starved and satisfied entity types different bar colours", () => {
+    const { container } = render(
+      <MetricsPanel
+        sideTop="Dataset readiness"
+        sideMeta="1 of 2 entity types ready"
+        big="50"
+        bigUnit="% to training-ready"
+        bar={50}
+        sideMetrics={metrics}
+        sideBot="200 entities per type unlocks training"
+        sideRows={[
+          { label: "STARVED", val: "0/200", pct: 0, c: "var(--bad, #b91c1c)" },
+          { label: "READY", val: "200/200", pct: 100, c: "var(--color-delta-up, #15803d)" },
+        ]}
+      />
+    );
+    const bars = Array.from(container.querySelectorAll('div[style*="height: 6px"] > div'));
+    expect(bars.length).toBe(2);
+    expect((bars[0] as HTMLElement).style.background).not.toBe(
+      (bars[1] as HTMLElement).style.background,
+    );
+  });
+
+  it("indicates how many entity types are not shown when the list overflows", () => {
+    const rows = Array.from({ length: 9 }, (_, i) => ({
+      label: `TYPE_${i}`,
+      val: `${i}/200`,
+      pct: i,
+      c: "var(--bad, #b91c1c)",
+    }));
+    render(
+      <MetricsPanel
+        sideTop="Dataset readiness"
+        sideMeta="0 of 9 entity types ready"
+        big="1"
+        bigUnit="% to training-ready"
+        bar={1}
+        sideMetrics={metrics}
+        sideBot="200 entities per type unlocks training"
+        sideRows={rows}
+      />
+    );
+    // Rows arrive least-progressed first, so the shown ones are the ones to act on.
+    expect(screen.getByText("TYPE_0")).toBeInTheDocument();
+    expect(screen.queryByText("TYPE_8")).not.toBeInTheDocument();
+    expect(screen.getByText("+3 more")).toBeInTheDocument();
+  });
 });

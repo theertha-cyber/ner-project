@@ -171,8 +171,13 @@ async def update_task(
         from fastapi import HTTPException
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": "status is required"})
 
+    # "pending" is written by the tenant seed path (src/gateway/seed.py) but was
+    # never in this table, so those tasks could not be started by any route —
+    # every transition resolved to allowed=[] and 422'd. It is startable only;
+    # "completed" stays terminal and nothing transitions *into* "pending".
     valid_transitions = {
         "unannotated": ["in-progress"],
+        "pending": ["in-progress"],
         "in-progress": ["completed"],
         "completed": ["completed"],
     }

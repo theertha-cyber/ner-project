@@ -7,6 +7,10 @@ type TaskStatus = AnnotationTask["status"];
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
   unannotated: "pending",
+  // Same not-started meaning, different vocabularies across seed data and
+  // migration 002 — they read identically to the annotator.
+  pending: "pending",
+  open: "pending",
   "in-progress": "in_progress",
   completed: "completed",
 };

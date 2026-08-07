@@ -10,12 +10,17 @@ import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { MetricsPanel } from "@/components/dashboard/MetricsPanel";
 import { ResponseQualityCard } from "@/components/dashboard/ResponseQualityCard";
 import { ActiveModelCard } from "@/components/dashboard/ActiveModelCard";
+import { ContinueWorkCard } from "@/components/dashboard/ContinueWorkCard";
 
 export default function DashboardPage() {
   const { data, isLoading } = useDashboardData();
   const { user } = useAuth();
   const variant = heroVariant(user?.role ?? "annotator");
   const isTenantAdmin = user?.role === "tenant_admin";
+  const isAnnotator = user?.role === "annotator";
+  // The continue-work card occupies the first cell of the annotator stat row,
+  // so the grid needs one more column than there are stats.
+  const statColumns = (data?.stats.length ?? 3) + (isAnnotator ? 1 : 0);
 
   return (
     <div
@@ -63,10 +68,11 @@ export default function DashboardPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: `repeat(${data.stats.length}, 1fr)`,
+                  gridTemplateColumns: `repeat(${statColumns}, 1fr)`,
                   gap: 14,
                 }}
               >
+                {isAnnotator && <ContinueWorkCard data={data.continueWork} />}
                 {data.stats.map((stat, i) => <StatCard key={i} item={stat} />)}
               </div>
               <ActivityPanel
@@ -99,8 +105,9 @@ export default function DashboardPage() {
         ) : (
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-                {Array.from({ length: 3 }).map((_, i) => <StatCardSkeleton key={i} />)}
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${statColumns}, 1fr)`, gap: 14 }}>
+                {isAnnotator && <ContinueWorkCard isLoading />}
+                {Array.from({ length: statColumns - (isAnnotator ? 1 : 0) }).map((_, i) => <StatCardSkeleton key={i} />)}
               </div>
               <div
                 style={{

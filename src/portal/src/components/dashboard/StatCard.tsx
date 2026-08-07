@@ -25,8 +25,11 @@ export function StatCard({ item }: StatCardProps) {
         padding: "20px 22px",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "space-between",
-        gap: 10,
+        // Grid rows stretch every card to the tallest sibling. Centring the
+        // content keeps a short card (e.g. Completion, which has no sub line)
+        // optically aligned with a taller one rather than floating at the top.
+        justifyContent: "center",
+        gap: 6,
         minWidth: 0,
         transition: "transform 0.15s ease, border-color 0.15s ease",
         cursor: "default",

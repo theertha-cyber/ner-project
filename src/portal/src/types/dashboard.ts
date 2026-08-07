@@ -37,6 +37,21 @@ export interface ActiveModelInfo {
   deployedAt: string;
 }
 
+/**
+ * "resume" — task in progress; "start" — assigned but not begun;
+ * "review" — already submitted, offered only when nothing else remains.
+ */
+export type ContinueWorkMode = "resume" | "start" | "review";
+
+export interface ContinueWork {
+  taskId: string;
+  documentId: string;
+  documentName: string;
+  status: string;
+  spanCount: number;
+  mode: ContinueWorkMode;
+}
+
 export type ResponseQualityStatus = "healthy" | "monitor" | "needs_attention" | "no_data";
 
 export interface ResponseQuality {
@@ -67,6 +82,7 @@ export interface DashboardData {
   sideRows: SideRow[];
   responseQuality?: ResponseQuality | null;
   activeModel?: ActiveModelInfo | null;
+  continueWork?: ContinueWork | null;
 }
 
 export interface DashboardSummaryResponse {

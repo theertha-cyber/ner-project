@@ -104,7 +104,8 @@ CREATE TABLE IF NOT EXISTS {schema}.annotation_tasks (
     status VARCHAR(20) DEFAULT 'unannotated',
     reviewer VARCHAR,
     dataset_version INTEGER,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ
 );
 CREATE TABLE IF NOT EXISTS {schema}.spans (
     id VARCHAR PRIMARY KEY,
@@ -115,7 +116,8 @@ CREATE TABLE IF NOT EXISTS {schema}.spans (
     text_content VARCHAR NOT NULL,
     confidence FLOAT NOT NULL DEFAULT 1.0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ
+    updated_at TIMESTAMPTZ,
+    bio_tags TEXT[]
 );
 CREATE TABLE IF NOT EXISTS {schema}.suggested_spans (
     id VARCHAR PRIMARY KEY,

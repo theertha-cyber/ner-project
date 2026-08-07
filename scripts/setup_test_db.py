@@ -121,6 +121,18 @@ PUBLIC_TABLES = [
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS public.audit_events (
+        id VARCHAR PRIMARY KEY,
+        actor VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        action VARCHAR(255) NOT NULL,
+        target VARCHAR(255) NOT NULL,
+        kind VARCHAR(50) NOT NULL,
+        tenant_id VARCHAR,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+    """,
 ]
 
 

@@ -74,7 +74,8 @@ class TestDashboardSummaryShape:
         assert status == 200
         d = body["data"]
         assert d["kicker"] == "Your annotation queue"
-        assert len(d["stats"]) == 4
+        assert [s["label"] for s in d["stats"]] == ["Assigned tasks", "Completion"]
+        assert "continueWork" in d
         assert d["pTitle"] == "My tasks"
         assert d["sideTop"] == "Dataset readiness"
 
@@ -141,7 +142,10 @@ async def _seed_annotator_tasks(engine, schema: str, user_id: str, total: int = 
         )
         for i in range(total):
             task_id = f"at-{i}"
-            status = "annotated" if i < completed else "open"
+            # Real annotation_task vocabulary. "annotated" was never a task
+            # status — it is a *document* status (see seed.py) — so the previous
+            # fixture value matched no production code path.
+            status = "completed" if i < completed else "pending"
             await conn.execute(
                 text(f"INSERT INTO {schema}.annotation_tasks (id, document_id, annotator_user_id, status) VALUES (:id, 'doc-ann', :uid, :st) ON CONFLICT (id) DO NOTHING"),
                 {"id": task_id, "uid": user_id, "st": status},
@@ -283,7 +287,8 @@ class TestAnnotatorQueries:
         s = body["data"]["stats"]
         sources = body["sources"]
 
-        assert s[0]["value"] == "8"
+        # completed/total, not a bare assigned count
+        assert s[0]["value"] == "6/8"
         assert sources["annotations"] is True
 
     async def test_completion_percentage(self, engine, tenant_schema):
@@ -295,8 +300,9 @@ class TestAnnotatorQueries:
         assert status == 200
         s = body["data"]["stats"]
 
-        assert s[3]["value"] == "75"
-        assert s[3]["unit"] == "%"
+        assert s[1]["label"] == "Completion"
+        assert s[1]["value"] == "75"
+        assert s[1]["unit"] == "%"
 
     async def test_task_activity_rows(self, engine, tenant_schema):
         tid, schema = tenant_schema
@@ -442,7 +448,8 @@ class TestRouteDispatch:
         status, body = await _get("annotator", tid, user_id)
         assert status == 200
         s = body["data"]["stats"]
-        assert s[0]["value"] == "1"
+        # Only this annotator's task is counted, and it is not complete.
+        assert s[0]["value"] == "0/1"
 
     async def test_sources_map_contains_all_keys(self, engine, tenant_schema):
         tid, schema = tenant_schema

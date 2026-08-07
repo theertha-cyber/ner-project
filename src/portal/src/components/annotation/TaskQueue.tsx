@@ -4,7 +4,9 @@ export interface AnnotationTask {
   id: string;
   document_id: string;
   annotator_user_id: string;
-  status: "unannotated" | "in-progress" | "completed";
+  // "pending" and "open" are not-started statuses written by the seed path and
+  // migration 002 respectively; both behave like "unannotated".
+  status: "unannotated" | "pending" | "open" | "in-progress" | "completed";
   created_at: string;
   updated_at: string | null;
   filename: string;
@@ -21,6 +23,8 @@ interface TaskQueueProps {
 
 const STATUS_COLORS: Record<AnnotationTask["status"], string> = {
   unannotated: "var(--color-text-secondary)",
+  pending: "var(--color-text-secondary)",
+  open: "var(--color-text-secondary)",
   "in-progress": "var(--color-primary)",
   completed: "var(--color-success, #10b981)",
 };
