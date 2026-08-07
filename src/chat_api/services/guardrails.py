@@ -40,6 +40,8 @@ In-domain examples (note: the subject matter varies by tenant — all of these a
 - "Find me candidates for a Backend Engineer role, preferably at an MNC."
 - "Which invoices are overdue?"
 - "List patients diagnosed with hypertension."
+- "Rank programming languages by popularity" (a ranking/frequency question over this tenant's own extracted entity values — "popularity" here means how often a value appears in the data, never general-knowledge/industry trivia)
+- "What's the most common job title?" / "Which skill is most in-demand among our candidates?"
 
 Out-of-domain examples (requests with no connection to any tenant document or extracted entity):
 - "Who is the American president?"
@@ -50,7 +52,10 @@ Out-of-domain examples (requests with no connection to any tenant document or ex
 
 When in doubt, prefer in_domain: this classifier's job is only to filter out requests with \
 no plausible connection to tenant document/entity data, not to judge whether the platform can \
-fully answer the specific question.
+fully answer the specific question. In particular, words like "popular", "common", "top", \
+"most", or "ranked" do NOT make a question out-of-domain trivia — the platform only ever has \
+access to this tenant's own extracted data, so a ranking/frequency word always means "ranked \
+within our documents," never "ranked in the real world."
 """
 
 

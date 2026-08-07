@@ -34,10 +34,15 @@ def _fix_document_name_reference(sql: str) -> str:
     a generic "no sources" reply. Fixed here instead of relying on the LLM."""
     if not re.search(r'\bdocument_entities\b', sql, re.IGNORECASE):
         return sql
-    if not _DOCUMENT_NAME_RE.search(sql):
+    # A reference to fix/support exists either as a bare `document_name` target or as
+    # `d.filename` with no `documents` table in scope yet — either needs the `d` alias
+    # to resolve, so both must be checked, not just the bare-`document_name` case.
+    if not _DOCUMENT_NAME_RE.search(sql) and not re.search(r'\bd\.filename\b', sql, re.IGNORECASE):
         return sql
 
-    join_match = re.search(r'\bJOIN\s+documents\s+(?:AS\s+)?(\w+)', sql, re.IGNORECASE)
+    # `FROM documents d` (e.g. inside a NOT EXISTS/EXISTS clause) resolves the alias
+    # just as well as `JOIN documents d` does — both must count as "already resolved".
+    join_match = re.search(r'\b(?:FROM|JOIN)\s+documents\s+(?:AS\s+)?(\w+)', sql, re.IGNORECASE)
     if join_match:
         alias = join_match.group(1)
     else:
@@ -71,12 +76,19 @@ class SQLGenerator:
             self.client = AsyncOpenAI(api_key=settings.openai_api_key)
             self.model = "gpt-4o"
 
-    async def generate_sql(self, natural_language_query: str, conversation_context: str | None = None) -> str:
+    async def generate_sql(self, natural_language_query: str, conversation_context: str | None = None, known_entity_types: list[str] | None = None) -> str:
         tables_desc = "\n".join(
             f"- {tbl} ({', '.join(cols)})"
             for tbl, cols in WHITELISTED_TABLES.items()
         )
         context = f"\nConversation context:\n{conversation_context}" if conversation_context else ""
+        entity_types_desc = (
+            f"\nThis tenant's actual `document_entities.entity_type` values are exactly: {', '.join(known_entity_types)}. "
+            "Every `entity_type` filter you write MUST use one of these exact values, verbatim, even if a different "
+            "name (e.g. 'EMPLOYER' for a company, 'CANDIDATE' for a person) seems more natural for the question's "
+            "wording — pick whichever value in this list is the closest semantic match instead of inventing a new one."
+            if known_entity_types else ""
+        )
 
         prompt = f"""You are a SQL query generator for a multi-tenant NER platform.
 Generate a SELECT SQL query for the following natural language question.
@@ -99,6 +111,39 @@ If instead the question only names a person with no explicit document_id restric
        JOIN document_entities person ON person.document_id = de.document_id AND person.normalized_value = '<person, lowercased>'
        WHERE de.entity_type = '<TYPE>'
 
+The self-join above ONLY applies when the question names a specific, identifiable individual (a proper name, e.g. "Natrajan", "Visakh Rajan"). A generic role/collective noun — "engineers", "candidates", "developers", "people", "employees" — is NOT a person to resolve via self-join; it is only describing which entity_type or value the question is about, and must never appear in a `normalized_value` filter. For these, filter directly on `entity_type` (and `normalized_value` for the skill/value itself, if one is named) with no self-join at all:
+  "List the engineers who know Python"
+    -> SELECT de.entity_value, ... FROM document_entities de
+       WHERE de.entity_type = 'PROGRAMMING_LANGUAGE' AND de.normalized_value = 'python'
+  "List candidates with programming language as Python" -> same shape, no self-join, no "candidates" filter.
+
+Negation ("who does NOT ...", "doesn't have ...", "without ..."): never turn this into a positive filter on the negated value — that returns the exact opposite of what was asked. Use `NOT EXISTS` scoped to the document, so it correctly returns people missing the value entirely:
+  "Who does not know Java?"
+    -> SELECT d.filename AS document_name FROM documents d
+       WHERE NOT EXISTS (
+         SELECT 1 FROM document_entities de
+         WHERE de.document_id = d.id AND de.entity_type = 'PROGRAMMING_LANGUAGE' AND de.normalized_value = 'java'
+       )
+
+Intersection ("both X and Y", "X and also Y", "who know all of ..."): this means the SAME document/person must satisfy every condition — never translate it into `normalized_value IN (...)`, which matches ANY one of them (that's what "X or Y" means, not "both"). Use one `EXISTS` per condition, ANDed together:
+  "Developers who know both Python and JavaScript"
+    -> SELECT d.filename AS document_name FROM documents d
+       WHERE EXISTS (SELECT 1 FROM document_entities de WHERE de.document_id = d.id AND de.entity_type = 'PROGRAMMING_LANGUAGE' AND de.normalized_value = 'python')
+       AND EXISTS (SELECT 1 FROM document_entities de WHERE de.document_id = d.id AND de.entity_type = 'PROGRAMMING_LANGUAGE' AND de.normalized_value = 'javascript')
+
+Aggregation dimension: read carefully which noun is actually being ranked/counted before choosing your GROUP BY column — "which candidate has the most X" groups by the PERSON (`document_id`), not by X's value; "which X is most common" groups by X's `normalized_value`, not by person. These are different questions even when the wording overlaps:
+  "Which candidate lists the most programming languages?" (ranking PEOPLE by a count)
+    -> SELECT de.document_id, COUNT(DISTINCT de.normalized_value) AS language_count FROM document_entities de
+       WHERE de.entity_type = 'PROGRAMMING_LANGUAGE' GROUP BY de.document_id ORDER BY language_count DESC LIMIT 1
+  "Which programming language is most common?" (ranking VALUES by a count) -> GROUP BY de.normalized_value instead.
+
+Free-text fields (DEGREE, ADDRESS, JOB_TITLE, and similar narrative/descriptive types) rarely match a full phrase exactly, because the extracted value is often a longer sentence fragment containing the term rather than the bare term itself — use `normalized_value ILIKE '%<lowercased term>%'` for these instead of `=`. Canonical short-token fields (skills, languages, tools, emails) should keep using exact `=` match as described above:
+  "Which candidates have a degree in Computer Science?"
+    -> WHERE de.entity_type = 'DEGREE' AND de.normalized_value ILIKE '%computer science%'
+
+When ordering by `value_number` or `value_date` (e.g. "sorted by years of experience"), always append `NULLS LAST` — rows where that column wasn't populated must never outrank rows with a real value:
+  "Show candidates sorted by years of experience, descending" -> ... ORDER BY de.value_number DESC NULLS LAST
+{entity_types_desc}
 Available tables and columns:
 {tables_desc}
 {context}
@@ -177,9 +222,24 @@ Return ONLY the SQL query, no explanations:"""
             logger.warning("SQL query timed out after 10s")
             raise SQLValidationError("Query execution timed out")
 
+    async def _fetch_known_entity_types(self, session: AsyncSession, schema: str) -> list[str]:
+        """Ground truth for the prompt's entity_type instruction — without this the
+        LLM free-associates a plausible-sounding type name (e.g. 'EMPLOYER', 'CANDIDATE')
+        instead of one that actually exists for this tenant."""
+        try:
+            await session.execute(text(f"SET search_path TO {schema}"))
+            result = await session.execute(
+                text("SELECT DISTINCT entity_type FROM document_entities ORDER BY entity_type")
+            )
+            return [row[0] for row in result.fetchall()]
+        except Exception as e:
+            logger.warning("Failed to fetch known entity types for prompt grounding: %s", str(e))
+            return []
+
     async def generate_and_execute(self, natural_language_query: str, session: AsyncSession, schema: str, conversation_context: str | None = None) -> list[dict] | None:
         try:
-            sql = await self.generate_sql(natural_language_query, conversation_context)
+            known_entity_types = await self._fetch_known_entity_types(session, schema)
+            sql = await self.generate_sql(natural_language_query, conversation_context, known_entity_types)
             logger.info("Generated SQL: %s", sql)
             sql = self.validate_sql(sql)
             return await self.execute_sql(sql, session, schema)
