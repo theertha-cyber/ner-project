@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MetricsPanel } from "./MetricsPanel";
 import type { SideMetric, SideRow } from "@/types/dashboard";
 
@@ -13,6 +14,27 @@ const rows: SideRow[] = [
   { label: "Northwind", val: "18.4 / 25 GB", pct: 74, c: "var(--primary)" },
   { label: "Umbrella", val: "9.1 / 15 GB", pct: 61, c: "var(--info)" },
 ];
+
+function renderOverflowPanel(count: number) {
+  const rows = Array.from({ length: count }, (_, i) => ({
+    label: `TYPE_${i}`,
+    val: `${i}/200`,
+    pct: i,
+    c: "var(--bad, #b91c1c)",
+  }));
+  return render(
+    <MetricsPanel
+      sideTop="Dataset readiness"
+      sideMeta={`0 of ${count} entity types ready`}
+      big="1"
+      bigUnit="% to training-ready"
+      bar={1}
+      sideMetrics={metrics}
+      sideBot="200 entities per type unlocks training"
+      sideRows={rows}
+    />
+  );
+}
 
 describe("MetricsPanel", () => {
   it("renders header and big number", () => {
@@ -274,6 +296,38 @@ describe("MetricsPanel", () => {
     // Rows arrive least-progressed first, so the shown ones are the ones to act on.
     expect(screen.getByText("TYPE_0")).toBeInTheDocument();
     expect(screen.queryByText("TYPE_8")).not.toBeInTheDocument();
-    expect(screen.getByText("+3 more")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /\+3 more/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /view all/i })).toBeInTheDocument();
+  });
+
+  it("expands in place to show every entity type when view all is pressed", async () => {
+    const user = userEvent.setup();
+    renderOverflowPanel(9);
+    expect(screen.queryByText("TYPE_8")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /view all/i }));
+
+    for (let i = 0; i < 9; i += 1) {
+      expect(screen.getByText(`TYPE_${i}`)).toBeInTheDocument();
+    }
+    const toggle = screen.getByRole("button", { name: /show less/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("collapses back to the capped list and re-states the hidden count", async () => {
+    const user = userEvent.setup();
+    renderOverflowPanel(9);
+
+    await user.click(screen.getByRole("button", { name: /view all/i }));
+    await user.click(screen.getByRole("button", { name: /show less/i }));
+
+    expect(screen.queryByText("TYPE_8")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /\+3 more/ })).toBeInTheDocument();
+  });
+
+  it("offers no view-all control when nothing is hidden", () => {
+    renderOverflowPanel(3);
+    expect(screen.getByText("TYPE_2")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /view all/i })).not.toBeInTheDocument();
   });
 });

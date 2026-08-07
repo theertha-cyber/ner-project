@@ -148,6 +148,8 @@ Below the top section, if `sideRows` is non-empty, a bottom section SHALL render
 
 For the annotator dataset-readiness panel, each `sideRows` entry SHALL represent one active entity type's progress toward the per-type threshold: `pct` SHALL be that type's progress toward the threshold rather than its share of the tenant-wide total, and `val` SHALL show the type's count against the threshold. Row colour SHALL reflect progress rather than being uniform, so a starved entity type is visually distinguishable from a satisfied one. The panel SHALL cap the number of rendered rows and, when types are omitted, SHALL indicate how many remain.
 
+When types are omitted the panel SHALL offer a control to reveal them. Activating that control SHALL expand the panel in place to render every entity type, and the control SHALL then offer to collapse back to the capped list. The expanded state SHALL be local to the panel — it SHALL NOT persist across reloads and SHALL NOT affect any other card. When no types are omitted the control SHALL NOT be rendered.
+
 #### Scenario: progress bar fills to correct percentage
 
 - **GIVEN** `bar: 62` in the dashboard data
@@ -182,6 +184,28 @@ For the annotator dataset-readiness panel, each `sideRows` entry SHALL represent
 - **WHEN** the readiness panel renders
 - **THEN** the rendered rows are the least-progressed types
 - **AND** the panel indicates how many further types are not shown
+- **AND** a control to view all entity types is offered
+
+#### Scenario: viewing all expands the panel in place
+
+- **GIVEN** the readiness panel is showing 6 of 8 entity types
+- **WHEN** the user activates the view-all control
+- **THEN** all 8 entity types are rendered
+- **AND** the control now offers to collapse back
+
+#### Scenario: collapsing returns the panel to the capped list
+
+- **GIVEN** the readiness panel has been expanded to show all entity types
+- **WHEN** the user activates the collapse control
+- **THEN** only the capped set of least-progressed types is rendered
+- **AND** the count of hidden types is indicated again
+
+#### Scenario: no view-all control when nothing is hidden
+
+- **GIVEN** the tenant has fewer entity types than the panel's row cap
+- **WHEN** the readiness panel renders
+- **THEN** every entity type is rendered
+- **AND** no view-all control is present
 
 #### Scenario: sideRows mini bars render correct colours
 

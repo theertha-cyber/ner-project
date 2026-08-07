@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SideMetric, SideRow } from "@/types/dashboard";
 
 interface MetricsPanelProps {
@@ -92,6 +92,12 @@ export function MetricsPanel({
   sideBot,
   sideRows,
 }: MetricsPanelProps) {
+  // Local to the panel: the expanded view is a glance, not a preference, so it
+  // deliberately resets on reload rather than persisting.
+  const [showAllRows, setShowAllRows] = useState(false);
+  const hiddenRowCount = Math.max(sideRows.length - MAX_SIDE_ROWS, 0);
+  const visibleRows = showAllRows ? sideRows : sideRows.slice(0, MAX_SIDE_ROWS);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1, minWidth: 0 }}>
       <div
@@ -211,7 +217,7 @@ export function MetricsPanel({
             {sideBot}
           </span>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {sideRows.slice(0, MAX_SIDE_ROWS).map((row, i) => (
+            {visibleRows.map((row, i) => (
               <div key={i} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span
@@ -236,16 +242,26 @@ export function MetricsPanel({
                 <MiniGrowBar pct={row.pct} color={row.c} />
               </div>
             ))}
-            {sideRows.length > MAX_SIDE_ROWS && (
-              <span
+            {hiddenRowCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAllRows((v) => !v)}
+                aria-expanded={showAllRows}
                 style={{
+                  marginTop: 2,
+                  alignSelf: "flex-start",
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
                   fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
                   fontSize: 11,
-                  color: "var(--color-text-tertiary, #94a3b8)",
+                  color: "var(--color-brand-primary)",
+                  fontWeight: 600,
                 }}
               >
-                +{sideRows.length - MAX_SIDE_ROWS} more
-              </span>
+                {showAllRows ? "Show less" : `+${hiddenRowCount} more · View all`}
+              </button>
             )}
           </div>
         </div>

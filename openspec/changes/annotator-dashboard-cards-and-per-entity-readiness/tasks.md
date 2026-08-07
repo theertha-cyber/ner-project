@@ -64,6 +64,8 @@
 - [x] 6.1 Update `MetricsPanel` so `sideRows` render count-against-threshold values and progress-based bar colours, with starved and satisfied types visually distinct.
 - [x] 6.2 Cap the rendered row count and show a "+N more" indicator when evaluated entity types are omitted.
 - [x] 6.3 Verify scenarios 67–72 — `src/portal/src/components/dashboard/MetricsPanel.test.tsx`.
+- [x] 6.4 Replace the static "+N more" overflow label with a view-all control that expands the panel in place to every entity type and collapses back. State is local to the panel and does not persist.
+- [x] 6.5 Verify scenarios 73–75 — `src/portal/src/components/dashboard/MetricsPanel.test.tsx`. **15 passed.** Portal suite now **542 passed, 11 failed** (same pre-existing 11).
   - Portal suite: **538 passed, 11 failed** — the 11 are byte-identical to the pre-change baseline (missing `lucide-react`/`react-markdown` deps and unrelated stale tests), so zero regressions.
 
 ## 7. Annotation workspace deep link
