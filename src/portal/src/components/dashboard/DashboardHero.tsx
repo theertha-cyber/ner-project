@@ -15,7 +15,7 @@ const VARIANT_B_ORBS = [
   },
   {
     style: { bottom: "-20%", right: "-10%", width: "60%", height: "160%" },
-    background: "radial-gradient(circle, #475569, transparent 60%)",
+    background: "radial-gradient(circle, var(--hero-orb-blue), transparent 60%)",
     animation: "meshDrift 23s ease-in-out infinite alternate-reverse",
   },
 ];

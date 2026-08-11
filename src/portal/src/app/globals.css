@@ -82,77 +82,83 @@
   --shadow-card: 0 4px 24px 0 rgba(0, 0, 0, 0.06), 0 1px 4px 0 rgba(0, 0, 0, 0.04);
   --shadow-overlay: 0 20px 60px 0 rgba(0, 0, 0, 0.15), 0 4px 16px 0 rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 24px 60px -24px rgba(15, 23, 42, 0.3);
+
+  /* Hero card (dark-surface hero, theme-invariant bg — orb tint still adapts per theme) */
+  --hero-orb-blue: #475569;
 }
 
 :root.dark {
   /* Brand */
-  --color-brand-primary: #e04343;
-  --color-brand-hover: #ec6b6b;
+  --color-brand-primary: #a60000;
+  --color-brand-hover: #cc0000;
 
   /* Surface */
-  --color-surface: rgba(17, 24, 39, 0.85);
-  --color-surface-raised: rgba(31, 41, 55, 0.95);
-  --color-surface-overlay: rgba(17, 24, 39, 0.98);
+  --color-surface: rgba(24, 24, 24, 0.85);
+  --color-surface-raised: rgba(24, 24, 24, 0.92);
+  --color-surface-overlay: rgba(56, 56, 53, 0.97);
 
   /* Text */
-  --color-text-primary: #f9fafb;
-  --color-text-secondary: #9ca3af;
-  --color-text-disabled: #4b5563;
+  --color-text-primary: #ededec;
+  --color-text-secondary: #a8a8a4;
+  --color-text-disabled: #55554f;
 
   /* Border */
-  --color-border: #374151;
-  --color-border-focus: #e04343;
+  --color-border: rgba(255, 255, 255, 0.09);
+  --color-border-focus: #a60000;
 
   /* Status */
-  --color-status-active: #4ade80;
-  --color-status-inactive: #6b7280;
-  --color-status-running: #60a5fa;
-  --color-status-completed: #34d399;
-  --color-status-failed: #f87171;
-  --color-status-pending_approval: #fbbf24;
-  --color-status-queued: #a78bfa;
-  --color-status-rejected: #f87171;
-  --color-status-cancelled: #9ca3af;
-  --color-status-promoted: #38bdf8;
-  --color-status-training: #fbbf24;
-  --color-status-archived: #6b7280;
+  --color-status-active: #4fbf82;
+  --color-status-inactive: #86867f;
+  --color-status-running: #6ea8e0;
+  --color-status-completed: #4fbf9a;
+  --color-status-failed: #e2685f;
+  --color-status-pending_approval: #d9a94e;
+  --color-status-queued: #a68fdb;
+  --color-status-rejected: #e2685f;
+  --color-status-cancelled: #86867f;
+  --color-status-promoted: #5bb3d9;
+  --color-status-training: #d9a94e;
+  --color-status-archived: #77776f;
 
   /* Feedback */
-  --color-success: #4ade80;
-  --color-warning: #fbbf24;
-  --color-error: #f87171;
-  --color-info: #60a5fa;
+  --color-success: #4fbf82;
+  --color-warning: #d9a94e;
+  --color-error: #e2685f;
+  --color-info: #6ea8e0;
 
   /* Delta */
-  --color-delta-up: #4ade80;
-  --color-delta-warn: #fbbf24;
-  --color-delta-neutral: #9ca3af;
+  --color-delta-up: #4fbf82;
+  --color-delta-warn: #d9a94e;
+  --color-delta-neutral: #86867f;
 
   /* Login page / glass */
-  --color-surface-page: #080b11;
-  --color-glass: rgba(18, 24, 35, 0.55);
-  --color-glass-border: rgba(255, 255, 255, 0.07);
+  --color-surface-page: #1a1a19;
+  --color-glass: rgba(24, 24, 24, 0.55);
+  --color-glass-border: rgba(255, 255, 255, 0.08);
 
   /* New semantic tokens (dark mode) */
-  --surface: #080b11;
-  --surface-2: #10151f;
-  --surface-3: #0c1119;
-  --ink: #f1f5f9;
-  --ink-2: #a9b6c8;
-  --ink-3: #64748b;
-  --line: #1c2533;
-  --line-2: #161d29;
-  --primary: #e04343;
-  --primary-2: #ec6b6b;
-  --primary-soft: rgba(224, 67, 67, 0.13);
-  --primary-line: rgba(224, 67, 67, 0.30);
-  --bad: #f87171;
-  --bad-soft: rgba(248, 113, 113, 0.13);
+  --surface: #1a1a19;
+  --surface-2: #181818;
+  --surface-3: #383835;
+  --ink: #ededec;
+  --ink-2: #a8a8a4;
+  --ink-3: #7a7a76;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-2: rgba(255, 255, 255, 0.05);
+  --primary: #a60000;
+  --primary-2: #cc0000;
+  --primary-soft: rgba(166, 0, 0, 0.14);
+  --primary-line: rgba(166, 0, 0, 0.32);
+  --bad: #e2685f;
+  --bad-soft: rgba(226, 104, 95, 0.13);
 
   /* Shadow (darker base for dark mode) */
   --shadow-card: 0 4px 24px 0 rgba(0, 0, 0, 0.3), 0 1px 4px 0 rgba(0, 0, 0, 0.2);
   --shadow-overlay: 0 20px 60px 0 rgba(0, 0, 0, 0.5), 0 4px 16px 0 rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 24px 60px -24px rgba(0, 0, 0, 0.6);
+
+  /* Hero card — lighter orb tint for visibility against dark app theme */
+  --hero-orb-blue: #7c93b8;
 }
 
 /* ─── Base ──────────────────────────────────────────────────────────────────── */
