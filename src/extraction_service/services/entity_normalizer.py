@@ -79,12 +79,34 @@ def canonicalize(value: str) -> str:
     return ALIAS_MAP.get(normalized, normalized)
 
 
+def _is_adjacent(prev: dict | None, current: dict) -> bool:
+    """Whether `current` directly follows `prev` in the source document.
+
+    Model serving filters out every `O` prediction before responding, so two
+    labelled words that are pages apart arrive next to each other in this list and
+    look adjacent. Continuing an entity across such a gap produces a value stitched
+    from unrelated words carrying a character range far wider than the text it
+    names. `word_index` (the fine-tuned path) settles it exactly.
+
+    Predictions without `word_index` — the base-model pipeline path, whose outputs
+    are WordPieces with no word alignment — keep the original permissive behaviour,
+    since there is nothing to measure adjacency with."""
+    if prev is None:
+        return False
+    prev_index = prev.get("word_index")
+    current_index = current.get("word_index")
+    if prev_index is None or current_index is None:
+        return True
+    return current_index == prev_index + 1
+
+
 def reconstruct_entities(predictions: list[dict]) -> list[NormalizedEntity]:
     """Reconstructs complete logical entities from an ordered, WordPiece-merged
     prediction sequence. A `B-<TYPE>` opens a new entity; a following `I-<TYPE>` of
-    the same type extends it; anything else closes it. A dangling `I-<TYPE>` with no
-    preceding `B-<TYPE>` opens an entity rather than raising. Predictions must be
-    processed in order — this function never keys on token text."""
+    the same type extends it *when the two words are adjacent in the document*;
+    anything else closes it. A dangling `I-<TYPE>` with no preceding `B-<TYPE>`
+    opens an entity rather than raising. Predictions must be processed in order —
+    this function never keys on token text."""
     entities: list[NormalizedEntity] = []
     current_tokens: list[dict] = []
     current_type: str | None = None
@@ -115,10 +137,12 @@ def reconstruct_entities(predictions: list[dict]) -> list[NormalizedEntity]:
             current_tokens = [pred]
             current_type = ent_type
         elif prefix == "I":
-            if current_tokens and current_type == ent_type:
+            if current_tokens and current_type == ent_type and _is_adjacent(current_tokens[-1], pred):
                 current_tokens.append(pred)
             else:
-                # Dangling I- tag with no matching open entity: open one anyway.
+                # Either a dangling I- tag with no matching open entity, or one that
+                # continues the right type but from somewhere else in the document.
+                # Both open a fresh entity rather than raising or stitching a gap.
                 _flush()
                 current_tokens = [pred]
                 current_type = ent_type

@@ -83,6 +83,18 @@ describe("authFetch — URL routing", () => {
     expect(String(spy.mock.calls[0][0])).toContain("/api/v1/extraction/run");
   });
 
+  it("routes /api/v1/chat/* directly to GATEWAY_URL, not through the Next.js rewrite", async () => {
+    // Regression: the Next.js rewrites() proxy buffers the whole response
+    // before forwarding it, which silently defeats SSE streaming even though
+    // the request "succeeds". Chat must bypass it like every other
+    // direct-to-service category above.
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    await authFetch("/api/v1/chat/stream");
+    expect(String(spy.mock.calls[0][0])).toContain("/api/v1/chat/stream");
+  });
+
   it("passes absolute URLs through unchanged", async () => {
     const spy = vi
       .spyOn(globalThis, "fetch")

@@ -6,10 +6,10 @@ import { DocumentUpload } from "./DocumentUpload";
 interface UploadDialogProps {
   open: boolean;
   onClose: () => void;
-  allowPurposeSelection?: boolean;
+  purpose?: "query" | "training";
 }
 
-export function UploadDialog({ open, onClose, allowPurposeSelection = true }: UploadDialogProps) {
+export function UploadDialog({ open, onClose, purpose = "query" }: UploadDialogProps) {
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -45,7 +45,7 @@ export function UploadDialog({ open, onClose, allowPurposeSelection = true }: Up
             </svg>
           </button>
         </div>
-        <DocumentUpload allowPurposeSelection={allowPurposeSelection} />
+        <DocumentUpload purpose={purpose} />
       </div>
     </div>
   );

@@ -12,6 +12,13 @@ export function BatchDocumentSelectModal({ onConfirm, onCancel }: BatchDocumentS
   const { documents, isLoading } = useEligibleDocuments(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  // Already-extracted documents are never selectable, so every selection path
+  // below derives from this list rather than from `documents` — a disabled
+  // document's id has no route into `selected` at all.
+  const selectable = documents.filter((doc) => !doc.already_extracted);
+  const selectedIds = selectable.filter((doc) => selected.has(doc.id)).map((doc) => doc.id);
+  const allSelected = selectable.length > 0 && selectedIds.length === selectable.length;
+
   function toggle(id: string, alreadyExtracted: boolean) {
     if (alreadyExtracted) return;
     setSelected((prev) => {
@@ -22,9 +29,20 @@ export function BatchDocumentSelectModal({ onConfirm, onCancel }: BatchDocumentS
     });
   }
 
+  function toggleAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const doc of selectable) {
+        if (allSelected) next.delete(doc.id);
+        else next.add(doc.id);
+      }
+      return next;
+    });
+  }
+
   function handleConfirm() {
-    if (selected.size === 0) return;
-    onConfirm(Array.from(selected));
+    if (selectedIds.length === 0) return;
+    onConfirm(selectedIds);
   }
 
   return (
@@ -35,6 +53,21 @@ export function BatchDocumentSelectModal({ onConfirm, onCancel }: BatchDocumentS
     >
       <div className="w-full max-w-md rounded-xl border border-border bg-surface-raised p-5 flex flex-col gap-4 max-h-[80vh]">
         <h2 className="text-sm font-semibold text-text-primary">Select documents to extract</h2>
+
+        <label
+          className={[
+            "flex items-center gap-2 rounded-lg px-3 py-2 text-sm",
+            selectable.length === 0 ? "opacity-50 cursor-not-allowed" : "hover:bg-surface",
+          ].join(" ")}
+        >
+          <input
+            type="checkbox"
+            checked={allSelected}
+            disabled={selectable.length === 0}
+            onChange={toggleAll}
+          />
+          <span className="flex-1 font-semibold text-text-primary">Select all</span>
+        </label>
 
         <div className="flex flex-col gap-1 overflow-y-auto">
           {isLoading ? (
@@ -47,40 +80,45 @@ export function BatchDocumentSelectModal({ onConfirm, onCancel }: BatchDocumentS
                 key={doc.id}
                 className={[
                   "flex items-center gap-2 rounded-lg px-3 py-2 text-sm",
-                  doc.already_extracted ? "opacity-50" : "hover:bg-surface",
+                  doc.already_extracted ? "opacity-50 cursor-not-allowed" : "hover:bg-surface",
                 ].join(" ")}
               >
                 <input
                   type="checkbox"
-                  checked={selected.has(doc.id)}
+                  checked={selected.has(doc.id) && !doc.already_extracted}
                   disabled={doc.already_extracted}
                   onChange={() => toggle(doc.id, doc.already_extracted)}
                 />
-                <span className="flex-1 text-text-primary">{doc.filename}</span>
+                <span className="min-w-0 flex-1 truncate text-text-primary">{doc.filename}</span>
                 {doc.already_extracted && (
-                  <span className="text-xs text-text-secondary">already processed</span>
+                  <span className="shrink-0 text-xs text-text-secondary">processed</span>
                 )}
               </label>
             ))
           )}
         </div>
 
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary hover:bg-surface"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={selected.size === 0}
-            onClick={handleConfirm}
-            className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:bg-brand-hover disabled:opacity-50"
-          >
-            Run extraction
-          </button>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-text-secondary">
+            {selectedIds.length} {selectedIds.length === 1 ? "document" : "documents"} selected
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary hover:bg-surface"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={selectedIds.length === 0}
+              onClick={handleConfirm}
+              className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:bg-brand-hover disabled:opacity-50"
+            >
+              Run extraction
+            </button>
+          </div>
         </div>
       </div>
     </div>

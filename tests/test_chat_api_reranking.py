@@ -95,7 +95,7 @@ def _make_orchestrator(retriever) -> RAGOrchestrator:
             return reply, sources
 
     class NoopSqlGenerator:
-        async def generate_and_execute(self, message, session, schema, conv_text):
+        async def generate_and_execute(self, message, session, schema, conv_text, **_kwargs):
             return None
 
     orchestrator.guardrails = NoopGuardrails()
@@ -218,7 +218,7 @@ class TestSqlSourceUnaffectedByReranking:
         sql_rows = [{"entity_type": "ORG", "count": 5}]
 
         class StubSqlGenerator:
-            async def generate_and_execute(self, message, session, schema, conv_text):
+            async def generate_and_execute(self, message, session, schema, conv_text, **_kwargs):
                 return sql_rows
 
         async def run_with_reranking(enabled: bool):

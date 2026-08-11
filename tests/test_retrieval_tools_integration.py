@@ -273,7 +273,7 @@ class TestStructuredRetrievalReturnsRows:
     async def test_structured_retrieval_returns_rows(self, seeded_schema):
         tenant_id, schema, session_factory = seeded_schema
 
-        async def stub_sql_search(query, session, schema, conversation_context):
+        async def stub_sql_search(query, session, schema, conversation_context, **_kwargs):
             result = await session.execute(text("SELECT 1 AS count"))
             rows = result.fetchall()
             columns = result.keys()

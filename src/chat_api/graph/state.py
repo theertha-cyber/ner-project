@@ -1,3 +1,4 @@
+import asyncio
 from typing import TypedDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.chat_api.api.v1.schemas import Source, Citation
@@ -19,6 +20,11 @@ class ChatState(TypedDict, total=False):
 
     # runtime context — not serializable, excluded from any future checkpointer
     session: AsyncSession
+
+    # optional token sink for streaming delivery (chat-response-token-streaming).
+    # Present only when the caller wants incremental delivery; only `generation_node`
+    # reads it. Absent (or None), the graph behaves exactly as the non-streaming path.
+    token_sink: asyncio.Queue | None
 
     # guardrail outcome
     blocked_reason: str | None

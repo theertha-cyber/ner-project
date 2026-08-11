@@ -186,6 +186,11 @@ async def process_document(document_id: str, tenant_id: str, blob_path: str, con
             )
             await session.commit()
 
+        # Only query documents feed retrieval. Training documents stop after text
+        # spans are stored: they are annotated/extracted, never embedded.
+        if purpose != "query":
+            return
+
         try:
             chunks: list[Chunk] = []
             for span in spans:

@@ -52,10 +52,12 @@ def _create_tables_sql(schema: str) -> list:
                 filename VARCHAR(255) NOT NULL,
                 content_type VARCHAR(255),
                 file_size BIGINT,
+                checksum VARCHAR(64),
                 status VARCHAR(20) DEFAULT 'pending',
                 error_message TEXT,
                 blob_path VARCHAR(500),
                 purpose VARCHAR(20) NOT NULL DEFAULT 'query',
+                uploaded_by VARCHAR,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -144,6 +146,18 @@ async def seeded_tenant():
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
         """))
+        # The document list joins uploaded_by against this table to show uploader email.
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS public.tenant_users (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                password_hash VARCHAR(255) DEFAULT '',
+                role VARCHAR(32) NOT NULL DEFAULT 'business_user',
+                status VARCHAR(20) DEFAULT 'active',
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """))
         for ddl in _create_tables_sql(tenant_schema):
             await conn.execute(text(ddl))
 
@@ -152,11 +166,16 @@ async def seeded_tenant():
             text("INSERT INTO public.tenants (id, name, slug, status, max_users, max_documents, max_storage_gb, max_model_versions) VALUES (:id, :name, :slug, 'active', 10, 1000, 5, 10)"),
             {"id": tid, "name": f"Doc Test {_coll_counter}", "slug": slug},
         )
+        await conn.execute(
+            text("INSERT INTO public.tenant_users (id, tenant_id, email, role) VALUES ('test-user', :tid, 'uploader@example.com', 'business_user') ON CONFLICT (id) DO NOTHING"),
+            {"tid": tid},
+        )
 
-    yield {"tid": tid, "slug": slug}
+    yield {"tid": tid, "slug": slug, "uploader_email": "uploader@example.com"}
 
     async with engine.connect() as conn:
         await conn.execute(text(f"DROP SCHEMA IF EXISTS {tenant_schema} CASCADE"))
+        await conn.execute(text("DELETE FROM public.tenant_users WHERE tenant_id = :id"), {"id": tid})
         await conn.execute(text("DELETE FROM public.tenants WHERE id = :id"), {"id": tid})
     await engine.dispose()
 
@@ -378,7 +397,7 @@ async def test_7_7_list_with_status_filter(seeded_tenant, client):
             did = str(uuid.uuid4())
             st = "processed" if i < 2 else "pending"
             await conn.execute(
-                text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path) VALUES (:id, :tid, :fn, 'application/pdf', 1000, :st, '/blob')"),
+                text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, uploaded_by) VALUES (:id, :tid, :fn, 'application/pdf', 1000, :st, '/blob', 'test-user')"),
                 {"id": did, "tid": tid, "fn": f"file{i}.pdf", "st": st},
             )
     await engine.dispose()
@@ -590,7 +609,7 @@ async def test_8_1_upload_without_purpose_defaults_to_query(seeded_tenant, clien
 @pytest.mark.asyncio
 async def test_8_2_upload_with_training_purpose(seeded_tenant, client):
     tid = seeded_tenant["tid"]
-    token = make_token(tid)
+    token = make_token(tid, role="tenant_admin")
     doc_id = str(uuid.uuid4())
 
     with (
@@ -621,6 +640,54 @@ async def test_8_2_upload_with_training_purpose(seeded_tenant, client):
 
 
 @pytest.mark.asyncio
+async def test_8_2a_business_user_cannot_upload_training_purpose(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid, role="business_user")
+
+    resp = await client.post(
+        "/api/v1/documents",
+        files={"file": ("test.pdf", io.BytesIO(PDF_CONTENT), "application/pdf")},
+        data={"purpose": "training"},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
+    assert "PURPOSE_NOT_ALLOWED" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_8_2b_tenant_admin_cannot_upload_query_purpose(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid, role="tenant_admin")
+
+    resp = await client.post(
+        "/api/v1/documents",
+        files={"file": ("test.pdf", io.BytesIO(PDF_CONTENT), "application/pdf")},
+        data={"purpose": "query"},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
+    assert "PURPOSE_NOT_ALLOWED" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_8_2c_tenant_admin_default_purpose_is_rejected_not_silently_queried(seeded_tenant, client):
+    """The default purpose is 'query', so a tenant admin omitting it must be rejected
+    rather than landing a chat-searchable document."""
+    tid = seeded_tenant["tid"]
+    token = make_token(tid, role="tenant_admin")
+
+    resp = await client.post(
+        "/api/v1/documents",
+        files={"file": ("test.pdf", io.BytesIO(PDF_CONTENT), "application/pdf")},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
+
+
+@pytest.mark.asyncio
 async def test_8_3_upload_with_invalid_purpose_returns_422(seeded_tenant, client):
     tid = seeded_tenant["tid"]
     token = make_token(tid)
@@ -646,12 +713,12 @@ async def test_8_4_list_documents_filtered_by_purpose(seeded_tenant, client):
     async with engine.begin() as conn:
         for i in range(2):
             await conn.execute(
-                text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose) VALUES (:id, :tid, :fn, 'application/pdf', 1000, 'processed', '/blob', 'training')"),
+                text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose, uploaded_by) VALUES (:id, :tid, :fn, 'application/pdf', 1000, 'processed', '/blob', 'training', 'test-user')"),
                 {"id": str(uuid.uuid4()), "tid": tid, "fn": f"train{i}.pdf"},
             )
         for i in range(3):
             await conn.execute(
-                text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose) VALUES (:id, :tid, :fn, 'application/pdf', 1000, 'processed', '/blob', 'query')"),
+                text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose, uploaded_by) VALUES (:id, :tid, :fn, 'application/pdf', 1000, 'processed', '/blob', 'query', 'test-user')"),
                 {"id": str(uuid.uuid4()), "tid": tid, "fn": f"query{i}.pdf"},
             )
     await engine.dispose()
@@ -664,6 +731,37 @@ async def test_8_4_list_documents_filtered_by_purpose(seeded_tenant, client):
     data = resp.json()
     assert data["total"] == 2
     assert all(d["filename"].startswith("train") for d in data["documents"])
+
+
+@pytest.mark.asyncio
+async def test_8_5_list_documents_returns_purpose_and_uploader_email(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid, role="tenant_admin")
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    schema = f"tenant_{tid}"
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose, uploaded_by) VALUES (:id, :tid, 'known.pdf', 'application/pdf', 1000, 'processed', '/blob', 'training', 'test-user')"),
+            {"id": str(uuid.uuid4()), "tid": tid},
+        )
+        # Uploader row absent — the LEFT JOIN must still list the document.
+        await conn.execute(
+            text(f"INSERT INTO {schema}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose, uploaded_by) VALUES (:id, :tid, 'orphan.pdf', 'application/pdf', 1000, 'processed', '/blob', 'query', 'deleted-user')"),
+            {"id": str(uuid.uuid4()), "tid": tid},
+        )
+    await engine.dispose()
+
+    resp = await client.get("/api/v1/documents", headers=auth_header(token))
+    assert resp.status_code == 200
+    by_name = {d["filename"]: d for d in resp.json()["documents"]}
+
+    assert by_name["known.pdf"]["purpose"] == "training"
+    assert by_name["known.pdf"]["uploaded_by"] == "test-user"
+    assert by_name["known.pdf"]["uploaded_by_email"] == seeded_tenant["uploader_email"]
+
+    assert by_name["orphan.pdf"]["purpose"] == "query"
+    assert by_name["orphan.pdf"]["uploaded_by_email"] is None
 
 
 @pytest.mark.asyncio

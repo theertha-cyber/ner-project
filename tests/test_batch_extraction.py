@@ -19,6 +19,33 @@ def auth_header(tid: str, role: str = "tenant_admin") -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+_DOCUMENTS_DDL = """
+    CREATE TABLE IF NOT EXISTS "{schema}".documents (
+        id VARCHAR PRIMARY KEY,
+        tenant_id VARCHAR NOT NULL,
+        filename VARCHAR(255) NOT NULL,
+        status VARCHAR(20) DEFAULT 'pending',
+        purpose VARCHAR(20) NOT NULL DEFAULT 'query'
+    )
+"""
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def baseline_documents():
+    """POST /extract-batch now reads `documents` to reject training-purpose ids, so
+    the baseline tenants these tests post against need the table to exist. Rows are
+    not required — unknown ids are not training ids and pass the check. Non-destructive:
+    creates if absent, never drops (other suites share these baseline schemas)."""
+    engine = create_async_engine(os.environ["NER_DATABASE_URL"], isolation_level="AUTOCOMMIT")
+    async with engine.begin() as conn:
+        for tid in ("test-tenant", "no-model"):
+            schema = _schema(tid)
+            await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+            await conn.execute(text(_DOCUMENTS_DDL.format(schema=schema)))
+    await engine.dispose()
+    yield
+
+
 @pytest_asyncio.fixture
 async def isolated_tenant_schemas():
     """Provisions fresh tenant_<id>.extraction_runs tables for arbitrary tenant ids
@@ -55,6 +82,7 @@ async def isolated_tenant_schemas():
                     failed_count INTEGER NOT NULL DEFAULT 0
                 )
             """))
+            await conn.execute(text(_DOCUMENTS_DDL.format(schema=schema)))
         created.append(schema)
         return schema
 
@@ -140,7 +168,8 @@ class TestGetRunStatusNotFound:
 @pytest.mark.asyncio
 class TestBatchExtractionPurposeScoping:
     """Covers scenarios 25-26: default batch extraction excludes training-purpose
-    documents; explicit documentIds bypasses purpose filtering."""
+    documents, and explicit documentIds naming one is rejected rather than
+    extracted — training documents are annotation input only."""
 
     async def _add_documents_table(self, engine, schema):
         async with engine.begin() as conn:
@@ -179,7 +208,7 @@ class TestBatchExtractionPurposeScoping:
             status_resp = await client.get(f"/api/v1/extract-batch/{run_id}", headers=auth_header(tid))
             assert status_resp.json()["total_documents"] == 2
 
-    async def test_explicit_document_ids_bypasses_purpose_filtering(self, isolated_tenant_schemas, engine):
+    async def test_explicit_training_document_id_is_rejected(self, isolated_tenant_schemas, engine):
         tid = "purpose-scope-explicit-tenant"
         schema = await isolated_tenant_schemas(tid)
         await self._add_documents_table(engine, schema)
@@ -194,6 +223,26 @@ class TestBatchExtractionPurposeScoping:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/extract-batch?documentIds=train-doc-explicit",
+                headers=auth_header(tid),
+            )
+            assert resp.status_code == 422
+            assert "train-doc-explicit" in resp.json()["detail"]
+
+    async def test_explicit_query_document_ids_still_run(self, isolated_tenant_schemas, engine):
+        tid = "purpose-scope-explicit-query-tenant"
+        schema = await isolated_tenant_schemas(tid)
+        await self._add_documents_table(engine, schema)
+
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(f'INSERT INTO "{schema}".documents (id, tenant_id, filename, status, purpose) VALUES (:id, :tid, \'q.pdf\', \'processed\', \'query\')'),
+                {"id": "query-doc-explicit", "tid": tid},
+            )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/extract-batch?documentIds=query-doc-explicit",
                 headers=auth_header(tid),
             )
             assert resp.status_code == 202

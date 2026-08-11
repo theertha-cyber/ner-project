@@ -89,7 +89,7 @@ export default function DocumentsPage() {
           />
         </div>
 
-        <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
+        <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} purpose="training" />
       </div>
     );
   }
@@ -124,7 +124,7 @@ export default function DocumentsPage() {
         />
       </div>
 
-      <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} allowPurposeSelection={false} />
+      <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} purpose="query" />
     </div>
   );
 }

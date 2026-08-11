@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import time
@@ -376,17 +377,44 @@ def build_nodes(orchestrator) -> dict:
 
     @_traced("generation")
     async def generation_node(state: ChatState) -> dict:
+        """Streams content deltas to `state["token_sink"]` when present, per
+        design.md Decision 2. Per Decision 3, streaming is entered only when sources
+        are already non-empty — `enforce_sources` only ever discards a reply when
+        sources are empty, so gating the streaming branch on that same condition
+        guarantees a user is never shown text the guardrail then replaces."""
         llm_messages = state["prompt_messages"]
-
-        response = await orchestrator.llm_client.chat.completions.create(
-            model=orchestrator.llm_model,
-            messages=llm_messages,
-            temperature=0.3,
-            max_tokens=1000,
-        )
-
-        reply = response.choices[0].message.content
         sources = state.get("sources") or []
+        token_sink: asyncio.Queue | None = state.get("token_sink")
+
+        if token_sink is not None and sources:
+            stream = await orchestrator.llm_client.chat.completions.create(
+                model=orchestrator.llm_model,
+                messages=llm_messages,
+                temperature=0.3,
+                max_tokens=1000,
+                stream=True,
+            )
+            deltas = []
+            async for chunk in stream:
+                # Some chunks carry no choices at all — e.g. Azure OpenAI's
+                # trailing content-filter/usage chunk — rather than a choice with
+                # an empty delta. Guard the index, not just the delta content.
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    deltas.append(delta)
+                    await token_sink.put(delta)
+            reply = "".join(deltas)
+        else:
+            response = await orchestrator.llm_client.chat.completions.create(
+                model=orchestrator.llm_model,
+                messages=llm_messages,
+                temperature=0.3,
+                max_tokens=1000,
+            )
+            reply = response.choices[0].message.content
+
         reply, sources = orchestrator.guardrails.enforce_sources(reply, sources)
         return {"reply": reply, "sources": sources}
 

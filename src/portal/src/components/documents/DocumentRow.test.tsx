@@ -42,4 +42,38 @@ describe("DocumentRow", () => {
     );
     expect(container.querySelector(".animate-pulse")).toBeNull();
   });
+
+  it("shows uploader email and purpose instead of type and size", () => {
+    render(
+      <DocumentRow
+        doc={{
+          ...baseDoc,
+          status: "processed",
+          purpose: "training",
+          uploaded_by: "user-1",
+          uploaded_by_email: "admin@acme.test",
+        }}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("admin@acme.test")).toBeDefined();
+    expect(screen.getByText("Annotation")).toBeDefined();
+    expect(screen.queryByText("PDF")).toBeNull();
+    expect(screen.queryByText("100.0 KB")).toBeNull();
+  });
+
+  it("labels query-purpose documents Query", () => {
+    render(
+      <DocumentRow
+        doc={{ ...baseDoc, status: "processed", purpose: "query", uploaded_by_email: "bu@acme.test" }}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Query")).toBeDefined();
+  });
+
+  it("falls back to a dash when uploader or purpose is unknown", () => {
+    render(<DocumentRow doc={{ ...baseDoc, status: "processed" }} onDelete={vi.fn()} />);
+    expect(screen.getAllByText("—").length).toBe(2);
+  });
 });

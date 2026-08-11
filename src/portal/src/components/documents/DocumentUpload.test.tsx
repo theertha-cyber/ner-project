@@ -107,6 +107,26 @@ describe("DocumentUpload", () => {
     expect(screen.getByText(/PDF, JPEG, PNG, or TIFF/)).toBeDefined();
   });
 
+  it("offers no purpose choice — the caller fixes it from the role", () => {
+    const { unmount } = render(<DocumentUpload purpose="training" />, { wrapper: createWrapper() });
+    expect(screen.queryAllByRole("radio").length).toBe(0);
+    expect(screen.getByText(/uploaded for annotation/)).toBeDefined();
+    unmount();
+
+    render(<DocumentUpload purpose="query" />, { wrapper: createWrapper() });
+    expect(screen.queryAllByRole("radio").length).toBe(0);
+    expect(screen.getByText(/uploaded for querying/)).toBeDefined();
+  });
+
+  it("uploads with the purpose given by the caller", async () => {
+    render(<DocumentUpload purpose="training" />, { wrapper: createWrapper() });
+    const zone = screen.getByText(/Click to upload/).closest("div")!;
+    fireEvent.drop(zone, { dataTransfer: { files: [createFile("a.pdf", "application/pdf", 100)] } });
+
+    await resolveNext();
+    await waitFor(() => expect(uploadCalls).toEqual([{ name: "a.pdf", purpose: "training" }]));
+  });
+
   it("shows inline error for unsupported file type on drop", () => {
     render(<DocumentUpload />, { wrapper: createWrapper() });
     const zone = screen.getByText(/Click to upload/).closest("div")!;
@@ -213,9 +233,7 @@ describe("DocumentUpload", () => {
   });
 
   it("batch purpose applies to every file", async () => {
-    render(<DocumentUpload />, { wrapper: createWrapper() });
-    const trainingRadio = screen.getByLabelText(/Training/);
-    fireEvent.click(trainingRadio);
+    render(<DocumentUpload purpose="training" />, { wrapper: createWrapper() });
 
     const zone = screen.getByText(/Click to upload/).closest("div")!;
     const files = [

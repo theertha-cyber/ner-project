@@ -2,11 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import Image from "next/image";
 import { useAuth } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
 import { navFor } from "@/lib/nav-config";
-import { useDarkMode } from "@/hooks";
 import { Settings, LogOut, ChevronDown, PanelLeft } from "lucide-react";
 
 function userInitials(email: string): string {
@@ -19,7 +17,6 @@ interface SidebarProps {
 
 export function Sidebar({ effectiveRole }: SidebarProps) {
   const { user, logout } = useAuth();
-  const { dark } = useDarkMode();
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -70,27 +67,19 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
       >
         {!collapsed && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <Image
-              src={dark ? "/logo-dark-theme.svg" : "/logo-light-theme.svg"}
-              alt="Logo"
-              width={30}
-              height={30}
-              style={{ flexShrink: 0 }}
-            />
             <span
               style={{
-                fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-                fontWeight: 700,
-                fontSize: 13,
+                fontFamily: "'Tiny5', monospace",
+                fontWeight: 400,
+                fontSize: 20,
                 lineHeight: 1.2,
                 color: "var(--ink)",
-                letterSpacing: "-0.02em",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
               }}
             >
-              NER Platform
+              NER
             </span>
           </div>
         )}

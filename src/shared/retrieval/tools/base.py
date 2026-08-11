@@ -21,7 +21,14 @@ _JSON_SCHEMA_TYPES = {
 # Natural-language search entry point used by the entity retrieval tool. Injected via
 # ToolContext rather than imported directly so src/shared never imports src.chat_api
 # (see design.md Decision 4 fallback).
-SqlSearch = Callable[[str, AsyncSession, str, "list[dict] | None"], Awaitable["list[dict] | None"]]
+#
+# Called as
+#   sql_search(query, session, schema, conversation_context, attempt_sink=…, deadline=…)
+# The two keyword arguments are the recovery loop's observability sink and its latency
+# bound; an implementation without a bounded retry may accept and ignore them. The
+# callable raises on definitive failure — a returned empty list means the query ran and
+# legitimately matched nothing, which is not the same thing.
+SqlSearch = Callable[..., Awaitable["list[dict] | None"]]
 
 
 @dataclass(frozen=True)
@@ -56,6 +63,10 @@ class ToolResult:
     degraded: bool = False
     error: str | None = None
     candidate_document_ids: set[str] = field(default_factory=set)
+    # Opaque per-call diagnostic records (e.g. the SQL recovery loop's per-attempt
+    # trace). Internal observability only — never rendered into an observation and
+    # never part of any HTTP response.
+    diagnostics: list[Any] = field(default_factory=list)
 
     def to_observation(self, limit: int) -> str:
         """Renders this result into a plain-text observation for an LLM conversation.

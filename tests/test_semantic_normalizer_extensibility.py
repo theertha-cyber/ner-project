@@ -78,7 +78,8 @@ class TestNewKindRequiresNoPipelineChange:
             conn.execute(text(f"""
                 CREATE TABLE "{schema}".documents (
                     id VARCHAR PRIMARY KEY, tenant_id VARCHAR NOT NULL, filename VARCHAR(255) NOT NULL,
-                    status VARCHAR(20) DEFAULT 'processed'
+                    status VARCHAR(20) DEFAULT 'processed',
+                    purpose VARCHAR(20) NOT NULL DEFAULT 'query'
                 )
             """))
             conn.execute(text(f"""

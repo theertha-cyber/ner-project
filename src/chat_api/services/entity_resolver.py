@@ -65,6 +65,36 @@ def _extract_mentions(message: str) -> list[tuple[str, str, int]]:
     return ordered
 
 
+_POSSESSIVE_RE = re.compile(r"['’]s$", re.IGNORECASE)
+
+
+def _depossessive(canon: str) -> str | None:
+    """Strips a trailing possessive from a canonical mention, or None if there is none.
+
+    "arjun's resume" canonicalises to "arjun's", and "arjuns resume" — the apostrophe
+    dropped, as people type it — to "arjuns". Neither equals the stored name, so the
+    reference goes unresolved. The bare-s form is stripped too, which would also
+    shorten a genuine name ending in s ("james" -> "jame"); that is why these are
+    only ever tried as a *second pass*, after the unmodified mentions have failed to
+    match anything. A real James matches on the first pass and never reaches here."""
+    stripped = _POSSESSIVE_RE.sub("", canon)
+    if stripped == canon and canon.endswith("s") and len(canon) > 2:
+        stripped = canon[:-1]
+    stripped = stripped.strip()
+    return stripped if stripped and stripped != canon else None
+
+
+def _mention_matches(canon: str, normalized_value: str) -> bool:
+    """Whether a mention identifies the person whose stored name is `normalized_value`.
+
+    Names are stored whole ("arjun jayakumar") but referred to in part ("arjun"), so
+    an equality test alone resolves only the rare message that repeats someone's full
+    name. A mention matching any single word of the stored name counts."""
+    if canon == normalized_value:
+        return True
+    return canon in normalized_value.split()
+
+
 def _person_types() -> set[str]:
     return {t.strip().upper() for t in settings.entity_resolution_person_types.split(",") if t.strip()}
 
@@ -96,11 +126,19 @@ async def _lookup_candidate_rows(
 ) -> list[dict]:
     if not canonical_values or not person_types:
         return []
+    # A mention matches the whole stored name or any single word of it — people say
+    # "arjun", the extractor stored "arjun jayakumar". `string_to_array(...) && :values`
+    # is the word-level half; keeping the equality test as well means a stored
+    # single-word name still matches without relying on the array overlap.
     result = await session.execute(
         text(f"""
             SELECT document_id, entity_type, entity_value, normalized_value
             FROM {schema}.document_entities
-            WHERE normalized_value = ANY(:values) AND upper(entity_type) = ANY(:types)
+            WHERE upper(entity_type) = ANY(:types)
+              AND (
+                normalized_value = ANY(:values)
+                OR string_to_array(normalized_value, ' ') && CAST(:values AS text[])
+              )
         """),
         {"values": canonical_values, "types": sorted(person_types)},
     )
@@ -176,13 +214,30 @@ async def resolve_entity(message: str, session: AsyncSession, schema: str, tenan
     rows = await _lookup_candidate_rows(session, schema, canonical_values, person_types)
 
     if not rows:
+        # Second pass with possessives stripped. Deliberately only reached when the
+        # mentions as written matched nothing, so a real name is never shortened out
+        # from under a match it already had.
+        depossessed = [(raw, _depossessive(canon), n) for raw, canon, n in mentions]
+        mentions = [(raw, canon, n) for raw, canon, n in depossessed if canon]
+        if mentions:
+            rows = await _lookup_candidate_rows(
+                session, schema, [c for _, c, _ in mentions], person_types,
+            )
+
+    if not rows:
         logger.info("entity_resolution outcome=%s tenant_id=%s mentions_checked=%d", UNRESOLVED, tenant_id, len(mentions))
         return ResolutionResult(outcome=UNRESOLVED, mentions_checked=len(mentions))
 
-    matched_canon = {r["normalized_value"] for r in rows}
-    winning = next((m for m in mentions if m[1] in matched_canon), None)
+    winning = next(
+        (m for m in mentions if any(_mention_matches(m[1], r["normalized_value"]) for r in rows)),
+        None,
+    )
+    if winning is None:
+        logger.info("entity_resolution outcome=%s tenant_id=%s mentions_checked=%d", UNRESOLVED, tenant_id, len(mentions))
+        return ResolutionResult(outcome=UNRESOLVED, mentions_checked=len(mentions))
+
     raw_mention, canon_mention, _ = winning
-    winning_rows = [r for r in rows if r["normalized_value"] == canon_mention]
+    winning_rows = [r for r in rows if _mention_matches(canon_mention, r["normalized_value"])]
 
     doc_ids: list[str] = []
     for r in winning_rows:

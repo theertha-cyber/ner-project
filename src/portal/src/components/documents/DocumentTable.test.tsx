@@ -65,11 +65,13 @@ describe("DocumentTable", () => {
       { wrapper: Wrapper },
     );
     expect(screen.getByText("Filename")).toBeDefined();
-    expect(screen.getByText("Type")).toBeDefined();
-    expect(screen.getByText("Size")).toBeDefined();
+    expect(screen.getByText("Uploaded By")).toBeDefined();
+    expect(screen.getByText("Purpose")).toBeDefined();
     expect(screen.getByText("Status")).toBeDefined();
     expect(screen.getByText("Created")).toBeDefined();
-    expect(screen.getByText("Delete")).toBeDefined();
+    expect(screen.getByText("Actions")).toBeDefined();
+    expect(screen.queryByText("Type")).toBeNull();
+    expect(screen.queryByText("Size")).toBeNull();
   });
 
   it("shows pagination controls when total exceeds per_page", () => {

@@ -111,7 +111,7 @@ class TestBothCapabilitiesPlan:
         registry = build_default_registry()
         retriever = SpyRetriever([_make_chunk()])
 
-        async def sql_search(query, session, schema, conversation_context):
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
             return [{"count": 1}]
 
         client = ScriptedPlannerClient(plans=[[
@@ -292,7 +292,7 @@ class TestPlannerErrorFallback:
         registry = build_default_registry()
         retriever = SpyRetriever([_make_chunk()])
 
-        async def sql_search(query, session, schema, conversation_context):
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
             return [{"count": 1}]
 
         client = ScriptedPlannerClient(raises=RuntimeError("planner down"))
@@ -454,7 +454,7 @@ class TestTraceShape:
             _tool_call("structured_retrieval", '{"query": "q"}', call_id="c3"),
         ]])
 
-        async def sql_search(query, session, schema, conversation_context):
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
             return [{"count": 1}]
 
         result = await orchestrate_retrieval(
@@ -530,7 +530,7 @@ class TestCandidateDocumentFiltering:
         registry = build_default_registry()
         retriever = SpyRetriever([_make_chunk(document_id="D1"), _make_chunk(document_id="D2")])
 
-        async def sql_search(query, session, schema, conversation_context):
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
             return [{"document_id": "D1"}, {"document_id": "D2"}]
 
         client = ScriptedPlannerClient(plans=[[
@@ -555,7 +555,7 @@ class TestCandidateDocumentFiltering:
         registry = build_default_registry()
         retriever = SpyRetriever([_make_chunk()])
 
-        async def sql_search(query, session, schema, conversation_context):
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
             return []
 
         client = ScriptedPlannerClient(plans=[[
@@ -579,7 +579,7 @@ class TestCandidateDocumentFiltering:
         registry = build_default_registry()
         retriever = SpyRetriever([_make_chunk(document_id="D3")])
 
-        async def sql_search(query, session, schema, conversation_context):
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
             return [{"document_id": "D1"}]
 
         client = ScriptedPlannerClient(plans=[[
@@ -603,7 +603,7 @@ class TestCandidateDocumentFiltering:
         registry = build_default_registry()
         retriever = SpyRetriever([_make_chunk(document_id="D1")])
 
-        async def sql_search(query, session, schema, conversation_context):
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
             return [{"document_id": "D9"}]
 
         client = ScriptedPlannerClient(plans=[[

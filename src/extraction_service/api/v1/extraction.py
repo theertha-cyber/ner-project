@@ -138,10 +138,22 @@ async def trigger_batch_extraction(
     if role not in ("tenant_admin", "business_user"):
         raise HTTPException(status_code=403, detail="Only tenant admins and business users can trigger batch extraction")
 
+    schema = _schema(tenant_id)
     if document_ids:
         doc_ids = [d.strip() for d in document_ids.split(",") if d.strip()]
+        # Explicitly-named training documents are rejected rather than silently
+        # dropped: the picker never offers them, so naming one is a caller error.
+        result = await db.execute(
+            text(f"SELECT id FROM {schema}.documents WHERE id = ANY(:ids) AND purpose <> 'query'"),
+            {"ids": doc_ids},
+        )
+        training_ids = [row[0] for row in result.fetchall()]
+        if training_ids:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Training documents cannot be extracted: {', '.join(sorted(training_ids))}",
+            )
     else:
-        schema = _schema(tenant_id)
         result = await db.execute(
             text(f"SELECT id FROM {schema}.documents WHERE status = 'processed' AND purpose = 'query'")
         )
@@ -151,7 +163,6 @@ async def trigger_batch_extraction(
         raise HTTPException(status_code=422, detail="No eligible documents found for batch extraction")
 
     run_id = str(uuid.uuid4())
-    schema = _schema(tenant_id)
     await db.execute(
         text(f"""
             INSERT INTO {schema}.extraction_runs

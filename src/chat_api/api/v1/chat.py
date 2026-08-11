@@ -1,9 +1,10 @@
+import asyncio
 import time
 import uuid
 import json
 import logging
 from fastapi import APIRouter, Depends, Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
 from src.shared.exceptions import NotFoundError
 from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut
-from src.chat_api.services.rag_orchestrator import RAGOrchestrator
+from src.chat_api.services.rag_orchestrator import RAGOrchestrator, STREAM_DONE
 from src.chat_api.services.guardrails import GuardrailService
 from src.chat_api.services.rate_limiter import rate_limiter, INTERNAL_RATE_LIMIT, INTERNAL_WINDOW
 from src.chat_api.services.title_generator import derive_conversation_title
@@ -49,16 +50,12 @@ async def get_session() -> AsyncSession:
             await session.close()
 
 
-@router.post("", response_model=ChatResponse)
-async def chat(
-    body: ChatRequest,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-):
+def _check_tenant_and_rate_limit(request: Request) -> str:
+    """Shared by both `chat()` and `chat_stream()`: raises 403/429 before either
+    route does anything else, so a rate-limited or unauthenticated caller of the
+    streaming endpoint never has a stream opened at all (chat-response-streaming
+    spec: "no event stream SHALL be opened")."""
     tenant_id = getattr(request.state, "tenant_id", None)
-    user_id = getattr(request.state, "user_id", None)
-    role = getattr(request.state, "role", None)
-
     if not tenant_id:
         raise HTTPException(status_code=403, detail="Tenant context not available")
 
@@ -69,8 +66,15 @@ async def chat(
             detail={"code": "RATE_LIMIT_EXCEEDED", "message": "Rate limit exceeded", "retry_after": allowed[3]},
             headers={"Retry-After": str(allowed[3]), "X-RateLimit-Limit": str(INTERNAL_RATE_LIMIT), "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": str(allowed[2])},
         )
+    return tenant_id
 
-    schema = _schema(tenant_id)
+
+async def _prepare_conversation(
+    session: AsyncSession, schema: str, tenant_id: str, user_id: str | None, body: ChatRequest,
+) -> tuple[str, list[dict] | None]:
+    """Existence check, history load, title derivation, and new-conversation insert —
+    identical for the streaming and non-streaming routes. Returns
+    `(conversation_id, conversation_context)`."""
     conversation_id = body.conversation_id
     conversation_context = None
 
@@ -103,20 +107,25 @@ async def chat(
             {"id": conversation_id, "tid": tenant_id, "uid": user_id, "title": title},
         )
 
-    auth_header = request.headers.get("Authorization", "")
-    jwt_token = auth_header.removeprefix("Bearer ")
-    started_at = time.monotonic()
-    reply, sources, pending_clarification, answer_kind, model_version = await orchestrator.execute_with_clarification(
-        body.message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id,
-    )
-    response_time_ms = round((time.monotonic() - started_at) * 1000)
+    return conversation_id, conversation_context
 
+
+async def _persist_turn_and_respond(
+    session: AsyncSession, schema: str, conversation_id: str, user_message: str,
+    reply: str, sources: list[Source | Citation], pending_clarification: dict | None,
+    answer_kind: str, model_version: str | None, response_time_ms: int,
+) -> ChatResponse:
+    """User row insert, assistant row insert, `updated_at` bump, and commit —
+    identical for the streaming and non-streaming routes. Runs once, after the RAG
+    pipeline has produced its complete reply, so a streaming turn persists exactly
+    the same single user/assistant row pair the non-streaming turn does (design.md
+    Decision 5)."""
     disclaimer = guardrails.inject_disclaimer()
     sources_data = json.dumps([s.model_dump() for s in sources]) if sources else None
     message_id = str(uuid.uuid4())
     await session.execute(
         text(f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources) VALUES (:id, :cid, 'user', :content, NULL)"),
-        {"id": str(uuid.uuid4()), "cid": conversation_id, "content": body.message},
+        {"id": str(uuid.uuid4()), "cid": conversation_id, "content": user_message},
     )
     await session.execute(
         text(
@@ -131,18 +140,112 @@ async def chat(
     )
     await session.commit()
 
-    headers = rate_limiter.get_headers(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
-    response = ChatResponse(
+    return ChatResponse(
         reply=reply,
         sources=sources,
         conversation_id=conversation_id,
         disclaimer=disclaimer,
         pending_clarification=pending_clarification,
+        message_id=message_id,
+        answer_kind=answer_kind,
+        model_version=model_version,
     )
+
+
+def _response_payload(response: ChatResponse) -> dict:
     # pending_clarification is additive: omit it entirely from the payload when
     # absent instead of serializing it as null, so existing clients see no change.
-    exclude = {"pending_clarification"} if pending_clarification is None else set()
-    return JSONResponse(content=response.model_dump(exclude=exclude), headers=headers)
+    exclude = {"pending_clarification"} if response.pending_clarification is None else set()
+    return response.model_dump(exclude=exclude)
+
+
+@router.post("", response_model=ChatResponse)
+async def chat(
+    body: ChatRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    tenant_id = _check_tenant_and_rate_limit(request)
+    user_id = getattr(request.state, "user_id", None)
+    schema = _schema(tenant_id)
+
+    conversation_id, conversation_context = await _prepare_conversation(session, schema, tenant_id, user_id, body)
+
+    auth_header = request.headers.get("Authorization", "")
+    jwt_token = auth_header.removeprefix("Bearer ")
+    started_at = time.monotonic()
+    reply, sources, pending_clarification, answer_kind, model_version = await orchestrator.execute_with_clarification(
+        body.message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id,
+    )
+    response_time_ms = round((time.monotonic() - started_at) * 1000)
+
+    response = await _persist_turn_and_respond(
+        session, schema, conversation_id, body.message, reply, sources,
+        pending_clarification, answer_kind, model_version, response_time_ms,
+    )
+
+    headers = rate_limiter.get_headers(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
+    return JSONResponse(content=_response_payload(response), headers=headers)
+
+
+def _sse_frame(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@router.post("/stream")
+async def chat_stream(
+    body: ChatRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Server-Sent Events sibling of `chat()`. Emits `token` events as the
+    generation LLM produces content, then a single `done` event carrying the same
+    payload `chat()` returns as JSON, or a single `error` event on failure. See the
+    `chat-response-streaming` spec and design.md Decisions 1, 2, 6, 9."""
+    tenant_id = _check_tenant_and_rate_limit(request)
+    user_id = getattr(request.state, "user_id", None)
+    schema = _schema(tenant_id)
+
+    conversation_id, conversation_context = await _prepare_conversation(session, schema, tenant_id, user_id, body)
+
+    auth_header = request.headers.get("Authorization", "")
+    jwt_token = auth_header.removeprefix("Bearer ")
+
+    async def event_stream():
+        sink: asyncio.Queue = asyncio.Queue()
+        started_at = time.monotonic()
+        task = asyncio.create_task(
+            orchestrator.execute_with_clarification_stream(
+                body.message, session, schema, tenant_id, sink, jwt_token, conversation_context, conversation_id,
+            )
+        )
+        try:
+            while True:
+                item = await sink.get()
+                if item is STREAM_DONE:
+                    break
+                yield _sse_frame("token", {"delta": item})
+
+            reply, sources, pending_clarification, answer_kind, model_version = await task
+        except Exception as e:
+            logger.exception("Streaming chat turn failed for tenant_id=%s", tenant_id)
+            yield _sse_frame("error", {"code": "GENERATION_FAILED", "message": str(e)})
+            return
+
+        response_time_ms = round((time.monotonic() - started_at) * 1000)
+        response = await _persist_turn_and_respond(
+            session, schema, conversation_id, body.message, reply, sources,
+            pending_clarification, answer_kind, model_version, response_time_ms,
+        )
+        yield _sse_frame("done", _response_payload(response))
+
+    headers = rate_limiter.get_headers(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
+    headers.update({
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    })
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
 
 
 @router.post("/conversations", status_code=201)

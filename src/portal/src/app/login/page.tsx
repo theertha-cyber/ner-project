@@ -51,10 +51,10 @@ function AnimatedBackground() {
 
   return (
     <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
-      <div ref={orb1} style={{ position: "absolute", width: "72vw", height: "72vw", left: "-18vw", top: "-28vw", borderRadius: "50%", filter: "blur(78px)", opacity: 0.92, background: "radial-gradient(circle at 30% 30%, #c2410c, #ea580c 38%, transparent 65%)", willChange: "transform" }} />
+      <div ref={orb1} style={{ position: "absolute", width: "72vw", height: "72vw", left: "-18vw", top: "-28vw", borderRadius: "50%", filter: "blur(78px)", opacity: 0.92, background: "radial-gradient(circle at 30% 30%, #a60000, #c81414 38%, transparent 65%)", willChange: "transform" }} />
       <div ref={orb2} style={{ position: "absolute", width: "50vw", height: "50vw", right: "-8vw", top: "12vh", borderRadius: "50%", filter: "blur(90px)", opacity: 0.55, background: "radial-gradient(circle at 50% 50%, #334155, transparent 62%)", willChange: "transform" }} />
-      <div ref={orb3} style={{ position: "absolute", width: "44vw", height: "44vw", left: "24vw", bottom: "-14vw", borderRadius: "50%", filter: "blur(80px)", opacity: 0.5, background: "radial-gradient(circle at 50% 50%, #f59e0b, transparent 62%)", willChange: "transform" }} />
-      <div ref={orb4} style={{ position: "absolute", width: "36vw", height: "36vw", right: "12vw", top: "-8vh", borderRadius: "50%", filter: "blur(72px)", opacity: 0.75, background: "radial-gradient(circle at 50% 50%, #c2410c, #9a3412 42%, transparent 66%)", willChange: "transform" }} />
+      <div ref={orb3} style={{ position: "absolute", width: "44vw", height: "44vw", left: "24vw", bottom: "-14vw", borderRadius: "50%", filter: "blur(80px)", opacity: 0.5, background: "radial-gradient(circle at 50% 50%, #e64545, transparent 62%)", willChange: "transform" }} />
+      <div ref={orb4} style={{ position: "absolute", width: "36vw", height: "36vw", right: "12vw", top: "-8vh", borderRadius: "50%", filter: "blur(72px)", opacity: 0.75, background: "radial-gradient(circle at 50% 50%, #a60000, #800000 42%, transparent 66%)", willChange: "transform" }} />
     </div>
   );
 }
@@ -141,10 +141,7 @@ export default function LoginPage() {
         <div style={{ flex: "1 1 0", color: "#fff", maxWidth: 520 }}>
           {/* Logo */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 64 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <Image src="/logo-light-theme.svg" alt="Logo" width={24} height={24} />
-            </div>
-            <span style={{ fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em", textShadow: TS_SM }}>NER Platform</span>
+            <span style={{ fontFamily: "'Tiny5', monospace", fontWeight: 400, fontSize: 28, letterSpacing: "-0.02em", textShadow: TS_SM }}>NER</span>
           </div>
 
           <div style={{ fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 20, textShadow: TS_SM }}>
@@ -168,7 +165,7 @@ export default function LoginPage() {
             <input
               id="email" type="email" required value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onFocus={(e) => { e.target.style.borderColor = "#c2410c"; e.target.style.boxShadow = "0 0 0 3px rgba(194,65,12,0.12)"; }}
+              onFocus={(e) => { e.target.style.borderColor = "#a60000"; e.target.style.boxShadow = "0 0 0 3px rgba(166,0,0,0.12)"; }}
               onBlur={(e)  => { e.target.style.borderColor = "#e2e8f0"; e.target.style.boxShadow = "none"; }}
               style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #e2e8f0", background: "rgba(255,255,255,0.9)", color: "#0f172a", fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 13.5, marginBottom: 15, outline: "none", boxSizing: "border-box", transition: "border-color 0.15s,box-shadow 0.15s" }}
             />
@@ -181,7 +178,7 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 required value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                onFocus={(e) => { e.target.style.borderColor = "#c2410c"; e.target.style.boxShadow = "0 0 0 3px rgba(194,65,12,0.12)"; }}
+                onFocus={(e) => { e.target.style.borderColor = "#a60000"; e.target.style.boxShadow = "0 0 0 3px rgba(166,0,0,0.12)"; }}
                 onBlur={(e)  => { e.target.style.borderColor = "#e2e8f0"; e.target.style.boxShadow = "none"; }}
                 style={{ width: "100%", padding: "11px 42px 11px 13px", borderRadius: 11, border: "1.5px solid #e2e8f0", background: "rgba(255,255,255,0.9)", color: "#0f172a", fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 13.5, outline: "none", boxSizing: "border-box", transition: "border-color 0.15s,box-shadow 0.15s" }}
               />
@@ -197,7 +194,7 @@ export default function LoginPage() {
 
             {error && <p role="alert" style={{ fontSize: 13, color: "#dc2626", margin: "0 0 14px" }}>{error}</p>}
 
-            <button type="submit" disabled={isPending} style={{ width: "100%", padding: "12px 0", border: "none", borderRadius: 11, background: "#c2410c", color: "#fff", fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 15, cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.65 : 1, boxShadow: "0 8px 20px -8px rgba(194,65,12,0.7)", transition: "opacity 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <button type="submit" disabled={isPending} style={{ width: "100%", padding: "12px 0", border: "none", borderRadius: 11, background: "#a60000", color: "#fff", fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 15, cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.65 : 1, boxShadow: "0 8px 20px -8px rgba(166,0,0,0.7)", transition: "opacity 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
               {isPending && <span data-testid="spinner" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.35)", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />}
               {isPending ? "Signing in…" : "Sign in →"}
             </button>
@@ -213,7 +210,7 @@ export default function LoginPage() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {DEMO_CHIPS.map((chip) => (
                   <button key={chip.role} type="button" aria-label={chip.label} onClick={() => fillDemo(chip)}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#c2410c"; }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#a60000"; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#e2e8f0"; }}
                     style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-start", padding: "9px 11px", borderRadius: 11, border: "1.5px solid #e2e8f0", background: "rgba(255,255,255,0.8)", cursor: "pointer", textAlign: "left", transition: "border-color 0.15s" }}>
                     <span style={{ fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{chip.label}</span>
@@ -229,7 +226,7 @@ export default function LoginPage() {
       {isTransitioning && (
         <div
           data-testid="transition-overlay"
-          style={{ position: "fixed", inset: 0, zIndex: 50, background: "radial-gradient(circle at 30% 40%, #f59e0b, #ea580c 40%, #c2410c 70%)", animation: "orbBurst 0.55s ease-in both" }}
+          style={{ position: "fixed", inset: 0, zIndex: 50, background: "radial-gradient(circle at 30% 40%, #e64545, #c81414 40%, #a60000 70%)", animation: "orbBurst 0.55s ease-in both" }}
           onAnimationEnd={() => router.replace("/dashboard")}
         />
       )}

@@ -36,6 +36,7 @@ interface Message {
   sources?: (Source | Citation)[];
   created_at: string;
   isThinking?: boolean;
+  isStreaming?: boolean;
   answer_kind?: "answer" | "clarification" | "guardrail_blocked" | "out_of_domain" | null;
   model_version?: string | null;
   feedback?: Feedback | null;
@@ -128,10 +129,10 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
                 msg.content
               )}
             </div>
-            {!msg.isThinking && msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
+            {!msg.isThinking && !msg.isStreaming && msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
               <CitationChips citations={msg.sources.map(toCitation)} />
             )}
-            {!msg.isThinking && msg.role === "assistant" && msg.answer_kind === "answer" && canRate && onRateMessage && (
+            {!msg.isThinking && !msg.isStreaming && msg.role === "assistant" && msg.answer_kind === "answer" && canRate && onRateMessage && (
               <MessageFeedback messageId={msg.id} feedback={msg.feedback} onRate={onRateMessage} />
             )}
           </div>

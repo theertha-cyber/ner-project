@@ -12,12 +12,6 @@ const statusToVariant: Record<DocumentStatus, BadgeVariant> = {
   deleted: "cancelled",
 };
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-US", {
@@ -27,16 +21,11 @@ function formatDate(dateStr: string): string {
   });
 }
 
-const mimeLabel: Record<string, string> = {
-  "application/pdf": "PDF",
-  "image/jpeg": "JPEG",
-  "image/png": "PNG",
-  "image/tiff": "TIFF",
-};
-
-function contentTypeLabel(ct: string | null | undefined): string {
-  if (!ct) return "—";
-  return mimeLabel[ct] ?? ct.split("/").pop()?.toUpperCase() ?? ct;
+// 'training' is the stored value; the portal calls it annotation everywhere users read it.
+function purposeLabel(purpose: string | null | undefined): string {
+  if (purpose === "training") return "Annotation";
+  if (purpose === "query") return "Query";
+  return "—";
 }
 
 export interface DocumentRowProps {
@@ -61,8 +50,12 @@ export function DocumentRow({ doc, onDelete, isDeleting, isRemoving }: DocumentR
       style={{ borderBottom: "1px solid var(--line)" }}
     >
       <td className="px-4 py-3 text-sm" style={{ color: "var(--ink)" }}>{doc.filename}</td>
-      <td className="px-4 py-3 text-sm" style={{ color: "var(--ink-3)" }}>{contentTypeLabel(doc.content_type)}</td>
-      <td className="px-4 py-3 text-sm" style={{ color: "var(--ink-3)" }}>{formatFileSize(doc.file_size)}</td>
+      <td className="px-4 py-3 text-sm" style={{ color: "var(--ink-3)" }}>
+        <span className="block max-w-[16rem] truncate" title={doc.uploaded_by_email ?? undefined}>
+          {doc.uploaded_by_email ?? "—"}
+        </span>
+      </td>
+      <td className="px-4 py-3 text-sm" style={{ color: "var(--ink-3)" }}>{purposeLabel(doc.purpose)}</td>
       <td className="px-4 py-3 text-sm">
         <span className="inline-flex items-center gap-1.5">
           {doc.status === "processing" && (

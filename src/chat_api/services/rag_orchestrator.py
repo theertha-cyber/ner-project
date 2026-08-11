@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from openai import AsyncOpenAI, AsyncAzureOpenAI
@@ -14,6 +15,13 @@ from src.chat_api.graph.builder import build_chat_graph
 from src.chat_api.graph.state import ChatState
 
 logger = logging.getLogger(__name__)
+
+# Sentinel pushed onto a streaming turn's token sink once the graph run has fully
+# resolved (successfully or with an exception) — see design.md Decision 2 and
+# Decision 9. The endpoint's drain loop breaks on this and then awaits the graph
+# task itself to observe its result or exception, rather than relying on the sink
+# alone to signal completion.
+STREAM_DONE = object()
 
 
 class RAGOrchestrator:
@@ -60,6 +68,35 @@ class RAGOrchestrator:
             self._extract_model_version(sources),
         )
 
+    async def execute_with_clarification_stream(
+        self, message: str, session: AsyncSession, schema: str, tenant_id: str,
+        token_sink: asyncio.Queue, jwt_token: str | None = None,
+        conversation_context: list[dict] | None = None, conversation_id: str | None = None,
+    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None]:
+        """Same as `execute_with_clarification`, but threads `token_sink` into the
+        graph's initial state (design.md Decision 2) so `generation_node` can stream
+        content deltas onto it as they arrive. Returns the identical 5-tuple once the
+        graph reaches its terminal state, so callers reuse the same response-assembly
+        code regardless of whether the turn streamed any tokens. `STREAM_DONE` is
+        pushed onto `token_sink` in a `finally` so the caller's drain loop always
+        terminates, even when the graph run raises."""
+        try:
+            result = await self._run_graph(
+                message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id,
+                token_sink=token_sink,
+            )
+        finally:
+            await token_sink.put(STREAM_DONE)
+
+        sources = result.get("sources", [])
+        return (
+            result["reply"],
+            sources,
+            result.get("pending_clarification"),
+            self._classify_answer_kind(result),
+            self._extract_model_version(sources),
+        )
+
     @staticmethod
     def _classify_answer_kind(result: dict) -> str:
         """Derives the persisted `answer_kind` from the terminal graph state, per
@@ -91,7 +128,7 @@ class RAGOrchestrator:
 
     async def _run_graph(self, message: str, session: AsyncSession, schema: str, tenant_id: str,
                          jwt_token: str | None = None, conversation_context: list[dict] | None = None,
-                         conversation_id: str | None = None) -> dict:
+                         conversation_id: str | None = None, token_sink: asyncio.Queue | None = None) -> dict:
         if getattr(self, "_graph", None) is None:
             self._graph = build_chat_graph(self)
 
@@ -103,15 +140,25 @@ class RAGOrchestrator:
             "conversation_context": conversation_context,
             "conversation_id": conversation_id,
             "session": session,
+            "token_sink": token_sink,
         }
         return await self._graph.ainvoke(state)
 
     async def _sql_source(self, message: str, session: AsyncSession, schema: str,
-                          conversation_context: list[dict] | None) -> list[dict] | None:
+                          conversation_context: list[dict] | None,
+                          attempt_sink: list | None = None,
+                          deadline: float | None = None) -> list[dict] | None:
+        """`schema` comes from the caller's authenticated request context and is passed
+        straight through — the recovery loop never re-derives it. Raises
+        `SQLGenerationFailed` when every attempt failed; the tool layer turns that into
+        a `ToolResult` error rather than an empty result."""
         conv_text = None
         if conversation_context:
             conv_text = "\n".join(f"{m['role']}: {m['content']}" for m in conversation_context[-3:])
-        return await self.sql_generator.generate_and_execute(message, session, schema, conv_text)
+        return await self.sql_generator.generate_and_execute(
+            message, session, schema, conv_text,
+            attempt_sink=attempt_sink, deadline=deadline,
+        )
 
     async def _resolve_document_names(self, sources: list[Source], session: AsyncSession, schema: str) -> dict[str, str]:
         doc_ids = {s.document_id for s in sources if s.document_id}

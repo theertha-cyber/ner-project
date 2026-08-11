@@ -8,6 +8,7 @@ import { MessageThread } from "@/components/chat/MessageThread";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { authFetch } from "@/lib/auth-fetch";
 import { useAuth } from "@/lib/auth";
+import { readChatStream } from "@/lib/chat-stream";
 import type { Feedback } from "@/components/chat/MessageFeedback";
 
 interface Message {
@@ -17,6 +18,7 @@ interface Message {
   sources?: Source[];
   created_at: string;
   isThinking?: boolean;
+  isStreaming?: boolean;
   answer_kind?: "answer" | "clarification" | "guardrail_blocked" | "out_of_domain" | null;
   model_version?: string | null;
   feedback?: Feedback | null;
@@ -168,28 +170,79 @@ function ChatPageInner() {
     }
   }, [activeConvId]);
 
-  const handleSendMessage = useCallback(async (text: string) => {
-    if (!text.trim()) return;
+  const handleSendMessageStreaming = useCallback(async (text: string, tempId: string, thinkingId: string, isFirstMessage: boolean) => {
+    let accumulated = "";
+    let outcome: "done" | "error" | null = null;
 
-    const isFirstMessage = messages.length === 0;
-    const tempId = "temp-" + Date.now();
-    const thinkingId = "thinking-" + Date.now();
-    const optimistic: Message = {
-      id: tempId,
-      role: "user",
-      content: text,
-      created_at: new Date().toISOString(),
-    };
-    const thinking: Message = {
-      id: thinkingId,
-      role: "assistant",
-      content: "",
-      created_at: new Date().toISOString(),
-      isThinking: true,
-    };
-    setMessages((prev) => [...prev, optimistic, thinking]);
-    setSending(true);
+    try {
+      const resp = await authFetch(CHAT_API_BASE + "/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          conversation_id: activeConvId,
+        }),
+      });
 
+      if (!resp.ok) {
+        throw new Error("Streaming request failed with status " + resp.status);
+      }
+
+      await readChatStream(resp, {
+        onToken: (delta) => {
+          accumulated += delta;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === thinkingId
+                ? { ...m, isThinking: false, isStreaming: true, content: accumulated }
+                : m
+            )
+          );
+        },
+        onDone: (data) => {
+          outcome = "done";
+          const conversationId = data.conversation_id as string | undefined;
+          const assistantMsg: Message = {
+            id: (data.message_id as string) || (conversationId ?? tempId) + "-resp-" + Date.now(),
+            role: "assistant",
+            content: typeof data.reply === "string" ? data.reply : accumulated,
+            sources: data.sources as Source[] | undefined,
+            created_at: new Date().toISOString(),
+            answer_kind: data.answer_kind as Message["answer_kind"],
+            model_version: (data.model_version as string | null) ?? null,
+          };
+          setMessages((prev) =>
+            prev
+              .map((m) => (m.id === tempId ? { ...m, id: (conversationId ?? tempId) + "-user" } : m))
+              .map((m) => (m.id === thinkingId ? assistantMsg : m))
+          );
+
+          if (!activeConvId && conversationId) {
+            setActiveConvId(conversationId);
+          }
+          if (!activeConvId || isFirstMessage) {
+            loadConversations();
+          }
+        },
+        onError: () => {
+          outcome = "error";
+        },
+      });
+
+      if (outcome !== "done") {
+        // Either an `error` frame arrived, or the stream closed with neither
+        // `done` nor `error` — both are treated as a failed turn.
+        throw new Error("Streaming turn did not complete successfully");
+      }
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId && m.id !== thinkingId));
+      showError("Failed to get a response. Please try again.");
+    } finally {
+      setSending(false);
+    }
+  }, [activeConvId, loadConversations, showError]);
+
+  const handleSendMessageNonStreaming = useCallback(async (text: string, tempId: string, thinkingId: string, isFirstMessage: boolean) => {
     try {
       const resp = await authFetch(CHAT_API_BASE, {
         method: "POST",
@@ -203,11 +256,13 @@ function ChatPageInner() {
       if (resp.ok) {
         const data = await resp.json();
         const assistantMsg: Message = {
-          id: data.conversation_id + "-resp-" + Date.now(),
+          id: data.message_id || data.conversation_id + "-resp-" + Date.now(),
           role: "assistant",
           content: data.reply,
           sources: data.sources,
           created_at: new Date().toISOString(),
+          answer_kind: data.answer_kind,
+          model_version: data.model_version,
         };
         setMessages((prev) =>
           prev
@@ -231,7 +286,39 @@ function ChatPageInner() {
     } finally {
       setSending(false);
     }
-  }, [activeConvId, messages, loadConversations, showError]);
+  }, [activeConvId, loadConversations, showError]);
+
+  const handleSendMessage = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+
+    const isFirstMessage = messages.length === 0;
+    const tempId = "temp-" + Date.now();
+    const thinkingId = "thinking-" + Date.now();
+    const optimistic: Message = {
+      id: tempId,
+      role: "user",
+      content: text,
+      created_at: new Date().toISOString(),
+    };
+    const thinking: Message = {
+      id: thinkingId,
+      role: "assistant",
+      content: "",
+      created_at: new Date().toISOString(),
+      isThinking: true,
+    };
+    setMessages((prev) => [...prev, optimistic, thinking]);
+    setSending(true);
+
+    // Read fresh on every send (not memoized at module scope) so a client-side
+    // kill switch can be exercised without a rebuild in tests.
+    const streamingEnabled = process.env.NEXT_PUBLIC_CHAT_STREAMING_ENABLED !== "false";
+    if (streamingEnabled) {
+      await handleSendMessageStreaming(text, tempId, thinkingId, isFirstMessage);
+    } else {
+      await handleSendMessageNonStreaming(text, tempId, thinkingId, isFirstMessage);
+    }
+  }, [messages, handleSendMessageStreaming, handleSendMessageNonStreaming]);
 
   const handleRateMessage = useCallback(async (messageId: string, rating: "up" | "down") => {
     try {

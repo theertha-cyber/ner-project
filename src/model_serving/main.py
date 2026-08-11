@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,10 +10,31 @@ from src.shared.config import settings
 from src.model_serving.middleware.tenant_context import TenantContextMiddleware
 from src.model_serving.api.v1 import inference, warmup, rerank
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
+    """Warms the cross-encoder in the background at startup. Loading it lazily on the
+    first /internal/v1/rerank call took longer than the caller's HTTP timeout, so the
+    first query after every restart fell back to unranked results — a failure visible
+    only as a client-side timeout with an empty message. Warming in a thread rather
+    than awaiting it keeps /health responsive while the weights load."""
+    warm = asyncio.create_task(asyncio.to_thread(_warm_reranker))
+    try:
+        yield
+    finally:
+        warm.cancel()
+
+
+def _warm_reranker() -> None:
+    from src.model_serving.services.rerank_service import _get_reranker
+
+    try:
+        _get_reranker()
+        logger.info("Reranker warm-up complete: %s", settings.reranker_model)
+    except Exception as e:
+        logger.warning("Reranker warm-up failed (%s); first rerank call will load it lazily", e)
 
 
 def add_bearer_security(app: FastAPI):

@@ -61,3 +61,59 @@ class TestAlignPredictionsWithOffsets:
         assert aligned[0]["page_number"] is None
         assert aligned[0]["char_start"] is None
         assert aligned[0]["char_end"] is None
+
+
+class TestAlignPredictionsUsesWordIndex:
+    """Sliding-window inference returns `word_index`, so a prediction maps onto exactly
+    one token record. Text scanning alone would land on the wrong occurrence whenever
+    a word repeats — which it does constantly in a document long enough to need
+    windowing in the first place."""
+
+    def test_word_index_selects_the_right_occurrence_of_a_repeated_word(self):
+        token_records = [
+            {"token": "C", "page_number": 1, "char_start": 0, "char_end": 1},
+            {"token": "and", "page_number": 1, "char_start": 2, "char_end": 5},
+            {"token": "C", "page_number": 3, "char_start": 900, "char_end": 901},
+        ]
+        predictions = [
+            {"token": "C", "label": "B-PROGRAMMING_LANGUAGE", "confidence": 0.9, "word_index": 2},
+        ]
+        aligned = _align_predictions_with_offsets(predictions, token_records)
+        assert aligned[0]["char_start"] == 900
+        assert aligned[0]["char_end"] == 901
+        assert aligned[0]["page_number"] == 3
+
+    def test_word_index_offsets_survive_out_of_scan_order_predictions(self):
+        token_records = [
+            {"token": "Python", "page_number": 1, "char_start": 10, "char_end": 16},
+            {"token": "Java", "page_number": 2, "char_start": 500, "char_end": 504},
+        ]
+        predictions = [
+            {"token": "Java", "label": "B-PROGRAMMING_LANGUAGE", "confidence": 0.9, "word_index": 1},
+            {"token": "Python", "label": "B-PROGRAMMING_LANGUAGE", "confidence": 0.9, "word_index": 0},
+        ]
+        aligned = _align_predictions_with_offsets(predictions, token_records)
+        assert aligned[0]["char_start"] == 500
+        assert aligned[1]["char_start"] == 10
+
+    def test_out_of_range_word_index_falls_back_to_text_scan(self):
+        token_records = [{"token": "Bash", "page_number": 1, "char_start": 7, "char_end": 11}]
+        predictions = [
+            {"token": "Bash", "label": "B-PROGRAMMING_LANGUAGE", "confidence": 0.9, "word_index": 99},
+        ]
+        aligned = _align_predictions_with_offsets(predictions, token_records)
+        assert aligned[0]["char_start"] == 7
+
+    def test_predictions_without_word_index_still_scan(self):
+        """Base-model pipeline path emits WordPieces and no word index."""
+        token_records = [
+            {"token": "New", "page_number": 1, "char_start": 0, "char_end": 3},
+            {"token": "York", "page_number": 1, "char_start": 4, "char_end": 8},
+        ]
+        predictions = [
+            {"token": "New", "label": "B-LOC", "confidence": 0.9},
+            {"token": "##York", "label": "I-LOC", "confidence": 0.8},
+        ]
+        aligned = _align_predictions_with_offsets(predictions, token_records)
+        assert aligned[0]["char_start"] == 0
+        assert aligned[1]["char_end"] == 8

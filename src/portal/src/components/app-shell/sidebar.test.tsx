@@ -84,10 +84,10 @@ describe("Sidebar", () => {
 
   // ── Wordmark ─────────────────────────────────────────────────────────────────
 
-  it("wordmark reads NER Platform", () => {
+  it("wordmark reads NER", () => {
     mockUser = createUser("annotator");
     render(<Sidebar effectiveRole="annotator" />);
-    expect(screen.getByText("NER Platform")).toBeInTheDocument();
+    expect(screen.getByText("NER")).toBeInTheDocument();
   });
 
   // ── Tenant pill (removed) ────────────────────────────────────────────────────

@@ -16,15 +16,18 @@ interface BatchItem {
 }
 
 interface DocumentUploadProps {
-  allowPurposeSelection?: boolean;
+  /**
+   * Fixed upload purpose. Chosen by the caller from the signed-in role, not by the
+   * uploader: tenant admins upload for annotation only, business users for query only.
+   */
+  purpose?: "query" | "training";
 }
 
-export function DocumentUpload({ allowPurposeSelection = true }: DocumentUploadProps) {
+export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
   const [dragOver, setDragOver] = useState(false);
   const [batch, setBatch] = useState<BatchItem[]>([]);
   const [batchIndex, setBatchIndex] = useState<number | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
-  const [purpose, setPurpose] = useState<"query" | "training">("query");
   const inputRef = useRef<HTMLInputElement>(null);
   const cancelRequested = useRef(false);
   const { upload, progress, isUploading, reset, cancel } = useUpload();
@@ -166,30 +169,11 @@ export function DocumentUpload({ allowPurposeSelection = true }: DocumentUploadP
 
   return (
     <div className="flex flex-col gap-3">
-      {allowPurposeSelection && (
-        <div className="flex items-center gap-4 text-sm" style={{ color: "var(--ink-2)" }}>
-          <label className="flex cursor-pointer items-center gap-1.5">
-            <input
-              type="radio"
-              name="upload-purpose"
-              value="query"
-              checked={purpose === "query"}
-              onChange={() => setPurpose("query")}
-            />
-            Query (chat-searchable)
-          </label>
-          <label className="flex cursor-pointer items-center gap-1.5">
-            <input
-              type="radio"
-              name="upload-purpose"
-              value="training"
-              checked={purpose === "training"}
-              onChange={() => setPurpose("training")}
-            />
-            Training (for annotation)
-          </label>
-        </div>
-      )}
+      <p className="text-sm" style={{ color: "var(--ink-2)" }}>
+        {purpose === "training"
+          ? "These documents are uploaded for annotation."
+          : "These documents are uploaded for querying (chat-searchable)."}
+      </p>
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}

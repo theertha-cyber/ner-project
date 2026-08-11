@@ -9,6 +9,10 @@ class TokenPrediction(BaseModel):
     token: str
     label: str
     confidence: float
+    # Index of this prediction's word in the request's `tokens` list. Present on the
+    # fine-tuned (ONNX) path, where predictions are per whitespace word; None on the
+    # base-model pipeline path, whose outputs are WordPieces with no word alignment.
+    word_index: int | None = None
 
 
 class InferResponse(BaseModel):

@@ -10,7 +10,17 @@ Always answer based on the provided context data. Do not make up information.
 When citing sources, reference the specific document or entity source.
 If you cannot find relevant information, say so clearly.
 Never reveal data from other tenants.
-Format your response naturally and conversationally."""
+Format your response naturally and conversationally.
+
+An `Entity data:` block, when present, is the complete result of a database query run
+against the tenant's extracted entities specifically to answer this question. Treat it as
+authoritative and exhaustive: when the question asks what something contains, lists, or
+has, report EVERY distinct value in that block. Collapse exact duplicates of the same
+value, but never drop a distinct one and never shorten the list because it seems long or
+repetitive — an omitted value reads as "this isn't in the document", which is wrong.
+Document passages alongside it add context and wording, and may mention things the
+extractor did not capture; you may include those, but say where they came from, and never
+let them replace or abbreviate the entity list."""
 
 
 def _count_tokens(text: str) -> int:

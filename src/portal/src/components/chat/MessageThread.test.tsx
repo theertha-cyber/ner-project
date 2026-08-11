@@ -75,3 +75,69 @@ describe("MessageThread", () => {
     expect(screen.getByLabelText("Thumbs up")).toHaveAttribute("aria-pressed", "true");
   });
 });
+
+// Covers verification.md rows 36, 37 (chat-response-token-streaming task 4.7).
+describe("MessageThread streaming lifecycle", () => {
+  it("shows the Thinking indicator before any token arrives", () => {
+    const messages = [
+      { id: "a1", role: "assistant" as const, content: "", created_at: "2026-01-01", isThinking: true },
+    ];
+    render(<MessageThread messages={messages} loading={false} />);
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+  });
+
+  it("replaces Thinking with the first fragment on the first token, then appends subsequent tokens", () => {
+    const initial = [
+      { id: "a1", role: "assistant" as const, content: "", created_at: "2026-01-01", isThinking: true },
+    ];
+    const { rerender } = render(<MessageThread messages={initial} loading={false} />);
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+
+    const firstToken = [
+      {
+        id: "a1", role: "assistant" as const, content: "Based",
+        created_at: "2026-01-01", isThinking: false, isStreaming: true,
+      },
+    ];
+    rerender(<MessageThread messages={firstToken} loading={false} />);
+    expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
+    expect(screen.getByText("Based")).toBeInTheDocument();
+
+    const moreTokens = [
+      {
+        id: "a1", role: "assistant" as const, content: "Based on the documents",
+        created_at: "2026-01-01", isThinking: false, isStreaming: true,
+      },
+    ];
+    rerender(<MessageThread messages={moreTokens} loading={false} />);
+    expect(screen.getByText("Based on the documents")).toBeInTheDocument();
+  });
+
+  it("withholds citation chips and the rating control while a message is streaming", () => {
+    const streaming = [
+      {
+        id: "a1", role: "assistant" as const, content: "Based on the documents",
+        created_at: "2026-01-01", isThinking: false, isStreaming: true, answer_kind: "answer" as const,
+        sources: [{ document_name: "report.pdf", source_type: "document_chunk" }],
+      },
+    ];
+    render(<MessageThread messages={streaming} loading={false} canRate={true} onRateMessage={vi.fn()} />);
+    expect(screen.queryByLabelText("Thumbs up")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Thumbs down")).not.toBeInTheDocument();
+    expect(screen.queryByText("report.pdf")).not.toBeInTheDocument();
+  });
+
+  it("shows the full reply with citations and the rating control once the turn completes", () => {
+    const done = [
+      {
+        id: "a1", role: "assistant" as const, content: "Based on the documents, there are 5.",
+        created_at: "2026-01-01", answer_kind: "answer" as const,
+        sources: [{ document_name: "report.pdf", source_type: "document_chunk" }],
+      },
+    ];
+    render(<MessageThread messages={done} loading={false} canRate={true} onRateMessage={vi.fn()} />);
+    expect(screen.getByText("Based on the documents, there are 5.")).toBeInTheDocument();
+    expect(screen.getByText("report.pdf")).toBeInTheDocument();
+    expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
+  });
+});

@@ -17,8 +17,8 @@ function SkeletonRows() {
       {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
         <tr key={i} className="animate-pulse" style={{ borderBottom: "1px solid var(--line)" }}>
           <td className="px-4 py-3"><div className="h-4 w-40 rounded" style={{ background: "var(--surface-3)" }} /></td>
-          <td className="px-4 py-3"><div className="h-4 w-12 rounded" style={{ background: "var(--surface-3)" }} /></td>
-          <td className="px-4 py-3"><div className="h-4 w-16 rounded" style={{ background: "var(--surface-3)" }} /></td>
+          <td className="px-4 py-3"><div className="h-4 w-32 rounded" style={{ background: "var(--surface-3)" }} /></td>
+          <td className="px-4 py-3"><div className="h-4 w-20 rounded" style={{ background: "var(--surface-3)" }} /></td>
           <td className="px-4 py-3"><div className="h-5 w-20 rounded-full" style={{ background: "var(--surface-3)" }} /></td>
           <td className="px-4 py-3"><div className="h-4 w-24 rounded" style={{ background: "var(--surface-3)" }} /></td>
           <td className="px-4 py-3"><div className="h-4 w-4 rounded" style={{ background: "var(--surface-3)" }} /></td>
@@ -137,8 +137,8 @@ export function DocumentTable({
           <thead>
             <tr className="border-b" style={{ borderColor: "var(--line)", background: "var(--surface-3)" }}>
               <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Filename</th>
-              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Type</th>
-              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Size</th>
+              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Uploaded By</th>
+              <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Purpose</th>
               <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Status</th>
               <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Created</th>
               <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--ink-3)" }}>Actions</th>

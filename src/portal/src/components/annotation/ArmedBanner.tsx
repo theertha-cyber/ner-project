@@ -14,8 +14,8 @@ export function ArmedBanner({ entityType, description, onDisarm }: ArmedBannerPr
         alignItems: "center",
         gap: 10,
         padding: "8px 16px",
-        background: "rgba(194,65,12,0.08)",
-        borderBottom: "1px solid rgba(194,65,12,0.2)",
+        background: "rgba(166,0,0,0.08)",
+        borderBottom: "1px solid rgba(166,0,0,0.2)",
         flexShrink: 0,
       }}
       data-testid="armed-banner"

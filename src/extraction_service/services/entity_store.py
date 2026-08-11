@@ -40,10 +40,12 @@ def get_already_extracted(tenant_id: str, doc_ids: list[str], model_version: str
 
 async def list_processed_document_ids(db: AsyncSession, tenant_id: str) -> list[dict]:
     """Documents in `processed` status for a tenant, with filename, for display in
-    the batch-extraction document picker."""
+    the batch-extraction document picker. Training documents are excluded: they exist
+    to be annotated and exported as a training corpus, never to be run through the
+    extraction model."""
     schema = _schema(tenant_id)
     result = await db.execute(
-        text(f"SELECT id, filename FROM {schema}.documents WHERE status = 'processed'")
+        text(f"SELECT id, filename FROM {schema}.documents WHERE status = 'processed' AND purpose = 'query'")
     )
     return [{"id": row[0], "filename": row[1]} for row in result.fetchall()]
 

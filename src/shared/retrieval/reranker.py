@@ -37,7 +37,7 @@ class CrossEncoderReranker:
 
         documents = [r.chunk_text for r in results]
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=settings.rerank_timeout_seconds) as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/internal/v1/rerank",
@@ -51,5 +51,11 @@ class CrossEncoderReranker:
                     for r in data["results"]
                 ]
             except (httpx.RequestError, httpx.HTTPStatusError) as e:
-                logger.warning("Reranking request failed: %s", str(e))
+                # The exception type carries the diagnosis when the message does not:
+                # httpx timeouts stringify to "", which made every cold-start fallback
+                # log as a bare "Reranking request failed: " with nothing to act on.
+                logger.warning(
+                    "Reranking request failed (%s after %.1fs timeout budget): %s",
+                    type(e).__name__, settings.rerank_timeout_seconds, str(e) or "<no detail>",
+                )
                 return None

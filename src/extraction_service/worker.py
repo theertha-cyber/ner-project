@@ -42,14 +42,32 @@ def _tokenize_span(span_text: str, page_number, span_char_start) -> list[dict]:
 
 def _align_predictions_with_offsets(predictions: list[dict], token_records: list[dict]) -> list[dict]:
     """Attaches page_number/char_start/char_end from `token_records` (in document
-    order) to each prediction by scanning forward for a matching token text,
-    tolerating that predictions are a filtered, possibly WordPiece-split subset of
-    the original tokens. A prediction whose token text cannot be found from the
-    current scan position onward gets NULL offsets rather than aborting."""
+    order) to each prediction.
+
+    A prediction carrying `word_index` (the fine-tuned model-serving path) is mapped
+    directly onto that index — exact, and immune to the same word recurring in the
+    document. Sliding-window inference makes this mandatory rather than merely
+    nicer: windows re-read overlapping text, so text-scanning alone can no longer be
+    trusted to land on the occurrence the model actually labelled.
+
+    Predictions without `word_index` (the base-model pipeline path, whose outputs are
+    WordPieces) fall back to scanning forward for a matching token text. A prediction
+    that cannot be placed gets NULL offsets rather than aborting."""
     aligned = []
     ptr = 0
     n = len(token_records)
     for pred in predictions:
+        word_index = pred.get("word_index")
+        if word_index is not None and 0 <= word_index < n:
+            record = token_records[word_index]
+            merged = dict(pred)
+            merged["page_number"] = record["page_number"]
+            merged["char_start"] = record["char_start"]
+            merged["char_end"] = record["char_end"]
+            aligned.append(merged)
+            ptr = word_index + 1
+            continue
+
         tok_text = pred.get("token", "")
         search_text = tok_text[2:] if tok_text.startswith("##") else tok_text
         found_idx = None
@@ -83,29 +101,65 @@ def _get_documents_to_process(tenant_id: str, doc_ids: list[str]) -> list[str]:
         result = conn.execute(
             text(f"""
                 SELECT id FROM {schema}.documents
-                WHERE id IN ({placeholders}) AND status = 'processed'
+                WHERE id IN ({placeholders}) AND status = 'processed' AND purpose = 'query'
             """)
         )
         return [row[0] for row in result.fetchall()]
 
 
-def _get_active_model_version(tenant_id: str) -> str | None:
+def _get_cached_model_version(tenant_id: str) -> str:
+    """Promoted version from the local `model_versions` cache. Reads `version_number`
+    — `version` is a legacy column that is NULL on every row, and `str(None)` from it
+    silently produced the version string "None", matching no extraction run and making
+    every document look never-extracted. Only reached when the registry is unreachable;
+    the cache can lag MLflow, so it is the fallback, not the authority."""
     engine = _get_sync_engine()
     schema = _schema(tenant_id)
     with engine.connect() as conn:
         result = conn.execute(
             text(f"""
-                SELECT version FROM {schema}.model_versions
+                SELECT version_number FROM {schema}.model_versions
                 WHERE tenant_id = :tenant_id AND status = 'promoted'
-                ORDER BY version DESC
+                ORDER BY version_number DESC
                 LIMIT 1
             """),
             {"tenant_id": tenant_id},
         )
         row = result.fetchone()
-        if row:
+        if row and row[0] is not None:
             return str(row[0])
         return "0"
+
+
+def _get_active_model_version(tenant_id: str) -> str:
+    """Active model version, resolved from the training-service registry — the same
+    authority `model_serving._resolve_active_version` consults before stamping
+    `model_version` onto an inference response, and hence onto
+    `extraction_runs.model_version`. Both the worker's skip set and the
+    eligible-documents endpoint compare against those recorded runs, so they must
+    resolve the version the same way the runs were labelled or they can never match.
+    Returns "0" when no model is promoted (matching the registry's base-model
+    `version_number`)."""
+    from src.shared.auth import create_access_token
+
+    token = create_access_token(
+        tenant_id=tenant_id, user_id="extraction-service", role="system_admin"
+    )
+    registry_url = f"{settings.training_service_url.rstrip('/')}/api/v1/models/active"
+    try:
+        resp = requests.get(
+            registry_url,
+            headers={"Authorization": f"Bearer {token}"},
+            params={"tenant_id": tenant_id},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            version_number = resp.json().get("version_number")
+            if version_number is not None:
+                return str(version_number)
+    except (requests.RequestException, ValueError):
+        pass
+    return _get_cached_model_version(tenant_id)
 
 
 def _update_run_status(tenant_id: str, run_id: str, status: str, **kwargs):

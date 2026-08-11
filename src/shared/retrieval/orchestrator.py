@@ -18,14 +18,29 @@ ORCHESTRATION_SYSTEM_PROMPT = (
     "You are a retrieval orchestrator for a tenant knowledge base assistant. Given the "
     "user's question and recent conversation history, decide which retrieval capabilities "
     "are needed to answer it, and call each one exactly once per distinct piece of evidence "
-    "you need. Two capabilities are available: `semantic_retrieval` finds relevant document "
-    "content by meaning, optionally scoped to specific documents; `structured_retrieval` "
-    "answers questions against extracted structured entity data (counts, aggregates, "
-    "lookups). Call both if the question needs both. Call the same capability more than "
-    "once if the question has multiple distinct parts requiring separate lookups (e.g. "
-    "comparing two documents). Do not attempt to answer the question yourself — only "
-    "select capabilities to invoke. You will not see the results of these calls; make your "
-    "best judgement about what evidence is needed up front."
+    "you need.\n\n"
+    "Two capabilities are available.\n\n"
+    "`structured_retrieval` queries the entity database — every fact an extraction model "
+    "pulled out of the tenant's documents, each stored with its type (skill, employer, "
+    "email, programming language, tool, degree, …), its value, and the document it came "
+    "from. Use it for ANY question that names or implies a category of fact. That includes "
+    "plain enumeration — 'list the tools in X's resume', 'what languages does Y know', "
+    "'show every company Z worked at' — just as much as it includes counting, comparing, "
+    "ranking, filtering, and aggregating. Enumerating the values of a type for one subject "
+    "is its single most common use. A question that could be phrased as 'which <type> "
+    "values belong to <subject>' is always a structured question.\n\n"
+    "`semantic_retrieval` finds passages of document text by meaning, optionally scoped to "
+    "specific documents. Use it for narrative, explanatory, or open-ended questions where "
+    "the answer is prose rather than a set of facts — summaries, descriptions of what "
+    "someone did, context around a fact, or anything no entity type would capture.\n\n"
+    "When a question asks for a category of fact but the surrounding detail may also "
+    "matter, call BOTH: the entity rows give the complete, authoritative list, and the "
+    "passages give the context. Prefer calling both over guessing wrong. Call the same "
+    "capability more than once if the question has multiple distinct parts requiring "
+    "separate lookups (e.g. comparing two documents).\n\n"
+    "Do not attempt to answer the question yourself — only select capabilities to invoke. "
+    "You will not see the results of these calls; make your best judgement about what "
+    "evidence is needed up front."
 )
 
 STOP_PLAN_EXECUTED = "plan_executed"
@@ -67,6 +82,10 @@ class PlanTraceEntry:
     result_count: int
     latency_ms: float
     degraded: bool
+    # Per-capability diagnostic records (e.g. the SQL recovery loop's per-attempt
+    # trace). Reaches ChatState["plan_trace"] via the existing asdict() conversion in
+    # retrieval_execution_node; internal state only, absent from every HTTP schema.
+    diagnostics: list = field(default_factory=list)
 
 
 @dataclass
@@ -162,7 +181,7 @@ async def _invoke_entry(entry: PlanEntry, registry: ToolRegistry, context: ToolC
     trace = PlanTraceEntry(
         capability_name=entry.capability_name, argument_keys=sorted(entry.arguments.keys()) if entry.arguments else [],
         executed=True, rejection_reason=None, error=result.error, result_count=len(result.results),
-        latency_ms=result.latency_ms, degraded=result.degraded,
+        latency_ms=result.latency_ms, degraded=result.degraded, diagnostics=list(result.diagnostics),
     )
     return result, trace
 

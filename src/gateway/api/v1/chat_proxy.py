@@ -1,6 +1,6 @@
 import httpx
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from src.shared.config import settings
 
 router = APIRouter(prefix="/api/v1", tags=["chat-proxy"])
@@ -43,6 +43,47 @@ async def _proxy(method: str, path: str, request: Request):
 @router.post("/chat")
 async def proxy_chat(request: Request):
     return await _proxy("POST", "/api/v1/chat", request)
+
+
+@router.post("/chat/stream")
+async def proxy_chat_stream(request: Request):
+    """Pass-through streaming proxy for `/api/v1/chat/stream`. Unlike `_proxy`
+    (`resp.json()` + `async with httpx.AsyncClient(...)`, both of which force the
+    whole upstream body to be buffered before anything is returned), this opens the
+    upstream request with `client.stream(...)` and forwards each chunk to the
+    downstream client as it arrives. The `httpx.AsyncClient` is kept open — closed
+    only once the response generator itself finishes — rather than being closed
+    when this function returns, which is what would happen with `_proxy`'s
+    `async with` pattern and would truncate the stream. See design.md Decision 6."""
+    url = f"{CHAT_API_BASE}/api/v1/chat/stream"
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    headers.pop("content-length", None)
+    body = await request.body()
+
+    client = httpx.AsyncClient(timeout=None)
+    req = client.build_request("POST", url, headers=headers, content=body)
+    upstream = await client.send(req, stream=True)
+
+    async def event_stream():
+        try:
+            async for chunk in upstream.aiter_raw():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    response_headers = dict(upstream.headers)
+    response_headers.pop("content-length", None)
+    response_headers["Cache-Control"] = "no-cache"
+    response_headers["X-Accel-Buffering"] = "no"
+
+    return StreamingResponse(
+        event_stream(),
+        status_code=upstream.status_code,
+        media_type=upstream.headers.get("content-type", "text/event-stream"),
+        headers=response_headers,
+    )
 
 
 @router.post("/chat/conversations")

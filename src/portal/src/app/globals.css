@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Tiny5&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -6,8 +8,8 @@
 
 :root {
   /* Brand */
-  --color-brand-primary: #c2410c;
-  --color-brand-hover: #9a3412;
+  --color-brand-primary: #a60000;
+  --color-brand-hover: #800000;
 
   /* Surface */
   --color-surface: rgba(255, 255, 255, 0.85);
@@ -21,7 +23,7 @@
 
   /* Border */
   --color-border: #e5e7eb;
-  --color-border-focus: #c2410c;
+  --color-border-focus: #a60000;
 
   /* Status */
   --color-status-active: #22c55e;
@@ -69,10 +71,10 @@
   --ink-3: #94a3b8;
   --line: #e4e8ef;
   --line-2: #eef1f6;
-  --primary: #c2410c;
-  --primary-2: #9a3412;
-  --primary-soft: rgba(194, 65, 12, 0.09);
-  --primary-line: rgba(194, 65, 12, 0.22);
+  --primary: #a60000;
+  --primary-2: #800000;
+  --primary-soft: rgba(166, 0, 0, 0.09);
+  --primary-line: rgba(166, 0, 0, 0.22);
   --bad: #b91c1c;
   --bad-soft: rgba(185, 28, 28, 0.10);
 
@@ -84,8 +86,8 @@
 
 :root.dark {
   /* Brand */
-  --color-brand-primary: #fb7549;
-  --color-brand-hover: #fb8b66;
+  --color-brand-primary: #e04343;
+  --color-brand-hover: #ec6b6b;
 
   /* Surface */
   --color-surface: rgba(17, 24, 39, 0.85);
@@ -99,7 +101,7 @@
 
   /* Border */
   --color-border: #374151;
-  --color-border-focus: #fb7549;
+  --color-border-focus: #e04343;
 
   /* Status */
   --color-status-active: #4ade80;
@@ -140,10 +142,10 @@
   --ink-3: #64748b;
   --line: #1c2533;
   --line-2: #161d29;
-  --primary: #fb7549;
-  --primary-2: #fb8b66;
-  --primary-soft: rgba(251, 117, 73, 0.13);
-  --primary-line: rgba(251, 117, 73, 0.30);
+  --primary: #e04343;
+  --primary-2: #ec6b6b;
+  --primary-soft: rgba(224, 67, 67, 0.13);
+  --primary-line: rgba(224, 67, 67, 0.30);
   --bad: #f87171;
   --bad-soft: rgba(248, 113, 113, 0.13);
 

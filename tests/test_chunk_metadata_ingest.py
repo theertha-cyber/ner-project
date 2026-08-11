@@ -348,3 +348,118 @@ class TestChunkPurposeDenormalization:
 
         assert len(rows) == 1
         assert all(r.purpose == "training" for r in rows)
+
+
+@pytest.mark.integration
+class TestChunkingRestrictedToQueryPurpose:
+    """Only purpose='query' documents feed retrieval. Training documents must still
+    get their text spans extracted (annotation/extraction need them) but must never
+    be chunked or embedded."""
+
+    async def _run_process_document(self, tenant_schema, engine, purpose, monkeypatch):
+        tenant_id, schema = tenant_schema
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+        from src.document_service.services import ocr_worker
+
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        doc_id = f"doc-{uuid.uuid4()}"
+
+        async with session_factory() as session:
+            await session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await session.execute(
+                text(f"""
+                    CREATE TABLE IF NOT EXISTS {schema}.document_chunks (
+                        id VARCHAR PRIMARY KEY,
+                        document_id VARCHAR NOT NULL,
+                        chunk_index INTEGER NOT NULL,
+                        chunk_text TEXT NOT NULL,
+                        embedding vector(1536),
+                        page_number INTEGER,
+                        char_start INTEGER,
+                        char_end INTEGER,
+                        purpose VARCHAR(20)
+                    )
+                """)
+            )
+            # conftest's document_text_spans uses page_no/start_offset/end_offset;
+            # ocr_worker writes the migration-defined columns, so rebuild it here.
+            await session.execute(text(f"DROP TABLE IF EXISTS {schema}.document_text_spans CASCADE"))
+            await session.execute(
+                text(f"""
+                    CREATE TABLE {schema}.document_text_spans (
+                        id VARCHAR PRIMARY KEY,
+                        document_id VARCHAR NOT NULL,
+                        span_index INTEGER,
+                        text TEXT,
+                        char_start INTEGER,
+                        char_end INTEGER,
+                        page_number INTEGER
+                    )
+                """)
+            )
+            await session.execute(
+                text(f"""
+                    INSERT INTO {schema}.documents (id, tenant_id, filename, status, purpose)
+                    VALUES (:id, :tid, :fn, 'uploaded', :purpose)
+                """),
+                {"id": doc_id, "tid": tenant_id, "fn": f"{purpose}-doc.pdf", "purpose": purpose},
+            )
+            await session.commit()
+
+        page_text = "Alpha section content about page zero. " * 5
+
+        class FakeStorage:
+            def get_file(self, blob_path):
+                return b"%PDF-1.4 fake"
+
+        embed_calls = []
+
+        async def fake_embed(texts):
+            embed_calls.append(list(texts))
+            return [_fake_vector([0.1, 0.2, 0.3]) for _ in texts]
+
+        monkeypatch.setattr(ocr_worker, "MinioStorageClient", FakeStorage)
+        monkeypatch.setattr(ocr_worker, "_embed_chunks", fake_embed)
+        monkeypatch.setattr(
+            ocr_worker, "extract_text_pdf",
+            lambda data: [{"span_index": 0, "text": page_text, "char_start": 0,
+                           "char_end": len(page_text), "page_number": 0}],
+        )
+
+        await ocr_worker.process_document(doc_id, tenant_id, "blob/path.pdf", "application/pdf")
+
+        async with session_factory() as session:
+            chunk_count = (await session.execute(
+                text(f"SELECT COUNT(*) FROM {schema}.document_chunks WHERE document_id = :id"),
+                {"id": doc_id},
+            )).scalar()
+            span_count = (await session.execute(
+                text(f"SELECT COUNT(*) FROM {schema}.document_text_spans WHERE document_id = :id"),
+                {"id": doc_id},
+            )).scalar()
+            status = (await session.execute(
+                text(f"SELECT status FROM {schema}.documents WHERE id = :id"), {"id": doc_id},
+            )).scalar()
+
+        return chunk_count, span_count, status, embed_calls
+
+    @pytest.mark.asyncio
+    async def test_training_document_is_not_chunked_or_embedded(self, tenant_schema, engine, monkeypatch):
+        chunk_count, span_count, status, embed_calls = await self._run_process_document(
+            tenant_schema, engine, "training", monkeypatch
+        )
+        assert chunk_count == 0
+        assert embed_calls == []
+        # Text spans still extracted — annotation/extraction depend on them.
+        assert span_count == 1
+        assert status == "processed"
+
+    @pytest.mark.asyncio
+    async def test_query_document_is_chunked_and_embedded(self, tenant_schema, engine, monkeypatch):
+        chunk_count, span_count, status, embed_calls = await self._run_process_document(
+            tenant_schema, engine, "query", monkeypatch
+        )
+        assert chunk_count >= 1
+        assert len(embed_calls) == 1
+        assert span_count == 1
+        assert status == "processed"

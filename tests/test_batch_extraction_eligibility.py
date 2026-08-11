@@ -55,7 +55,8 @@ async def eligibility_tenant_schema():
                 CREATE TABLE IF NOT EXISTS "{schema}".model_versions (
                     id VARCHAR PRIMARY KEY,
                     tenant_id VARCHAR NOT NULL,
-                    version INTEGER NOT NULL,
+                    version INTEGER,
+                    version_number INTEGER,
                     status VARCHAR(20) DEFAULT 'candidate'
                 )
             """))
@@ -101,11 +102,11 @@ async def eligibility_tenant_schema():
     await engine.dispose()
 
 
-async def _insert_document(engine, schema, doc_id, tid, filename="doc.pdf", status="processed"):
+async def _insert_document(engine, schema, doc_id, tid, filename="doc.pdf", status="processed", purpose="query"):
     async with engine.begin() as conn:
         await conn.execute(
-            text(f'INSERT INTO "{schema}".documents (id, tenant_id, filename, status) VALUES (:id, :tid, :fn, :status)'),
-            {"id": doc_id, "tid": tid, "fn": filename, "status": status},
+            text(f'INSERT INTO "{schema}".documents (id, tenant_id, filename, status, purpose) VALUES (:id, :tid, :fn, :status, :purpose)'),
+            {"id": doc_id, "tid": tid, "fn": filename, "status": status, "purpose": purpose},
         )
 
 
@@ -129,13 +130,21 @@ async def _mark_extracted(engine, schema, doc_id, model_version):
 
 
 async def _promote_model(engine, schema, tid, version):
+    """Mirrors production shape: the legacy `version` column is left NULL and the
+    real value lives in `version_number`. A fixture that populated `version` hid the
+    `str(None) == "None"` bug that made every document look never-extracted."""
     async with engine.begin() as conn:
         await conn.execute(
             text(f"""
-                INSERT INTO "{schema}".model_versions (id, tenant_id, version, status)
-                VALUES (:id, :tid, :version, 'promoted')
+                UPDATE "{schema}".model_versions SET status = 'completed' WHERE status = 'promoted'
+            """)
+        )
+        await conn.execute(
+            text(f"""
+                INSERT INTO "{schema}".model_versions (id, tenant_id, version, version_number, status)
+                VALUES (:id, :tid, NULL, :version_number, 'promoted')
             """),
-            {"id": str(uuid.uuid4()), "tid": tid, "version": version},
+            {"id": str(uuid.uuid4()), "tid": tid, "version_number": version},
         )
 
 
@@ -172,6 +181,80 @@ class TestEligibleDocumentsExcludesNonProcessed:
             assert resp.status_code == 200
             doc_ids = {d["id"] for d in resp.json()["documents"]}
             assert doc_ids == {"processed-doc"}
+
+
+@pytest.mark.asyncio
+class TestTrainingDocumentsAreNotExtractable:
+    """Training documents exist to be annotated and exported as a training corpus.
+    They keep their document_text_spans rows, but no extraction path may reach them."""
+
+    async def test_eligible_documents_excludes_training_purpose(self, eligibility_tenant_schema, engine):
+        tid = "eligibility-purpose-tenant"
+        schema = await eligibility_tenant_schema(tid)
+        await _insert_document(engine, schema, "query-doc", tid, purpose="query")
+        await _insert_document(engine, schema, "training-doc", tid, purpose="training")
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/v1/extract-batch/eligible-documents", headers=auth_header(tid))
+            assert resp.status_code == 200
+            doc_ids = {d["id"] for d in resp.json()["documents"]}
+            assert doc_ids == {"query-doc"}
+
+    async def test_explicit_training_document_id_is_rejected(self, eligibility_tenant_schema, engine):
+        tid = "batch-explicit-training-tenant"
+        schema = await eligibility_tenant_schema(tid)
+        await _insert_document(engine, schema, "query-doc", tid, purpose="query")
+        await _insert_document(engine, schema, "training-doc", tid, purpose="training")
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/extract-batch?documentIds=query-doc,training-doc",
+                headers=auth_header(tid),
+            )
+        assert resp.status_code == 422
+        assert "training-doc" in resp.json()["detail"]
+
+    async def test_batch_without_ids_skips_training_documents(self, eligibility_tenant_schema, engine, monkeypatch):
+        tid = "batch-all-purpose-tenant"
+        schema = await eligibility_tenant_schema(tid)
+        await _insert_document(engine, schema, "query-doc", tid, purpose="query")
+        await _insert_document(engine, schema, "training-doc", tid, purpose="training")
+
+        sent = {}
+
+        def fake_send_task(name, args=None, queue=None):
+            sent["doc_ids"] = args[2]
+
+        from src.extraction_service.celery_app import celery_app
+        monkeypatch.setattr(celery_app, "send_task", fake_send_task)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/api/v1/extract-batch", headers=auth_header(tid))
+        assert resp.status_code == 202
+        assert sent["doc_ids"] == ["query-doc"]
+
+    async def test_worker_document_filter_drops_training_documents(self, eligibility_tenant_schema, engine, monkeypatch):
+        """Defense in depth: even a task queued with a training id (stale queue entry,
+        direct celery call) must not reach the model."""
+        tid = "worker-purpose-tenant"
+        schema = await eligibility_tenant_schema(tid)
+        await _insert_document(engine, schema, "query-doc", tid, purpose="query")
+        await _insert_document(engine, schema, "training-doc", tid, purpose="training")
+
+        from sqlalchemy import create_engine as create_sync_engine
+        from src.extraction_service import worker
+
+        sync_url = os.environ["NER_DATABASE_URL"].replace("+asyncpg", "")
+        sync_engine = create_sync_engine(sync_url)
+        monkeypatch.setattr(worker, "_get_sync_engine", lambda: sync_engine)
+
+        try:
+            assert worker._get_documents_to_process(tid, ["query-doc", "training-doc"]) == ["query-doc"]
+        finally:
+            sync_engine.dispose()
 
 
 @pytest.mark.asyncio

@@ -52,7 +52,7 @@ class CountingLLMClient:
 
 
 class NoopSqlGenerator:
-    async def generate_and_execute(self, message, session, schema, conv_text):
+    async def generate_and_execute(self, message, session, schema, conv_text, **_kwargs):
         return None
 
 
@@ -131,7 +131,11 @@ class TestGraphIsAcyclicWithOneConditionalEdge:
 
         assert not any(has_cycle(n) for n in adjacency)
 
-    def test_single_topology_expected_nodes_only(self):
+    def test_single_topology_expected_nodes_only(self, monkeypatch):
+        """Base topology, with entity resolution explicitly off. Pinned rather than
+        inherited from the setting's default so that flipping that default is a
+        deliberate change to the flag-on test below, not a silent break of this one."""
+        monkeypatch.setattr(settings, "entity_resolution_enabled", False)
         orchestrator = _make_orchestrator()
         compiled = build_chat_graph(orchestrator)
         nodes = set(compiled.get_graph().nodes.keys())
@@ -146,6 +150,33 @@ class TestGraphIsAcyclicWithOneConditionalEdge:
         assert "sql_retrieval" not in nodes
         assert "retrieval" not in nodes
         assert "ner_enrichment" not in nodes
+
+    def test_entity_resolution_topology_adds_exactly_one_node(self, monkeypatch):
+        """With the flag on — now the default — the only structural difference is the
+        `entity_resolution` node spliced between `orchestrator` and
+        `retrieval_execution`."""
+        monkeypatch.setattr(settings, "entity_resolution_enabled", True)
+        orchestrator = _make_orchestrator()
+        compiled = build_chat_graph(orchestrator)
+        graph = compiled.get_graph()
+        nodes = set(graph.nodes.keys())
+
+        assert nodes == {
+            "__start__", "__end__", "guardrail", "orchestrator", "entity_resolution",
+            "retrieval_execution", "source_assembly", "prompt_assembly", "generation",
+        }
+
+        orchestrator_targets = {e.target for e in graph.edges if e.source == "orchestrator"}
+        assert orchestrator_targets == {"entity_resolution"}
+
+        resolution_out = [e for e in graph.edges if e.source == "entity_resolution"]
+        assert all(e.conditional for e in resolution_out)
+        assert {e.target for e in resolution_out} == {"__end__", "retrieval_execution"}
+
+    def test_default_configuration_enables_entity_resolution(self):
+        """Guards the shipped default: with it off, a question naming a person is never
+        scoped to that person's document."""
+        assert Settings.model_fields["entity_resolution_enabled"].default is True
 
     def test_guardrail_has_exactly_one_conditional_edge(self):
         orchestrator = _make_orchestrator()

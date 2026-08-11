@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from src.shared.database import get_engine
 from src.shared.exceptions import NotFoundError
+from src.document_service.services.content_hash import compute_content_hash
 from src.document_service.services.ocr_worker import is_allowed_file, get_extension, trigger_ocr
 from src.document_service.services.storage import MinioStorageClient
 
@@ -11,6 +12,14 @@ router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 VALID_PURPOSES = {"query", "training"}
+
+# Upload purpose is a role capability, not an uploader choice: tenant admins upload
+# documents for annotation, business users upload documents for querying. Roles absent
+# from this map (system_admin, annotator) keep both purposes.
+ROLE_ALLOWED_PURPOSES = {
+    "tenant_admin": {"training"},
+    "business_user": {"query"},
+}
 
 
 def _schema(tenant_id: str) -> str:
@@ -51,6 +60,17 @@ async def upload_document(
             detail={"code": "VALIDATION_ERROR", "message": "purpose must be 'query' or 'training'"},
         )
 
+    role = getattr(request.state, "role", None) if request is not None else None
+    allowed_purposes = ROLE_ALLOWED_PURPOSES.get(role)
+    if allowed_purposes is not None and purpose not in allowed_purposes:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PURPOSE_NOT_ALLOWED",
+                "message": f"Role '{role}' may only upload documents with purpose {sorted(allowed_purposes)}",
+            },
+        )
+
     if not is_allowed_file(file.filename or ""):
         raise HTTPException(
             status_code=422,
@@ -69,14 +89,31 @@ async def upload_document(
     doc_id = generate_uuid()
     ext = get_extension(file.filename or "").lstrip(".")
     blob_path = f"tenants/{tenant_id}/documents/{doc_id}.{ext}"
+    checksum = compute_content_hash(file_data)
+
+    # Identify (never reject or merge) an earlier upload of byte-identical content.
+    # Scoped to this tenant's schema and tenant_id — duplicates never cross tenants —
+    # and skips soft-deleted rows the API would no longer serve. Ordered by
+    # created_at so three copies all point at the original, not at each other.
+    duplicate_result = await session.execute(
+        text(f"""
+            SELECT id FROM {_schema(tenant_id)}.documents
+            WHERE tenant_id = :tid AND checksum = :checksum AND status != 'deleted'
+            ORDER BY created_at
+            LIMIT 1
+        """),
+        {"tid": tenant_id, "checksum": checksum},
+    )
+    duplicate_row = duplicate_result.fetchone()
+    duplicate_of = duplicate_row[0] if duplicate_row else None
 
     storage = MinioStorageClient()
     storage.upload_file(tenant_id, doc_id, ext, file_data)
 
     await session.execute(
         text(f"""
-            INSERT INTO {_schema(tenant_id)}.documents (id, tenant_id, filename, content_type, file_size, status, blob_path, purpose, uploaded_by)
-            VALUES (:id, :tid, :filename, :content_type, :file_size, 'pending', :blob_path, :purpose, :uploaded_by)
+            INSERT INTO {_schema(tenant_id)}.documents (id, tenant_id, filename, content_type, file_size, checksum, status, blob_path, purpose, uploaded_by)
+            VALUES (:id, :tid, :filename, :content_type, :file_size, :checksum, 'pending', :blob_path, :purpose, :uploaded_by)
         """),
         {
             "id": doc_id,
@@ -84,6 +121,7 @@ async def upload_document(
             "filename": file.filename,
             "content_type": file.content_type or "application/octet-stream",
             "file_size": len(file_data),
+            "checksum": checksum,
             "blob_path": blob_path,
             "purpose": purpose,
             "uploaded_by": uploaded_by,
@@ -99,6 +137,8 @@ async def upload_document(
         "content_type": file.content_type,
         "status": "pending",
         "file_size": len(file_data),
+        "checksum": checksum,
+        "duplicate_of": duplicate_of,
     }
 
 
@@ -137,8 +177,20 @@ async def list_documents(
     where = " AND ".join(conditions)
     offset = (page - 1) * per_page
 
+    # LEFT JOIN so a document whose uploader was deleted (or that predates the
+    # uploaded_by column) still lists, with a null email the client renders as unknown.
+    document_where = " AND ".join(f"d.{c}" for c in conditions)
     result = await session.execute(
-        text(f"SELECT id, filename, content_type, file_size, status, error_message, created_at, updated_at FROM {_schema(tenant_id)}.documents WHERE {where} ORDER BY created_at DESC LIMIT :limit OFFSET :offset"),
+        text(f"""
+            SELECT d.id, d.filename, d.content_type, d.file_size, d.status, d.error_message,
+                   d.purpose, d.uploaded_by, u.email AS uploaded_by_email,
+                   d.created_at, d.updated_at
+            FROM {_schema(tenant_id)}.documents d
+            LEFT JOIN public.tenant_users u ON u.id = d.uploaded_by
+            WHERE {document_where}
+            ORDER BY d.created_at DESC
+            LIMIT :limit OFFSET :offset
+        """),
         {**params, "limit": per_page, "offset": offset},
     )
     rows = result.fetchall()
@@ -157,6 +209,9 @@ async def list_documents(
             "file_size": r.file_size,
             "status": r.status,
             "error_message": r.error_message,
+            "purpose": r.purpose,
+            "uploaded_by": r.uploaded_by,
+            "uploaded_by_email": r.uploaded_by_email,
             "created_at": str(r.created_at),
             "updated_at": str(r.updated_at),
         }
@@ -174,7 +229,7 @@ async def get_document(
 ):
     tenant_id = get_tenant_id(request)
     result = await session.execute(
-        text(f"SELECT id, filename, content_type, file_size, status, error_message, blob_path, created_at, updated_at FROM {_schema(tenant_id)}.documents WHERE id = :id AND tenant_id = :tid"),
+        text(f"SELECT id, filename, content_type, file_size, checksum, status, error_message, blob_path, created_at, updated_at FROM {_schema(tenant_id)}.documents WHERE id = :id AND tenant_id = :tid"),
         {"id": doc_id, "tid": tenant_id},
     )
     row = result.fetchone()
@@ -187,6 +242,7 @@ async def get_document(
             "filename": row.filename,
             "content_type": row.content_type,
             "file_size": row.file_size,
+            "checksum": row.checksum,
             "status": row.status,
             "error_message": row.error_message,
             "created_at": str(row.created_at),

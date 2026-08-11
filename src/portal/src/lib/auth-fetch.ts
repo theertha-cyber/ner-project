@@ -27,7 +27,13 @@ function resolveUrl(url: string): string {
     url.startsWith("/api/v1/dashboard") ||
     url.startsWith("/api/v1/analytics") ||
     url.startsWith("/api/v1/entity-type") ||
-    url.startsWith("/api/v1/users")
+    url.startsWith("/api/v1/users") ||
+    // Next.js's next.config.js rewrites proxy buffers the whole response
+    // before forwarding it — fatal for text/event-stream. Every chat route
+    // goes straight to the gateway, same as the other direct-to-service
+    // categories above, so SSE frames from /api/v1/chat/stream aren't
+    // buffered away.
+    url.startsWith("/api/v1/chat")
   )
     return `${GATEWAY_URL}${url}`;
   // Span and prelabel endpoints live in the annotation service despite the /documents/ prefix

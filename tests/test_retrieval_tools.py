@@ -278,7 +278,7 @@ class TestRejectedSqlNotExecuted:
     async def test_rejected_sql_not_executed(self):
         executed = {"called": False}
 
-        async def rejecting_sql_search(query, session, schema, conversation_context):
+        async def rejecting_sql_search(query, session, schema, conversation_context, **_kwargs):
             raise RuntimeError("SQL rejected by validation layer")
 
         context = _context(sql_search=rejecting_sql_search)
@@ -293,7 +293,7 @@ class TestCandidateDocumentIds:
     """Covers verification.md rows 38-40 (normalized-entity-store change)."""
 
     async def test_candidate_ids_are_distinct_document_ids_of_result_rows(self):
-        async def sql_search(query, session, schema, conversation_context):
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
             return [{"document_id": "docA"}, {"document_id": "docA"}, {"document_id": "docB"}]
 
         context = _context(sql_search=sql_search)
@@ -303,7 +303,7 @@ class TestCandidateDocumentIds:
         assert len(result.results) == 3
 
     async def test_no_document_id_column_yields_no_candidates(self):
-        async def sql_search(query, session, schema, conversation_context):
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
             return [{"entity_type": "ORG", "count": 3}]
 
         context = _context(sql_search=sql_search)
@@ -312,7 +312,7 @@ class TestCandidateDocumentIds:
         assert result.candidate_document_ids == set()
 
     async def test_failed_invocation_yields_no_candidates(self):
-        async def rejecting_sql_search(query, session, schema, conversation_context):
+        async def rejecting_sql_search(query, session, schema, conversation_context, **_kwargs):
             raise RuntimeError("SQL rejected by validation layer")
 
         context = _context(sql_search=rejecting_sql_search)

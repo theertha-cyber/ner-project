@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     model_cache_memory_limit_gb: int = 2
     model_cache_ttl_minutes: int = 30
     model_serving_url: str = "http://localhost:8004"
+    # Sliding-window NER inference. Sizes are WordPiece counts, excluding the two
+    # special tokens ([CLS]/[SEP]) that the tokenizer adds, so
+    # `inference_window_size + 2` must stay under the BERT positional-embedding
+    # limit of 512. Overlap is re-inferred context, not new coverage: a token near
+    # a window edge sees truncated context and gets an unreliable BIO label, so
+    # every token is covered by some window that holds it well away from an edge.
+    inference_window_size: int = 400
+    inference_window_overlap: int = 50
     extraction_service_url: str = "http://localhost:8002"
     document_service_url: str = "http://localhost:8001"
     training_service_url: str = "http://localhost:8003"
@@ -48,14 +56,28 @@ class Settings(BaseSettings):
     reranker_enabled: bool = True
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     rerank_candidate_count: int = 20
+    # Loading the cross-encoder on first use takes far longer than scoring with it.
+    # model_serving warms it at startup, so this only has to cover a genuinely slow
+    # scoring call — but it must still exceed a cold load, or the very first query
+    # after a restart races the warm-up and silently falls back to unranked results.
+    rerank_timeout_seconds: float = 30.0
 
     orchestrator_max_invocations: int = 3
     retrieval_deadline_seconds: float = 8.0
     candidate_document_filtering_enabled: bool = False
 
-    entity_resolution_enabled: bool = False
+    # Bounded SQL recovery. `sql_max_attempts = 1` restores the pre-existing
+    # one-shot behaviour and is the config-only rollback for the retry loop.
+    sql_max_attempts: int = 3
+    sql_entity_sample_values_per_type: int = 8
+    sql_entity_sample_max_values: int = 120
+
+    entity_resolution_enabled: bool = True
     entity_resolution_max_candidates: int = 5
-    entity_resolution_person_types: str = "PER,PERSON"
+    # Entity types that hold people's names. Must cover what the tenant's own label
+    # schema actually calls them: a fine-tuned model emits its own label set, and a
+    # tenant whose name type is `NAME` resolves nothing against a `PER,PERSON` list.
+    entity_resolution_person_types: str = "PER,PERSON,NAME,CANDIDATE_NAME,PERSON_NAME"
     entity_resolution_max_skills: int = 3
 
     context_token_budget: int = 6000

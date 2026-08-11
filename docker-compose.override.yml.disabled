@@ -1,0 +1,92 @@
+# Dev-only overrides, auto-merged by `docker compose up`. Mounts source +
+# enables reload so code edits apply live, no rebuild/restart needed.
+# Prod docker-compose.yml stays untouched.
+#
+# WATCHFILES_FORCE_POLLING / WATCHPACK_POLLING: Windows bind mounts don't
+# propagate inotify events into the Linux container, and unpolled inotify
+# watches on Docker Desktop can also exhaust (Cannot allocate memory) when
+# watching too many files. Polling sidesteps both.
+x-py-reload-env: &py-reload-env
+  WATCHFILES_FORCE_POLLING: "true"
+
+services:
+  gateway:
+    volumes:
+      - ./src:/app/src
+    environment:
+      <<: *py-reload-env
+    command: uvicorn src.gateway.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
+
+  chat_api:
+    volumes:
+      - ./src:/app/src
+    environment:
+      <<: *py-reload-env
+    command: uvicorn src.chat_api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
+
+  document_service:
+    volumes:
+      - ./src:/app/src
+    environment:
+      <<: *py-reload-env
+    command: uvicorn src.document_service.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
+
+  extraction_service:
+    volumes:
+      - ./src:/app/src
+    environment:
+      <<: *py-reload-env
+    command: uvicorn src.extraction_service.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
+
+  model_serving:
+    volumes:
+      - ./src:/app/src
+    environment:
+      <<: *py-reload-env
+    command: uvicorn src.model_serving.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
+
+  annotation_service:
+    volumes:
+      - ./src:/app/src
+    environment:
+      <<: *py-reload-env
+    command: uvicorn src.annotation_service.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
+
+  training_service:
+    volumes:
+      - ./src:/app/src
+    environment:
+      <<: *py-reload-env
+    command: uvicorn src.training_service.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
+
+  analytics_service:
+    volumes:
+      - ./src:/app/src
+    environment:
+      <<: *py-reload-env
+    command: uvicorn src.analytics_service.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
+
+  portal:
+    build:
+      target: deps
+    command: npm run dev
+    environment:
+      WATCHPACK_POLLING: "true"
+      NEXT_PUBLIC_API_URL: "http://gateway:8000"
+      NEXT_PUBLIC_GATEWAY_URL: "http://localhost:8000"
+      NEXT_PUBLIC_DOCUMENT_URL: "http://localhost:8001"
+      NEXT_PUBLIC_ANNOTATION_URL: "http://localhost:8005"
+      NEXT_PUBLIC_TRAINING_URL: "http://localhost:8003"
+      NEXT_PUBLIC_MODEL_SERVING_URL: "http://localhost:8004"
+      NEXT_PUBLIC_EXTRACTION_URL: "http://localhost:8002"
+      NEXT_PUBLIC_ANALYTICS_URL: "http://localhost:8007"
+    volumes:
+      - ./src/portal/src:/app/src
+      - ./src/portal/public:/app/public
+      - ./src/portal/next.config.js:/app/next.config.js
+      - ./src/portal/next.config.ts:/app/next.config.ts
+      - ./src/portal/tsconfig.json:/app/tsconfig.json
+      - ./src/portal/tailwind.config.js:/app/tailwind.config.js
+      - ./src/portal/tailwind.config.ts:/app/tailwind.config.ts
+      - ./src/portal/postcss.config.js:/app/postcss.config.js
+      - ./src/portal/.eslintrc.json:/app/.eslintrc.json
