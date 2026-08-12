@@ -1,5 +1,6 @@
 import re
 import logging
+from src.shared.conversation_history import recent_messages
 from src.chat_api.api.v1.schemas import Source, Citation, ChatResponse
 
 logger = logging.getLogger(__name__)
@@ -79,9 +80,8 @@ class GuardrailService:
         structurally elsewhere and an unsourced answer is already refused downstream —
         the guardrail here is a scope/cost filter, not a security boundary."""
         messages = [{"role": "system", "content": DOMAIN_CLASSIFIER_SYSTEM_PROMPT}]
-        if conversation_context:
-            for turn in conversation_context[-3:]:
-                messages.append({"role": turn["role"], "content": turn["content"]})
+        for turn in recent_messages(conversation_context):
+            messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": message})
 
         try:

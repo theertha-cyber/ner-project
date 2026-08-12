@@ -155,22 +155,22 @@ export default function LoginPage() {
         </div>
 
         {/* ── Right: floating card ── */}
-        <div style={{ flexShrink: 0, width: 380, background: "rgba(255,255,255,0.72)", backdropFilter: "blur(28px) saturate(1.5)", WebkitBackdropFilter: "blur(28px) saturate(1.5)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: "36px 32px", boxShadow: "0 32px 80px -20px rgba(15,23,42,0.4),0 0 0 1px rgba(255,255,255,0.5)", animation: "popIn 0.45s ease both" }}>
+        <div style={{ flexShrink: 0, width: 380, background: "var(--login-card-bg)", backdropFilter: "blur(28px) saturate(1.5)", WebkitBackdropFilter: "blur(28px) saturate(1.5)", border: "1px solid var(--login-card-border)", borderRadius: 22, padding: "36px 32px", boxShadow: "0 32px 80px -20px rgba(15,23,42,0.4)", animation: "popIn 0.45s ease both" }}>
 
-          <h2 style={{ fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 24, letterSpacing: "-0.025em", margin: "0 0 4px", color: "#0f172a" }}>Sign in</h2>
-          <p style={{ margin: "0 0 22px", fontSize: 13.5, color: "#475569" }}>Welcome back.<br />Authenticate to your tenant console.</p>
+          <h2 style={{ fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 24, letterSpacing: "-0.025em", margin: "0 0 4px", color: "var(--login-heading)" }}>Sign in</h2>
+          <p style={{ margin: "0 0 22px", fontSize: 13.5, color: "var(--login-muted)" }}>Welcome back.<br />Authenticate to your tenant console.</p>
 
           <form ref={formRef} onSubmit={handleSubmit}>
-            <label htmlFor="email" style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "#475569", marginBottom: 6, fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", letterSpacing: "0.04em", textTransform: "uppercase" }}>Email</label>
+            <label htmlFor="email" style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--login-muted)", marginBottom: 6, fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", letterSpacing: "0.04em", textTransform: "uppercase" }}>Email</label>
             <input
               id="email" type="email" required value={email}
               onChange={(e) => setEmail(e.target.value)}
               onFocus={(e) => { e.target.style.borderColor = "#a60000"; e.target.style.boxShadow = "0 0 0 3px rgba(166,0,0,0.12)"; }}
-              onBlur={(e)  => { e.target.style.borderColor = "#e2e8f0"; e.target.style.boxShadow = "none"; }}
-              style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #e2e8f0", background: "rgba(255,255,255,0.9)", color: "#0f172a", fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 13.5, marginBottom: 15, outline: "none", boxSizing: "border-box", transition: "border-color 0.15s,box-shadow 0.15s" }}
+              onBlur={(e)  => { e.target.style.borderColor = "var(--login-input-border)"; e.target.style.boxShadow = "none"; }}
+              style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid var(--login-input-border)", background: "var(--login-input-bg)", color: "var(--login-input-text)", fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 13.5, marginBottom: 15, outline: "none", boxSizing: "border-box", transition: "border-color 0.15s,box-shadow 0.15s" }}
             />
 
-            <label htmlFor="password" style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "#475569", marginBottom: 6, fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", letterSpacing: "0.04em", textTransform: "uppercase" }}>Password</label>
+            <label htmlFor="password" style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--login-muted)", marginBottom: 6, fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", letterSpacing: "0.04em", textTransform: "uppercase" }}>Password</label>
             {/* password wrapper — position:relative so the eye button can sit inside */}
             <div style={{ position: "relative", marginBottom: error ? 12 : 20 }}>
               <input
@@ -179,20 +179,20 @@ export default function LoginPage() {
                 required value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onFocus={(e) => { e.target.style.borderColor = "#a60000"; e.target.style.boxShadow = "0 0 0 3px rgba(166,0,0,0.12)"; }}
-                onBlur={(e)  => { e.target.style.borderColor = "#e2e8f0"; e.target.style.boxShadow = "none"; }}
-                style={{ width: "100%", padding: "11px 42px 11px 13px", borderRadius: 11, border: "1.5px solid #e2e8f0", background: "rgba(255,255,255,0.9)", color: "#0f172a", fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 13.5, outline: "none", boxSizing: "border-box", transition: "border-color 0.15s,box-shadow 0.15s" }}
+                onBlur={(e)  => { e.target.style.borderColor = "var(--login-input-border)"; e.target.style.boxShadow = "none"; }}
+                style={{ width: "100%", padding: "11px 42px 11px 13px", borderRadius: 11, border: "1.5px solid var(--login-input-border)", background: "var(--login-input-bg)", color: "var(--login-input-text)", fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 13.5, outline: "none", boxSizing: "border-box", transition: "border-color 0.15s,box-shadow 0.15s" }}
               />
               <button
                 type="button"
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 onClick={() => setShowPw((v) => !v)}
-                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", padding: 2, cursor: "pointer", color: "#94a3b8", display: "flex", alignItems: "center" }}
+                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", padding: 2, cursor: "pointer", color: "var(--login-eye-icon)", display: "flex", alignItems: "center" }}
               >
                 {showPassword ? <EyeOff /> : <EyeOpen />}
               </button>
             </div>
 
-            {error && <p role="alert" style={{ fontSize: 13, color: "#dc2626", margin: "0 0 14px" }}>{error}</p>}
+            {error && <p role="alert" style={{ fontSize: 13, color: "var(--color-error)", margin: "0 0 14px" }}>{error}</p>}
 
             <button type="submit" disabled={isPending} style={{ width: "100%", padding: "12px 0", border: "none", borderRadius: 11, background: "#a60000", color: "#fff", fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 15, cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.65 : 1, boxShadow: "0 8px 20px -8px rgba(166,0,0,0.7)", transition: "opacity 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
               {isPending && <span data-testid="spinner" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.35)", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />}
@@ -203,18 +203,18 @@ export default function LoginPage() {
           {isDemo && (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "22px 0 14px" }}>
-                <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-                <span style={{ fontSize: 10.5, color: "#475569", fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", letterSpacing: "0.09em", whiteSpace: "nowrap" }}>DEMO · SIGN IN AS</span>
-                <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+                <div style={{ flex: 1, height: 1, background: "var(--login-divider)" }} />
+                <span style={{ fontSize: 10.5, color: "var(--login-muted)", fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", letterSpacing: "0.09em", whiteSpace: "nowrap" }}>DEMO · SIGN IN AS</span>
+                <div style={{ flex: 1, height: 1, background: "var(--login-divider)" }} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {DEMO_CHIPS.map((chip) => (
                   <button key={chip.role} type="button" aria-label={chip.label} onClick={() => fillDemo(chip)}
                     onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#a60000"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#e2e8f0"; }}
-                    style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-start", padding: "9px 11px", borderRadius: 11, border: "1.5px solid #e2e8f0", background: "rgba(255,255,255,0.8)", cursor: "pointer", textAlign: "left", transition: "border-color 0.15s" }}>
-                    <span style={{ fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{chip.label}</span>
-                    <span style={{ fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 10, color: "#475569" }}>{chip.sub}</span>
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--login-divider)"; }}
+                    style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-start", padding: "9px 11px", borderRadius: 11, border: "1.5px solid var(--login-divider)", background: "var(--login-chip-bg)", cursor: "pointer", textAlign: "left", transition: "border-color 0.15s" }}>
+                    <span style={{ fontFamily: "var(--font-display,'Hanken Grotesk',sans-serif)", fontWeight: 700, fontSize: 13, color: "var(--login-heading)" }}>{chip.label}</span>
+                    <span style={{ fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", fontSize: 10, color: "var(--login-muted)" }}>{chip.sub}</span>
                   </button>
                 ))}
               </div>

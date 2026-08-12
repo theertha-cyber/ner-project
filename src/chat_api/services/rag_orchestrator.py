@@ -5,6 +5,7 @@ from openai import AsyncOpenAI, AsyncAzureOpenAI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
+from src.shared.conversation_history import render_history
 from src.shared.retrieval import DenseRetriever, SparseRetriever, HybridRetriever, RerankingRetriever, CrossEncoderReranker
 from src.shared.retrieval.tools import build_default_registry
 from src.chat_api.api.v1.schemas import Source, Citation
@@ -152,9 +153,7 @@ class RAGOrchestrator:
         straight through — the recovery loop never re-derives it. Raises
         `SQLGenerationFailed` when every attempt failed; the tool layer turns that into
         a `ToolResult` error rather than an empty result."""
-        conv_text = None
-        if conversation_context:
-            conv_text = "\n".join(f"{m['role']}: {m['content']}" for m in conversation_context[-3:])
+        conv_text = render_history(conversation_context)
         return await self.sql_generator.generate_and_execute(
             message, session, schema, conv_text,
             attempt_sink=attempt_sink, deadline=deadline,

@@ -287,6 +287,7 @@ def build_nodes(orchestrator) -> dict:
         jwt_token = state.get("jwt_token")
         already_degraded = state.get("orchestration_degraded", False)
         resolved_document_ids = state.get("resolved_document_ids") or []
+        conversation_context = state.get("conversation_context")
 
         session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
         deadline = time.monotonic() + settings.retrieval_deadline_seconds
@@ -298,7 +299,7 @@ def build_nodes(orchestrator) -> dict:
                     tenant_id=tenant_id, schema=schema, session=session,
                     retriever=orchestrator.retriever, jwt_token=jwt_token,
                     max_top_k=settings.retrieval_top_k, sql_search=orchestrator._sql_source,
-                    deadline=deadline,
+                    deadline=deadline, conversation_context=conversation_context,
                 )
 
         budget = OrchestrationBudget(max_invocations=settings.orchestrator_max_invocations, deadline=deadline)

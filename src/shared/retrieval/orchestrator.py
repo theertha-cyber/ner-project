@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass, field
 
 from src.shared.config import settings
+from src.shared.conversation_history import recent_messages
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.tools.base import ArgValidationError, ToolContext, ToolResult, validate_args
 from src.shared.retrieval.tools.registry import ToolLookupError, ToolRegistry
@@ -38,6 +39,18 @@ ORCHESTRATION_SYSTEM_PROMPT = (
     "passages give the context. Prefer calling both over guessing wrong. Call the same "
     "capability more than once if the question has multiple distinct parts requiring "
     "separate lookups (e.g. comparing two documents).\n\n"
+    "**A capability sees only the arguments you give it — never this conversation.** So "
+    "when the question points back at something an earlier turn established rather than "
+    "naming it ('which of those candidates', 'compare the two', 'does she also know Go', "
+    "'any of them', 'the ones you listed'), resolve the reference yourself from the "
+    "history above and write the resolved subjects into the `query` argument in full. A "
+    "query of 'which of the following candidates suit an AI engineer role' names nobody "
+    "and retrieves against the whole tenant, answering a different question than the one "
+    "asked; 'which of Mahalakshmi S, Hannah, or Harshith Akshayraj R.S has AI or machine "
+    "learning experience' carries the referent and retrieves the right evidence. Keep "
+    "every subject the user is asking about — do not silently narrow the set. If the "
+    "history does not actually pin the reference down, pass the question through "
+    "unresolved rather than inventing subjects.\n\n"
     "Do not attempt to answer the question yourself — only select capabilities to invoke. "
     "You will not see the results of these calls; make your best judgement about what "
     "evidence is needed up front."
@@ -121,9 +134,8 @@ def _resolve_entry(entry: PlanEntry, registry: ToolRegistry):
 
 def _build_messages(message: str, conversation_context: list[dict] | None) -> list[dict]:
     messages = [{"role": "system", "content": ORCHESTRATION_SYSTEM_PROMPT}]
-    if conversation_context:
-        for turn in conversation_context[-3:]:
-            messages.append({"role": turn["role"], "content": turn["content"]})
+    for turn in recent_messages(conversation_context):
+        messages.append({"role": turn["role"], "content": turn["content"]})
     messages.append({"role": "user", "content": message})
     return messages
 

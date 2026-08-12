@@ -77,6 +77,8 @@
   --primary-line: rgba(166, 0, 0, 0.22);
   --bad: #b91c1c;
   --bad-soft: rgba(185, 28, 28, 0.10);
+  --good: #15803d;
+  --good-soft: rgba(21, 128, 61, 0.10);
 
   /* Shadow */
   --shadow-card: 0 4px 24px 0 rgba(0, 0, 0, 0.06), 0 1px 4px 0 rgba(0, 0, 0, 0.04);
@@ -85,6 +87,18 @@
 
   /* Hero card (dark-surface hero, theme-invariant bg — orb tint still adapts per theme) */
   --hero-orb-blue: #475569;
+
+  /* Login sign-in card */
+  --login-card-bg: rgba(255, 255, 255, 0.72);
+  --login-card-border: rgba(255, 255, 255, 0.8);
+  --login-heading: #0f172a;
+  --login-muted: #475569;
+  --login-input-bg: rgba(255, 255, 255, 0.9);
+  --login-input-border: #e2e8f0;
+  --login-input-text: #0f172a;
+  --login-eye-icon: #94a3b8;
+  --login-chip-bg: rgba(255, 255, 255, 0.8);
+  --login-divider: #e2e8f0;
 }
 
 :root.dark {
@@ -151,6 +165,20 @@
   --primary-line: rgba(166, 0, 0, 0.32);
   --bad: #e2685f;
   --bad-soft: rgba(226, 104, 95, 0.13);
+  --good: #4bbd7a;
+  --good-soft: rgba(75, 189, 122, 0.13);
+
+  /* Login sign-in card */
+  --login-card-bg: rgba(24, 24, 24, 0.72);
+  --login-card-border: rgba(255, 255, 255, 0.10);
+  --login-heading: #ededec;
+  --login-muted: #a8a8a4;
+  --login-input-bg: #383835;
+  --login-input-border: rgba(255, 255, 255, 0.12);
+  --login-input-text: #ededec;
+  --login-eye-icon: #7a7a76;
+  --login-chip-bg: #383835;
+  --login-divider: rgba(255, 255, 255, 0.09);
 
   /* Shadow (darker base for dark mode) */
   --shadow-card: 0 4px 24px 0 rgba(0, 0, 0, 0.3), 0 1px 4px 0 rgba(0, 0, 0, 0.2);
@@ -280,6 +308,115 @@ body {
 }
 .chat-markdown a {
   color: inherit;
+  text-decoration: underline;
+}
+
+/* Document-style assistant responses (chat conversation view): readable line
+   length, generous vertical rhythm, no bubble. */
+.chat-markdown.chat-doc {
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--ink);
+}
+.chat-markdown.chat-doc > *:first-child {
+  margin-top: 0;
+}
+.chat-markdown.chat-doc > *:last-child {
+  margin-bottom: 0;
+}
+.chat-markdown.chat-doc p {
+  margin: 0 0 16px 0;
+}
+.chat-markdown.chat-doc h1,
+.chat-markdown.chat-doc h2,
+.chat-markdown.chat-doc h3,
+.chat-markdown.chat-doc h4 {
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.chat-markdown.chat-doc h1 {
+  font-size: 22px;
+  margin: 30px 0 12px;
+}
+.chat-markdown.chat-doc h2 {
+  font-size: 19px;
+  margin: 28px 0 10px;
+}
+.chat-markdown.chat-doc h3 {
+  font-size: 16.5px;
+  margin: 24px 0 8px;
+}
+.chat-markdown.chat-doc h4 {
+  font-size: 15px;
+  margin: 20px 0 8px;
+}
+.chat-markdown.chat-doc ul,
+.chat-markdown.chat-doc ol {
+  margin: 0 0 16px 0;
+  padding-left: 22px;
+}
+.chat-markdown.chat-doc li {
+  margin-bottom: 6px;
+}
+.chat-markdown.chat-doc li::marker {
+  color: var(--ink-3);
+}
+.chat-markdown.chat-doc hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 28px 0;
+}
+.chat-markdown.chat-doc blockquote {
+  margin: 0 0 16px 0;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--primary-line);
+  color: var(--ink-2);
+}
+.chat-markdown.chat-doc code {
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.chat-markdown.chat-doc pre {
+  margin: 0 0 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-3);
+  overflow-x: auto;
+}
+.chat-markdown.chat-doc pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.chat-markdown.chat-doc table {
+  width: 100%;
+  margin: 0 0 16px 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  display: block;
+  overflow-x: auto;
+}
+.chat-markdown.chat-doc th,
+.chat-markdown.chat-doc td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+}
+.chat-markdown.chat-doc th {
+  background: var(--surface-3);
+  font-weight: 600;
+}
+.chat-markdown.chat-doc a {
+  color: var(--primary-2);
   text-decoration: underline;
 }
 

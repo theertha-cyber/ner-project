@@ -88,7 +88,10 @@ async def _prepare_conversation(
             raise NotFoundError("Conversation", conversation_id)
 
         msg_result = await session.execute(
-            text(f"SELECT role, content FROM {schema}.chat_messages WHERE conversation_id = :cid ORDER BY created_at ASC"),
+            text(
+                f"SELECT role, content FROM {schema}.chat_messages WHERE conversation_id = :cid "
+                "ORDER BY created_at ASC, CASE role WHEN 'user' THEN 0 ELSE 1 END ASC"
+            ),
             {"cid": conversation_id},
         )
         conversation_context = [{"role": r.role, "content": r.content} for r in msg_result.fetchall()]
@@ -123,14 +126,21 @@ async def _persist_turn_and_respond(
     disclaimer = guardrails.inject_disclaimer()
     sources_data = json.dumps([s.model_dump() for s in sources]) if sources else None
     message_id = str(uuid.uuid4())
+    # created_at is written explicitly with clock_timestamp() rather than relying on
+    # the column's NOW() default: NOW() is transaction_timestamp(), so both rows of a
+    # turn — inserted in this same transaction — would land on the identical instant
+    # and `ORDER BY created_at` could hand the assistant row back before the user row.
     await session.execute(
-        text(f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources) VALUES (:id, :cid, 'user', :content, NULL)"),
+        text(
+            f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources, created_at) "
+            "VALUES (:id, :cid, 'user', :content, NULL, clock_timestamp())"
+        ),
         {"id": str(uuid.uuid4()), "cid": conversation_id, "content": user_message},
     )
     await session.execute(
         text(
-            f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources, answer_kind, model_version, response_time_ms) "
-            "VALUES (:id, :cid, 'assistant', :content, :sources, :answer_kind, :model_version, :response_time_ms)"
+            f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources, answer_kind, model_version, response_time_ms, created_at) "
+            "VALUES (:id, :cid, 'assistant', :content, :sources, :answer_kind, :model_version, :response_time_ms, clock_timestamp())"
         ),
         {"id": message_id, "cid": conversation_id, "content": reply, "sources": sources_data, "answer_kind": answer_kind, "model_version": model_version, "response_time_ms": response_time_ms},
     )
@@ -343,7 +353,9 @@ async def get_conversation(
             FROM {schema}.chat_messages m
             LEFT JOIN {schema}.chat_message_feedback f ON f.message_id = m.id
             WHERE m.conversation_id = :cid
-            ORDER BY m.created_at ASC
+            -- Turns written before created_at used clock_timestamp() share one
+            -- timestamp per turn; the role tiebreak keeps user before assistant.
+            ORDER BY m.created_at ASC, CASE m.role WHEN 'user' THEN 0 ELSE 1 END ASC
         """),
         {"cid": conv_id},
     )

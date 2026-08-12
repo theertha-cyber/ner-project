@@ -563,6 +563,44 @@ class TestStreamingPersistence:
         assert len(user_rows) == 1
         assert assistant_rows[0].content == done_data["reply"]
 
+    async def test_reloaded_conversation_preserves_message_order(self, engine, tenant_schema, monkeypatch):
+        """Regression: both rows of a turn used to take the column's NOW() default,
+        which is transaction_timestamp() and therefore identical for the pair, so
+        `ORDER BY created_at` could hand the assistant row back first. That only
+        showed after a page refresh, when the UI drops its optimistic order and
+        renders whatever GET /conversations/{id} returns."""
+        from sqlalchemy import text
+        tid, schema = tenant_schema
+
+        conv_id = None
+        async with AsyncClient(transport=ASGITransport(app=_app()), base_url="http://test") as client:
+            for turn in range(3):
+                deltas = [f"answer {turn}"]
+                _patch_orchestrator(monkeypatch, CannedStreamOrchestrator(reply="".join(deltas), deltas=deltas))
+                async with client.stream("POST", "/api/v1/chat/stream", headers=auth_header(tid),
+                                          json={"message": f"question {turn}", "conversation_id": conv_id}) as resp:
+                    events = await _read_sse_events(resp)
+                conv_id = next(e[1] for e in events if e[0] == "done")["conversation_id"]
+
+            detail = await client.get(f"/api/v1/chat/conversations/{conv_id}", headers=auth_header(tid))
+
+        assert detail.status_code == 200
+        messages = detail.json()["messages"]
+        assert [m["role"] for m in messages] == ["user", "assistant"] * 3
+        assert [m["content"] for m in messages] == [
+            "question 0", "answer 0", "question 1", "answer 1", "question 2", "answer 2",
+        ]
+
+        # The stored timestamps must themselves be strictly increasing, so the
+        # ordering does not lean on the role tiebreak that protects legacy rows.
+        async with engine.begin() as conn:
+            result = await conn.execute(
+                text(f"SELECT created_at FROM {schema}.chat_messages WHERE conversation_id = :cid ORDER BY created_at ASC"),
+                {"cid": conv_id},
+            )
+            stamps = [r.created_at for r in result.fetchall()]
+        assert len(set(stamps)) == len(stamps)
+
     async def test_failed_stream_persists_nothing(self, engine, tenant_schema, monkeypatch):
         from sqlalchemy import text
         tid, schema = tenant_schema

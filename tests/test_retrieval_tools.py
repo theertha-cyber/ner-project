@@ -47,10 +47,11 @@ class FailingReranker:
         return None
 
 
-def _context(retriever=None, sql_search=None, max_top_k=20) -> ToolContext:
+def _context(retriever=None, sql_search=None, max_top_k=20, conversation_context=None) -> ToolContext:
     return ToolContext(
         tenant_id="tenant-1", schema="tenant_test", session=object(),
         retriever=retriever, max_top_k=max_top_k, sql_search=sql_search,
+        conversation_context=conversation_context,
     )
 
 
@@ -287,6 +288,42 @@ class TestRejectedSqlNotExecuted:
 
         assert result.error is not None
         assert executed["called"] is False
+
+
+class TestConversationContextReachesSqlSearch:
+    """A tool is invoked with its `arguments` alone — the planner's view of the
+    conversation never travels with them. Anything the tool must resolve against
+    earlier turns has to arrive through ToolContext, so a follow-up like "which of
+    those candidates …" is answered against the set the user meant rather than
+    against the whole tenant."""
+
+    async def test_conversation_context_is_forwarded(self):
+        seen = {}
+
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
+            seen["conversation_context"] = conversation_context
+            return []
+
+        history = [
+            {"role": "user", "content": "fetch me the names of candidates who know python"},
+            {"role": "assistant", "content": "Mahalakshmi S, Hannah, Harshith Akshayraj R.S"},
+        ]
+        context = _context(sql_search=sql_search, conversation_context=history)
+
+        await structured_retrieval.call({"query": "which of the following suit an AI role"}, context)
+
+        assert seen["conversation_context"] == history
+
+    async def test_absent_conversation_context_is_forwarded_as_none(self):
+        seen = {}
+
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
+            seen["conversation_context"] = conversation_context
+            return []
+
+        await structured_retrieval.call({"query": "q"}, _context(sql_search=sql_search))
+
+        assert seen["conversation_context"] is None
 
 
 class TestCandidateDocumentIds:

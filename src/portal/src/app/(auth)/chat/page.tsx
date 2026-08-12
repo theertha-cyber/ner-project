@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { RequireAuth } from "@/components/require-auth";
-import { ChatSidebar } from "@/components/chat/ChatSidebar";
+import { ConversationList } from "@/components/chat/ConversationList";
 import { MessageThread } from "@/components/chat/MessageThread";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { authFetch } from "@/lib/auth-fetch";
@@ -43,9 +44,11 @@ interface Conversation {
 }
 
 const CHAT_API_BASE = "/api/v1/chat";
+const CHAT_ROUTE = "/chat";
 
 function ChatPageInner() {
   const { user } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const conversationParam = searchParams.get("conversation");
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -56,6 +59,7 @@ function ChatPageInner() {
   const [creatingConversation, setCreatingConversation] = useState(false);
   const [errorToast, setErrorToast] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const appliedParamRef = useRef<string | null>(null);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -91,13 +95,29 @@ function ChatPageInner() {
   const handleSelectConversation = useCallback((convId: string) => {
     setActiveConvId(convId);
     loadMessages(convId);
-  }, [loadMessages]);
+    router.replace(CHAT_ROUTE + "?conversation=" + convId);
+  }, [loadMessages, router]);
 
+  const handleBackToList = useCallback(() => {
+    setActiveConvId(null);
+    setMessages([]);
+    appliedParamRef.current = null;
+    router.replace(CHAT_ROUTE);
+    // The list shows per-conversation message counts and auto-generated titles,
+    // both of which can have moved while the conversation was open.
+    loadConversations();
+  }, [router, loadConversations]);
+
+  // Deep links (`/chat?conversation=<id>`) open that conversation once. The ref
+  // guard keeps the effect from re-opening it after the user navigates back,
+  // which would otherwise fight the back action until the URL settles.
   useEffect(() => {
-    if (conversationParam && conversationParam !== activeConvId) {
-      handleSelectConversation(conversationParam);
+    if (conversationParam && conversationParam !== appliedParamRef.current) {
+      appliedParamRef.current = conversationParam;
+      setActiveConvId(conversationParam);
+      loadMessages(conversationParam);
     }
-  }, [conversationParam, activeConvId, handleSelectConversation]);
+  }, [conversationParam, loadMessages]);
 
   const showError = useCallback((msg: string) => {
     setErrorToast(msg);
@@ -121,8 +141,10 @@ function ChatPageInner() {
         };
         setConversations((prev) => [newConv, ...prev]);
         setActiveConvId(data.id);
+        appliedParamRef.current = data.id;
         setMessages([]);
         setErrorToast(null);
+        router.replace(CHAT_ROUTE + "?conversation=" + data.id);
       } else {
         showError("Failed to create conversation. Please try again.");
       }
@@ -131,7 +153,7 @@ function ChatPageInner() {
     } finally {
       setCreatingConversation(false);
     }
-  }, [showError]);
+  }, [showError, router]);
 
   const handleRenameConversation = useCallback(async (convId: string, title: string) => {
     try {
@@ -163,12 +185,14 @@ function ChatPageInner() {
         if (activeConvId === convId) {
           setActiveConvId(null);
           setMessages([]);
+          appliedParamRef.current = null;
+          router.replace(CHAT_ROUTE);
         }
       }
     } catch {
       /* ignore */
     }
-  }, [activeConvId]);
+  }, [activeConvId, router]);
 
   const handleSendMessageStreaming = useCallback(async (text: string, tempId: string, thinkingId: string, isFirstMessage: boolean) => {
     let accumulated = "";
@@ -341,8 +365,23 @@ function ChatPageInner() {
     }
   }, [showError]);
 
+  const activeTitle =
+    conversations.find((c) => c.id === activeConvId)?.title || "New conversation";
+
+  // The app shell pads `main` by 24px vertically and 28px horizontally. That
+  // padding is pulled back here so the conversation gets the height, and so the
+  // conversation toolbar can set its own inset that matches the topbar's.
   return (
-    <div className="animate-fade-up flex h-full" style={{ overflow: "hidden", position: "relative" }}>
+    <div
+      className="animate-fade-up flex"
+      style={{
+        overflow: "hidden",
+        position: "relative",
+        margin: "-24px -28px",
+        height: "calc(100% + 48px)",
+        width: "calc(100% + 56px)",
+      }}
+    >
       {errorToast && (
         <div
           style={{
@@ -365,41 +404,79 @@ function ChatPageInner() {
           {errorToast}
         </div>
       )}
-      <ChatSidebar
-        conversations={conversations}
-        activeConvId={activeConvId}
-        onSelect={handleSelectConversation}
-        onNew={handleNewConversation}
-        onDelete={handleDeleteConversation}
-        onRename={handleRenameConversation}
-        loading={creatingConversation}
-      />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        {activeConvId ? (
-          <>
-            <MessageThread
-              messages={messages}
-              loading={loading}
-              canRate={user?.role === "business_user"}
-              onRateMessage={handleRateMessage}
-            />
-            <ChatInput onSend={handleSendMessage} disabled={sending} />
-          </>
-        ) : (
+      {activeConvId ? (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div
             style={{
-              flex: 1,
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              color: "var(--ink-3)",
-              fontSize: 16,
+              gap: 10,
+              height: 34,
+              // Left inset matches the topbar's, so the back arrow lines up with
+              // the page title above it. Top margin gives it breathing room below
+              // the topbar instead of sitting flush against it.
+              margin: "12px 0 0",
+              padding: "0 20px",
+              flexShrink: 0,
             }}
           >
-            Select a conversation or start a new one
+            <button
+              type="button"
+              onClick={handleBackToList}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "3px 8px 3px 0",
+                borderRadius: "var(--radius-md)",
+                background: "transparent",
+                border: "none",
+                color: "var(--ink-2)",
+                fontSize: 13.5,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              <ArrowLeft size={15} />
+              Chats
+            </button>
+            <span style={{ width: 1, height: 14, background: "var(--line)" }} />
+            <span
+              title={activeTitle}
+              style={{
+                minWidth: 0,
+                fontSize: 13.5,
+                fontWeight: 500,
+                color: "var(--ink)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {activeTitle}
+            </span>
           </div>
-        )}
-      </div>
+
+          <MessageThread
+            messages={messages}
+            loading={loading}
+            canRate={user?.role === "business_user"}
+            onRateMessage={handleRateMessage}
+          />
+          <ChatInput onSend={handleSendMessage} disabled={sending} />
+        </div>
+      ) : (
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <ConversationList
+            conversations={conversations}
+            onSelect={handleSelectConversation}
+            onNew={handleNewConversation}
+            onDelete={handleDeleteConversation}
+            onRename={handleRenameConversation}
+            loading={creatingConversation}
+          />
+        </div>
+      )}
     </div>
   );
 }

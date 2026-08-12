@@ -38,8 +38,12 @@ class StructuredRetrievalTool:
         async def executor(args: dict, context: ToolContext) -> tuple[list[dict], bool]:
             if context.sql_search is None:
                 raise RuntimeError("ToolContext has no sql_search configured")
+            # Forward the conversation, don't drop it: a follow-up query ("which of
+            # those candidates …") reaches this tool as a `query` string alone, and
+            # SQL generated without the earlier turns silently searches the whole
+            # tenant instead of the set the user was actually asking about.
             rows = await context.sql_search(
-                args["query"], context.session, context.schema, None,
+                args["query"], context.session, context.schema, context.conversation_context,
                 attempt_sink=attempt_sink, deadline=context.deadline,
             )
             return (rows or []), False

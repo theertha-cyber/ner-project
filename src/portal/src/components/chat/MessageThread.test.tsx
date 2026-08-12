@@ -73,6 +73,60 @@ describe("MessageThread", () => {
     expect(screen.getByLabelText("Thumbs up")).toBeDisabled();
     expect(screen.getByLabelText("Thumbs down")).toBeDisabled();
     expect(screen.getByLabelText("Thumbs up")).toHaveAttribute("aria-pressed", "true");
+
+    // The rating reads off the glyph itself: the chosen thumb is filled and the
+    // button stays transparent (no coloured pill behind the icon).
+    const up = screen.getByLabelText("Thumbs up");
+    const down = screen.getByLabelText("Thumbs down");
+    expect(up.querySelector("svg")).toHaveAttribute("fill", "currentColor");
+    expect(down.querySelector("svg")).toHaveAttribute("fill", "none");
+    expect(up).toHaveStyle({ background: "transparent" });
+  });
+
+  it("does not scroll to the newest message when an older message is rated", () => {
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView");
+    const withFeedback = baseMessages.map((m) =>
+      m.id === "a1" ? { ...m, feedback: { message_id: "a1", rating: "up" as const, created_at: "2026-01-01" } } : m
+    );
+
+    const { rerender } = render(
+      <MessageThread messages={baseMessages} loading={false} canRate={true} onRateMessage={vi.fn()} />
+    );
+    scrollSpy.mockClear();
+
+    // Rating replaces the array (new object identity, same tail) — the thread must stay put.
+    rerender(<MessageThread messages={withFeedback} loading={false} canRate={true} onRateMessage={vi.fn()} />);
+    expect(scrollSpy).not.toHaveBeenCalled();
+
+    // A genuinely new message still scrolls.
+    rerender(
+      <MessageThread
+        messages={[...withFeedback, { id: "a4", role: "assistant" as const, content: "Newest", created_at: "2026-01-01" }]}
+        loading={false}
+        canRate={true}
+        onRateMessage={vi.fn()}
+      />
+    );
+    expect(scrollSpy).toHaveBeenCalled();
+    scrollSpy.mockRestore();
+  });
+
+  it("scrolls as streamed tokens extend the last message", () => {
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView");
+    const streaming = [
+      { id: "a1", role: "assistant" as const, content: "Based", created_at: "2026-01-01", isStreaming: true },
+    ];
+    const { rerender } = render(<MessageThread messages={streaming} loading={false} />);
+    scrollSpy.mockClear();
+
+    rerender(
+      <MessageThread
+        messages={[{ ...streaming[0], content: "Based on the documents" }]}
+        loading={false}
+      />
+    );
+    expect(scrollSpy).toHaveBeenCalled();
+    scrollSpy.mockRestore();
   });
 });
 

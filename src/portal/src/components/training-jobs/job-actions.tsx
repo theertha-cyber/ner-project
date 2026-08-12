@@ -12,7 +12,10 @@ export interface JobActionsProps {
 }
 
 const BATCH_OPTIONS = [4, 8, 16, 32];
-const SEQ_OPTIONS = [64, 128, 256];
+// Must stay in sync with ApproveJobRequest.max_seq_length's upper bound
+// (src/training_service/api/v1/schemas.py) — that field caps at 512, the
+// BERT positional-embedding limit.
+const SEQ_OPTIONS = [64, 128, 256, 512];
 
 interface ApproveFormErrors {
   learning_rate?: string;

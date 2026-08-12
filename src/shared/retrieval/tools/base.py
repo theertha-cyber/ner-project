@@ -24,10 +24,12 @@ _JSON_SCHEMA_TYPES = {
 #
 # Called as
 #   sql_search(query, session, schema, conversation_context, attempt_sink=…, deadline=…)
-# The two keyword arguments are the recovery loop's observability sink and its latency
-# bound; an implementation without a bounded retry may accept and ignore them. The
-# callable raises on definitive failure — a returned empty list means the query ran and
-# legitimately matched nothing, which is not the same thing.
+# `conversation_context` is the caller's list of prior `{"role", "content"}` messages,
+# forwarded from ToolContext; the implementation decides how much of it to use. The two
+# keyword arguments are the recovery loop's observability sink and its latency bound; an
+# implementation without a bounded retry may accept and ignore them. The callable raises
+# on definitive failure — a returned empty list means the query ran and legitimately
+# matched nothing, which is not the same thing.
 SqlSearch = Callable[..., Awaitable["list[dict] | None"]]
 
 
@@ -44,6 +46,10 @@ class ToolContext:
     max_top_k: int = 20
     sql_search: SqlSearch | None = None
     deadline: float | None = None
+    # Prior `{"role", "content"}` messages of the conversation this call belongs to.
+    # A tool receives only its own `arguments` — the planner's history never reaches it
+    # — so anything a tool must resolve against earlier turns has to arrive here.
+    conversation_context: list[dict] | None = None
 
 
 def _render_result_line(item: Any) -> str:
