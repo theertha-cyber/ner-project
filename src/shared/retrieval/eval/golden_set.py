@@ -14,12 +14,27 @@ class Judgment:
     grade: int
 
 
+# The query classes the investigation traced end to end. Every one must have at least
+# one case, so a class the pipeline handles badly cannot pass unnoticed.
+QUERY_CLASSES = (
+    "simple_structured",
+    "exact_entity_lookup",
+    "attribute_filtering",
+    "multi_condition",
+    "multi_document",
+    "ambiguous_entity",
+    "document_content",
+    "mixed",
+)
+
+
 @dataclass(frozen=True)
 class GoldenQuery:
     query_id: str
     query: str
     relevant: list[Judgment] = field(default_factory=list)
     notes: str | None = None
+    query_class: str | None = None
 
 
 @dataclass(frozen=True)
@@ -98,6 +113,23 @@ def load_golden_set(path: str | Path, corpus: list[CorpusChunk] | None = None) -
                     )
                 judgments.append(Judgment(document_id=document_id, chunk_index=chunk_index, grade=grade))
 
-            queries.append(GoldenQuery(query_id=query_id, query=query_text, relevant=judgments, notes=record.get("notes")))
+            query_class = record.get("query_class")
+            if query_class is not None and query_class not in QUERY_CLASSES:
+                raise GoldenSetError(
+                    f"query '{query_id}': unknown query_class '{query_class}'; "
+                    f"expected one of {sorted(QUERY_CLASSES)}"
+                )
+
+            queries.append(GoldenQuery(
+                query_id=query_id, query=query_text, relevant=judgments,
+                notes=record.get("notes"), query_class=query_class,
+            ))
 
     return queries
+
+
+def missing_query_classes(queries: list[GoldenQuery]) -> list[str]:
+    """The investigated classes with no case. A non-empty result fails suite
+    validation: a class nobody measures is a class nobody notices breaking."""
+    covered = {q.query_class for q in queries if q.query_class}
+    return sorted(set(QUERY_CLASSES) - covered)

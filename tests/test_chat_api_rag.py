@@ -145,6 +145,9 @@ class TestSourceAssemblyHasNoNerSources:
             "message": "q", "tenant_id": "t1", "schema": "tenant_t1",
             "session": _FakeSession(), "chunks": chunks, "sql_results": [{"count": 1}],
         }
+        # Citations derive from the evidence prompt assembly admitted, so that stage
+        # runs first (design Decision 7).
+        state.update(await nodes["prompt_assembly"](state))
         result = await nodes["source_assembly"](state)
 
         assert all(s.source_type != "ner" for s in result["sources"])

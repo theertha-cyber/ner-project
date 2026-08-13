@@ -5,7 +5,13 @@ import pytest
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.retriever import RerankingRetriever
 from src.shared.retrieval.tools import build_default_registry
-from src.shared.retrieval.tools.base import ToolContext, ToolResult, validate_args, ArgValidationError
+from src.shared.retrieval.tools.base import (
+    ArgValidationError,
+    ToolContext,
+    ToolResult,
+    assert_no_tenancy_params,
+    validate_args,
+)
 from src.shared.retrieval.tools.document_tools import semantic_retrieval
 from src.shared.retrieval.tools.entity_tools import structured_retrieval
 from src.shared.retrieval.tools.registry import ToolLookupError, ToolRegistrationError, ToolRegistry
@@ -100,6 +106,29 @@ class TestNoTenancyParams:
         for tool in registry.list():
             keys = set(tool.args_schema.get("properties", {}))
             assert keys.isdisjoint({"schema", "tenant_id", "tenant", "purpose"}), tool.name
+
+    def test_structured_tool_declares_no_connection_arguments(self):
+        """verification.md row 5. The role generated SQL runs under is server
+        configuration, chosen the same way `schema` is — nothing a planner emits, and
+        nothing in a tool's declared arguments, can select it."""
+        registry = build_default_registry()
+        forbidden = {"role", "db_role", "user", "username", "connection", "dsn", "database_url"}
+
+        keys = set(structured_retrieval.args_schema.get("properties", {}))
+        assert keys.isdisjoint(forbidden), keys & forbidden
+
+        for tool in registry.list():
+            tool_keys = set(tool.args_schema.get("properties", {}))
+            assert tool_keys.isdisjoint(forbidden), tool.name
+            assert tool_keys.isdisjoint({"schema", "tenant_id", "tenant", "purpose"}), tool.name
+
+        # The registration-time assertion is still the thing that enforces it.
+        for leaked in ("schema", "tenant_id", "tenant", "purpose"):
+            with pytest.raises(ValueError):
+                assert_no_tenancy_params(
+                    {"type": "object", "properties": {"query": {"type": "string"}, leaked: {"type": "string"}}},
+                    "probe",
+                )
 
 
 class TestResultEnvelope:

@@ -30,5 +30,32 @@ Co.") invented purely to exercise retrieval.
   the gate's default tolerance (0.02) is a margin for when live embeddings
   replace the synthetic ones, not a fit to observed noise.
 
+  It records the `scoring_rule` and the `corpus` that produced it, and the
+  gate refuses a comparison across either. Under the previous
+  `skip-degraded` rule a query whose run degraded or errored was marked
+  skipped and dropped out of the mean entirely, so a configuration that
+  broke on half the golden set scored the same as one that answered all of
+  it — those numbers measure something different from a run under
+  `zero-degraded`, where such queries score zero and stay in the
+  denominator. This baseline's values are unchanged from the prior file
+  because every query in this deterministic fixture set succeeds
+  (`degraded_count` and `failed_count` are both 0), so the two rules agree
+  here; the labels are what make a future divergence visible instead of
+  silent. Do not loosen the gate tolerance to accommodate a rule change —
+  regenerate the baseline.
+
+## Corpus identity
+
+A score against this synthetic fixture is not evidence about tenant
+behaviour, and the two must never be compared. Every report and baseline
+records which corpus produced it. To run against a tenant-representative
+set, point the runner at its directory and name it:
+
+    python scripts/run_retrieval_eval.py --corpus-dir path/to/tenant_eval \
+        --corpus-name tenant-representative
+
+The fixture set stays in place; the tenant corpus is an addition, not a
+replacement.
+
 Regenerating any of these files requires re-running the eval pipeline and
 committing the new output as a reviewed change.

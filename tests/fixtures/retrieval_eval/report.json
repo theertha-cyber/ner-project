@@ -1,0 +1,1003 @@
+{
+  "aggregate": {
+    "dense_only": {
+      "degraded_count": 0,
+      "failed_count": 0,
+      "mrr_at_k": 1.0,
+      "ndcg_at_k": 0.9200811579009052,
+      "precision_at_k": 0.36000000000000004,
+      "query_count": 30,
+      "recall_at_k": 0.9,
+      "scoring_rule": "zero-degraded",
+      "skipped": [
+        "q-no-match-1",
+        "q-no-match-2"
+      ]
+    },
+    "hybrid": {
+      "degraded_count": 0,
+      "failed_count": 0,
+      "mrr_at_k": 1.0,
+      "ndcg_at_k": 0.9200811579009052,
+      "precision_at_k": 0.36000000000000004,
+      "query_count": 30,
+      "recall_at_k": 0.9,
+      "scoring_rule": "zero-degraded",
+      "skipped": [
+        "q-no-match-1",
+        "q-no-match-2"
+      ]
+    }
+  },
+  "configurations": [
+    {
+      "aggregate": {
+        "degraded_count": 0,
+        "failed_count": 0,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9200811579009052,
+        "precision_at_k": 0.36000000000000004,
+        "query_count": 30,
+        "recall_at_k": 0.9,
+        "scoring_rule": "zero-degraded",
+        "skipped": [
+          "q-no-match-1",
+          "q-no-match-2"
+        ]
+      },
+      "corpus": "synthetic-fixture",
+      "degraded_query_count": 0,
+      "failed_query_count": 0,
+      "latency_ms_by_query_class": {
+        "document_content": {
+          "count": 32,
+          "max": 32.85870000036084,
+          "mean": 1.7541468748731859
+        }
+      },
+      "name": "dense_only",
+      "retrieval_config": {
+        "rerank_candidate_count": null,
+        "reranker_enabled": null,
+        "top_k": 5
+      },
+      "scoring_rule": "zero-degraded"
+    },
+    {
+      "aggregate": {
+        "degraded_count": 0,
+        "failed_count": 0,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9200811579009052,
+        "precision_at_k": 0.36000000000000004,
+        "query_count": 30,
+        "recall_at_k": 0.9,
+        "scoring_rule": "zero-degraded",
+        "skipped": [
+          "q-no-match-1",
+          "q-no-match-2"
+        ]
+      },
+      "corpus": "synthetic-fixture",
+      "degraded_query_count": 0,
+      "failed_query_count": 0,
+      "latency_ms_by_query_class": {
+        "document_content": {
+          "count": 32,
+          "max": 33.697099999699276,
+          "mean": 2.4057031249640204
+        }
+      },
+      "name": "hybrid",
+      "retrieval_config": {
+        "rerank_candidate_count": null,
+        "reranker_enabled": null,
+        "top_k": 5
+      },
+      "scoring_rule": "zero-degraded"
+    }
+  ],
+  "corpus": "synthetic-fixture",
+  "golden_set": "retrieval_eval/golden_set.jsonl",
+  "per_query": {
+    "q-doc-address-corrections": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.742199998057913,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.4134999983070884,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-address-corrections-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.8051999975577928,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.2900000001536682,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-carbon-offset": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7917000002635177,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.3013000025239307,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-carbon-offset-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7002999991527759,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9828422279067397,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.246499999979278,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9828422279067397,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-customs-clearance": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.8385000000998843,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.469599999836646,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-customs-clearance-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.925600001210114,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.320700001087971,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-delivery-sla": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.6929000010131858,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.1875000018335413,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-delivery-sla-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7174000020313542,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9737576937588317,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.1128000005555805,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9737576937588317,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-driver-policies": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7825000029697549,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.4545999983965885,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-driver-policies-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.8009000011952594,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9680147827042069,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.4222999998310115,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9680147827042069,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-fuel-surcharge": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7643999997526407,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.177300000563264,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-fuel-surcharge-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.6371999988914467,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.1978000002272893,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-hazmat-rules": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.6629999988945201,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.3564000000769738,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-hazmat-rules-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7621999975526705,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.4066000003367662,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-insurance-claims": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.6601999994018115,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.120900000387337,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-insurance-claims-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.6992999988142401,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.292600001761457,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-invoicing": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.6124000028648879,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.5292999996745493,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-invoicing-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.663499999063788,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.5270000003511086,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-membership-tiers": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.6253999999898952,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 2.0097999986319337,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-membership-tiers-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7334999972954392,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.4081000008445699,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-package-tracking": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.9877999982563779,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.6257999996014405,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-package-tracking-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.9294999981648289,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.2322999973548576,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-returns-policy": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.6114999996498227,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.3992999993206467,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-returns-policy-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.637799999822164,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.62330000239308,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-shipping-rates": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 32.85870000036084,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 33.697099999699276,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-shipping-rates-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.9783999994397163,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.792600000044331,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-signature-requirements": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.845300000946736,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.2637999971047975,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-signature-requirements-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7614999994984828,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.4682000000902917,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-warehouse-locations": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.6790000006731134,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.5998000017134473,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.8339912323981488,
+        "precision_at_k": 0.4,
+        "query_class": "document_content",
+        "recall_at_k": 1.0,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-doc-warehouse-locations-detail": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7627000013599172,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.2142999985371716,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.9173194127129571,
+        "precision_at_k": 0.2,
+        "query_class": "document_content",
+        "recall_at_k": 0.5,
+        "skip_reason": null,
+        "skipped": false
+      }
+    },
+    "q-no-match-1": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7264000014401972,
+        "mrr_at_k": 0.0,
+        "ndcg_at_k": 0.0,
+        "precision_at_k": 0.0,
+        "query_class": "document_content",
+        "recall_at_k": 0.0,
+        "skip_reason": "no judgments for this query",
+        "skipped": true
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.5333999981521629,
+        "mrr_at_k": 0.0,
+        "ndcg_at_k": 0.0,
+        "precision_at_k": 0.0,
+        "query_class": "document_content",
+        "recall_at_k": 0.0,
+        "skip_reason": "no judgments for this query",
+        "skipped": true
+      }
+    },
+    "q-no-match-2": {
+      "dense_only": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 0.7358000002568588,
+        "mrr_at_k": 0.0,
+        "ndcg_at_k": 0.0,
+        "precision_at_k": 0.0,
+        "query_class": "document_content",
+        "recall_at_k": 0.0,
+        "skip_reason": "no judgments for this query",
+        "skipped": true
+      },
+      "hybrid": {
+        "degraded": false,
+        "error": null,
+        "failed": false,
+        "latency_ms": 1.2879999994765967,
+        "mrr_at_k": 0.0,
+        "ndcg_at_k": 0.0,
+        "precision_at_k": 0.0,
+        "query_class": "document_content",
+        "recall_at_k": 0.0,
+        "skip_reason": "no judgments for this query",
+        "skipped": true
+      }
+    }
+  },
+  "query_count": 32,
+  "run_timestamp": "2026-08-13T09:38:32.598539+00:00",
+  "scoring_rule": "zero-degraded"
+}

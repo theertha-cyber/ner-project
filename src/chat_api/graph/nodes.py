@@ -74,23 +74,30 @@ def _has_anaphoric_reference(message: str) -> bool:
     return bool(_ANAPHORA_RE.search(message))
 
 
-def _rewrite_plan_for_resolution(plan, document_id: str, query_override: str | None):
+def _rewrite_plan_for_resolution(plan, document_ids: list[str], query_override: str | None):
     """Returns a new RetrievalPlan with every `semantic_retrieval` entry's `scope`
-    overridden to the resolved document, and every `structured_retrieval` entry's
-    `query` argument extended with an explicit document constraint. When
-    `query_override` is given (resuming after a selection), both capabilities'
-    `query` argument is replaced with it so retrieval answers the original request
-    rather than the selection utterance."""
+    overridden to the resolved documents, and every `structured_retrieval` entry
+    constrained to the same set. When `query_override` is given (resuming after a
+    selection), both capabilities' `query` argument is replaced with it so retrieval
+    answers the original request rather than the selection utterance.
+
+    Takes the whole set, never a single identifier: this signature is half of why
+    "compare Hannah and Girish" used to reach the prompt as a question about Girish."""
+    document_ids = list(document_ids)
+    if not document_ids:
+        return plan
+
     new_entries = []
     for entry in plan.entries:
         args = dict(entry.arguments)
         if entry.capability_name == SEMANTIC_CAPABILITY_NAME:
             if query_override is not None:
                 args["query"] = query_override
-            args["scope"] = {"type": "document", "document_ids": [document_id]}
+            args["scope"] = {"type": "document", "document_ids": document_ids}
         elif entry.capability_name == STRUCTURED_CAPABILITY_NAME:
-            base_query = query_override if query_override is not None else args.get("query", "")
-            args["query"] = f"{base_query} (restrict results to document_id = '{document_id}')"
+            if query_override is not None:
+                args["query"] = query_override
+            args["scope"] = {"type": "document", "document_ids": document_ids}
         new_entries.append(PlanEntry(
             capability_name=entry.capability_name, arguments=args,
             rejected=entry.rejected, rejection_reason=entry.rejection_reason,
@@ -195,7 +202,7 @@ def build_nodes(orchestrator) -> dict:
                 original_message = conv.pending_original_message
                 await conv_state.set_binding(session, schema, conversation_id, selected.document_id, selected.name)
                 await conv_state.clear_pending(session, schema, conversation_id)
-                rewritten = _rewrite_plan_for_resolution(plan, selected.document_id, query_override=original_message)
+                rewritten = _rewrite_plan_for_resolution(plan, [selected.document_id], query_override=original_message)
                 logger.info(
                     "entity_resolution outcome=selected tenant_id=%s document_id=%s",
                     tenant_id, selected.document_id,
@@ -228,23 +235,25 @@ def build_nodes(orchestrator) -> dict:
         result = await entity_resolver.resolve_entity(message, session, schema, tenant_id)
 
         if result.outcome == entity_resolver.UNIQUE:
-            await conv_state.set_binding(session, schema, conversation_id, result.resolved_document_id, result.resolved_entity_value)
-            rewritten = _rewrite_plan_for_resolution(plan, result.resolved_document_id, query_override=None)
+            document_ids = result.resolved_document_ids
+            await conv_state.set_binding(session, schema, conversation_id, document_ids, result.resolved_entity_value)
+            rewritten = _rewrite_plan_for_resolution(plan, document_ids, query_override=None)
             return {
                 "retrieval_plan": rewritten,
                 "entity_resolution_outcome": "unique",
-                "resolved_document_ids": [result.resolved_document_id],
+                "resolved_document_ids": document_ids,
             }
 
         if result.outcome == entity_resolver.AMBIGUOUS:
             if conv.has_binding and any(c.document_id == conv.resolved_document_id for c in result.candidates) and (
                 canonicalize(result.mention) == canonicalize(conv.resolved_entity_value or "")
             ):
-                rewritten = _rewrite_plan_for_resolution(plan, conv.resolved_document_id, query_override=None)
+                bound_ids = conv.resolved_document_ids
+                rewritten = _rewrite_plan_for_resolution(plan, bound_ids, query_override=None)
                 return {
                     "retrieval_plan": rewritten,
                     "entity_resolution_outcome": "unique",
-                    "resolved_document_ids": [conv.resolved_document_id],
+                    "resolved_document_ids": bound_ids,
                 }
 
             await conv_state.store_pending_clarification(session, schema, conversation_id, message, result.mention, result.candidates)
@@ -269,11 +278,12 @@ def build_nodes(orchestrator) -> dict:
         # UNRESOLVED: no mention of its own in this message.
         if conv.has_binding:
             if _has_anaphoric_reference(message):
-                rewritten = _rewrite_plan_for_resolution(plan, conv.resolved_document_id, query_override=None)
+                bound_ids = conv.resolved_document_ids
+                rewritten = _rewrite_plan_for_resolution(plan, bound_ids, query_override=None)
                 return {
                     "retrieval_plan": rewritten,
                     "entity_resolution_outcome": "unique",
-                    "resolved_document_ids": [conv.resolved_document_id],
+                    "resolved_document_ids": bound_ids,
                 }
             await conv_state.clear_binding(session, schema, conversation_id)
 
@@ -303,46 +313,94 @@ def build_nodes(orchestrator) -> dict:
                 )
 
         budget = OrchestrationBudget(max_invocations=settings.orchestrator_max_invocations, deadline=deadline)
-        result = await execute_plan(plan, orchestrator.tool_registry, context_factory, budget)
+        result = await execute_plan(
+            plan, orchestrator.tool_registry, context_factory, budget,
+            recovery_query=state.get("message"),
+        )
 
         sql_results = result.sql_results
         if resolved_document_ids and sql_results:
+            # Secondary check only. Enforcement is the bound `document_id = ANY(:ids)`
+            # predicate applied to the validated statement, so a limit-truncated result
+            # can no longer be filtered down to nothing here. Every resolved document is
+            # retained — the set is the answer for a multi-subject question, not a
+            # single document with the rest treated as noise.
             resolved_set = set(resolved_document_ids)
             sql_results = [
                 row for row in sql_results
                 if not isinstance(row, dict) or row.get("document_id") is None or row.get("document_id") in resolved_set
             ]
 
+        # The planner's own degradation happened in orchestrator_node, before this node
+        # ran, so it is carried forward onto the status rather than recomputed here.
+        status = result.status
+        if already_degraded:
+            status.planning_degraded = True
+            status.stop_reason = state.get("orchestration_stop_reason") or status.stop_reason
+
         return {
             "chunks": result.chunks,
             "sql_results": sql_results,
-            "retrieval_error": result.retrieval_error,
-            "sql_error": result.sql_error,
+            "sql_completeness": result.sql_completeness,
+            "retrieval_status": status,
             "plan_trace": [asdict(t) for t in result.plan_trace],
-            "orchestration_degraded": already_degraded or result.orchestration_degraded,
-            "orchestration_stop_reason": (
-                state.get("orchestration_stop_reason") if already_degraded else result.orchestration_stop_reason
-            ),
+            "orchestration_degraded": status.planning_degraded,
+            "orchestration_stop_reason": status.stop_reason,
+        }
+
+    @_traced("prompt_assembly")
+    async def prompt_assembly_node(state: ChatState) -> dict:
+        """Runs before `source_assembly` (design Decision 7) and returns what it
+        admitted, so citations are derived from the evidence rather than guessed at a
+        second time. Document-name resolution moved here because this stage already
+        needs names for its chunk labels."""
+        message = state["message"]
+        sql_results = state.get("sql_results")
+        chunks = state.get("chunks") or []
+        conversation_context = state.get("conversation_context")
+        schema = state["schema"]
+        session = state["session"]
+
+        name_sources = [
+            Source(source_type="document_chunk", document_id=c.document_id) for c in chunks
+        ]
+        document_names = await orchestrator._resolve_document_names(name_sources, session, schema)
+
+        llm_messages, admitted = ContextAssembler().assemble(
+            message, sql_results, chunks, document_names, conversation_context,
+            retrieval_status=state.get("retrieval_status"),
+            sql_completeness=state.get("sql_completeness"),
+            return_evidence=True,
+        )
+        return {
+            "prompt_messages": llm_messages,
+            "document_names": document_names,
+            "admitted_evidence": admitted,
         }
 
     @_traced("source_assembly", count_key="sources")
     async def source_assembly_node(state: ChatState) -> dict:
-        sql_results = state.get("sql_results")
-        chunks = state.get("chunks") or []
+        """Builds citations from `admitted_evidence` alone. It no longer slices chunks
+        independently or re-serialises `sql_results` — a citation for evidence the
+        prompt never contained is a claim about an answer that was never written from
+        it."""
         tenant_id = state["tenant_id"]
         schema = state["schema"]
         session = state["session"]
+        admitted = state.get("admitted_evidence")
+        document_names = state.get("document_names") or {}
 
-        sql_source = None
-        if sql_results:
+        sources: list[Source] = []
+        if admitted is not None and admitted.structured_admitted and admitted.rows:
             import json
-            sql_source = Source(
+            sources.append(Source(
                 source_type="sql",
-                value=json.dumps(sql_results[:5], default=str),
+                value=json.dumps(admitted.rows, default=str),
                 relevance_score=1.0,
-            )
+            ))
 
-        vector_sources = [
+        admitted_chunks = admitted.chunks if admitted is not None else []
+        sources.extend(
             Source(
                 source_type="document_chunk",
                 document_id=c.document_id,
@@ -351,30 +409,13 @@ def build_nodes(orchestrator) -> dict:
                 relevance_score=c.similarity_score,
                 page_number=c.page_number,
             )
-            for c in chunks
-        ]
-
-        sources = []
-        if sql_source:
-            sources.append(sql_source)
-        sources.extend(vector_sources[:3])
-
-        document_names = await orchestrator._resolve_document_names(sources, session, schema)
-        sources = await orchestrator._enrich_citations(sources, session, schema, tenant_id, document_names=document_names)
-        return {"sources": sources, "document_names": document_names}
-
-    @_traced("prompt_assembly")
-    async def prompt_assembly_node(state: ChatState) -> dict:
-        message = state["message"]
-        sql_results = state.get("sql_results")
-        chunks = state.get("chunks") or []
-        document_names = state.get("document_names") or {}
-        conversation_context = state.get("conversation_context")
-
-        llm_messages = ContextAssembler().assemble(
-            message, sql_results, chunks, document_names, conversation_context,
+            for c in admitted_chunks[: settings.citation_max_chunks]
         )
-        return {"prompt_messages": llm_messages}
+
+        sources = await orchestrator._enrich_citations(
+            sources, session, schema, tenant_id, document_names=document_names,
+        )
+        return {"sources": sources}
 
     @_traced("generation")
     async def generation_node(state: ChatState) -> dict:
@@ -416,7 +457,9 @@ def build_nodes(orchestrator) -> dict:
             )
             reply = response.choices[0].message.content
 
-        reply, sources = orchestrator.guardrails.enforce_sources(reply, sources)
+        reply, sources = orchestrator.guardrails.enforce_sources(
+            reply, sources, state.get("retrieval_status"),
+        )
         return {"reply": reply, "sources": sources}
 
     return {

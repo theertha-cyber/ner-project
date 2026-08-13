@@ -85,13 +85,15 @@ class TestUnresolvedAndUnique:
 
         assert result["entity_resolution_outcome"] == "unique"
         assert result["resolved_document_ids"] == ["doc-1"]
-        assert set_binding_calls == [("doc-1", "Sreelakshmi R")]
+        assert set_binding_calls == [(["doc-1"], "Sreelakshmi R")]
 
         plan = result["retrieval_plan"]
         semantic = next(e for e in plan.entries if e.capability_name == "semantic_retrieval")
         structured = next(e for e in plan.entries if e.capability_name == "structured_retrieval")
         assert semantic.arguments["scope"] == {"type": "document", "document_ids": ["doc-1"]}
-        assert "doc-1" in structured.arguments["query"]
+        # The structured constraint is a value now, not prose appended to the question.
+        assert structured.arguments["scope"] == {"type": "document", "document_ids": ["doc-1"]}
+        assert "doc-1" not in structured.arguments["query"]
 
 
 class TestAmbiguousAndOverCap:
@@ -292,7 +294,7 @@ class TestBindingInheritance:
         result = await nodes["entity_resolution"](state)
 
         assert result["resolved_document_ids"] == ["doc-9"]
-        assert bind_calls == [("doc-9", "Arjun")]
+        assert bind_calls == [(["doc-9"], "Arjun")]
 
     async def test_bound_ambiguous_mention_is_not_reclarified(self, nodes, monkeypatch):
         candidates = [
@@ -325,7 +327,7 @@ class TestStructuredPostFilter:
 
     async def test_foreign_document_rows_dropped_and_idless_rows_retained(self, monkeypatch):
         from unittest.mock import AsyncMock
-        from src.shared.retrieval.orchestrator import OrchestrationResult
+        from src.shared.retrieval.orchestrator import OrchestrationResult, RetrievalStatus
 
         orchestrator = RAGOrchestrator.__new__(RAGOrchestrator)
         orchestrator.tool_registry = object()
@@ -339,11 +341,11 @@ class TestStructuredPostFilter:
                 {"document_id": "doc-2", "count": 9},
                 {"count": 14},
             ],
-            retrieval_error=None, sql_error=None, plan_trace=[], plan_truncated=False,
-            orchestration_degraded=False, orchestration_stop_reason="plan_executed",
+            status=RetrievalStatus(stop_reason="plan_executed"),
+            plan_trace=[], plan_truncated=False,
         )
 
-        async def fake_execute_plan(plan, registry, context_factory, budget):
+        async def fake_execute_plan(plan, registry, context_factory, budget, **kwargs):
             return fake_result
 
         import src.chat_api.graph.nodes as nodes_module
@@ -356,3 +358,119 @@ class TestStructuredPostFilter:
         doc_ids_in_results = {r.get("document_id") for r in result["sql_results"]}
         assert doc_ids_in_results == {"doc-1", None}
         assert len(result["sql_results"]) == 2
+
+    async def test_post_filter_retains_all_resolved_documents(self, monkeypatch):
+        """verification.md row 49 — a comparison resolves to several documents, and
+        the filter must keep every one of them."""
+        from unittest.mock import AsyncMock
+        from src.shared.retrieval.orchestrator import OrchestrationResult, RetrievalStatus
+
+        orchestrator = RAGOrchestrator.__new__(RAGOrchestrator)
+        orchestrator.tool_registry = object()
+        orchestrator.retriever = object()
+        orchestrator._sql_source = AsyncMock()
+        nodes_dict = build_nodes(orchestrator)
+
+        fake_result = OrchestrationResult(
+            chunks=[], sql_results=[
+                {"document_id": "D1", "entity_value": "python"},
+                {"document_id": "D2", "entity_value": "go"},
+                {"document_id": "D3", "entity_value": "rust"},
+            ],
+            status=RetrievalStatus(stop_reason="plan_executed"),
+            plan_trace=[], plan_truncated=False,
+        )
+
+        async def fake_execute_plan(plan, registry, context_factory, budget, **kwargs):
+            return fake_result
+
+        import src.chat_api.graph.nodes as nodes_module
+        monkeypatch.setattr(nodes_module, "execute_plan", fake_execute_plan)
+
+        state = _base_state()
+        state["resolved_document_ids"] = ["D1", "D2"]
+        result = await nodes_dict["retrieval_execution"](state)
+
+        assert {r["document_id"] for r in result["sql_results"]} == {"D1", "D2"}
+
+
+class TestMultiSubjectPlanRewriting:
+    """Covers verification.md rows 42, 44, 47, 48. `_rewrite_plan_for_resolution` used
+    to take a single `document_id`, which is half of why a two-subject question reached
+    the prompt as a question about one of them."""
+
+    @staticmethod
+    def _rewrite(document_ids, query="Compare Hannah and Girish"):
+        from src.chat_api.graph.nodes import _rewrite_plan_for_resolution
+        return _rewrite_plan_for_resolution(_tenant_plan(query), document_ids, query_override=None)
+
+    def test_rewrite_sets_semantic_scope_to_full_set(self):
+        plan = self._rewrite(["D1", "D2"])
+        semantic = next(e for e in plan.entries if e.capability_name == "semantic_retrieval")
+        assert semantic.arguments["scope"] == {"type": "document", "document_ids": ["D1", "D2"]}
+
+    def test_rewrite_sets_structured_constraint_to_full_set(self):
+        plan = self._rewrite(["D1", "D2"])
+        structured = next(e for e in plan.entries if e.capability_name == "structured_retrieval")
+        assert structured.arguments["scope"] == {"type": "document", "document_ids": ["D1", "D2"]}
+        # Not prose appended to the question for a second model to honour.
+        assert "restrict results to" not in structured.arguments["query"]
+
+    async def test_partially_resolved_comparison_does_not_exclude_unmatched_subject(self, nodes, monkeypatch):
+        """Only "Girish" resolves; "Hannah" is not in the tenant's data. The turn must
+        not become a question about Girish alone with Hannah silently dropped."""
+        async def fake_read_state(session, schema, cid):
+            return conv_state.ConversationState(conversation_id=cid)
+
+        async def fake_resolve(message, session, schema, tenant_id):
+            return ResolutionResult(
+                outcome=entity_resolver.UNIQUE, mention="Girish",
+                resolved_document_ids=["D1"], resolved_entity_value="Girish",
+                mention_documents={"Girish": ["D1"]},
+            )
+
+        async def fake_set_binding(session, schema, cid, doc_ids, value):
+            return None
+
+        monkeypatch.setattr(conv_state, "read_state", fake_read_state)
+        monkeypatch.setattr(conv_state, "set_binding", fake_set_binding)
+        monkeypatch.setattr(entity_resolver, "resolve_entity", fake_resolve)
+
+        state = _base_state(message="Compare Hannah and Girish")
+        result = await nodes["entity_resolution"](state)
+
+        # The resolver reports exactly what it matched, and the unmatched subject is
+        # visible as an absence from the breakdown rather than silently gone.
+        assert result["resolved_document_ids"] == ["D1"]
+        assert "reply" not in result
+
+    async def test_single_mention_ambiguity_still_clarifies(self, nodes, monkeypatch):
+        """verification.md row 44 — one mention matching several people is still an
+        ambiguity, and still terminates the turn with the clarification reply."""
+        candidates = [
+            Candidate(document_id="doc-1", name="Girish A"),
+            Candidate(document_id="doc-2", name="Girish B"),
+        ]
+
+        async def fake_read_state(session, schema, cid):
+            return conv_state.ConversationState(conversation_id=cid)
+
+        async def fake_resolve(message, session, schema, tenant_id):
+            return ResolutionResult(
+                outcome=entity_resolver.AMBIGUOUS, mention="Girish", candidates=candidates,
+            )
+
+        async def fake_store(session, schema, cid, message, mention, cands):
+            return None
+
+        monkeypatch.setattr(conv_state, "read_state", fake_read_state)
+        monkeypatch.setattr(conv_state, "store_pending_clarification", fake_store)
+        monkeypatch.setattr(entity_resolver, "resolve_entity", fake_resolve)
+
+        state = _base_state(message="Tell me about Girish")
+        result = await nodes["entity_resolution"](state)
+
+        assert result["entity_resolution_outcome"] == "ambiguous"
+        assert "reply" in result
+        assert result["resolved_document_ids"] == []
+        assert "retrieval_plan" not in result

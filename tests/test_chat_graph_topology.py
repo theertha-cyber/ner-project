@@ -28,7 +28,7 @@ class NoopGuardrails:
     async def classify_domain(self, message, conversation_context, llm_client, llm_model):
         return True
 
-    def enforce_sources(self, reply, sources):
+    def enforce_sources(self, reply, sources, retrieval_status=None):
         return reply, sources
 
 
@@ -172,6 +172,21 @@ class TestGraphIsAcyclicWithOneConditionalEdge:
         resolution_out = [e for e in graph.edges if e.source == "entity_resolution"]
         assert all(e.conditional for e in resolution_out)
         assert {e.target for e in resolution_out} == {"__end__", "retrieval_execution"}
+
+    def test_assembly_edges_run_prompt_before_sources(self):
+        """Citations are derived from the evidence prompt assembly admitted, so that
+        stage has to run first. `generation` still reads `sources`, written by the
+        stage immediately before it. Node set and both routing predicates unchanged."""
+        compiled = build_chat_graph(_make_orchestrator())
+        graph = compiled.get_graph()
+
+        def targets(node):
+            return {e.target for e in graph.edges if e.source == node}
+
+        assert targets("retrieval_execution") == {"prompt_assembly"}
+        assert targets("prompt_assembly") == {"source_assembly"}
+        assert targets("source_assembly") == {"generation"}
+        assert targets("generation") == {"__end__"}
 
     def test_default_configuration_enables_entity_resolution(self):
         """Guards the shipped default: with it off, a question naming a person is never

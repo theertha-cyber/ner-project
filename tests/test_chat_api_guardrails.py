@@ -1,8 +1,19 @@
 from types import SimpleNamespace
 
 import pytest
-from src.chat_api.services.guardrails import GuardrailService
+from src.chat_api.services.guardrails import (
+    FALLBACK_REPLY,
+    INCOMPLETE_RETRIEVAL_REPLY,
+    GuardrailService,
+)
 from src.chat_api.api.v1.schemas import Source
+from src.shared.retrieval.orchestrator import (
+    OUTCOME_EMPTY,
+    OUTCOME_FAILED,
+    OUTCOME_SKIPPED,
+    CapabilityStatus,
+    RetrievalStatus,
+)
 
 pytestmark = [pytest.mark.verification, pytest.mark.asyncio]
 
@@ -38,6 +49,63 @@ class TestSourceCitationEnforcement:
         sources = [Source(source_type="sql", value="test", relevance_score=1.0)]
         result_reply, result_sources = self.guardrails.enforce_sources(reply, sources)
         assert result_reply == reply
+        assert result_sources == sources
+
+    def test_empty_retrieval_yields_no_match_reply(self):
+        """verification.md row 14 — every attempted capability succeeded and found
+        nothing. That is a real negative and the user should be told so."""
+        status = RetrievalStatus(entries=[
+            CapabilityStatus(capability_name="structured_retrieval", outcome=OUTCOME_EMPTY),
+            CapabilityStatus(capability_name="semantic_retrieval", outcome=OUTCOME_EMPTY),
+        ])
+        reply, sources = self.guardrails.enforce_sources("Here is some information", [], status)
+
+        assert reply == FALLBACK_REPLY
+        assert sources == []
+
+    def test_failed_retrieval_yields_incomplete_reply_not_absence(self):
+        """verification.md row 15 — six upstream conditions used to collapse into one
+        sentence, so a broken turn was indistinguishable from a genuine negative."""
+        status = RetrievalStatus(entries=[
+            CapabilityStatus(
+                capability_name="structured_retrieval", outcome=OUTCOME_FAILED,
+                error="SQL generation failed after 3 attempt(s)",
+            ),
+        ])
+        reply, sources = self.guardrails.enforce_sources("Here is some information", [], status)
+
+        assert reply == INCOMPLETE_RETRIEVAL_REPLY
+        assert reply != FALLBACK_REPLY
+        assert sources == []
+        # Must not assert the data is absent.
+        assert "couldn't find relevant information" not in reply
+        assert "doesn't mean the information isn't in your data" in reply
+
+    def test_skipped_recovery_also_yields_the_incomplete_reply(self):
+        status = RetrievalStatus(entries=[
+            CapabilityStatus(capability_name="structured_retrieval", outcome=OUTCOME_EMPTY),
+            CapabilityStatus(
+                capability_name="semantic_retrieval", outcome=OUTCOME_SKIPPED,
+                reason="insufficient remaining budget", recovery=True,
+            ),
+        ])
+        reply, _ = self.guardrails.enforce_sources("Here is some information", [], status)
+        assert reply == INCOMPLETE_RETRIEVAL_REPLY
+
+    def test_absent_status_keeps_the_prior_reply(self):
+        """A turn that never reached retrieval passes no status; behaviour is unchanged."""
+        reply, sources = self.guardrails.enforce_sources("Here is some information", [], None)
+        assert reply == FALLBACK_REPLY
+        assert sources == []
+
+    def test_failure_does_not_override_a_sourced_reply(self):
+        status = RetrievalStatus(entries=[
+            CapabilityStatus(capability_name="structured_retrieval", outcome=OUTCOME_FAILED, error="boom"),
+        ])
+        sources = [Source(source_type="sql", value="test", relevance_score=1.0)]
+        reply, result_sources = self.guardrails.enforce_sources("Partial answer", sources, status)
+
+        assert reply == "Partial answer"
         assert result_sources == sources
 
     # Note: verification.md row 48 ("Domain decline keeps its message") is verified at

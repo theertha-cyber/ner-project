@@ -137,6 +137,23 @@ class TestResolveEntityEndToEnd:
         assert result.outcome == UNIQUE
         assert result.resolved_entity_value == "James Okafor"
 
+    async def test_single_character_mention_excluded_from_union(self, monkeypatch):
+        """verification.md row 46. A stored name can carry a single-letter token
+        ("zanith kumar r"), and word-level matching would then let any message
+        containing a standalone "r" widen the turn's scope to that person."""
+        result = await self._resolve(
+            monkeypatch, "which candidates know r", [("doc-1", "Zanith Kumar R")],
+        )
+        assert result.outcome == UNRESOLVED
+        assert result.resolved_document_ids == []
+
+    async def test_single_character_gate_does_not_block_a_real_name(self, monkeypatch):
+        result = await self._resolve(
+            monkeypatch, "what tools does zanith know", [("doc-1", "Zanith Kumar R")],
+        )
+        assert result.outcome == UNIQUE
+        assert result.resolved_document_ids == ["doc-1"]
+
 
 def _coro(value):
     async def _inner(*args, **kwargs):

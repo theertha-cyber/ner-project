@@ -30,6 +30,41 @@ class ConversationState:
     def has_binding(self) -> bool:
         return self.resolved_document_id is not None
 
+    @property
+    def resolved_document_ids(self) -> list[str]:
+        """Every document the binding covers.
+
+        A turn can now resolve to several subjects ("compare Hannah and Girish"), and
+        an anaphoric follow-up has to inherit all of them. The set is encoded into the
+        existing `resolved_document_id` column rather than added as one — a schema
+        migration is out of scope for this change — as a bare identifier when there is
+        one document and a JSON array when there are several. Rows written before this
+        change hold a bare identifier and read back as a one-element list."""
+        return decode_document_ids(self.resolved_document_id)
+
+
+def encode_document_ids(document_ids: list[str]) -> str | None:
+    """One document stays a bare identifier, so every row written before this change
+    and every reader of `resolved_document_id` sees exactly what it saw before."""
+    if not document_ids:
+        return None
+    if len(document_ids) == 1:
+        return document_ids[0]
+    return json.dumps(list(document_ids))
+
+
+def decode_document_ids(stored: str | None) -> list[str]:
+    if not stored:
+        return []
+    if stored.startswith("["):
+        try:
+            decoded = json.loads(stored)
+        except json.JSONDecodeError:
+            return [stored]
+        if isinstance(decoded, list):
+            return [str(d) for d in decoded]
+    return [stored]
+
 
 def _candidates_to_json(candidates: list[Candidate]) -> str:
     return json.dumps([
@@ -123,10 +158,15 @@ async def clear_pending(session: AsyncSession, schema: str, conversation_id: str
     )
 
 
-async def set_binding(session: AsyncSession, schema: str, conversation_id: str, document_id: str, entity_value: str) -> None:
+async def set_binding(
+    session: AsyncSession, schema: str, conversation_id: str,
+    document_id: str | list[str], entity_value: str,
+) -> None:
+    """`document_id` accepts a single identifier or the full resolved set."""
+    document_ids = [document_id] if isinstance(document_id, str) else list(document_id)
     await _upsert(
         session, schema, conversation_id,
-        resolved_document_id=document_id, resolved_entity_value=entity_value,
+        resolved_document_id=encode_document_ids(document_ids), resolved_entity_value=entity_value,
     )
 
 

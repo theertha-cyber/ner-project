@@ -8,6 +8,7 @@ from src.shared.retrieval.config import RetrievalConfig
 from src.shared.retrieval.eval.embeddings import PrecomputedEmbeddingService
 from src.shared.retrieval.eval.golden_set import GoldenQuery, Judgment
 from src.shared.retrieval.eval.report import build_json_report, build_markdown_summary
+from src.shared.retrieval.eval.metrics import SCORING_RULE
 from src.shared.retrieval.eval.runner import MatrixConfiguration, MatrixResult, run_configuration, run_matrix
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.retriever import RerankingRetriever
@@ -92,7 +93,96 @@ class TestToolErrorNotFatal:
         failed = [r for r in result.per_query if r.error]
         assert len(failed) == 1
         assert failed[0].query_id == "q2"
+        # The failed query scores zero and stays in the denominator — it used to be
+        # marked skipped and excluded, which is why a broken configuration could score
+        # as well as a working one.
+        assert result.aggregate.query_count == 5
+        assert result.aggregate.failed_count == 1
+
+
+class TestDegradedAndFailedQueriesScoreZero:
+    """verification.md rows 81, 82, 83. Under the old rule a query whose run degraded or
+    errored was marked skipped and excluded from the mean, so the regression gate could
+    not fail on a configuration that broke on half the golden set."""
+
+    async def test_orchestrator_failure_scores_zero_and_counts(self):
+        def result_fn(args, context):
+            if args["query"] in ("query 0", "query 1"):
+                return ToolResult(tool_name="semantic_retrieval", results=[], error="boom")
+            return _healthy_result(args, context)
+
+        queries = _queries(4)
+        config = MatrixConfiguration(name="dense", retrieval_config=RetrievalConfig())
+
+        def context_factory(cfg, query):
+            return ToolContext(tenant_id="t", schema="s", session=object())
+
+        result = await run_configuration(
+            queries, config, context_factory,
+            registry_factory=lambda: SpyRegistry(SpyTool(result_fn)), k=5,
+        )
+
+        failed = [r for r in result.per_query if r.metrics.failed]
+        assert len(failed) == 2
+        for run in failed:
+            assert run.metrics.recall_at_k == 0.0
+            assert run.metrics.ndcg_at_k == 0.0
+            assert run.metrics.skipped is False
+
         assert result.aggregate.query_count == 4
+        # Two of four scored zero, so the mean is halved rather than unaffected.
+        assert result.aggregate.ndcg_at_k == pytest.approx(0.5)
+
+    async def test_degraded_planning_scores_zero(self):
+        def orchestrated_result_fn(args, context):
+            return ToolResult(tool_name="semantic_retrieval", results=[])
+
+        def orchestrated_registry_factory():
+            reg = ToolRegistry()
+            reg.register(ScriptedSemanticRetrievalTool(orchestrated_result_fn))
+            return reg
+
+        queries = _queries(2)
+        config = MatrixConfiguration(
+            name="orchestrated", retrieval_config=RetrievalConfig(), is_orchestrated=True,
+            planner_client_factory=lambda: ScriptedEvalPlanner(fail_query_ids={"query 1"}),
+        )
+
+        def context_factory(cfg, query):
+            return ToolContext(tenant_id="t", schema="s", session=object())
+
+        result = await run_configuration(
+            queries, config, context_factory, registry_factory=orchestrated_registry_factory, k=5,
+        )
+
+        degraded = [r for r in result.per_query if r.degraded]
+        assert len(degraded) == 1
+        assert degraded[0].metrics.skipped is False
+        assert degraded[0].metrics.ndcg_at_k == 0.0
+        assert result.aggregate.query_count == 2
+        assert result.aggregate.degraded_count == 1
+
+    async def test_aggregate_reports_failure_counts(self):
+        def result_fn(args, context):
+            if args["query"] == "query 0":
+                return ToolResult(tool_name="semantic_retrieval", results=[], error="boom")
+            return _healthy_result(args, context)
+
+        queries = _queries(3)
+        config = MatrixConfiguration(name="dense", retrieval_config=RetrievalConfig())
+
+        def context_factory(cfg, query):
+            return ToolContext(tenant_id="t", schema="s", session=object())
+
+        result = await run_configuration(
+            queries, config, context_factory,
+            registry_factory=lambda: SpyRegistry(SpyTool(result_fn)), k=5,
+        )
+
+        assert result.aggregate.failed_count == 1
+        assert result.aggregate.query_count == 3
+        assert result.failed_query_count == 1
+        assert result.aggregate.scoring_rule == SCORING_RULE
 
 
 class TestMatrixPerConfigAggregates:

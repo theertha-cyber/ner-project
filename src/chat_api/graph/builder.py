@@ -18,10 +18,18 @@ def _route_after_entity_resolution(state: ChatState):
 
 def build_chat_graph(orchestrator):
     """Compiles the chat graph topology. With `entity_resolution_enabled` off (the
-    default), this is byte-for-byte the pre-existing fixed topology:
+    default):
 
-    guardrail -> (END | orchestrator) -> retrieval_execution -> source_assembly ->
-    prompt_assembly -> generation -> END.
+    guardrail -> (END | orchestrator) -> retrieval_execution -> prompt_assembly ->
+    source_assembly -> generation -> END.
+
+    `prompt_assembly` runs before `source_assembly` so citations are derived from the
+    evidence the prompt actually admitted. The two stages previously guessed
+    independently — `[:3]` in one, `[:5]` and a budget loop in the other — and
+    disagreed in both directions, including citing a structured block the prompt had
+    dropped whole. The node set and both routing predicates are unchanged, and
+    `generation` still reads the `sources` that `source_assembly` writes immediately
+    before it.
 
     With the flag on, one additional node and one additional conditional edge are
     inserted between `orchestrator` and `retrieval_execution`:
@@ -61,9 +69,9 @@ def build_chat_graph(orchestrator):
     else:
         graph.add_edge("orchestrator", "retrieval_execution")
 
-    graph.add_edge("retrieval_execution", "source_assembly")
-    graph.add_edge("source_assembly", "prompt_assembly")
-    graph.add_edge("prompt_assembly", "generation")
+    graph.add_edge("retrieval_execution", "prompt_assembly")
+    graph.add_edge("prompt_assembly", "source_assembly")
+    graph.add_edge("source_assembly", "generation")
     graph.add_edge("generation", END)
 
     return graph.compile()

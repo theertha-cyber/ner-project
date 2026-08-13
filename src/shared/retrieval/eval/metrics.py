@@ -67,6 +67,16 @@ def ndcg_at_k(ranked: list[RankedItem], judgments: list[Judgment], k: int) -> fl
     return dcg / idcg
 
 
+# Scoring rules are versioned because they change what a score MEANS, and a comparison
+# across rules is meaningless. Under `skip-degraded` a query whose run degraded or
+# errored was marked skipped and excluded from the mean — so a configuration that broke
+# on half the golden set scored as well as one that answered all of it, and the
+# regression gate could not fail. Under `zero-degraded` those queries score zero and
+# stay in the denominator.
+SCORING_RULE = "zero-degraded"
+LEGACY_SCORING_RULE = "skip-degraded"
+
+
 @dataclass
 class QueryMetrics:
     query_id: str
@@ -74,8 +84,23 @@ class QueryMetrics:
     precision_at_k: float
     mrr_at_k: float
     ndcg_at_k: float
+    # Reserved for queries that were never dispatched for a reason unrelated to system
+    # behaviour — a case with no judgments, for instance. A run that degraded, errored,
+    # or was abandoned is NOT skipped: it is a zero.
     skipped: bool = False
     skip_reason: str | None = None
+    degraded: bool = False
+    failed: bool = False
+    failure_reason: str | None = None
+
+
+def zero_metrics(query_id: str, *, degraded: bool = False, failed: bool = False,
+                 failure_reason: str | None = None) -> QueryMetrics:
+    """A dispatched query that produced nothing usable. Scores zero and counts."""
+    return QueryMetrics(
+        query_id=query_id, recall_at_k=0.0, precision_at_k=0.0, mrr_at_k=0.0, ndcg_at_k=0.0,
+        skipped=False, degraded=degraded, failed=failed, failure_reason=failure_reason,
+    )
 
 
 @dataclass
@@ -86,6 +111,9 @@ class AggregateMetrics:
     mrr_at_k: float
     ndcg_at_k: float
     skipped: list[str] = field(default_factory=list)
+    degraded_count: int = 0
+    failed_count: int = 0
+    scoring_rule: str = SCORING_RULE
 
 
 def compute_query_metrics(query_id: str, ranked: list[RankedItem], judgments: list[Judgment], k: int) -> QueryMetrics:
@@ -104,11 +132,19 @@ def compute_query_metrics(query_id: str, ranked: list[RankedItem], judgments: li
 
 
 def aggregate(per_query: list[QueryMetrics]) -> AggregateMetrics:
+    """Means over every DISPATCHED query. A degraded or failed run contributes its zero
+    rather than dropping out of the denominator, so a configuration that breaks on half
+    the golden set can no longer score the same as one that answers all of it."""
     scored = [m for m in per_query if not m.skipped]
     skipped = [m.query_id for m in per_query if m.skipped]
+    degraded_count = sum(1 for m in scored if m.degraded)
+    failed_count = sum(1 for m in scored if m.failed)
     n = len(scored)
     if n == 0:
-        return AggregateMetrics(query_count=0, recall_at_k=0.0, precision_at_k=0.0, mrr_at_k=0.0, ndcg_at_k=0.0, skipped=skipped)
+        return AggregateMetrics(
+            query_count=0, recall_at_k=0.0, precision_at_k=0.0, mrr_at_k=0.0, ndcg_at_k=0.0,
+            skipped=skipped, degraded_count=degraded_count, failed_count=failed_count,
+        )
     return AggregateMetrics(
         query_count=n,
         recall_at_k=sum(m.recall_at_k for m in scored) / n,
@@ -116,4 +152,6 @@ def aggregate(per_query: list[QueryMetrics]) -> AggregateMetrics:
         mrr_at_k=sum(m.mrr_at_k for m in scored) / n,
         ndcg_at_k=sum(m.ndcg_at_k for m in scored) / n,
         skipped=skipped,
+        degraded_count=degraded_count,
+        failed_count=failed_count,
     )

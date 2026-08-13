@@ -37,6 +37,13 @@ class Candidate:
     filename: str | None = None
 
 
+# A stored name can contain a single-letter token ("zanith kumar r"), and word-level
+# matching would then let any message containing a standalone "r" resolve to that
+# person. Widening a turn's document scope on that evidence is worse than not
+# resolving it, so single-character mentions never contribute.
+MIN_MENTION_CHARS = 2
+
+
 @dataclass
 class ResolutionResult:
     outcome: str
@@ -45,6 +52,22 @@ class ResolutionResult:
     resolved_document_id: str | None = None
     resolved_entity_value: str | None = None
     candidates: list[Candidate] = field(default_factory=list)
+    # Every document the message's mentions resolved to, not just the first mention's.
+    # "Compare Hannah and Girish" used to collapse to Girish alone, so the prompt
+    # carried evidence for one of the two subjects the user named.
+    resolved_document_ids: list[str] = field(default_factory=list)
+    # Which mention contributed which documents, for tracing why a turn widened.
+    mention_documents: dict[str, list[str]] = field(default_factory=dict)
+
+    def __post_init__(self):
+        # `resolved_document_id` predates the set and is still the shape most callers
+        # and tests speak in. The two are kept consistent here rather than at every
+        # construction site: a single-document resolution reads either way, and a
+        # multi-document one exposes no single id to be mistaken for the whole answer.
+        if not self.resolved_document_ids and self.resolved_document_id:
+            self.resolved_document_ids = [self.resolved_document_id]
+        elif self.resolved_document_id is None and len(self.resolved_document_ids) == 1:
+            self.resolved_document_id = self.resolved_document_ids[0]
 
 
 def _extract_mentions(message: str) -> list[tuple[str, str, int]]:
@@ -200,6 +223,52 @@ async def _build_candidates(session: AsyncSession, schema: str, doc_ids: list[st
     return candidates
 
 
+@dataclass
+class _MentionMatch:
+    raw: str
+    canon: str
+    words: frozenset[str]
+    rows: list[dict]
+    document_ids: list[str]
+
+
+def _accept_matching_mentions(
+    mentions: list[tuple[str, str, int]], rows: list[dict]
+) -> list[_MentionMatch]:
+    """Every distinct subject the message named, longest mention first.
+
+    Mentions arrive longest-first and overlap heavily — "arjun jayakumar" is followed
+    by "arjun" and "jayakumar", all naming the same person. A shorter mention whose
+    words are already covered by an accepted longer one is skipped, which is what
+    keeps the longer, more specific mention deciding the match; a mention naming a
+    *different* person shares no words and is accepted alongside it.
+
+    The previous implementation stopped at the first match entirely, so the second
+    subject of a comparison was silently dropped."""
+    accepted: list[_MentionMatch] = []
+    covered_words: set[str] = set()
+
+    for raw, canon, _n in mentions:
+        if len(canon) < MIN_MENTION_CHARS:
+            continue
+        words = frozenset(canon.split())
+        if words and words <= covered_words:
+            continue
+        matching_rows = [r for r in rows if _mention_matches(canon, r["normalized_value"])]
+        if not matching_rows:
+            continue
+
+        document_ids: list[str] = []
+        for row in matching_rows:
+            if row["document_id"] not in document_ids:
+                document_ids.append(row["document_id"])
+
+        accepted.append(_MentionMatch(raw=raw, canon=canon, words=words, rows=matching_rows, document_ids=document_ids))
+        covered_words |= words
+
+    return accepted
+
+
 async def resolve_entity(message: str, session: AsyncSession, schema: str, tenant_id: str) -> ResolutionResult:
     """Resolves person-entity references in `message` against `document_entities`.
     Tenant-scoped by `schema` (caller-supplied, never derived from `message`).
@@ -228,42 +297,55 @@ async def resolve_entity(message: str, session: AsyncSession, schema: str, tenan
         logger.info("entity_resolution outcome=%s tenant_id=%s mentions_checked=%d", UNRESOLVED, tenant_id, len(mentions))
         return ResolutionResult(outcome=UNRESOLVED, mentions_checked=len(mentions))
 
-    winning = next(
-        (m for m in mentions if any(_mention_matches(m[1], r["normalized_value"]) for r in rows)),
-        None,
-    )
-    if winning is None:
+    matches = _accept_matching_mentions(mentions, rows)
+    if not matches:
         logger.info("entity_resolution outcome=%s tenant_id=%s mentions_checked=%d", UNRESOLVED, tenant_id, len(mentions))
         return ResolutionResult(outcome=UNRESOLVED, mentions_checked=len(mentions))
 
-    raw_mention, canon_mention, _ = winning
-    winning_rows = [r for r in rows if _mention_matches(canon_mention, r["normalized_value"])]
+    union: list[str] = []
+    mention_documents: dict[str, list[str]] = {}
+    for match in matches:
+        mention_documents[match.raw] = list(match.document_ids)
+        for doc_id in match.document_ids:
+            if doc_id not in union:
+                union.append(doc_id)
 
-    doc_ids: list[str] = []
-    for r in winning_rows:
-        if r["document_id"] not in doc_ids:
-            doc_ids.append(r["document_id"])
+    first = matches[0]
+    # Ambiguity is still a property of ONE mention matching several people — two
+    # mentions matching one person each is a comparison, not an ambiguity.
+    ambiguous = next((m for m in matches if len(m.document_ids) > 1), None)
 
-    if len(doc_ids) == 1:
-        logger.info("entity_resolution outcome=%s tenant_id=%s mentions_checked=%d candidate_documents=1", UNIQUE, tenant_id, len(mentions))
-        return ResolutionResult(
-            outcome=UNIQUE, mention=raw_mention, mentions_checked=len(mentions),
-            resolved_document_id=doc_ids[0], resolved_entity_value=winning_rows[0]["entity_value"],
-        )
-
-    if len(doc_ids) > settings.entity_resolution_max_candidates:
+    if len(union) > settings.entity_resolution_max_candidates:
         logger.info(
             "entity_resolution outcome=%s tenant_id=%s mentions_checked=%d candidate_documents=%d",
-            OVER_CAP, tenant_id, len(mentions), len(doc_ids),
+            OVER_CAP, tenant_id, len(mentions), len(union),
         )
-        return ResolutionResult(outcome=OVER_CAP, mention=raw_mention, mentions_checked=len(mentions))
+        return ResolutionResult(
+            outcome=OVER_CAP, mention=(ambiguous or first).raw, mentions_checked=len(mentions),
+            mention_documents=mention_documents,
+        )
 
-    candidates = await _build_candidates(session, schema, doc_ids, winning_rows)
+    if ambiguous is not None:
+        candidates = await _build_candidates(session, schema, list(ambiguous.document_ids), ambiguous.rows)
+        logger.info(
+            "entity_resolution outcome=%s tenant_id=%s mentions_checked=%d candidate_documents=%d",
+            AMBIGUOUS, tenant_id, len(mentions), len(ambiguous.document_ids),
+        )
+        return ResolutionResult(
+            outcome=AMBIGUOUS, mention=ambiguous.raw, mentions_checked=len(mentions),
+            candidates=candidates, mention_documents=mention_documents,
+        )
+
     logger.info(
-        "entity_resolution outcome=%s tenant_id=%s mentions_checked=%d candidate_documents=%d",
-        AMBIGUOUS, tenant_id, len(mentions), len(doc_ids),
+        "entity_resolution outcome=%s tenant_id=%s mentions_checked=%d candidate_documents=%d subjects=%d",
+        UNIQUE, tenant_id, len(mentions), len(union), len(matches),
     )
-    return ResolutionResult(outcome=AMBIGUOUS, mention=raw_mention, mentions_checked=len(mentions), candidates=candidates)
+    return ResolutionResult(
+        outcome=UNIQUE, mention=first.raw, mentions_checked=len(mentions),
+        resolved_document_ids=union,
+        resolved_entity_value=", ".join(m.rows[0]["entity_value"] for m in matches),
+        mention_documents=mention_documents,
+    )
 
 
 def render_clarification(mention: str, candidates: list[Candidate]) -> str:

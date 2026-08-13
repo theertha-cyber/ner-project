@@ -25,8 +25,12 @@ MAX_ERROR_FEEDBACK_CHARS = 300
 MAX_SAMPLE_VALUE_CHARS = 60
 
 # Marks a defect as the filename-filter kind rather than the entity_type kind, so the
-# retry feedback can explain the right thing. Both share SQLAttempt.defect.
+# retry feedback can explain the right thing. All three share SQLAttempt.defect.
 _FILENAME_DEFECT_PREFIX = "filename:"
+# `wrong_type:<literal>|<actual_type>` — the value exists, under a type the statement
+# did not filter on. The retry budget was already funded; this is the defect class it
+# could not previously see, and the one the tenant's fragmented labelling produces most.
+_WRONG_TYPE_DEFECT_PREFIX = "wrong_type:"
 
 
 class SQLAttemptOutcome:
@@ -110,6 +114,28 @@ _ENTITY_TYPE_EQ_RE = re.compile(r"entity_type\s*=\s*'([^']*)'", re.IGNORECASE)
 _ENTITY_TYPE_IN_RE = re.compile(r"entity_type\s+IN\s*\(([^)]*)\)", re.IGNORECASE)
 _QUOTED_LITERAL_RE = re.compile(r"'([^']*)'")
 
+# Only positive equality proves anything about which type a value lives under. A
+# substring match may legitimately span types, and a negation says nothing at all.
+_NORMALIZED_VALUE_EQ_RE = re.compile(
+    r"(?:\w+\.)?normalized_value\s*=\s*'([^']*)'", re.IGNORECASE
+)
+
+
+def _entity_type_filter_literals(sql: str) -> list[str]:
+    """Every `entity_type` the statement positively filtered on, as written, in order
+    and deduplicated — order decides which literal a defect reports."""
+    literals: list[str] = list(_ENTITY_TYPE_EQ_RE.findall(sql))
+    for group in _ENTITY_TYPE_IN_RE.findall(sql):
+        literals.extend(_QUOTED_LITERAL_RE.findall(group))
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for literal in literals:
+        if literal and literal.upper() not in seen:
+            seen.add(literal.upper())
+            ordered.append(literal)
+    return ordered
+
 
 def _sanitize_error(exc: BaseException) -> str:
     """Renders an exception into a single bounded line safe to put in a prompt."""
@@ -130,12 +156,8 @@ def _entity_type_defect(sql: str, entity_types: list[str]) -> str | None:
         return None
 
     known = {t.upper() for t in entity_types}
-    literals: list[str] = list(_ENTITY_TYPE_EQ_RE.findall(sql))
-    for group in _ENTITY_TYPE_IN_RE.findall(sql):
-        literals.extend(_QUOTED_LITERAL_RE.findall(group))
-
-    for literal in literals:
-        if literal and literal.upper() not in known:
+    for literal in _entity_type_filter_literals(sql):
+        if literal.upper() not in known:
             return literal
     return None
 
@@ -176,6 +198,308 @@ def _force_nulls_last_on_desc(sql: str) -> str:
 
 class SQLValidationError(Exception):
     pass
+
+
+# --- Table reference resolution -------------------------------------------------
+#
+# Every table reference in a statement is resolved by one routine, so the whitelist
+# check has exactly one feed. The previous implementation scanned for the first
+# identifier after each FROM/JOIN and, separately, the first identifier after each
+# subquery's FROM. A comma-separated table list has only one FROM, so
+# `FROM documents d, public.widget_api_keys k` resolved to `documents` alone and the
+# second table was never examined — `public` holds `tenants`, `tenant_users`,
+# `widget_api_keys`, `entity_definitions`, and `audit_events`.
+
+_SQL_TOKEN_RE = re.compile(
+    r"""
+      (?P<ws>\s+)
+    | (?P<comment>--[^\n]*|/\*.*?\*/)
+    | (?P<string>'(?:[^']|'')*')
+    | (?P<quoted>"(?:[^"]|"")*")
+    | (?P<word>[A-Za-z_][A-Za-z_0-9$]*)
+    | (?P<num>\d+(?:\.\d+)?)
+    | (?P<punct>.)
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+_BARE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z_0-9$]*")
+
+# Words that end a FROM table list. `ON`/`USING` end a join item; the join keywords
+# themselves end the preceding item and are picked up again by the main walk.
+_TABLE_LIST_TERMINATORS = frozenset({
+    "WHERE", "GROUP", "ORDER", "HAVING", "LIMIT", "OFFSET", "FETCH", "WINDOW",
+    "UNION", "INTERSECT", "EXCEPT", "RETURNING", "ON", "USING", "JOIN", "INNER",
+    "LEFT", "RIGHT", "FULL", "CROSS", "NATURAL", "FOR", "TABLESAMPLE", "WITH",
+})
+
+# Prefixes that may precede a table reference without being one.
+_TABLE_REF_PREFIXES = frozenset({"LATERAL", "ONLY"})
+
+
+@dataclass(frozen=True)
+class TableReference:
+    """One table reference exactly as the statement wrote it. `name` keeps any schema
+    qualifier rather than stripping it — a qualifier is grounds for rejection, never
+    something to normalise away. `start`/`end` are its span in the original statement,
+    so a reference can be rewritten in place without re-rendering the whole query."""
+
+    name: str
+    is_callable: bool = False
+    start: int = -1
+    end: int = -1
+    has_alias: bool = False
+
+
+@dataclass(frozen=True)
+class _Token:
+    text: str
+    start: int
+    end: int
+
+
+def _tokenize_sql(sql: str) -> list[_Token]:
+    """Splits a statement into tokens, dropping whitespace and comments and replacing
+    every string literal with a placeholder so a keyword inside a literal cannot be
+    read as structure. Each token keeps its span in the original statement."""
+    tokens: list[_Token] = []
+    for match in _SQL_TOKEN_RE.finditer(sql):
+        kind = match.lastgroup
+        if kind in ("ws", "comment"):
+            continue
+        tokens.append(_Token("''" if kind == "string" else match.group(), match.start(), match.end()))
+    return tokens
+
+
+def _skip_parenthesised(tokens: list[_Token], index: int) -> int:
+    """`index` points at `(`. Returns the index just past its matching `)`."""
+    depth = 0
+    while index < len(tokens):
+        if tokens[index].text == "(":
+            depth += 1
+        elif tokens[index].text == ")":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    return index
+
+
+def _is_identifier_token(token: str) -> bool:
+    return bool(_BARE_IDENTIFIER_RE.fullmatch(token)) or token.startswith('"')
+
+
+def _parse_table_list(
+    tokens: list[_Token], index: int, single: bool
+) -> tuple[int, list[TableReference]]:
+    """Reads the table list starting at `index`, which is the token after FROM or
+    JOIN. Every comma-separated entry is returned. A parenthesised source (a derived
+    table or a parenthesised join) is left for the main walk to descend into, which is
+    what makes subqueries resolve through the same routine rather than a second scan."""
+    refs: list[TableReference] = []
+    count = len(tokens)
+
+    while index < count:
+        while index < count and tokens[index].text.upper() in _TABLE_REF_PREFIXES:
+            index += 1
+        if index >= count:
+            break
+
+        token = tokens[index].text
+        if token == "(" or token in (",", ")", ";") or token.upper() in _TABLE_LIST_TERMINATORS:
+            break
+        if not _is_identifier_token(token):
+            break
+
+        name_parts = [token]
+        name_start, name_end = tokens[index].start, tokens[index].end
+        index += 1
+        while index + 1 < count and tokens[index].text == "." and _is_identifier_token(tokens[index + 1].text):
+            name_parts.append(tokens[index + 1].text)
+            name_end = tokens[index + 1].end
+            index += 2
+
+        callable_source = index < count and tokens[index].text == "("
+        if callable_source:
+            index = _skip_parenthesised(tokens, index)
+
+        # An alias, written with or without AS, and any column alias list after it.
+        has_alias = False
+        if index < count and tokens[index].text.upper() == "AS":
+            index += 1
+            if index < count and _is_identifier_token(tokens[index].text):
+                has_alias = True
+                index += 1
+        elif (
+            index < count
+            and _is_identifier_token(tokens[index].text)
+            and tokens[index].text.upper() not in _TABLE_LIST_TERMINATORS
+        ):
+            has_alias = True
+            index += 1
+        if index < count and tokens[index].text == "(":
+            index = _skip_parenthesised(tokens, index)
+
+        refs.append(TableReference(
+            ".".join(name_parts), is_callable=callable_source,
+            start=name_start, end=name_end, has_alias=has_alias,
+        ))
+
+        if single or index >= count or tokens[index].text != ",":
+            break
+        index += 1
+
+    return index, refs
+
+
+def iter_table_references(sql: str) -> list[TableReference]:
+    """Every table reference in `sql`, including each entry of a comma-separated FROM
+    list and every reference inside a subquery or derived table.
+
+    A FROM is only a table list when it belongs to a SELECT at the same parenthesis
+    depth, which is what keeps `EXTRACT(YEAR FROM value_date)` and
+    `SUBSTRING(x FROM 1 FOR 3)` from being read as sources."""
+    tokens = _tokenize_sql(sql)
+    references: list[TableReference] = []
+    select_depths: list[int] = []
+    depth = 0
+    index = 0
+
+    while index < len(tokens):
+        token = tokens[index].text
+        upper = token.upper()
+
+        if token == "(":
+            depth += 1
+            index += 1
+            continue
+        if token == ")":
+            depth -= 1
+            while select_depths and select_depths[-1] > depth:
+                select_depths.pop()
+            index += 1
+            continue
+        if upper == "SELECT":
+            select_depths.append(depth)
+            index += 1
+            continue
+        if upper in ("FROM", "JOIN") and select_depths and select_depths[-1] == depth:
+            next_index, refs = _parse_table_list(tokens, index + 1, single=(upper == "JOIN"))
+            references.extend(refs)
+            index = max(next_index, index + 1)
+            continue
+        index += 1
+
+    return references
+
+
+def _validate_table_references(sql: str) -> None:
+    """Rejects any reference that is not a bare identifier naming a whitelisted table.
+    A schema-qualified name is rejected outright rather than normalised by dropping its
+    qualifier — `public.documents` is not `documents`."""
+    for reference in iter_table_references(sql):
+        name = reference.name
+        if reference.is_callable:
+            raise SQLValidationError(
+                f"Table reference '{name}' is not in the whitelist: "
+                "function-call sources are not allowed"
+            )
+        if "." in name:
+            raise SQLValidationError(
+                f"Table reference '{name}' is not in the whitelist: "
+                "schema-qualified table names are not allowed"
+            )
+        if not _BARE_IDENTIFIER_RE.fullmatch(name) or name.lower() not in WHITELISTED_TABLES:
+            raise SQLValidationError(f"Table '{name}' is not in the whitelist")
+
+
+# The column that ties each whitelisted table to a document. A resolved document scope
+# is applied by constraining these, so the scope holds whatever shape the generated
+# statement takes — including aggregates, which project no document_id to filter on
+# afterwards.
+_DOCUMENT_SCOPE_COLUMNS = {
+    "document_entities": "document_id",
+    "document_chunks": "document_id",
+    "document_text_spans": "document_id",
+    "extraction_runs": "document_id",
+    "documents": "id",
+}
+
+DOCUMENT_SCOPE_PARAM = "scope_document_ids"
+
+# The trailing row limit, with any OFFSET that follows it. Anchored at the end because
+# `validate_sql` guarantees the statement ends there.
+_TRAILING_LIMIT_RE = re.compile(
+    r"\bLIMIT\s+(\d+)(\s+OFFSET\s+\d+)?\s*;?\s*$", re.IGNORECASE
+)
+
+
+def _statement_limit(sql: str) -> int | None:
+    match = _TRAILING_LIMIT_RE.search(sql)
+    return int(match.group(1)) if match else None
+
+
+def _with_limit(sql: str, limit: int) -> str:
+    """The same statement asking for `limit` rows. Used to fetch one row beyond the
+    real limit, which is how truncation is detected without a second query."""
+    match = _TRAILING_LIMIT_RE.search(sql)
+    if not match:
+        return sql
+    offset = match.group(2) or ""
+    return sql[: match.start()] + f"LIMIT {limit}{offset}"
+
+
+def _without_limit(sql: str) -> str:
+    match = _TRAILING_LIMIT_RE.search(sql)
+    if not match:
+        return sql.rstrip().rstrip(";")
+    return sql[: match.start()].rstrip()
+
+
+def apply_document_scope(sql: str, param_name: str = DOCUMENT_SCOPE_PARAM) -> str:
+    """Constrains every scoped table reference in an already-validated statement to a
+    bound set of document identifiers.
+
+    Each reference is replaced in place by an inline view over the same table:
+
+        FROM document_entities e   ->   FROM (SELECT * FROM document_entities
+                                              WHERE document_id = ANY(:ids)) e
+
+    The scope therefore survives aggregation, grouping, and `LIMIT` — unlike the
+    previous mechanism, which appended `(restrict results to document_id = '…')` to the
+    natural-language question and relied on the generating model to honour it, backed by
+    a post-execution row filter that ran *after* `LIMIT 100` and so turned a
+    limit-truncated result into an empty one.
+
+    Spans are computed against the original text and applied last-first, so the
+    rewritten fragments are never themselves rescanned."""
+    references = [
+        r for r in iter_table_references(sql)
+        if not r.is_callable and r.start >= 0 and r.name.lower() in _DOCUMENT_SCOPE_COLUMNS
+    ]
+    if not references:
+        return sql
+
+    for reference in sorted(references, key=lambda r: r.start, reverse=True):
+        table = reference.name.lower()
+        column = _DOCUMENT_SCOPE_COLUMNS[table]
+        inline = f"(SELECT * FROM {table} WHERE {column} = ANY(:{param_name}))"
+        # A derived table needs a name. When the statement already supplies an alias,
+        # adding one here would be a syntax error; when it doesn't, the table's own
+        # name keeps every qualified column reference in the statement resolving.
+        if not reference.has_alias:
+            inline = f"{inline} AS {table}"
+        sql = sql[: reference.start] + inline + sql[reference.end:]
+
+    return sql
+
+
+# `SET ROLE` / `SET SESSION AUTHORIZATION` would let a statement choose the identity it
+# runs under, which is the one thing the execution role in `execute_sql` must decide.
+_ROLE_SWITCH_RE = re.compile(
+    r"\bSET\s+(?:LOCAL\s+|SESSION\s+)?ROLE\b|\bSET\s+(?:LOCAL\s+)?SESSION\s+AUTHORIZATION\b",
+    re.IGNORECASE,
+)
 
 
 def _fix_document_name_reference(sql: str) -> str:
@@ -237,6 +561,17 @@ def _render_attempt_feedback(attempts: list[SQLAttempt]) -> str:
                     "to constrain to a named person, join document_entities again on the "
                     "same document_id using the entity type that holds people's names and "
                     "match that row's normalized_value instead."
+                )
+            elif a.defect and a.defect.startswith(_WRONG_TYPE_DEFECT_PREFIX):
+                payload = a.defect[len(_WRONG_TYPE_DEFECT_PREFIX):]
+                literal, _, actual_type = payload.partition("|")
+                lines.append(
+                    f"The value '{literal}' does exist in this tenant's data, but it is "
+                    f"stored under entity_type '{actual_type}', not the type this query "
+                    "filtered on — so the combination could not have matched anything. "
+                    f"Re-issue the query against entity_type '{actual_type}', or drop the "
+                    "entity_type filter and match on normalized_value alone if the value "
+                    "may be filed under more than one type."
                 )
             else:
                 lines.append(
@@ -462,12 +797,12 @@ Return ONLY the SQL query, no explanations:"""
             if keyword in sql_upper.split():
                 raise SQLValidationError(f"Disallowed SQL keyword: {keyword}")
 
-        table_refs = re.findall(r'\bFROM\s+(\w+)', sql_upper, re.IGNORECASE) + \
-                     re.findall(r'\bJOIN\s+(\w+)', sql_upper, re.IGNORECASE)
-        for tbl in table_refs:
-            tbl_lower = tbl.lower()
-            if tbl_lower not in WHITELISTED_TABLES:
-                raise SQLValidationError(f"Table '{tbl}' is not in the whitelist")
+        if _ROLE_SWITCH_RE.search(sql):
+            raise SQLValidationError("Disallowed SQL keyword: SET ROLE")
+
+        # One routine resolves every reference — top-level, comma-joined, JOINed, and
+        # inside subqueries — so there is no second scan to fall out of step with it.
+        _validate_table_references(sql)
 
         if "LIMIT" not in sql_upper.split("SELECT")[-1] if "SELECT" in sql_upper else True:
             sql = sql.rstrip().rstrip(";") + f" LIMIT {DEFAULT_LIMIT}"
@@ -481,30 +816,95 @@ Return ONLY the SQL query, no explanations:"""
         if re.search(r'\bUNION\b', sql_upper):
             raise SQLValidationError("UNION queries are not allowed")
 
-        subquery_tables = re.findall(r'\(\s*SELECT.*?FROM\s+(\w+)', sql, re.IGNORECASE | re.DOTALL)
-        for tbl in subquery_tables:
-            if tbl.lower() not in WHITELISTED_TABLES:
-                raise SQLValidationError(f"Subquery references non-whitelisted table '{tbl}'")
-
         return sql
 
-    async def execute_sql(self, sql: str, session: AsyncSession, schema: str) -> list[dict]:
+    @staticmethod
+    def _execution_role() -> str | None:
+        """The role generated SQL runs under, or None to keep the connection role.
+
+        Read from server configuration only. Nothing in the question, the conversation,
+        the generated statement, or a tool argument reaches this — the same rule
+        `schema` follows."""
+        if not settings.sql_execution_role_enabled:
+            return None
+        role = settings.sql_execution_role_name
+        if not _BARE_IDENTIFIER_RE.fullmatch(role or ""):
+            raise SQLValidationError("Configured SQL execution role is not a bare identifier")
+        return role
+
+    async def execute_sql(
+        self, sql: str, session: AsyncSession, schema: str, params: dict | None = None,
+        completeness_sink: dict | None = None,
+    ) -> list[dict]:
+        """Executes an already-validated statement and returns its rows.
+
+        When `completeness_sink` is given it is filled with `returned`, `matched`, and
+        `truncated`. Truncation is detected by asking for one row beyond the limit —
+        cheap, and it costs nothing on the overwhelming majority of queries that are
+        not truncated. The exact matched total is computed only when the extra row came
+        back, inside the same read-only transaction and its timeout, and reported as
+        unknown (`None`) if that count fails. The rows handed to the caller and the row
+        limit itself are unchanged by any of this."""
         import asyncio
+        role = self._execution_role()
+        limit = _statement_limit(sql)
+        probe_sql = _with_limit(sql, limit + 1) if (completeness_sink is not None and limit) else sql
+
         try:
             async with asyncio.timeout(10):
                 result = await session.execute(
                     text(f"SET search_path TO {schema}")
                 )
                 await session.execute(text("BEGIN READ ONLY"))
-                result = await session.execute(text(sql))
-                await session.execute(text("COMMIT"))
-                rows = result.fetchall()
+                # SET LOCAL scopes the role to this transaction, so the privilege
+                # boundary and the read-only boundary end together and neither can
+                # leak back onto the pooled connection.
+                if role is not None:
+                    await session.execute(text(f"SET LOCAL ROLE {role}"))
+                result = await session.execute(text(probe_sql), params or {})
+                raw_rows = result.fetchall()
                 columns = result.keys()
-                return [dict(zip(columns, row)) for row in rows]
+
+                truncated = bool(limit) and len(raw_rows) > limit
+                if truncated:
+                    raw_rows = raw_rows[:limit]
+
+                matched: int | None = len(raw_rows)
+                if truncated:
+                    matched = await self._count_matching_rows(session, sql, params)
+
+                await session.execute(text("COMMIT"))
+
+                rows = [dict(zip(columns, row)) for row in raw_rows]
+                if completeness_sink is not None:
+                    completeness_sink.update({
+                        "returned": len(rows),
+                        "matched": matched,
+                        "truncated": truncated,
+                    })
+                return rows
         except asyncio.TimeoutError:
             await session.execute(text("ROLLBACK"))
             logger.warning("SQL query timed out after 10s")
             raise SQLValidationError("Query execution timed out")
+
+    @staticmethod
+    async def _count_matching_rows(
+        session: AsyncSession, sql: str, params: dict | None,
+    ) -> int | None:
+        """The total the statement would have matched without its row limit, or None if
+        the count could not be taken. Only ever called on a statement already known to
+        be truncated, so this is not a per-query cost."""
+        try:
+            result = await session.execute(
+                text(f"SELECT COUNT(*) FROM ({_without_limit(sql)}) AS _completeness"),
+                params or {},
+            )
+            row = result.first()
+            return int(row[0]) if row is not None else None
+        except Exception as e:
+            logger.warning("Matched-row count failed, reporting unknown: %s", _sanitize_error(e))
+            return None
 
     async def _fetch_known_entity_types(self, session: AsyncSession, schema: str) -> list[str]:
         """Ground truth for the prompt's entity_type instruction — without this the
@@ -596,6 +996,55 @@ Return ONLY the SQL query, no explanations:"""
             return None
         return None
 
+    async def _wrong_entity_type_defect(
+        self, sql: str, session: AsyncSession, schema: str, profile: EntityProfile,
+    ) -> str | None:
+        """Returns `wrong_type:<literal>|<actual_type>` when a value the statement
+        matched against `normalized_value` exists in this tenant's data, but only under
+        an `entity_type` the statement did not filter on. Otherwise None.
+
+        This is a different defect from filtering on a type that does not exist at all:
+        here both the type and the value are real, and the query still cannot match,
+        because the extractor filed that value elsewhere. The tenant's labelling is
+        fragmented enough that this is the most common way a well-formed query comes
+        back empty, and the funded retry budget could not previously see it.
+
+        Never fires on an unavailable profile or a failed probe — "we don't know" is
+        not evidence of a defect, exactly as it is not evidence of absence."""
+        if not profile.entity_types:
+            return None
+
+        filtered_types = {t.upper() for t in _entity_type_filter_literals(sql)}
+        if not filtered_types:
+            return None
+
+        values = [v for v in _NORMALIZED_VALUE_EQ_RE.findall(sql) if v]
+        if not values:
+            return None
+
+        try:
+            await session.execute(text(f"SET search_path TO {schema}"))
+            for value in values:
+                result = await session.execute(
+                    text(
+                        "SELECT DISTINCT entity_type FROM document_entities "
+                        "WHERE normalized_value = :value"
+                    ),
+                    {"value": value},
+                )
+                actual_types = [row[0] for row in result.fetchall() if row[0]]
+                if not actual_types:
+                    # The value occurs under no type at all — genuinely absent, which
+                    # is a real answer and must not consume a retry.
+                    continue
+                if any(t.upper() in filtered_types for t in actual_types):
+                    continue
+                return f"{_WRONG_TYPE_DEFECT_PREFIX}{value}|{actual_types[0]}"
+        except Exception as e:
+            logger.warning("Wrong-entity-type defect check failed: %s", _sanitize_error(e))
+            return None
+        return None
+
     @staticmethod
     async def _rollback_quietly(session: AsyncSession) -> None:
         """Best-effort transaction reset between attempts. A failure here must not
@@ -614,10 +1063,14 @@ Return ONLY the SQL query, no explanations:"""
         conversation_context: str | None,
         profile: EntityProfile,
         previous_attempts: list[SQLAttempt],
+        document_ids: list[str] | None = None,
+        completeness_sink: dict | None = None,
     ) -> tuple[SQLAttempt, list[dict] | None]:
         """One generate -> validate -> execute -> classify pass. `schema` is passed in
         already bound from authenticated request context and is only ever forwarded;
-        nothing here derives it from generated SQL or from the question."""
+        nothing here derives it from generated SQL or from the question. `document_ids`
+        is likewise caller-supplied: it comes from entity resolution, never from the
+        generated statement."""
         def record(outcome: str, **kw) -> SQLAttempt:
             return SQLAttempt(
                 attempt=attempt_number, max_attempts=self.max_attempts, outcome=outcome, **kw
@@ -640,8 +1093,15 @@ Return ONLY the SQL query, no explanations:"""
         except SQLValidationError as e:
             return record(SQLAttemptOutcome.VALIDATION_ERROR, sql=sql, error=_sanitize_error(e)), None
 
+        # The scope is applied after validation, so the whitelist decided on the
+        # statement the model wrote, and the rewrite can only ever narrow it.
+        scoped_sql, params = validated_sql, {}
+        if document_ids:
+            scoped_sql = apply_document_scope(validated_sql)
+            params = {DOCUMENT_SCOPE_PARAM: list(document_ids)}
+
         try:
-            rows = await self.execute_sql(validated_sql, session, schema)
+            rows = await self.execute_sql(scoped_sql, session, schema, params, completeness_sink)
         except Exception as e:
             # `execute_sql` opens a READ ONLY transaction and only commits on success,
             # so a failed statement leaves the session in an aborted transaction. That
@@ -657,6 +1117,8 @@ Return ONLY the SQL query, no explanations:"""
         defect = _entity_type_defect(validated_sql, profile.entity_types)
         if defect is None:
             defect = await self._filename_defect(validated_sql, session, schema)
+        if defect is None:
+            defect = await self._wrong_entity_type_defect(validated_sql, session, schema, profile)
         if defect is not None:
             return record(
                 SQLAttemptOutcome.EMPTY_WITH_DEFECT, sql=validated_sql, row_count=0, defect=defect
@@ -673,6 +1135,8 @@ Return ONLY the SQL query, no explanations:"""
         conversation_context: str | None = None,
         attempt_sink: list | None = None,
         deadline: float | None = None,
+        document_ids: list[str] | None = None,
+        completeness_sink: dict | None = None,
     ) -> list[dict] | None:
         """Bounded generate/validate/execute recovery loop. Returns rows on the first
         successful attempt — including an empty list for a legitimate zero-row result —
@@ -681,7 +1145,8 @@ Return ONLY the SQL query, no explanations:"""
 
         `schema` is bound here, once, from the caller's authenticated request context
         and is never reassigned inside the loop, so no attempt can change which tenant
-        is queried."""
+        is queried. `document_ids`, when given, is applied to every attempt as a bound
+        predicate on the validated statement."""
         profile = await self._fetch_entity_profile(session, schema)
         attempts: list[SQLAttempt] = []
 
@@ -693,10 +1158,16 @@ Return ONLY the SQL query, no explanations:"""
                 )
                 break
 
+            # A fresh sink per attempt: a later attempt's completeness must never be
+            # reported alongside an earlier attempt's rows.
+            attempt_completeness: dict = {}
             attempt, rows = await self._run_attempt(
                 attempt_number, natural_language_query, session, schema,
-                conversation_context, profile, attempts,
+                conversation_context, profile, attempts, document_ids, attempt_completeness,
             )
+            if completeness_sink is not None and attempt.outcome == SQLAttemptOutcome.SUCCESS:
+                completeness_sink.clear()
+                completeness_sink.update(attempt_completeness)
             attempts.append(attempt)
             if attempt_sink is not None:
                 attempt_sink.append(attempt.as_trace_dict())

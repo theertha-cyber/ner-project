@@ -50,6 +50,27 @@ class PendingClarification(BaseModel):
     candidates: list[CandidateEntity]
 
 
+RetrievalOutcome = Literal["not_attempted", "ok", "empty", "failed", "skipped"]
+
+
+class RetrievalStatusEntry(BaseModel):
+    capability_name: str
+    outcome: RetrievalOutcome
+    error: str | None = None
+    result_count: int = 0
+    reason: str | None = None
+    recovery: bool = False
+
+
+class RetrievalStatusOut(BaseModel):
+    """Per-capability retrieval outcome for the turn. Additive: a client that ignores
+    it observes no change in any other field."""
+
+    entries: list[RetrievalStatusEntry] = []
+    planning_degraded: bool = False
+    stop_reason: str | None = None
+
+
 class ChatResponse(BaseModel):
     reply: str
     sources: list[Source | Citation]
@@ -59,6 +80,7 @@ class ChatResponse(BaseModel):
     message_id: str | None = None
     answer_kind: AnswerKind | None = None
     model_version: str | None = None
+    retrieval_status: RetrievalStatusOut | None = None
 
 
 class ConversationSummary(BaseModel):

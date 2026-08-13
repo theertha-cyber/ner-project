@@ -6,6 +6,10 @@ import pytest
 
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.orchestrator import (
+    OUTCOME_EMPTY,
+    OUTCOME_FAILED,
+    OUTCOME_NOT_ATTEMPTED,
+    OUTCOME_OK,
     STOP_DEADLINE,
     STOP_EMPTY_PLAN,
     STOP_PLANNER_ERROR,
@@ -220,7 +224,7 @@ class TestBudgetExhaustionStillAnswers:
             "q", None, client, "gpt-4o", registry, _context_factory(retriever=retriever), _budget(max_invocations=1),
         )
 
-        assert result.retrieval_error is None
+        assert not result.status.has_failure()
         assert len(result.chunks) == 2
 
 
@@ -348,12 +352,17 @@ class TestDegradationLogged:
 # --- Evidence accumulation (rows 20-23) ---
 
 class TestDedupeKeepsBestScore:
-    """Covers verification.md row 20."""
+    """Covers verification.md row 20. The winning occurrence is now decided by rank
+    within its own invocation rather than by raw score, because two invocations' raw
+    scores need not be on the same scale at all."""
 
-    async def test_duplicate_chunks_merged_with_best_score(self):
+    async def test_duplicate_chunks_merged_keeping_the_better_ranked_occurrence(self):
         registry = build_default_registry()
-        low = RetrievalResult(document_id="D1", chunk_index=3, chunk_text="t", similarity_score=0.6)
-        high = RetrievalResult(document_id="D1", chunk_index=3, chunk_text="t", similarity_score=0.8)
+        # Second in its invocation, so rank-normalised below the other.
+        weaker = RetrievalResult(document_id="D1", chunk_index=3, chunk_text="t", similarity_score=0.6)
+        filler = RetrievalResult(document_id="D9", chunk_index=0, chunk_text="t", similarity_score=0.9)
+        # First and only in its invocation.
+        stronger = RetrievalResult(document_id="D1", chunk_index=3, chunk_text="t", similarity_score=0.8)
 
         class TwoCallRetriever:
             def __init__(self):
@@ -361,7 +370,7 @@ class TestDedupeKeepsBestScore:
 
             async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
                 self.n += 1
-                return [low] if self.n == 1 else [high]
+                return [filler, weaker] if self.n == 1 else [stronger]
 
         client = ScriptedPlannerClient(plans=[[
             _tool_call("semantic_retrieval", '{"query": "a"}', call_id="c1"),
@@ -372,14 +381,18 @@ class TestDedupeKeepsBestScore:
             "q", None, client, "gpt-4o", registry, _context_factory(retriever=TwoCallRetriever()), _budget(),
         )
 
-        assert len(result.chunks) == 1
-        assert result.chunks[0].similarity_score == 0.8
+        merged = [c for c in result.chunks if (c.document_id, c.chunk_index) == ("D1", 3)]
+        assert len(merged) == 1
+        assert merged[0].similarity_score == 0.8
 
 
 class TestChunksRanked:
     """Covers verification.md row 21."""
 
-    async def test_accumulated_chunks_are_ranked(self):
+    async def test_accumulated_chunks_preserve_the_retriever_ordering(self):
+        """A single invocation's ordering is the retriever's, unchanged. Re-sorting on
+        the raw score would be re-ranking the reranker's output on a scale it does not
+        share with anything else."""
         registry = build_default_registry()
         results = [
             RetrievalResult(document_id="D1", chunk_index=0, chunk_text="t", similarity_score=0.4),
@@ -392,11 +405,14 @@ class TestChunksRanked:
             "q", None, client, "gpt-4o", registry, _context_factory(retriever=SpyRetriever(results)), _budget(),
         )
 
-        assert [c.similarity_score for c in result.chunks] == [0.9, 0.7, 0.4]
+        assert [c.document_id for c in result.chunks] == ["D1", "D2", "D3"]
+        assert [c.similarity_score for c in result.chunks] == [0.4, 0.9, 0.7]
 
 
 class TestPartialFailureNoError:
-    """Covers verification.md row 22."""
+    """Covers verification.md row 22. The old collapsed signal fired only when EVERY
+    invocation of a kind failed, so a partial failure was reported as a clean run; the
+    per-entry status reports both outcomes and still accumulates the good evidence."""
 
     async def test_partial_failure_not_reported_as_total(self):
         registry = build_default_registry()
@@ -421,7 +437,7 @@ class TestPartialFailureNoError:
         )
 
         assert len(result.chunks) == 2
-        assert result.retrieval_error is None
+        assert [e.outcome for e in result.status.entries] == [OUTCOME_FAILED, OUTCOME_OK]
 
 
 class TestTotalFailureSetsError:
@@ -437,7 +453,177 @@ class TestTotalFailureSetsError:
         )
 
         assert result.chunks == []
-        assert result.retrieval_error is not None
+        assert result.status.has_failure()
+        assert result.status.failed_capability_names() == ["semantic_retrieval"]
+
+
+class TestPerInvocationRetrievalStatus:
+    """Covers verification.md rows 22, 23, 24, 25, 38 — the contract that replaced
+    `sql_error` / `retrieval_error`."""
+
+    async def test_partial_structured_failure_reported_per_entry(self):
+        registry = build_default_registry()
+        calls = {"n": 0}
+
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("SQL generation failed after 3 attempt(s)")
+            return [{"document_id": "D1", "entity_value": "python"}]
+
+        client = ScriptedPlannerClient(plans=[[
+            _tool_call("structured_retrieval", '{"query": "a"}', call_id="c1"),
+            _tool_call("structured_retrieval", '{"query": "b"}', call_id="c2"),
+        ]])
+
+        result = await orchestrate_retrieval(
+            "q", None, client, "gpt-4o", registry, _context_factory(sql_search=sql_search), _budget(),
+        )
+
+        outcomes = [e.outcome for e in result.status.entries]
+        assert outcomes == [OUTCOME_FAILED, OUTCOME_OK]
+        assert "SQL generation failed" in result.status.entries[0].error
+        assert result.status.entries[1].error is None
+        # The second invocation's rows survive its sibling's failure.
+        assert result.sql_results == [{"document_id": "D1", "entity_value": "python"}]
+
+    async def test_rejected_entry_reports_not_attempted(self):
+        registry = build_default_registry()
+        retriever = SpyRetriever([_make_chunk()])
+        client = ScriptedPlannerClient(plans=[[
+            _tool_call("semantic_retrieval", '{"query": "q"}', call_id="c1"),
+            _tool_call("delete_documents", '{"query": "q"}', call_id="c2"),
+        ]])
+
+        result = await orchestrate_retrieval(
+            "q", None, client, "gpt-4o", registry, _context_factory(retriever=retriever), _budget(),
+        )
+
+        rejected = [e for e in result.status.entries if e.capability_name == "delete_documents"]
+        assert [e.outcome for e in rejected] == [OUTCOME_NOT_ATTEMPTED]
+        assert rejected[0].outcome != OUTCOME_EMPTY
+        assert rejected[0].reason
+
+    async def test_zero_row_success_reports_empty_without_error(self):
+        registry = build_default_registry()
+
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
+            return []
+
+        client = ScriptedPlannerClient(plans=[[_tool_call("structured_retrieval", '{"query": "q"}')]])
+
+        result = await orchestrate_retrieval(
+            "q", None, client, "gpt-4o", registry, _context_factory(sql_search=sql_search), _budget(),
+        )
+
+        structured = result.status.entries_for("structured_retrieval")
+        assert [e.outcome for e in structured] == [OUTCOME_EMPTY]
+        assert structured[0].error is None
+        # A structured-only plan that found nothing also gets one semantic recovery
+        # attempt; it is a separate, clearly-marked entry, not a rewrite of this one.
+        assert all(e.recovery for e in result.status.entries if e.capability_name == "semantic_retrieval")
+
+    async def test_specific_error_text_survives_accumulation(self):
+        registry = build_default_registry()
+
+        async def sql_search(query, session, schema, conversation_context, **_kwargs):
+            raise RuntimeError('relation "public.tenants" does not exist')
+
+        client = ScriptedPlannerClient(plans=[[_tool_call("structured_retrieval", '{"query": "q"}')]])
+
+        result = await orchestrate_retrieval(
+            "q", None, client, "gpt-4o", registry, _context_factory(sql_search=sql_search), _budget(),
+        )
+
+        error = result.status.entries[0].error
+        assert 'relation "public.tenants" does not exist' in error
+        assert "all structured_retrieval invocations failed" not in error
+
+    async def test_plan_trace_records_shape_and_discard_reasons(self):
+        registry = build_default_registry()
+        retriever = SpyRetriever([_make_chunk()])
+        calls = [
+            _tool_call("semantic_retrieval", '{"query": "q", "top_k": 3}', call_id="c1"),
+            _tool_call("semantic_retrieval", '{"query": "q2"}', call_id="c2"),
+        ]
+        client = ScriptedPlannerClient(plans=[calls])
+
+        result = await orchestrate_retrieval(
+            "q", None, client, "gpt-4o", registry,
+            _context_factory(retriever=retriever), _budget(max_invocations=1),
+        )
+
+        assert [t.capability_name for t in result.plan_trace] == ["semantic_retrieval"] * 2
+        assert result.plan_trace[0].argument_keys == ["query", "top_k"]
+        assert result.plan_trace[1].executed is False
+        assert "invocation cap" in result.plan_trace[1].rejection_reason
+        assert result.status.entries[1].outcome == OUTCOME_NOT_ATTEMPTED
+
+
+class TestCrossInvocationScoreSemantics:
+    """verification.md rows 34, 35.
+
+    The reranker falls back to unranked RRF candidates on failure, so one plan can
+    produce two invocations whose scores live on incomparable scales — RRF around 0.016
+    against cross-encoder logits that may be negative. Sorting those against each other
+    is arbitrary; rank position is the one basis both share."""
+
+    async def test_mixed_scale_invocations_merge_on_normalised_rank(self):
+        registry = build_default_registry()
+
+        class MixedScaleRetriever:
+            def __init__(self):
+                self.n = 0
+
+            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+                self.n += 1
+                if self.n == 1:
+                    # Cross-encoder logits: large, and negative for the weaker result.
+                    return [
+                        _make_chunk(document_id="A", chunk_index=0, score=8.2),
+                        _make_chunk(document_id="A", chunk_index=1, score=-3.1),
+                    ]
+                # RRF fusion scores, all tiny.
+                return [
+                    _make_chunk(document_id="B", chunk_index=0, score=0.0163),
+                    _make_chunk(document_id="B", chunk_index=1, score=0.0161),
+                ]
+
+        client = ScriptedPlannerClient(plans=[[
+            _tool_call("semantic_retrieval", '{"query": "a"}', call_id="c1"),
+            _tool_call("semantic_retrieval", '{"query": "b"}', call_id="c2"),
+        ]])
+
+        result = await orchestrate_retrieval(
+            "q", None, client, "gpt-4o", registry,
+            _context_factory(retriever=MixedScaleRetriever()), _budget(),
+        )
+
+        ordered = [(c.document_id, c.chunk_index) for c in result.chunks]
+        # Each invocation's top result outranks each invocation's second, rather than
+        # the logit-scored invocation sweeping the top on scale alone.
+        assert ordered[:2] == [("A", 0), ("B", 0)] or ordered[:2] == [("B", 0), ("A", 0)]
+        assert set(ordered[2:]) == {("A", 1), ("B", 1)}
+        # The raw score is retained for display, with the basis that produced it.
+        assert {c.similarity_score for c in result.chunks} == {8.2, -3.1, 0.0163, 0.0161}
+        assert all(c.score_basis for c in result.chunks)
+
+    async def test_single_invocation_order_preserved(self):
+        registry = build_default_registry()
+        retriever = SpyRetriever([
+            _make_chunk(document_id="D1", chunk_index=0, score=0.9),
+            _make_chunk(document_id="D2", chunk_index=0, score=0.4),
+            _make_chunk(document_id="D3", chunk_index=0, score=0.7),
+        ])
+        client = ScriptedPlannerClient(plans=[[_tool_call("semantic_retrieval", '{"query": "q"}')]])
+
+        result = await orchestrate_retrieval(
+            "q", None, client, "gpt-4o", registry, _context_factory(retriever=retriever), _budget(),
+        )
+
+        # Identical to what the retriever returned — the retriever's ordering is the
+        # authority for a single invocation, scores or no scores.
+        assert [c.document_id for c in result.chunks] == ["D1", "D2", "D3"]
 
 
 # --- Plan trace (rows 24-25) ---

@@ -3,12 +3,17 @@ import os
 import pytest
 
 from src.shared.retrieval.eval.gate import BaselineNotFoundError, check_regression, load_baseline
+from src.shared.retrieval.eval.metrics import LEGACY_SCORING_RULE, SCORING_RULE
+from src.shared.retrieval.eval.runner import SYNTHETIC_CORPUS, TENANT_CORPUS
 
 pytestmark = []
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "retrieval_eval")
 
-BASELINE = {"recall_at_k": 0.80, "ndcg_at_k": 0.80, "precision_at_k": 0.6, "mrr_at_k": 0.7}
+BASELINE = {
+    "recall_at_k": 0.80, "ndcg_at_k": 0.80, "precision_at_k": 0.6, "mrr_at_k": 0.7,
+    "scoring_rule": SCORING_RULE, "corpus": SYNTHETIC_CORPUS,
+}
 
 
 class TestRegressionBelowToleranceFails:
@@ -45,6 +50,44 @@ class TestImprovementReported:
         assert "Improvements" in result.message
         assert any(d.metric == "recall_at_k" and d.delta > 0 for d in result.deltas)
         assert any(d.metric == "ndcg_at_k" and d.delta > 0 for d in result.deltas)
+
+
+class TestComparabilityIsRequired:
+    """verification.md rows 84, 93. A score means something only relative to the rule
+    that produced it and the corpus it ran against — under the old `skip-degraded` rule
+    a degraded query dropped out of the mean entirely, so the two sets of numbers
+    measure different things."""
+
+    def test_gate_requires_baseline_matching_scoring_rule(self):
+        legacy = {**BASELINE, "scoring_rule": LEGACY_SCORING_RULE}
+        result = check_regression(BASELINE, legacy, tolerance=0.02)
+
+        assert result.passed is False
+        assert "scoring rule mismatch" in result.message
+        assert LEGACY_SCORING_RULE in result.message
+
+    def test_baseline_without_a_scoring_rule_is_rejected(self):
+        unlabelled = {k: v for k, v in BASELINE.items() if k != "scoring_rule"}
+        result = check_regression(BASELINE, unlabelled, tolerance=0.02)
+
+        assert result.passed is False
+        assert "Regenerate" in result.message
+
+    def test_corpus_mismatch_rejected(self):
+        tenant_run = {**BASELINE, "corpus": TENANT_CORPUS}
+        result = check_regression(tenant_run, BASELINE, tolerance=0.02)
+
+        assert result.passed is False
+        assert "corpus mismatch" in result.message
+        assert TENANT_CORPUS in result.message
+        assert SYNTHETIC_CORPUS in result.message
+
+    def test_matching_rule_and_corpus_compares_normally(self):
+        observed = {**BASELINE, "ndcg_at_k": 0.70}
+        result = check_regression(observed, BASELINE, tolerance=0.02)
+
+        assert result.passed is False
+        assert "ndcg_at_k" in result.message
 
 
 class TestMissingBaselineFailsExplicitly:

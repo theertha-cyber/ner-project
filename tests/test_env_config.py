@@ -129,8 +129,37 @@ def test_context_assembly_defaults_with_no_env_overrides():
         settings = Settings(_env_file=None)
 
         assert settings.context_token_budget == 6000
-        assert settings.context_max_chunks is None
         assert settings.conversation_history_turns == 5
+    finally:
+        os.environ.update(backup)
+
+
+def test_new_chunk_cap_defaults_match_design():
+    """verification.md row 80. One value used to govern per-invocation retrieval, the
+    prompt admission, and (via a hardcoded literal) the citations, so a multi-invocation
+    plan discarded most of what it retrieved without any of it being visible. Defaults
+    are recorded in design.md Decision 9."""
+    env_vars = [
+        k for k in os.environ
+        if k.startswith("NER_CONTEXT") or k.startswith("NER_RETRIEVAL") or k.startswith("NER_CITATION")
+    ]
+    backup = {k: os.environ.pop(k) for k in env_vars}
+
+    try:
+        os.environ["NER_JWT_SECRET"] = "test-jwt-secret"
+        os.environ["NER_MINIO_ACCESS_KEY"] = "test-minio-user"
+        os.environ["NER_MINIO_SECRET_KEY"] = "test-minio-pass"
+        os.environ["NER_OPENAI_API_KEY"] = "test-openai-key"
+
+        settings = Settings(_env_file=None)
+
+        assert settings.retrieval_top_k == 5
+        assert settings.retrieval_merge_max_chunks == 10
+        assert settings.context_max_chunks == 8
+        assert settings.citation_max_chunks == 8
+        # No cap silently derives from another.
+        assert settings.context_max_chunks != settings.retrieval_top_k
+        assert settings.retrieval_recovery_min_budget_seconds == 2.0
     finally:
         os.environ.update(backup)
 

@@ -35,7 +35,7 @@ pytestmark = [pytest.mark.verification]
 # ---------------------------------------------------------------------------
 
 class NoopGuardrails:
-    def enforce_sources(self, reply, sources):
+    def enforce_sources(self, reply, sources, retrieval_status=None):
         if not sources:
             return "I couldn't find relevant information to answer that question.", []
         return reply, sources
@@ -211,9 +211,12 @@ class TestGraphTopologyUnchangedByStreaming:
         expected_edges = {
             ("__start__", "guardrail"),
             ("guardrail", "__end__"),
-            ("retrieval_execution", "source_assembly"),
-            ("source_assembly", "prompt_assembly"),
-            ("prompt_assembly", "generation"),
+            # Prompt assembly runs before source assembly so citations derive from the
+            # evidence the prompt admitted (design Decision 7). Streaming is unaffected:
+            # `generation` still reads the `sources` written immediately before it.
+            ("retrieval_execution", "prompt_assembly"),
+            ("prompt_assembly", "source_assembly"),
+            ("source_assembly", "generation"),
             ("generation", "__end__"),
         }
         if settings.entity_resolution_enabled:
@@ -278,12 +281,14 @@ class CannedStreamOrchestrator:
 
     def __init__(self, reply="Based on the documents, there are 5 organizations.",
                  sources=None, pending_clarification=None, answer_kind="answer",
-                 model_version=None, deltas=None, raise_after=None, delay=0):
+                 model_version=None, deltas=None, raise_after=None, delay=0,
+                 retrieval_status=None):
         self.reply = reply
         self.sources = sources if sources is not None else [_fake_citation()]
         self.pending_clarification = pending_clarification
         self.answer_kind = answer_kind
         self.model_version = model_version
+        self.retrieval_status = retrieval_status
         self.deltas = deltas if deltas is not None else ["Based", " on", " the documents, there are 5 organizations."]
         self.raise_after = raise_after
         self.delay = delay
@@ -293,7 +298,8 @@ class CannedStreamOrchestrator:
     async def execute_with_clarification(self, message, session, schema, tenant_id,
                                           jwt_token=None, conversation_context=None, conversation_id=None):
         self.non_stream_calls += 1
-        return (self.reply, self.sources, self.pending_clarification, self.answer_kind, self.model_version)
+        return (self.reply, self.sources, self.pending_clarification, self.answer_kind,
+                self.model_version, self.retrieval_status)
 
     async def execute_with_clarification_stream(self, message, session, schema, tenant_id, token_sink,
                                                  jwt_token=None, conversation_context=None, conversation_id=None):
@@ -307,7 +313,8 @@ class CannedStreamOrchestrator:
                     raise RuntimeError("generation failed mid-stream")
         finally:
             await token_sink.put(STREAM_DONE)
-        return (self.reply, self.sources, self.pending_clarification, self.answer_kind, self.model_version)
+        return (self.reply, self.sources, self.pending_clarification, self.answer_kind,
+                self.model_version, self.retrieval_status)
 
 
 def _fake_citation():

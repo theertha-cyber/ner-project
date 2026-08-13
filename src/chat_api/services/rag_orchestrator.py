@@ -53,12 +53,12 @@ class RAGOrchestrator:
         self, message: str, session: AsyncSession, schema: str, tenant_id: str,
         jwt_token: str | None = None, conversation_context: list[dict] | None = None,
         conversation_id: str | None = None,
-    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None]:
+    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None]:
         """Same as `execute`, but additionally surfaces `pending_clarification`,
-        `answer_kind`, and `model_version`, and requires `conversation_id` so entity
-        resolution can read and persist its per-conversation state. Used by
-        `src/chat_api/api/v1/chat.py`; the widget endpoint keeps calling `execute`,
-        whose signature is unchanged."""
+        `answer_kind`, `model_version`, and the turn's `retrieval_status`, and requires
+        `conversation_id` so entity resolution can read and persist its per-conversation
+        state. Used by `src/chat_api/api/v1/chat.py`; the widget endpoint keeps calling
+        `execute`, whose signature is unchanged."""
         result = await self._run_graph(message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id)
         sources = result.get("sources", [])
         return (
@@ -67,16 +67,17 @@ class RAGOrchestrator:
             result.get("pending_clarification"),
             self._classify_answer_kind(result),
             self._extract_model_version(sources),
+            self._retrieval_status_payload(result),
         )
 
     async def execute_with_clarification_stream(
         self, message: str, session: AsyncSession, schema: str, tenant_id: str,
         token_sink: asyncio.Queue, jwt_token: str | None = None,
         conversation_context: list[dict] | None = None, conversation_id: str | None = None,
-    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None]:
+    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None]:
         """Same as `execute_with_clarification`, but threads `token_sink` into the
         graph's initial state (design.md Decision 2) so `generation_node` can stream
-        content deltas onto it as they arrive. Returns the identical 5-tuple once the
+        content deltas onto it as they arrive. Returns the identical tuple once the
         graph reaches its terminal state, so callers reuse the same response-assembly
         code regardless of whether the turn streamed any tokens. `STREAM_DONE` is
         pushed onto `token_sink` in a `finally` so the caller's drain loop always
@@ -96,7 +97,16 @@ class RAGOrchestrator:
             result.get("pending_clarification"),
             self._classify_answer_kind(result),
             self._extract_model_version(sources),
+            self._retrieval_status_payload(result),
         )
+
+    @staticmethod
+    def _retrieval_status_payload(result: dict) -> dict | None:
+        """The turn's retrieval outcome as a plain dict for the HTTP layer. `None` on a
+        turn that never reached retrieval — a guardrail decline or a clarification —
+        so those responses are byte-identical to what they were before."""
+        status = result.get("retrieval_status")
+        return status.as_dict() if status is not None else None
 
     @staticmethod
     def _classify_answer_kind(result: dict) -> str:
@@ -148,7 +158,9 @@ class RAGOrchestrator:
     async def _sql_source(self, message: str, session: AsyncSession, schema: str,
                           conversation_context: list[dict] | None,
                           attempt_sink: list | None = None,
-                          deadline: float | None = None) -> list[dict] | None:
+                          deadline: float | None = None,
+                          document_ids: list[str] | None = None,
+                          completeness_sink: dict | None = None) -> list[dict] | None:
         """`schema` comes from the caller's authenticated request context and is passed
         straight through — the recovery loop never re-derives it. Raises
         `SQLGenerationFailed` when every attempt failed; the tool layer turns that into
@@ -156,7 +168,8 @@ class RAGOrchestrator:
         conv_text = render_history(conversation_context)
         return await self.sql_generator.generate_and_execute(
             message, session, schema, conv_text,
-            attempt_sink=attempt_sink, deadline=deadline,
+            attempt_sink=attempt_sink, deadline=deadline, document_ids=document_ids,
+            completeness_sink=completeness_sink,
         )
 
     async def _resolve_document_names(self, sources: list[Source], session: AsyncSession, schema: str) -> dict[str, str]:

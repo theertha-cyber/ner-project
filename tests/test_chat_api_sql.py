@@ -79,6 +79,67 @@ class TestSQLValidation:
         assert "not in the whitelist" in str(exc.value).lower()
 
 
+class TestValidatedStatementExecution:
+    """verification.md rows 6, 7, 13 — the execution path either runs a validated
+    statement read-only, or reports the SQL source as unavailable. It never lets a
+    rejected or timed-out statement look like an empty answer.
+
+    Completeness reporting for the same path (rows 56, 57, 58) is covered in
+    tests/test_chat_api_sql_retry.py, alongside the FakeSession that drives it."""
+
+    async def test_valid_select_passes_and_executes(self):
+        from tests.test_chat_api_sql_retry import SCHEMA, FakeLLM, FakeSession, make_generator
+
+        sql = "SELECT normalized_value FROM document_entities WHERE entity_type = 'SKILL' LIMIT 100"
+        session = FakeSession(data_results=[[("python",)]])
+
+        rows = await make_generator(FakeLLM(sql)).generate_and_execute("q", session, SCHEMA)
+
+        assert rows == [{"normalized_value": "python"}]
+        assert session.statements.count("BEGIN READ ONLY") == 1
+        assert "COMMIT" in session.statements
+
+    async def test_ddl_rejected_and_reported_unavailable(self):
+        from src.chat_api.services.sql_generator import SQLGenerationFailed
+        from tests.test_chat_api_sql_retry import SCHEMA, FakeLLM, FakeSession, make_generator
+
+        session = FakeSession()
+        generator = make_generator(FakeLLM("DROP TABLE document_entities"))
+
+        with pytest.raises(SQLGenerationFailed):
+            await generator.generate_and_execute("q", session, SCHEMA)
+
+        # Rejected before execution — the statement never reached the database, and the
+        # failure propagates rather than being laundered into an empty row list.
+        assert session.data_queries == []
+
+    async def test_execution_timeout_cancels_and_skips_source(self):
+        """A statement that outruns the 10s bound is cancelled, the transaction is
+        rolled back, and the turn reports the source as unavailable — never as an
+        empty answer. The timeout is raised directly here rather than waited out."""
+        import asyncio
+
+        from src.chat_api.services.sql_generator import SQLGenerator, SQLValidationError
+        from tests.test_chat_api_sql_retry import SCHEMA, FakeSession
+
+        class _TimingOutSession(FakeSession):
+            async def execute(self, statement, params=None):
+                if str(statement).strip().upper().startswith("SELECT NORMALIZED_VALUE"):
+                    raise asyncio.TimeoutError
+                return await super().execute(statement, params)
+
+        generator = SQLGenerator.__new__(SQLGenerator)
+        session = _TimingOutSession()
+
+        with pytest.raises(SQLValidationError) as exc:
+            await generator.execute_sql(
+                "SELECT normalized_value FROM document_entities LIMIT 100", session, SCHEMA,
+            )
+
+        assert "timed out" in str(exc.value).lower()
+        assert "ROLLBACK" in session.statements
+
+
 class TestSQLPrompt:
     def test_prompt_includes_document_join_instruction(self):
         import inspect

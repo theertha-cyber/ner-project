@@ -21,9 +21,15 @@ from sqlalchemy.pool import NullPool
 from src.shared.config import settings
 from src.shared.retrieval.config import RetrievalConfig
 from src.shared.retrieval.eval.embeddings import PrecomputedEmbeddingService, QueryIdEmbeddingService
-from src.shared.retrieval.eval.golden_set import load_corpus, load_golden_set
+from src.shared.retrieval.eval.golden_set import load_corpus, load_golden_set, missing_query_classes
 from src.shared.retrieval.eval.report import build_json_report, write_report
-from src.shared.retrieval.eval.runner import MatrixConfiguration, MatrixResult, run_configuration
+from src.shared.retrieval.eval.runner import (
+    SYNTHETIC_CORPUS,
+    TENANT_CORPUS,
+    MatrixConfiguration,
+    MatrixResult,
+    run_configuration,
+)
 from src.shared.retrieval.retriever import DenseRetriever, HybridRetriever, SparseRetriever
 from src.shared.retrieval.tools.base import ToolContext
 
@@ -74,12 +80,44 @@ async def main() -> None:
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--output-dir", default=FIXTURES_DIR)
     parser.add_argument("--write-baseline", action="store_true")
+    parser.add_argument(
+        "--corpus-dir", default=FIXTURES_DIR,
+        help=(
+            "Directory holding corpus.jsonl, golden_set.jsonl, and embeddings.json. "
+            "Defaults to the committed synthetic fixture; point it at a "
+            "tenant-representative set to run against one."
+        ),
+    )
+    parser.add_argument(
+        "--corpus-name", default=SYNTHETIC_CORPUS,
+        help=(
+            f"Identity recorded on the report and baseline. Use '{TENANT_CORPUS}' for a "
+            "tenant-representative run — a score against the synthetic fixture is never "
+            "evidence about tenant behaviour, and the gate refuses to compare them."
+        ),
+    )
     args = parser.parse_args()
 
-    corpus = load_corpus(os.path.join(FIXTURES_DIR, "corpus.jsonl"))
-    golden_queries = load_golden_set(os.path.join(FIXTURES_DIR, "golden_set.jsonl"), corpus)
+    corpus_dir = args.corpus_dir
+    corpus = load_corpus(os.path.join(corpus_dir, "corpus.jsonl"))
+    golden_queries = load_golden_set(os.path.join(corpus_dir, "golden_set.jsonl"), corpus)
 
-    embeddings_path = os.path.join(FIXTURES_DIR, "embeddings.json")
+    uncovered = missing_query_classes(golden_queries)
+    if uncovered:
+        # Chunk-ranking coverage only. The committed synthetic fixture is a
+        # document-content corpus, so the structured, multi-condition, and
+        # multi-document classes are covered at the plan and answer level by
+        # tests/test_retrieval_query_class_eval.py and
+        # tests/test_retrieval_answer_eval.py instead. A tenant-representative corpus
+        # is expected to carry cases for them here too.
+        print(
+            "NOTE: this corpus carries no ranking case for query class(es): "
+            + ", ".join(uncovered)
+            + " — covered at plan/answer level by the query-class and answer-level "
+            "harnesses; add ranking cases when running a tenant-representative corpus."
+        )
+
+    embeddings_path = os.path.join(corpus_dir, "embeddings.json")
     provider = PrecomputedEmbeddingService(embeddings_path, expected_model="synthetic-hash-embedding-v1")
     query_text_to_id = {q.query: q.query_id for q in golden_queries}
     embedding_service = QueryIdEmbeddingService(provider, query_text_to_id)
@@ -94,8 +132,8 @@ async def main() -> None:
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
         configurations = [
-            MatrixConfiguration("dense_only", RetrievalConfig(top_k=args.k)),
-            MatrixConfiguration("hybrid", RetrievalConfig(top_k=args.k)),
+            MatrixConfiguration("dense_only", RetrievalConfig(top_k=args.k), corpus=args.corpus_name),
+            MatrixConfiguration("hybrid", RetrievalConfig(top_k=args.k), corpus=args.corpus_name),
         ]
 
         # One session per configuration, reused sequentially across its queries —
@@ -132,7 +170,14 @@ async def main() -> None:
                 "mrr_at_k": best.aggregate.mrr_at_k,
                 "ndcg_at_k": best.aggregate.ndcg_at_k,
                 "query_count": best.aggregate.query_count,
+                "degraded_count": best.aggregate.degraded_count,
+                "failed_count": best.aggregate.failed_count,
                 "k": args.k,
+                # A baseline is only comparable with a run produced the same way. The
+                # gate rejects a comparison across either of these rather than
+                # reporting a delta between two different measurements.
+                "scoring_rule": best.scoring_rule,
+                "corpus": best.corpus,
             }
             with open(os.path.join(args.output_dir, "baseline.json"), "w", encoding="utf-8") as f:
                 json.dump(baseline, f, indent=2, sort_keys=True)

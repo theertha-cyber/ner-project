@@ -73,6 +73,10 @@ class ToolResult:
     # trace). Internal observability only — never rendered into an observation and
     # never part of any HTTP response.
     diagnostics: list[Any] = field(default_factory=list)
+    # `{"returned": int, "matched": int | None, "truncated": bool}` when the capability
+    # can report it. Prompt assembly needs this to know whether the rows it admits are
+    # the complete answer — without it the prompt asserts a truncated list is exhaustive.
+    result_completeness: dict | None = None
 
     def to_observation(self, limit: int) -> str:
         """Renders this result into a plain-text observation for an LLM conversation.

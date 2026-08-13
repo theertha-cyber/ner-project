@@ -93,3 +93,39 @@ class TestOverridesDoNotLeak:
         assert settings.retrieval_top_k == before_top_k
         assert retriever_on.reranker.calls != []
         assert retriever_off.reranker.calls == []
+
+
+class TestChunkCapsAreIndependent:
+    """verification.md rows 78, 79. `context_max_chunks` used to default to
+    `retrieval_top_k`, and `source_assembly` capped citations at a literal `[:3]`, so
+    one value and one literal governed four unrelated decisions."""
+
+    def test_prompt_chunk_cap_independent_of_top_k(self, monkeypatch):
+        from src.chat_api.services.context_assembler import ContextAssembler
+
+        monkeypatch.setattr(settings, "retrieval_top_k", 5)
+        monkeypatch.setattr(settings, "context_max_chunks", 2)
+
+        assembler = ContextAssembler()
+
+        assert assembler.max_chunks == 2
+        assert assembler.max_chunks != settings.retrieval_top_k
+
+        chunks = _make_results(6)
+        _, evidence = assembler.assemble(
+            "q?", None, chunks, {}, None, return_evidence=True,
+        )
+        # Admission follows the prompt cap; retrieval depth follows top_k.
+        assert len(evidence.chunks) == 2
+
+    def test_citation_cap_is_a_named_setting(self):
+        """The count must come from configuration, not a literal at the call site."""
+        import inspect
+
+        from src.chat_api.graph import nodes as nodes_module
+
+        source = inspect.getsource(nodes_module.build_nodes)
+        assert "citation_max_chunks" in source
+        assert "[:3]" not in source
+        assert "sql_results[:5]" not in source
+        assert isinstance(settings.citation_max_chunks, int)

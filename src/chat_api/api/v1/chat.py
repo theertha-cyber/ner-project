@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
 from src.shared.exceptions import NotFoundError
-from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut
+from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut, RetrievalStatusOut
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator, STREAM_DONE
 from src.chat_api.services.guardrails import GuardrailService
 from src.chat_api.services.rate_limiter import rate_limiter, INTERNAL_RATE_LIMIT, INTERNAL_WINDOW
@@ -117,6 +117,7 @@ async def _persist_turn_and_respond(
     session: AsyncSession, schema: str, conversation_id: str, user_message: str,
     reply: str, sources: list[Source | Citation], pending_clarification: dict | None,
     answer_kind: str, model_version: str | None, response_time_ms: int,
+    retrieval_status: dict | None = None,
 ) -> ChatResponse:
     """User row insert, assistant row insert, `updated_at` bump, and commit —
     identical for the streaming and non-streaming routes. Runs once, after the RAG
@@ -159,13 +160,20 @@ async def _persist_turn_and_respond(
         message_id=message_id,
         answer_kind=answer_kind,
         model_version=model_version,
+        retrieval_status=RetrievalStatusOut(**retrieval_status) if retrieval_status else None,
     )
 
 
 def _response_payload(response: ChatResponse) -> dict:
     # pending_clarification is additive: omit it entirely from the payload when
     # absent instead of serializing it as null, so existing clients see no change.
-    exclude = {"pending_clarification"} if response.pending_clarification is None else set()
+    # retrieval_status is additive on the same terms — a turn that never reached
+    # retrieval omits the key rather than sending null.
+    exclude = set()
+    if response.pending_clarification is None:
+        exclude.add("pending_clarification")
+    if response.retrieval_status is None:
+        exclude.add("retrieval_status")
     return response.model_dump(exclude=exclude)
 
 
@@ -184,7 +192,7 @@ async def chat(
     auth_header = request.headers.get("Authorization", "")
     jwt_token = auth_header.removeprefix("Bearer ")
     started_at = time.monotonic()
-    reply, sources, pending_clarification, answer_kind, model_version = await orchestrator.execute_with_clarification(
+    reply, sources, pending_clarification, answer_kind, model_version, retrieval_status = await orchestrator.execute_with_clarification(
         body.message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id,
     )
     response_time_ms = round((time.monotonic() - started_at) * 1000)
@@ -192,6 +200,7 @@ async def chat(
     response = await _persist_turn_and_respond(
         session, schema, conversation_id, body.message, reply, sources,
         pending_clarification, answer_kind, model_version, response_time_ms,
+        retrieval_status,
     )
 
     headers = rate_limiter.get_headers(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
@@ -236,7 +245,7 @@ async def chat_stream(
                     break
                 yield _sse_frame("token", {"delta": item})
 
-            reply, sources, pending_clarification, answer_kind, model_version = await task
+            reply, sources, pending_clarification, answer_kind, model_version, retrieval_status = await task
         except Exception as e:
             logger.exception("Streaming chat turn failed for tenant_id=%s", tenant_id)
             yield _sse_frame("error", {"code": "GENERATION_FAILED", "message": str(e)})
@@ -246,6 +255,7 @@ async def chat_stream(
         response = await _persist_turn_and_respond(
             session, schema, conversation_id, body.message, reply, sources,
             pending_clarification, answer_kind, model_version, response_time_ms,
+            retrieval_status,
         )
         yield _sse_frame("done", _response_payload(response))
 

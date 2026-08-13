@@ -285,6 +285,66 @@ class TestResolveEntityOutcomes:
             async with engine.begin() as conn:
                 await conn.execute(text(f"DROP SCHEMA IF EXISTS {schema_b} CASCADE"))
 
+    async def test_two_named_subjects_resolve_to_union(self, engine, entity_schema, db_session):
+        """verification.md row 41. Resolution used to stop at the first mention that
+        matched, so "compare Girish and Arjun Jayakumar" reached the prompt as a
+        question about whichever of them n-gram ordering happened to reach first."""
+        tid, schema = entity_schema
+        async with engine.begin() as conn:
+            await _insert_entity(conn, schema, "D1", "PER", "Girish", entity_resolver.canonicalize("Girish"))
+            await _insert_entity(conn, schema, "D2", "PER", "Arjun Jayakumar", entity_resolver.canonicalize("Arjun Jayakumar"))
+
+        result = await entity_resolver.resolve_entity(
+            "Compare Girish and Arjun Jayakumar", db_session, schema, tid,
+        )
+
+        assert result.outcome == entity_resolver.UNIQUE
+        assert set(result.resolved_document_ids) == {"D1", "D2"}
+        assert set(result.mention_documents) >= {"Girish", "Arjun Jayakumar"}
+
+    async def test_single_subject_resolution_unchanged(self, engine, entity_schema, db_session):
+        """verification.md row 43 — the single-subject path behaves exactly as before."""
+        tid, schema = entity_schema
+        async with engine.begin() as conn:
+            await _insert_entity(conn, schema, "D1", "PER", "Girish", entity_resolver.canonicalize("Girish"))
+
+        result = await entity_resolver.resolve_entity("Tell me about Girish", db_session, schema, tid)
+
+        assert result.outcome == entity_resolver.UNIQUE
+        assert result.resolved_document_ids == ["D1"]
+        assert result.resolved_document_id == "D1"
+
+    async def test_union_over_cap_returns_narrowing(self, engine, entity_schema, db_session, monkeypatch):
+        """verification.md row 45 — the cap applies to the union, and an over-cap turn
+        is never scoped to an arbitrary subset."""
+        from src.shared.config import settings
+        monkeypatch.setattr(settings, "entity_resolution_max_candidates", 2)
+        tid, schema = entity_schema
+        async with engine.begin() as conn:
+            await _insert_entity(conn, schema, "D1", "PER", "Girish", entity_resolver.canonicalize("Girish"))
+            await _insert_entity(conn, schema, "D2", "PER", "Hannah", entity_resolver.canonicalize("Hannah"))
+            await _insert_entity(conn, schema, "D3", "PER", "Mahalakshmi", entity_resolver.canonicalize("Mahalakshmi"))
+
+        result = await entity_resolver.resolve_entity(
+            "Compare Girish and Hannah and Mahalakshmi", db_session, schema, tid,
+        )
+
+        assert result.outcome == entity_resolver.OVER_CAP
+        assert result.resolved_document_ids == []
+
+    async def test_one_subject_matching_several_people_still_clarifies(self, engine, entity_schema, db_session):
+        """Ambiguity is still a property of ONE mention matching several people — two
+        mentions matching one person each is a comparison, not an ambiguity."""
+        tid, schema = entity_schema
+        async with engine.begin() as conn:
+            await _insert_entity(conn, schema, "D1", "PER", "Girish", entity_resolver.canonicalize("Girish"))
+            await _insert_entity(conn, schema, "D2", "PER", "Girish", entity_resolver.canonicalize("Girish"))
+
+        result = await entity_resolver.resolve_entity("Tell me about Girish", db_session, schema, tid)
+
+        assert result.outcome == entity_resolver.AMBIGUOUS
+        assert {c.document_id for c in result.candidates} == {"D1", "D2"}
+
     async def test_zero_call_llm_during_extraction_and_matching(self, engine, entity_schema, db_session):
         tid, schema = entity_schema
         client = ScriptedSelectionClient(verdict="1")

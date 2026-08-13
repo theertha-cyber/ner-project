@@ -1,9 +1,13 @@
 {
   "configuration": "dense_only",
+  "corpus": "synthetic-fixture",
+  "degraded_count": 0,
+  "failed_count": 0,
   "k": 5,
   "mrr_at_k": 1.0,
   "ndcg_at_k": 0.9200811579009052,
   "precision_at_k": 0.36000000000000004,
   "query_count": 30,
-  "recall_at_k": 0.9
+  "recall_at_k": 0.9,
+  "scoring_rule": "zero-degraded"
 }

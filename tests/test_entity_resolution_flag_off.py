@@ -76,7 +76,7 @@ class TestStaleStateInertWithFlagOff:
     async def test_retrieval_execution_ignores_absent_resolution_state(self, monkeypatch):
         from unittest.mock import AsyncMock
         import src.chat_api.graph.nodes as nodes_module
-        from src.shared.retrieval.orchestrator import OrchestrationResult
+        from src.shared.retrieval.orchestrator import OrchestrationResult, RetrievalStatus
 
         orchestrator = RAGOrchestrator.__new__(RAGOrchestrator)
         orchestrator.tool_registry = object()
@@ -86,10 +86,10 @@ class TestStaleStateInertWithFlagOff:
 
         fake_result = OrchestrationResult(
             chunks=[], sql_results=[{"document_id": "doc-1", "count": 5}, {"document_id": "doc-2", "count": 9}],
-            retrieval_error=None, sql_error=None, plan_trace=[], plan_truncated=False,
-            orchestration_degraded=False, orchestration_stop_reason="plan_executed",
+            status=RetrievalStatus(stop_reason="plan_executed"),
+            plan_trace=[], plan_truncated=False,
         )
-        async def fake_execute_plan(plan, registry, context_factory, budget):
+        async def fake_execute_plan(plan, registry, context_factory, budget, **kwargs):
             return fake_result
         monkeypatch.setattr(nodes_module, "execute_plan", fake_execute_plan)
 

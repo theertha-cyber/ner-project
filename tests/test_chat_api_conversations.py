@@ -118,6 +118,112 @@ class TestConversationSchemas:
         assert "created_at" in d
 
 
+@pytest.mark.asyncio
+class TestChatEndpointTurnShape:
+    """verification.md rows 16, 17, 20, 21 — the RAG chat endpoint's existing contract,
+    re-asserted after the assembly stages were reordered. The orchestrator is patched at
+    the same boundary test_chat_api_streaming.py uses; full end-to-end retrieval is
+    exercised in test_chat_api_rag.py."""
+
+    @staticmethod
+    def _app():
+        from src.chat_api.main import app
+        return app
+
+    @staticmethod
+    def _auth(tenant_id, role="business_user", user_id="test-user"):
+        from src.shared.auth import create_access_token
+        return {"Authorization": f"Bearer {create_access_token(tenant_id=tenant_id, user_id=user_id, role=role)}"}
+
+    @staticmethod
+    def _patch(monkeypatch, reply, sources):
+        from src.chat_api.api.v1 import chat as chat_module
+
+        async def fake(message, session, schema, tenant_id, jwt_token=None,
+                       conversation_context=None, conversation_id=None):
+            fake.seen_context = conversation_context
+            return (reply, sources, None, "answer", None, None)
+
+        fake.seen_context = None
+        monkeypatch.setattr(chat_module.orchestrator, "execute_with_clarification", fake)
+        return fake
+
+    async def test_entity_count_turn_returns_reply_sources_and_conversation_id(
+        self, engine, tenant_schema, monkeypatch,
+    ):
+        from httpx import ASGITransport, AsyncClient
+
+        tid, _ = tenant_schema
+        self._patch(monkeypatch, "There are 5 organizations.", [
+            Citation(document_name="r.pdf", document_id="doc-1", entity_type="ORG",
+                     entity_value="Acme", source_type="sql"),
+        ])
+
+        async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
+            resp = await client.post("/api/v1/chat", headers=self._auth(tid),
+                                     json={"message": "How many organizations?", "conversation_id": None})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["reply"] == "There are 5 organizations."
+        assert len(body["sources"]) >= 1
+        assert body["conversation_id"]
+
+    async def test_document_context_turn_returns_chunk_sources(
+        self, engine, tenant_schema, monkeypatch,
+    ):
+        from httpx import ASGITransport, AsyncClient
+
+        tid, _ = tenant_schema
+        self._patch(monkeypatch, "The contract covers liability.", [
+            Citation(document_name="r.pdf", document_id="doc-1", source_type="document_chunk",
+                     context_snippet="liability clause", relevance_score=0.82),
+        ])
+
+        async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
+            resp = await client.post("/api/v1/chat", headers=self._auth(tid),
+                                     json={"message": "What does the contract say?", "conversation_id": None})
+
+        assert resp.status_code == 200
+        source = resp.json()["sources"][0]
+        assert source["document_id"] == "doc-1"
+        assert source["relevance_score"] == 0.82
+
+    async def test_existing_conversation_appends_and_includes_history(
+        self, engine, tenant_schema, monkeypatch,
+    ):
+        from httpx import ASGITransport, AsyncClient
+
+        tid, _ = tenant_schema
+        fake = self._patch(monkeypatch, "Second reply.", [
+            Citation(document_name="r.pdf", document_id="doc-1", source_type="sql"),
+        ])
+        headers = self._auth(tid)
+
+        async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
+            first = await client.post("/api/v1/chat", headers=headers,
+                                      json={"message": "First question", "conversation_id": None})
+            conversation_id = first.json()["conversation_id"]
+
+            second = await client.post("/api/v1/chat", headers=headers,
+                                       json={"message": "Second question", "conversation_id": conversation_id})
+            detail = await client.get(f"/api/v1/chat/conversations/{conversation_id}", headers=headers)
+
+        assert second.status_code == 200
+        assert second.json()["conversation_id"] == conversation_id
+        # The earlier turn reached the pipeline as history.
+        assert any(m["content"] == "First question" for m in fake.seen_context)
+        assert [m["content"] for m in detail.json()["messages"]][:2] == ["First question", "Second reply."]
+
+    async def test_unauthenticated_chat_returns_401(self, engine, tenant_schema):
+        from httpx import ASGITransport, AsyncClient
+
+        async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
+            resp = await client.post("/api/v1/chat", json={"message": "hi", "conversation_id": None})
+
+        assert resp.status_code == 401
+
+
 class TestConversationTitleGeneration:
     def test_title_generated_from_short_message(self):
         title = derive_conversation_title("How many organizations did we extract last month?")

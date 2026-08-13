@@ -1,7 +1,21 @@
 import pytest
-from src.chat_api.services.context_assembler import ContextAssembler, SYSTEM_PROMPT, _count_tokens
+from src.chat_api.services.context_assembler import (
+    PARTIAL_ENTITY_INSTRUCTION,
+    SYSTEM_PROMPT,
+    ContextAssembler,
+    _count_tokens,
+    render_retrieval_status,
+)
 from src.shared.retrieval.chunking import TOKENIZER, chunk_text
 from src.shared.retrieval.models import RetrievalResult
+from src.shared.retrieval.orchestrator import (
+    OUTCOME_EMPTY,
+    OUTCOME_FAILED,
+    OUTCOME_OK,
+    OUTCOME_SKIPPED,
+    CapabilityStatus,
+    RetrievalStatus,
+)
 
 pytestmark = pytest.mark.verification
 
@@ -175,6 +189,231 @@ class TestEmptySourceDegradation:
         messages = assembler.assemble("question?", None, [chunk], {}, None)
         assert "NER entities" not in messages[-1]["content"]
         assert chunk.chunk_text in messages[-1]["content"]
+
+
+class TestStructuredEvidenceTruncation:
+    """verification.md rows 62-70.
+
+    The `Entity data:` block was admitted all-or-nothing against the token budget — a
+    7,944-token result set was measured disappearing whole while its citation survived
+    in `sources`, and the system prompt told the model the (absent) block was
+    exhaustive."""
+
+    def _rows(self, n, width=1):
+        return [{"entity_value": f"value-{i}" * width, "document_name": f"doc-{i}.pdf"} for i in range(n)]
+
+    def test_oversized_structured_result_truncates_not_drops(self):
+        rows = self._rows(60, width=20)
+        assembler = ContextAssembler(token_budget=1200, max_chunks=5)
+
+        messages, evidence = assembler.assemble(
+            "question?", rows, None, {}, None, return_evidence=True,
+        )
+        user_content = messages[-1]["content"]
+
+        assert "Entity data" in user_content
+        assert 0 < len(evidence.rows) < len(rows)
+        assert evidence.rows_truncated
+        assert "PARTIAL" in user_content
+
+    def test_fitting_structured_result_admitted_whole(self):
+        rows = self._rows(5)
+        messages, evidence = ContextAssembler(token_budget=6000, max_chunks=5).assemble(
+            "question?", rows, None, {}, None, return_evidence=True,
+        )
+
+        assert evidence.rows == rows
+        assert not evidence.rows_truncated
+        assert "PARTIAL" not in messages[-1]["content"]
+        assert "showing all 5 matched row(s)" in messages[-1]["content"]
+
+    def test_structured_rows_reserved_ahead_of_chunks(self):
+        """A budget too small for both must still admit structured evidence."""
+        rows = self._rows(30, width=15)
+        chunks = [_make_chunk(f"doc-{i}", 0, _prose(200)) for i in range(4)]
+        assembler = ContextAssembler(token_budget=1300, max_chunks=4)
+
+        messages, evidence = assembler.assemble(
+            "question?", rows, chunks, {}, None, return_evidence=True,
+        )
+
+        assert len(evidence.rows) >= 1
+        assert "Entity data" in messages[-1]["content"]
+
+    def test_row_limit_truncation_suppresses_exhaustiveness_claim(self):
+        rows = self._rows(100)
+        messages, evidence = ContextAssembler(token_budget=60000, max_chunks=5).assemble(
+            "question?", rows, None, {}, None,
+            sql_completeness={"returned": 100, "matched": 142, "truncated": True},
+            return_evidence=True,
+        )
+
+        system_prompt = messages[0]["content"]
+        assert "PARTIAL" in messages[-1]["content"]
+        assert "142" in messages[-1]["content"]
+        assert PARTIAL_ENTITY_INSTRUCTION in system_prompt
+        assert "authoritative and exhaustive" not in system_prompt
+        assert not evidence.structured_complete
+
+    def test_complete_result_retains_exhaustiveness_instruction(self):
+        rows = self._rows(12)
+        messages, evidence = ContextAssembler(token_budget=6000, max_chunks=5).assemble(
+            "question?", rows, None, {}, None,
+            sql_completeness={"returned": 12, "matched": 12, "truncated": False},
+            return_evidence=True,
+        )
+
+        assert "authoritative and exhaustive" in messages[0]["content"]
+        assert evidence.structured_complete
+
+    def test_assembler_truncation_suppresses_claim(self):
+        """Even a complete query result, trimmed here for budget, is partial evidence."""
+        rows = self._rows(60, width=20)
+        messages, evidence = ContextAssembler(token_budget=1200, max_chunks=5).assemble(
+            "question?", rows, None, {}, None,
+            sql_completeness={"returned": 60, "matched": 60, "truncated": False},
+            return_evidence=True,
+        )
+
+        assert evidence.rows_truncated
+        assert not evidence.structured_complete
+        assert PARTIAL_ENTITY_INSTRUCTION in messages[0]["content"]
+
+    def test_identical_rendered_rows_collapse(self):
+        """The observed "Who knows AWS?" result returned four identical rows."""
+        rows = [{"entity_value": "aws", "document_name": "r.pdf"}] * 4
+        _, evidence = ContextAssembler(token_budget=6000, max_chunks=5).assemble(
+            "question?", rows, None, {}, None, return_evidence=True,
+        )
+
+        assert evidence.rows == [{"entity_value": "aws", "document_name": "r.pdf"}]
+
+    def test_same_value_different_documents_not_collapsed(self):
+        """Provenance is exactly what makes those rows distinct."""
+        rows = [
+            {"entity_value": "aws", "document_name": "a.pdf"},
+            {"entity_value": "aws", "document_name": "b.pdf"},
+        ]
+        _, evidence = ContextAssembler(token_budget=6000, max_chunks=5).assemble(
+            "question?", rows, None, {}, None, return_evidence=True,
+        )
+
+        assert evidence.rows == rows
+
+    def test_completeness_statement_uses_matched_total_after_collapse(self):
+        rows = [{"entity_value": "aws"}] * 100
+        messages, evidence = ContextAssembler(token_budget=6000, max_chunks=5).assemble(
+            "question?", rows, None, {}, None,
+            sql_completeness={"returned": 100, "matched": 142, "truncated": True},
+            return_evidence=True,
+        )
+
+        # One distinct row survives the collapse, but the basis for "partial" is the
+        # 142 rows the query matched, not the post-collapse count.
+        assert len(evidence.rows) == 1
+        assert "of 142 matched row(s)" in messages[-1]["content"]
+        assert "PARTIAL" in messages[-1]["content"]
+
+    def test_unknown_matched_total_is_stated_as_unknown(self):
+        rows = self._rows(3)
+        messages, _ = ContextAssembler(token_budget=6000, max_chunks=5).assemble(
+            "question?", rows, None, {}, None,
+            sql_completeness={"returned": 3, "matched": None, "truncated": True},
+            return_evidence=True,
+        )
+        assert "total matched is unknown" in messages[-1]["content"]
+
+
+class TestRetrievalStatusInPrompt:
+    """Covers verification.md rows 26, 27, 74, 75, 76, 77.
+
+    `sql_error` / `retrieval_error` were written on every turn and read on none, so a
+    failed source reached the answer model as an absence of data and came back as
+    "I couldn't find that in your data". This is the reader they never had."""
+
+    def test_failed_structured_status_rendered_into_prompt(self):
+        status = RetrievalStatus(entries=[
+            CapabilityStatus(
+                capability_name="structured_retrieval", outcome=OUTCOME_FAILED,
+                error='relation "document_entities" does not exist',
+            ),
+        ])
+        assembler = ContextAssembler(token_budget=6000, max_chunks=5)
+        messages = assembler.assemble("question?", None, None, {}, None, retrieval_status=status)
+        user_content = messages[-1]["content"]
+
+        assert "Retrieval status" in user_content
+        assert "structured_retrieval" in user_content
+        assert "FAILED" in user_content
+        assert 'relation "document_entities" does not exist' in user_content
+
+    def test_failure_status_statement_rendered(self):
+        """The statement has to tell the model not to assert absence — that inference
+        is exactly what the missing reader used to let through."""
+        status = RetrievalStatus(entries=[
+            CapabilityStatus(capability_name="semantic_retrieval", outcome=OUTCOME_FAILED, error="boom"),
+        ])
+        rendered = render_retrieval_status(status)
+        assert rendered is not None
+        assert "semantic_retrieval" in rendered
+        assert "do NOT state" in rendered
+
+    def test_clean_turn_has_no_failure_statement(self):
+        status = RetrievalStatus(entries=[
+            CapabilityStatus(capability_name="structured_retrieval", outcome=OUTCOME_OK, result_count=3),
+            CapabilityStatus(capability_name="semantic_retrieval", outcome=OUTCOME_EMPTY),
+        ])
+        assembler = ContextAssembler(token_budget=6000, max_chunks=5)
+        messages = assembler.assemble(
+            "question?", [{"entity_type": "ORG", "count": 1}], None, {}, None, retrieval_status=status,
+        )
+        assert "Retrieval status" not in messages[-1]["content"]
+        assert "FAILED" not in messages[-1]["content"]
+
+    def test_clean_turn_renders_no_status_block(self):
+        status = RetrievalStatus(entries=[
+            CapabilityStatus(capability_name="semantic_retrieval", outcome=OUTCOME_OK, result_count=2),
+        ])
+        assert render_retrieval_status(status) is None
+        assert render_retrieval_status(None) is None
+
+    def test_skipped_recovery_statement_rendered(self):
+        status = RetrievalStatus(entries=[
+            CapabilityStatus(capability_name="structured_retrieval", outcome=OUTCOME_EMPTY),
+            CapabilityStatus(
+                capability_name="semantic_retrieval", outcome=OUTCOME_SKIPPED,
+                reason="insufficient remaining budget", recovery=True,
+            ),
+        ])
+        rendered = render_retrieval_status(status)
+        assert "SKIPPED" in rendered
+        assert "insufficient remaining budget" in rendered
+        assert "semantic_retrieval" in rendered
+
+    def test_degraded_planning_statement_rendered(self):
+        status = RetrievalStatus(entries=[], planning_degraded=True, stop_reason="planner_error")
+        rendered = render_retrieval_status(status)
+        assert "DEGRADED" in rendered
+        assert "planner_error" in rendered
+
+    def test_status_block_cost_counted_in_budget(self):
+        status = RetrievalStatus(entries=[
+            CapabilityStatus(
+                capability_name="structured_retrieval", outcome=OUTCOME_FAILED, error="boom",
+            ),
+        ])
+        chunks = [_make_chunk(f"doc-{i}", 0, _prose(200)) for i in range(6)]
+        assembler = ContextAssembler(token_budget=1400, max_chunks=6)
+
+        with_status = assembler.assemble("question?", None, chunks, {}, None, retrieval_status=status)
+        without_status = assembler.assemble("question?", None, chunks, {}, None)
+
+        assert sum(_count_tokens(m["content"]) for m in with_status) <= 1400
+        assert sum(_count_tokens(m["content"]) for m in without_status) <= 1400
+        # The block is paid for out of the evidence budget, not added on top of it.
+        admitted_with = sum(1 for c in chunks if c.chunk_text in with_status[-1]["content"])
+        admitted_without = sum(1 for c in chunks if c.chunk_text in without_status[-1]["content"])
+        assert admitted_with <= admitted_without
 
 
 class TestProvenance:

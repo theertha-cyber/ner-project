@@ -91,7 +91,7 @@ def _make_orchestrator(retriever) -> RAGOrchestrator:
         async def classify_domain(self, message, conversation_context, llm_client, llm_model):
             return True
 
-        def enforce_sources(self, reply, sources):
+        def enforce_sources(self, reply, sources, retrieval_status=None):
             return reply, sources
 
     class NoopSqlGenerator:

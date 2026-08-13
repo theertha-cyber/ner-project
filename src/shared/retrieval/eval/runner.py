@@ -5,11 +5,26 @@ from typing import Awaitable, Callable
 
 from src.shared.retrieval.config import RetrievalConfig
 from src.shared.retrieval.eval.golden_set import GoldenQuery
-from src.shared.retrieval.eval.metrics import AggregateMetrics, Judgment, QueryMetrics, RankedItem, aggregate, compute_query_metrics
+from src.shared.retrieval.eval.metrics import (
+    SCORING_RULE,
+    AggregateMetrics,
+    Judgment,
+    QueryMetrics,
+    RankedItem,
+    aggregate,
+    compute_query_metrics,
+    zero_metrics,
+)
 from src.shared.retrieval.orchestrator import OrchestrationBudget, orchestrate_retrieval
 from src.shared.retrieval.tools import build_default_registry
 from src.shared.retrieval.tools.base import ToolContext
 from src.shared.retrieval.tools.registry import ToolRegistry
+
+
+# A score against the synthetic fixture corpus says nothing about tenant behaviour, and
+# the two must never be compared. Every run records which corpus produced it.
+SYNTHETIC_CORPUS = "synthetic-fixture"
+TENANT_CORPUS = "tenant-representative"
 
 
 @dataclass(frozen=True)
@@ -21,6 +36,7 @@ class MatrixConfiguration:
     llm_model: str = "eval-planner"
     max_invocations: int = 3
     deadline_seconds: float = 8.0
+    corpus: str = SYNTHETIC_CORPUS
 
 
 @dataclass
@@ -29,6 +45,10 @@ class QueryRunResult:
     metrics: QueryMetrics
     degraded: bool
     error: str | None
+    # Which investigated query class this case exercises, and how long the turn took.
+    # Latency is per class so the ADR-007 P95 target can be checked with recovery on.
+    query_class: str | None = None
+    latency_ms: float = 0.0
 
 
 @dataclass
@@ -38,6 +58,15 @@ class ConfigurationResult:
     per_query: list[QueryRunResult] = field(default_factory=list)
     aggregate: AggregateMetrics | None = None
     degraded_query_count: int = 0
+    failed_query_count: int = 0
+    corpus: str = SYNTHETIC_CORPUS
+    scoring_rule: str = SCORING_RULE
+
+    def latency_by_query_class(self) -> dict[str, list[float]]:
+        by_class: dict[str, list[float]] = {}
+        for run in self.per_query:
+            by_class.setdefault(run.query_class or "unclassified", []).append(run.latency_ms)
+        return by_class
 
 
 @dataclass
@@ -65,9 +94,12 @@ async def run_query(
     tool_result = await tool.call({"query": query.query, "top_k": k}, context)
 
     if tool_result.error is not None:
-        metrics = QueryMetrics(
-            query_id=query.query_id, recall_at_k=0.0, precision_at_k=0.0, mrr_at_k=0.0, ndcg_at_k=0.0,
-            skipped=True, skip_reason=f"tool error: {tool_result.error}",
+        # A dispatched query that failed scores zero and stays in the denominator. It
+        # used to be marked skipped and dropped out of the mean, which is why the gate
+        # could not fail on a configuration that broke.
+        metrics = zero_metrics(
+            query.query_id, degraded=tool_result.degraded, failed=True,
+            failure_reason=f"tool error: {tool_result.error}",
         )
         return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=tool_result.degraded, error=tool_result.error)
 
@@ -102,24 +134,29 @@ async def run_query_orchestrated(
             query.query, None, llm_client, config.llm_model, registry, context_factory, budget,
         )
     except Exception as e:
-        metrics = QueryMetrics(
-            query_id=query.query_id, recall_at_k=0.0, precision_at_k=0.0, mrr_at_k=0.0, ndcg_at_k=0.0,
-            skipped=True, skip_reason=f"orchestrator error: {e}",
+        metrics = zero_metrics(
+            query.query_id, degraded=True, failed=True, failure_reason=f"orchestrator error: {e}",
         )
         return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=True, error=str(e))
 
-    if not result.chunks and (result.retrieval_error is not None or result.orchestration_degraded):
-        failure = result.retrieval_error or result.orchestration_stop_reason
-        metrics = QueryMetrics(
-            query_id=query.query_id, recall_at_k=0.0, precision_at_k=0.0, mrr_at_k=0.0, ndcg_at_k=0.0,
-            skipped=True, skip_reason=f"orchestrator failure: {failure}",
+    degraded = result.orchestration_degraded
+    if not result.chunks and (result.status.has_failure() or result.status.planning_degraded):
+        failure = next(
+            (e.error for e in result.status.failures() if e.error), None
+        ) or result.status.stop_reason
+        metrics = zero_metrics(
+            query.query_id, degraded=degraded, failed=True,
+            failure_reason=f"orchestrator failure: {failure}",
         )
-        return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=result.orchestration_degraded, error=failure)
+        return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=degraded, error=failure)
 
     ranked = [RankedItem(document_id=c.document_id, chunk_index=c.chunk_index) for c in result.chunks]
     judgments = [Judgment(document_id=j.document_id, chunk_index=j.chunk_index, grade=j.grade) for j in query.relevant]
     metrics = compute_query_metrics(query.query_id, ranked, judgments, k)
-    return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=result.orchestration_degraded, error=None)
+    # A degraded plan that still returned chunks scores what it earned, but the run is
+    # recorded as degraded so the aggregate can report it.
+    metrics.degraded = degraded
+    return QueryRunResult(query_id=query.query_id, metrics=metrics, degraded=degraded, error=None)
 
 
 async def run_configuration(
@@ -133,17 +170,27 @@ async def run_configuration(
     per_query: list[QueryRunResult] = []
     for query in golden_queries:
         context = await _resolve_context(context_factory, config, query)
+        started = time.monotonic()
         if config.is_orchestrated:
-            per_query.append(await run_query_orchestrated(query, registry, context, k, config))
+            run = await run_query_orchestrated(query, registry, context, k, config)
         else:
-            per_query.append(await run_query(query, registry, context, k))
+            run = await run_query(query, registry, context, k)
+        run.latency_ms = (time.monotonic() - started) * 1000
+        run.query_class = getattr(query, "query_class", None)
+        per_query.append(run)
 
     query_metrics = [r.metrics for r in per_query]
     agg = aggregate(query_metrics)
-    # A query that errored is already recorded as skipped in `metrics`; it is not
-    # double-excluded here — `aggregate` already excludes every skipped entry.
+    # Degraded and failed runs score zero and stay in the denominator; the counts are
+    # reported alongside the score so a run that broke is visible as a broken run and
+    # not just as a lower number.
     degraded_count = sum(1 for r in per_query if r.degraded)
-    return ConfigurationResult(name=config.name, retrieval_config=config.retrieval_config, per_query=per_query, aggregate=agg, degraded_query_count=degraded_count)
+    failed_count = sum(1 for r in per_query if r.metrics.failed)
+    return ConfigurationResult(
+        name=config.name, retrieval_config=config.retrieval_config, per_query=per_query,
+        aggregate=agg, degraded_query_count=degraded_count, failed_query_count=failed_count,
+        corpus=config.corpus,
+    )
 
 
 async def run_matrix(

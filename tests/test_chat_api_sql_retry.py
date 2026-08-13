@@ -52,6 +52,14 @@ class _FakeResult:
         return list(self._columns)
 
 
+class _CountResult:
+    def __init__(self, total):
+        self._total = total
+
+    def first(self):
+        return None if self._total is None else (self._total,)
+
+
 class FakeSession:
     """Answers the loop's statements from canned tables and records every one.
 
@@ -60,15 +68,22 @@ class FakeSession:
     """
 
     def __init__(self, entity_types=("PER", "ORG", "SKILL"), samples=(), data_results=None,
-                 data_columns=("normalized_value",)):
+                 data_columns=("normalized_value",), value_types=None, matched_total=None):
         self.entity_types = list(entity_types)
         self.samples = list(samples)
         self.data_results = list(data_results if data_results is not None else [[("python",)]])
         self.data_columns = list(data_columns)
+        # normalized_value -> the entity types it actually occurs under, for the
+        # wrong-entity-type defect probe.
+        self.value_types = dict(value_types or {})
+        # What COUNT(*) over the unlimited statement returns, when asked.
+        self.matched_total = matched_total
         self.statements: list[str] = []
         self.search_paths: list[str] = []
         self.data_queries: list[str] = []
         self.profile_params: list[dict] = []
+        self.value_type_probes: list[str] = []
+        self.count_queries: list[str] = []
 
     async def execute(self, statement, params=None):
         sql = str(statement)
@@ -80,11 +95,18 @@ class FakeSession:
             return _FakeResult()
         if stripped.upper() in {"BEGIN READ ONLY", "COMMIT", "ROLLBACK"}:
             return _FakeResult()
+        if "normalized_value = :value" in sql:
+            value = (params or {}).get("value")
+            self.value_type_probes.append(value)
+            return _FakeResult([(t,) for t in self.value_types.get(value, [])])
         if "SELECT DISTINCT entity_type" in sql:
             return _FakeResult([(t,) for t in self.entity_types])
         if "ROW_NUMBER() OVER" in sql:
             self.profile_params.append(params or {})
             return _FakeResult(self.samples)
+        if sql.strip().upper().startswith("SELECT COUNT(*) FROM ("):
+            self.count_queries.append(sql)
+            return _CountResult(self.matched_total)
 
         self.data_queries.append(sql)
         if not self.data_results:
@@ -281,6 +303,196 @@ class TestOutcomeClassification:
         await generator.generate_and_execute("q", session, SCHEMA, attempt_sink=sink)
 
         assert sink[0]["outcome"] == SQLAttemptOutcome.GENERATION_ERROR
+
+
+# ---------------------------------------- wrong-entity-type defect (rows 51-55, 59-60)
+
+WRONG_TYPE_SQL = (
+    "SELECT normalized_value FROM document_entities "
+    "WHERE entity_type = 'PROGRAMMING_LANGUAGE' AND normalized_value = 'aws' LIMIT 100"
+)
+
+
+class TestWrongEntityTypeDefect:
+    """The funded retry budget could not previously see this defect class: both the
+    type and the value are real, and the query still cannot match, because the
+    extractor filed that value under a different type."""
+
+    async def test_value_under_other_entity_type_is_a_defect(self):
+        """verification.md row 51."""
+        llm = FakeLLM(WRONG_TYPE_SQL, GOOD_SQL)
+        session = FakeSession(
+            entity_types=("PROGRAMMING_LANGUAGE", "TOOL_FRAMEWORK", "SKILL"),
+            value_types={"aws": ["TOOL_FRAMEWORK"]},
+            data_results=[[], [("python",)]],
+        )
+        sink: list = []
+
+        rows = await make_generator(llm).generate_and_execute("q", session, SCHEMA, attempt_sink=sink)
+
+        assert sink[0]["outcome"] == SQLAttemptOutcome.EMPTY_WITH_DEFECT
+        assert sink[0]["defect"] == "wrong_type:aws|TOOL_FRAMEWORK"
+        assert rows == [{"normalized_value": "python"}]
+
+    async def test_defect_feedback_names_actual_entity_type(self):
+        """verification.md row 52 — the feedback has to name the type that would work,
+        alongside the failing statement."""
+        from src.chat_api.services.sql_generator import SQLAttempt, _render_attempt_feedback
+
+        feedback = _render_attempt_feedback([
+            SQLAttempt(
+                attempt=1, max_attempts=3, outcome=SQLAttemptOutcome.EMPTY_WITH_DEFECT,
+                sql=WRONG_TYPE_SQL, row_count=0, defect="wrong_type:aws|TOOL_FRAMEWORK",
+            )
+        ])
+
+        assert "'aws' does exist" in feedback
+        assert "TOOL_FRAMEWORK" in feedback
+        assert WRONG_TYPE_SQL in feedback
+
+    async def test_absent_value_zero_rows_is_success(self):
+        """verification.md row 54 — a value that occurs under no type at all is
+        genuinely absent. That is a real answer and must not consume a retry."""
+        llm = FakeLLM(WRONG_TYPE_SQL, GOOD_SQL)
+        session = FakeSession(
+            entity_types=("PROGRAMMING_LANGUAGE", "TOOL_FRAMEWORK"),
+            value_types={},
+            data_results=[[]],
+        )
+        sink: list = []
+
+        rows = await make_generator(llm).generate_and_execute("q", session, SCHEMA, attempt_sink=sink)
+
+        assert rows == []
+        assert llm.call_count == 1
+        assert [a["outcome"] for a in sink] == [SQLAttemptOutcome.SUCCESS]
+
+    async def test_missing_profile_does_not_produce_defect(self):
+        """verification.md row 55 — an unavailable profile is "we don't know", which is
+        not evidence of a defect any more than it is evidence of absence."""
+        llm = FakeLLM(WRONG_TYPE_SQL, GOOD_SQL)
+        session = FakeSession(
+            entity_types=(), value_types={"aws": ["TOOL_FRAMEWORK"]}, data_results=[[]],
+        )
+        sink: list = []
+
+        rows = await make_generator(llm).generate_and_execute("q", session, SCHEMA, attempt_sink=sink)
+
+        assert rows == []
+        assert [a["outcome"] for a in sink] == [SQLAttemptOutcome.SUCCESS]
+        assert session.value_type_probes == []
+
+    async def test_value_under_the_filtered_type_is_not_a_defect(self):
+        llm = FakeLLM(WRONG_TYPE_SQL)
+        session = FakeSession(
+            entity_types=("PROGRAMMING_LANGUAGE", "TOOL_FRAMEWORK"),
+            value_types={"aws": ["PROGRAMMING_LANGUAGE", "TOOL_FRAMEWORK"]},
+            data_results=[[]],
+        )
+        sink: list = []
+
+        await make_generator(llm).generate_and_execute("q", session, SCHEMA, attempt_sink=sink)
+
+        assert [a["outcome"] for a in sink] == [SQLAttemptOutcome.SUCCESS]
+
+    async def test_all_attempts_failed_raises_not_empty(self):
+        """verification.md row 59 — exhausted attempts propagate as a failure carrying
+        the trace, never as an empty successful result."""
+        llm = FakeLLM(BAD_TABLE_SQL, BAD_TABLE_SQL, BAD_TABLE_SQL)
+        session = FakeSession()
+
+        with pytest.raises(SQLGenerationFailed) as exc:
+            await make_generator(llm).generate_and_execute("q", session, SCHEMA)
+
+        assert len(exc.value.attempts) == 3
+        assert all(a.outcome == SQLAttemptOutcome.VALIDATION_ERROR for a in exc.value.attempts)
+
+    async def test_deadline_abandon_distinguishable_from_exhaustion(self):
+        """verification.md row 60 — a loop cut short by the deadline reports the
+        attempts it actually made, not a full set of failures."""
+        import time
+
+        llm = FakeLLM(BAD_TABLE_SQL, BAD_TABLE_SQL, BAD_TABLE_SQL)
+        session = FakeSession()
+
+        with pytest.raises(SQLGenerationFailed) as exc:
+            await make_generator(llm).generate_and_execute(
+                "q", session, SCHEMA, deadline=time.monotonic() - 1,
+            )
+
+        assert len(exc.value.attempts) == 1
+        assert llm.call_count == 1
+
+
+# --------------------------------------------- result completeness (rows 56-58)
+
+
+class TestResultCompleteness:
+    async def test_truncated_result_reports_returned_and_matched(self):
+        """verification.md row 56. `DEFAULT_LIMIT = 100` silently truncated a 142-row
+        result while the prompt told the model to treat the block as exhaustive."""
+        llm = FakeLLM(GOOD_SQL)
+        session = FakeSession(
+            data_results=[[(f"v{i}",) for i in range(101)]], matched_total=142,
+        )
+        completeness: dict = {}
+
+        rows = await make_generator(llm).generate_and_execute(
+            "q", session, SCHEMA, completeness_sink=completeness,
+        )
+
+        assert len(rows) == 100
+        assert completeness == {"returned": 100, "matched": 142, "truncated": True}
+        assert session.count_queries
+
+    async def test_complete_result_not_marked_truncated(self):
+        """verification.md row 57 — and no second query is issued for it."""
+        llm = FakeLLM(GOOD_SQL)
+        session = FakeSession(data_results=[[(f"v{i}",) for i in range(12)]])
+        completeness: dict = {}
+
+        rows = await make_generator(llm).generate_and_execute(
+            "q", session, SCHEMA, completeness_sink=completeness,
+        )
+
+        assert len(rows) == 12
+        assert completeness == {"returned": 12, "matched": 12, "truncated": False}
+        assert session.count_queries == []
+
+    async def test_unavailable_count_reports_matched_unknown(self):
+        llm = FakeLLM(GOOD_SQL)
+        session = FakeSession(
+            data_results=[[(f"v{i}",) for i in range(101)]], matched_total=None,
+        )
+        completeness: dict = {}
+
+        await make_generator(llm).generate_and_execute(
+            "q", session, SCHEMA, completeness_sink=completeness,
+        )
+
+        assert completeness["truncated"] is True
+        assert completeness["matched"] is None
+
+    async def test_completeness_reporting_does_not_alter_rows_or_limit(self):
+        """verification.md row 58 — the rows handed back and the statement's own limit
+        are unchanged by the reporting."""
+        llm = FakeLLM(GOOD_SQL)
+        with_sink = FakeSession(data_results=[[("python",), ("go",)]])
+        without_sink = FakeSession(data_results=[[("python",), ("go",)]])
+        completeness: dict = {}
+
+        reported = await make_generator(FakeLLM(GOOD_SQL)).generate_and_execute(
+            "q", with_sink, SCHEMA, completeness_sink=completeness,
+        )
+        plain = await make_generator(llm).generate_and_execute("q", without_sink, SCHEMA)
+
+        assert reported == plain == [{"normalized_value": "python"}, {"normalized_value": "go"}]
+        # The probe asks for one row beyond the validated limit and discards the extra,
+        # so the caller's rows are the same either way and the row limit the statement
+        # declares — 100 — is never widened for the caller.
+        assert "LIMIT 101" in with_sink.data_queries[0]
+        assert with_sink.data_queries[0] == without_sink.data_queries[0]
+        assert len(reported) == 2
 
 
 # ------------------------------------------------------ rows 8-10: empty results

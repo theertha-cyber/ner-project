@@ -58,7 +58,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
             alignItems: "flex-end",
             gap: 10,
             padding: "10px 10px 10px 18px",
-            borderRadius: 24,
+            borderRadius: "var(--radius-xl)",
             background: "var(--surface-3)",
             border: "1px solid " + (focused ? "var(--primary-line)" : "var(--line)"),
             boxShadow: "var(--shadow-card)",

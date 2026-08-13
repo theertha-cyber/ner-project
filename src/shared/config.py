@@ -65,6 +65,21 @@ class Settings(BaseSettings):
     orchestrator_max_invocations: int = 3
     retrieval_deadline_seconds: float = 8.0
     candidate_document_filtering_enabled: bool = False
+    # A structured-only plan that finds nothing gets exactly one semantic retry, but
+    # only with this much of the retrieval deadline left. Inferred from observed
+    # latencies (planner 1.0-3.0s, structured attempt 1.7-2.8s of an 8s window):
+    # recovery must never be the reason a turn misses the ADR-007 P95 target.
+    retrieval_recovery_min_budget_seconds: float = 2.0
+
+    # Generated SQL runs under a dedicated least-privilege role holding SELECT on the
+    # whitelisted tables in tenant schemas and nothing at all in `public`. It is
+    # defence in depth behind `validate_sql`, so a future gap in table-reference
+    # resolution degrades into a permission error rather than a cross-tenant read.
+    # The role is chosen here and nowhere else — never from a tool argument, the
+    # question, or the generated statement. Disabling the toggle restores the
+    # connection role without a redeploy; the role itself is left provisioned.
+    sql_execution_role_enabled: bool = False
+    sql_execution_role_name: str = "ner_chat_sql"
 
     # Bounded SQL recovery. `sql_max_attempts = 1` restores the pre-existing
     # one-shot behaviour and is the config-only rollback for the retry loop.
@@ -81,7 +96,18 @@ class Settings(BaseSettings):
     entity_resolution_max_skills: int = 3
 
     context_token_budget: int = 6000
-    context_max_chunks: int | None = None
+    # Four independent caps on what used to be governed by one value and one literal.
+    # `retrieval_top_k` bounds a single retrieval invocation; a plan with three semantic
+    # invocations could therefore produce 15 unique chunks, of which the prompt admitted
+    # 5 and the citations 3 — two thirds discarded silently, and the two counts
+    # disagreeing in both directions. Each stage now names its own cap.
+    #   retrieval_top_k             per-invocation retrieval depth (declared above)
+    #   retrieval_merge_max_chunks  retained after cross-invocation merge
+    #   context_max_chunks          admitted into the generation prompt
+    #   citation_max_chunks         returned to the user as citations
+    retrieval_merge_max_chunks: int = 10
+    context_max_chunks: int = 8
+    citation_max_chunks: int = 8
     conversation_history_turns: int = 5
 
     environment: str = "development"

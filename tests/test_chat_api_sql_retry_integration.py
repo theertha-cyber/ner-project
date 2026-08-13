@@ -1,4 +1,4 @@
-"""Bounded SQL recovery through the retrieval and answer-generation stages —
+﻿"""Bounded SQL recovery through the retrieval and answer-generation stages —
 verification.md rows 24, 26, 27, 28, 31, 32.
 
 Runs offline. The real `execute_plan`, `StructuredRetrievalTool`, `SQLGenerator`,
@@ -17,6 +17,7 @@ from src.chat_api.graph.nodes import build_nodes
 from src.chat_api.services.guardrails import FALLBACK_REPLY, GuardrailService
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator
 from src.shared.retrieval.orchestrator import (
+    OUTCOME_EMPTY,
     STRUCTURED_CAPABILITY_NAME,
     OrchestrationBudget,
     PlanEntry,
@@ -78,6 +79,8 @@ async def _run_structured_plan(orchestrator, session, schema=SCHEMA):
     plan = RetrievalPlan(entries=[
         PlanEntry(capability_name=STRUCTURED_CAPABILITY_NAME, arguments={"query": "who knows python?"}),
     ])
+    # No `recovery_query`: these tests exercise the structured path in isolation, and
+    # the semantic recovery has no retriever to run against here.
     return await execute_plan(
         plan, orchestrator.tool_registry, context_factory,
         OrchestrationBudget(max_invocations=3, deadline=float("inf")),
@@ -92,8 +95,10 @@ async def _answer_from(orchestrator, sql_results):
         "session": None, "sql_results": sql_results, "chunks": [],
         "conversation_context": None,
     }
-    state.update(await nodes["source_assembly"](state))
+    # Prompt assembly runs first now, and source assembly derives citations from what
+    # it admitted (design Decision 7).
     state.update(await nodes["prompt_assembly"](state))
+    state.update(await nodes["source_assembly"](state))
     state.update(await nodes["generation"](state))
     return state
 
@@ -106,7 +111,8 @@ class TestFailureReachesTheControlledFallback:
         orchestrator = _orchestrator(make_generator(llm), _AnswerLLM("Nobody knows Python."))
 
         result = await _run_structured_plan(orchestrator, session)
-        assert result.sql_error is not None
+        assert result.status.has_failure()
+        assert result.status.failed_capability_names() == [STRUCTURED_CAPABILITY_NAME]
         assert result.sql_results == []
 
         state = await _answer_from(orchestrator, result.sql_results)
@@ -123,12 +129,12 @@ class TestFailureReachesTheControlledFallback:
 
         assert llm.call_count == 3
         assert session.data_queries == []  # never executed
-        assert result.sql_error is not None
+        assert result.status.has_failure()
         trace = result.plan_trace[0]
         assert trace.error is not None
         assert [d["outcome"] for d in trace.diagnostics] == ["validation_error"] * 3
 
-    async def test_legitimate_empty_does_not_set_sql_error(self):
+    async def test_legitimate_empty_reports_empty_not_failed(self):
         """Row 24's counterpart — an empty answer must not look like a failure."""
         llm = FakeLLM(GOOD_SQL)
         session = FakeSession(data_results=[[]])
@@ -136,7 +142,9 @@ class TestFailureReachesTheControlledFallback:
 
         result = await _run_structured_plan(orchestrator, session)
 
-        assert result.sql_error is None
+        assert not result.status.has_failure()
+        assert [e.outcome for e in result.status.entries] == [OUTCOME_EMPTY]
+        assert result.status.entries[0].error is None
         assert result.sql_results == []
 
 
@@ -171,9 +179,47 @@ class TestRecoveredQueryReachesAnswerGeneration:
         state = await _answer_from(orchestrator, result.sql_results)
 
         assert llm.call_count == 1
-        assert result.sql_error is None
+        assert not result.status.has_failure()
         assert state["reply"] != FALLBACK_REPLY
         assert [d["outcome"] for d in result.plan_trace[0].diagnostics] == ["success"]
+
+
+class TestWrongEntityTypeDefectThroughTheStack:
+    async def test_wrong_type_defect_consumes_retry_budget(self):
+        """verification.md row 53 — the defect is retryable, so the loop spends a second
+        generation on it instead of terminating as a zero-row success."""
+        wrong_type_sql = (
+            "SELECT normalized_value FROM document_entities "
+            "WHERE entity_type = 'PROGRAMMING_LANGUAGE' AND normalized_value = 'aws' LIMIT 100"
+        )
+        llm = FakeLLM(wrong_type_sql, GOOD_SQL)
+        session = FakeSession(
+            entity_types=("PROGRAMMING_LANGUAGE", "TOOL_FRAMEWORK", "SKILL"),
+            value_types={"aws": ["TOOL_FRAMEWORK"]},
+            data_results=[[], [("python",)]],
+        )
+        orchestrator = _orchestrator(make_generator(llm))
+
+        result = await _run_structured_plan(orchestrator, session)
+
+        assert llm.call_count == 2
+        assert not result.status.has_failure()
+        outcomes = [d["outcome"] for d in result.plan_trace[0].diagnostics]
+        assert outcomes == ["empty_with_defect", "success"]
+        assert "TOOL_FRAMEWORK" in llm.prompts[1]
+
+    async def test_attempt_trace_reaches_retrieval_status(self):
+        """verification.md row 61 — a failed structured invocation carries its
+        per-attempt outcomes on the turn's status, not only in the plan trace."""
+        llm = FakeLLM(DROP_SQL, DROP_SQL, DROP_SQL)
+        orchestrator = _orchestrator(make_generator(llm))
+
+        result = await _run_structured_plan(orchestrator, FakeSession())
+
+        entry = result.status.entries_for(STRUCTURED_CAPABILITY_NAME)[0]
+        assert entry.outcome == "failed"
+        assert [d["outcome"] for d in entry.diagnostics] == ["validation_error"] * 3
+        assert entry.error
 
 
 class TestDiagnosticsStayInternal:
