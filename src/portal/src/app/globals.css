@@ -205,12 +205,12 @@ body {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--ink-3) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ink-3) 55%, transparent) transparent;
 }
 
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 
 *::-webkit-scrollbar-track {
@@ -218,10 +218,11 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: var(--ink-3);
+  background-color: color-mix(in srgb, var(--ink-3) 55%, transparent);
   border-radius: var(--radius-full);
-  border: 2px solid transparent;
+  border: none;
   background-clip: padding-box;
+  transition: background-color 0.15s ease;
 }
 
 *::-webkit-scrollbar-thumb:hover {
@@ -231,6 +232,14 @@ body {
 
 *::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 /* ─── Animations ─────────────────────────────────────────────────────────────── */

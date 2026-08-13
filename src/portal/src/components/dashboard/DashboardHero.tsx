@@ -10,12 +10,12 @@ interface DashboardHeroProps {
 const VARIANT_B_ORBS = [
   {
     style: { top: "-20%", left: "-10%", width: "60%", height: "160%" },
-    background: "radial-gradient(circle, #a60000, transparent 60%)",
+    background: "radial-gradient(circle, #e0263d, transparent 65%)",
     animation: "meshDrift 18s ease-in-out infinite alternate",
   },
   {
     style: { bottom: "-20%", right: "-10%", width: "60%", height: "160%" },
-    background: "radial-gradient(circle, var(--hero-orb-blue), transparent 60%)",
+    background: "radial-gradient(circle, #3b82f6, transparent 65%)",
     animation: "meshDrift 23s ease-in-out infinite alternate-reverse",
   },
 ];

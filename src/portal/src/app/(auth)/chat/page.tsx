@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { RequireAuth } from "@/components/require-auth";
 import { ConversationList } from "@/components/chat/ConversationList";
+import { ConversationSwitcher } from "@/components/chat/ConversationSwitcher";
 import { MessageThread } from "@/components/chat/MessageThread";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { authFetch } from "@/lib/auth-fetch";
@@ -457,13 +458,22 @@ function ChatPageInner() {
             </span>
           </div>
 
-          <MessageThread
-            messages={messages}
-            loading={loading}
-            canRate={user?.role === "business_user"}
-            onRateMessage={handleRateMessage}
-          />
-          <ChatInput onSend={handleSendMessage} disabled={sending} />
+          <div style={{ display: "flex", gap: 14, flex: 1, minHeight: 0, padding: "10px 20px 0" }}>
+            <ConversationSwitcher
+              conversations={conversations}
+              activeConvId={activeConvId}
+              onSelect={handleSelectConversation}
+            />
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+              <MessageThread
+                messages={messages}
+                loading={loading}
+                canRate={user?.role === "business_user"}
+                onRateMessage={handleRateMessage}
+              />
+              <ChatInput onSend={handleSendMessage} disabled={sending} />
+            </div>
+          </div>
         </div>
       ) : (
         <div style={{ flex: 1, minWidth: 0 }}>
