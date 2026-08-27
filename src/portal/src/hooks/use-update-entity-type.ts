@@ -1,13 +1,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import { useAuth } from "@/lib/auth";
-import type { EntityType } from "@/types/entity-types";
+import type { EntityCardinality, EntityType } from "@/types/entity-types";
 
+// As with the create payload, `sql_identifier` is never sent — it is assigned once and never
+// changed, so an update that carried it could only ever be wrong.
 export interface UpdateEntityTypePayload {
   description: string;
   examples: string[];
   base_label_mapping: Record<string, string[]>;
   required_flag: boolean;
+  cardinality: EntityCardinality;
+  value_kind: string;
 }
 
 export function useUpdateEntityType() {

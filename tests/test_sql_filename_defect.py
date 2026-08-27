@@ -22,6 +22,7 @@ from src.chat_api.services.sql_generator import (
     _filename_filter_literals,
     _render_attempt_feedback,
 )
+from src.shared.entity_views import EntityDefinitionSpec, build_query_surface
 
 
 class TestFilenameFilterLiterals:
@@ -99,24 +100,55 @@ class TestFilenameDefectDetection:
 
 
 class TestRetryFeedbackExplainsTheRightDefect:
-    def test_filename_defect_feedback_names_the_join_it_should_have_used(self):
+    """The defect classes changed with the query model; the feedback has to change with them.
+
+    The filename defect survives unaltered — a name is no likelier to be in a filename on the
+    relational surface than it was in the EAV one — but its remedy is now a relation or column
+    on that surface, not a second join of the entity store. The entity-type defect is gone: the
+    generator is never told to filter on `entity_type`, so a defect reported in those terms
+    would send the retry to a query model the validator rejects.
+    """
+
+    def test_filename_defect_feedback_points_at_the_relation_holding_names(self):
         feedback = _render_attempt_feedback([
             SQLAttempt(
                 attempt=1, max_attempts=3, outcome=SQLAttemptOutcome.EMPTY_WITH_DEFECT,
-                sql="SELECT 1 FROM documents d WHERE d.filename ILIKE '%arjun%' LIMIT 100",
+                sql="SELECT 1 FROM subject s WHERE s.filename ILIKE '%arjun%' LIMIT 100",
                 row_count=0, defect=f"{_FILENAME_DEFECT_PREFIX}arjun",
             )
         ])
-        assert "documents.filename to match 'arjun'" in feedback
-        assert "not the subject's name" in feedback
-        assert "normalized_value" in feedback
 
-    def test_entity_type_defect_feedback_is_unchanged(self):
-        feedback = _render_attempt_feedback([
+        assert "filename to match 'arjun'" in feedback
+        assert "not the subject's name" in feedback
+        assert "match the relation or column that holds names instead" in feedback
+        assert "entity_type" not in feedback
+
+    def test_no_feedback_branch_reports_a_defect_in_entity_type_terms(self):
+        surface = build_query_surface([
+            EntityDefinitionSpec(name="Skill", sql_identifier="e_skill"),
+        ])
+        attempts = [
             SQLAttempt(
                 attempt=1, max_attempts=3, outcome=SQLAttemptOutcome.EMPTY_WITH_DEFECT,
-                sql="SELECT 1 FROM document_entities WHERE entity_type = 'EMPLOYER' LIMIT 100",
-                row_count=0, defect="EMPLOYER",
-            )
-        ])
-        assert "filtered on entity_type 'EMPLOYER'" in feedback
+                sql="SELECT value FROM e_skill LIMIT 100", row_count=0,
+                defect="wrong_relation:oracle|e_employer",
+            ),
+            SQLAttempt(
+                attempt=2, max_attempts=3, outcome=SQLAttemptOutcome.EMPTY_WITH_DEFECT,
+                sql="SELECT 1 AS n LIMIT 1", row_count=0, defect="scope:subject, e_skill",
+            ),
+            SQLAttempt(
+                attempt=3, max_attempts=3, outcome=SQLAttemptOutcome.VALIDATION_ERROR,
+                sql="SELECT value FROM e_unknown LIMIT 100",
+                error="Table 'e_unknown' is not in the whitelist",
+            ),
+        ]
+
+        feedback = _render_attempt_feedback(attempts, surface)
+
+        assert "entity_type" not in feedback
+        assert "document_entities" not in feedback
+        # Each branch still explains itself, in relational terms.
+        assert "e_employer" in feedback
+        assert "restricted to specific documents" in feedback
+        assert "The relations you may query are: e_skill, subject." in feedback

@@ -22,6 +22,16 @@ _tokenizer = None
 _base_pipeline = None
 
 
+def softmax(logits: np.ndarray, axis: int = -1) -> np.ndarray:
+    """Numerically stable softmax over `axis`.
+
+    Subtracting the per-row maximum before exponentiating leaves the result
+    unchanged mathematically but keeps `exp` away from overflow on large logits."""
+    shifted = logits - np.max(logits, axis=axis, keepdims=True)
+    exponentiated = np.exp(shifted)
+    return exponentiated / np.sum(exponentiated, axis=axis, keepdims=True)
+
+
 def _get_tokenizer():
     global _tokenizer
     if _tokenizer is None:
@@ -188,7 +198,14 @@ def _infer_window(
     outputs = session.run(None, inputs)
     logits = outputs[0]
     predicted_ids = logits.argmax(axis=-1)[0]
-    scores = np.max(logits, axis=-1)[0]
+    # The confidence reported to callers is the softmax probability of the predicted
+    # label, not the raw maximum logit. A logit is unbounded and its scale depends on
+    # the model, so it cannot be compared across model versions, thresholded, or read
+    # as a probability — a configured threshold of 0.50 excluded nothing, because
+    # every value landed in the 2–8 range. `np.max` over the softmax picks the same
+    # element `argmax` did, so labels and confidences stay aligned.
+    probabilities = softmax(logits, axis=-1)
+    scores = np.max(probabilities, axis=-1)[0]
     word_ids = encoding.word_ids(0)
 
     results: list[tuple[int, str, float]] = []
@@ -251,7 +268,8 @@ def _infer_with_onnx(tokens: list[str], tenant_id: str) -> list[dict]:
     # Overlap regions get a prediction from two windows; the one whose word sat
     # further from a window edge wins, because edge tokens are labelled with
     # truncated context and their BIO tags are the unreliable ones. Confidence
-    # breaks exact ties.
+    # breaks exact ties — softmax is monotonic within a row, so the tie-break picks
+    # the same winner it did on raw logits, now on a comparable scale.
     best: dict[int, tuple[int, float, str]] = {}
 
     for win_start, win_end in windows:
@@ -310,7 +328,12 @@ def _infer_with_onnx(tokens: list[str], tenant_id: str) -> list[dict]:
 def _infer_with_base_model(tokens: str | list[str]) -> list[dict]:
     """Returns one prediction per model output token, in source order, with no
     deduplication by word text — downstream BIO reconstruction depends on both
-    order and repeated occurrences of the same word."""
+    order and repeated occurrences of the same word.
+
+    The pipeline's `score` is already a softmax probability in `[0, 1]`, matching the
+    scale `_infer_with_onnx` now produces. Both paths therefore mean the same thing by
+    `confidence`, so a tenant on the base-model fallback is thresholded and routed
+    identically to one on a fine-tuned model."""
     pipe = _get_base_pipeline()
     text = " ".join(tokens) if isinstance(tokens, list) else tokens
     word_count = len(tokens) if isinstance(tokens, list) else len(text.split())

@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     database_url_sync: str = "postgresql://ner:ner@localhost:5432/ner_dev?sslmode=disable"
     database_ssl_mode: str = "disable"
     redis_url: str = "redis://localhost:6379/0"
+    # Root log level. Application loggers emit through the root logger, which Python
+    # defaults to WARNING with no handlers — so `logger.info` lines (the generated SQL
+    # among them) are discarded before reaching stdout unless this is configured.
+    # INFO surfaces the generated SQL in `docker logs`, which includes literals derived
+    # from the user's question; drop to WARNING where those logs are retained or shipped.
+    log_level: str = "INFO"
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     access_token_ttl_minutes: int = 15
@@ -94,6 +100,40 @@ class Settings(BaseSettings):
     # tenant whose name type is `NAME` resolves nothing against a `PER,PERSON` list.
     entity_resolution_person_types: str = "PER,PERSON,NAME,CANDIDATE_NAME,PERSON_NAME"
     entity_resolution_max_skills: int = 3
+
+    # --- Entity quality: reconstruction, validity, and provenance ---
+    # Words that may sit between an entity's tokens and still belong to it. Model
+    # serving drops every `O` prediction before responding, so a labelled word two
+    # positions later arrives adjacent in the list. Requiring a strict `word_index + 1`
+    # split "Having two and a half years of experience" into `two` and `half years`,
+    # which then typed as 2.0 and 0.5 instead of 2.5. The bound plus the same-page
+    # requirement keeps the cross-page stitching this guard was written to prevent.
+    max_entity_word_gap: int = 2
+    # Canonical values shorter than this are extraction artifacts, not facts — the dev
+    # tenant persisted two rows whose value was the empty string. Types naming genuine
+    # short codes (`C`, `R`, `Go`) are exempted by name rather than by a character rule,
+    # because "short and meaningful" is a property of the type, not of the string.
+    min_entity_value_length: int = 2
+    entity_short_value_types: str = "PROGRAMMING_LANGUAGE"
+    # Bumped whenever the deterministic pipeline changes in a way that makes new rows
+    # incomparable with old ones. Version 1 is the pre-calibration pipeline: raw-logit
+    # confidence, untrimmed spans, no validity gate, one row per mention.
+    extraction_schema_version: int = 2
+
+    # --- Entity post-processing (optional LLM layer over BERT output) ---
+    # Off by default: it costs tokens, adds an external dependency to extraction, and
+    # is only offered as a processing mode once it clears the evaluation gate.
+    postprocess_enabled: bool = False
+    # Compared against a calibrated probability. Only rows stamped with the current
+    # `extraction_schema_version` are eligible — a raw logit is not on this scale.
+    postprocess_confidence_threshold: float = 0.60
+    postprocess_timeout_seconds: float = 20.0
+    postprocess_context_chars: int = 1200
+    postprocess_token_budget: int = 200_000
+    postprocess_prompt_version: str = "v1"
+    # Types whose values are normally multi-token, so a single-token extraction is
+    # suspect enough to be worth a look.
+    postprocess_multi_token_types: str = "NAME,COMPANY,INSTITUTION,ADDRESS"
 
     context_token_budget: int = 6000
     # Four independent caps on what used to be governed by one value and one literal.

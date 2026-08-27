@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
 async def check():
-    engine = create_async_engine("postgresql+asyncpg://ner:ner@localhost:54320/ner_test")
+    engine = create_async_engine("postgresql+asyncpg://ner:ner@localhost:55432/ner_test")
     async with engine.begin() as conn:
         result = await conn.execute(text("SELECT id, name, slug FROM public.tenants LIMIT 5"))
         rows = result.fetchall()

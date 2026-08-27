@@ -114,6 +114,40 @@ class AggregateMetrics:
     degraded_count: int = 0
     failed_count: int = 0
     scoring_rule: str = SCORING_RULE
+    # Share of the structured query classes whose generated SQL returned the expected
+    # rows. Entity-quality work is scored on this, not on how tidy the stored values
+    # look: a value can read perfectly and still be unreachable by the predicate a SQL
+    # generator writes, which is exactly what a zero-width space did to 5 of 7 rows.
+    structured_query_success: float = 0.0
+    structured_query_count: int = 0
+
+
+# Golden-set classes whose expected answer requires `document_entities`.
+STRUCTURED_QUERY_CLASSES = ("simple_structured", "exact_entity_lookup", "attribute_filtering")
+
+
+def structured_query_success_rate(
+    per_query: list[QueryMetrics],
+    query_class_by_id: dict[str, str] | None = None,
+) -> tuple[float, int]:
+    """Fraction of dispatched structured queries that retrieved their expected rows.
+
+    A query counts as a success only when it was dispatched, did not fail or degrade, and
+    recalled every judged item — a partially answered structured lookup is a wrong answer
+    to the user, not a partial credit."""
+    if not query_class_by_id:
+        return 0.0, 0
+    structured = [
+        m for m in per_query
+        if not m.skipped and query_class_by_id.get(m.query_id) in STRUCTURED_QUERY_CLASSES
+    ]
+    if not structured:
+        return 0.0, 0
+    successes = sum(
+        1 for m in structured
+        if not m.failed and not m.degraded and m.recall_at_k >= 1.0
+    )
+    return successes / len(structured), len(structured)
 
 
 def compute_query_metrics(query_id: str, ranked: list[RankedItem], judgments: list[Judgment], k: int) -> QueryMetrics:
@@ -131,19 +165,27 @@ def compute_query_metrics(query_id: str, ranked: list[RankedItem], judgments: li
     )
 
 
-def aggregate(per_query: list[QueryMetrics]) -> AggregateMetrics:
+def aggregate(
+    per_query: list[QueryMetrics],
+    query_class_by_id: dict[str, str] | None = None,
+) -> AggregateMetrics:
     """Means over every DISPATCHED query. A degraded or failed run contributes its zero
     rather than dropping out of the denominator, so a configuration that breaks on half
-    the golden set can no longer score the same as one that answers all of it."""
+    the golden set can no longer score the same as one that answers all of it.
+
+    `query_class_by_id` is optional so existing callers are unaffected; supplying it adds
+    the structured-query success rate."""
     scored = [m for m in per_query if not m.skipped]
     skipped = [m.query_id for m in per_query if m.skipped]
     degraded_count = sum(1 for m in scored if m.degraded)
     failed_count = sum(1 for m in scored if m.failed)
+    structured_rate, structured_count = structured_query_success_rate(per_query, query_class_by_id)
     n = len(scored)
     if n == 0:
         return AggregateMetrics(
             query_count=0, recall_at_k=0.0, precision_at_k=0.0, mrr_at_k=0.0, ndcg_at_k=0.0,
             skipped=skipped, degraded_count=degraded_count, failed_count=failed_count,
+            structured_query_success=structured_rate, structured_query_count=structured_count,
         )
     return AggregateMetrics(
         query_count=n,
@@ -154,4 +196,6 @@ def aggregate(per_query: list[QueryMetrics]) -> AggregateMetrics:
         skipped=skipped,
         degraded_count=degraded_count,
         failed_count=failed_count,
+        structured_query_success=structured_rate,
+        structured_query_count=structured_count,
     )

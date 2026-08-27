@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { authFetch } from "@/lib/auth-fetch";
-import type { BatchRun } from "@/types/extraction";
+import {
+  DEFAULT_PROCESSING_MODE,
+  type BatchRun,
+  type ProcessingMode,
+} from "@/types/extraction";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -50,19 +54,41 @@ export function useBatchRuns() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const triggerBatch = useCallback(async (documentIds: string[]) => {
-    const qs = new URLSearchParams({ documentIds: documentIds.join(",") }).toString();
-    const res = await authFetch(`/api/v1/extract-batch?${qs}`, { method: "POST" });
-    if (!res.ok) throw new Error(`Batch trigger failed: ${res.status}`);
-    const data = await res.json();
-    const newRun: BatchRun = {
-      run_id: data.run_id,
-      status: data.status ?? "queued",
-    };
-    setRuns((prev) => [newRun, ...prev]);
-    startPolling(data.run_id);
-    return newRun;
-  }, []);
+  const triggerBatch = useCallback(
+    async (
+      documentIds: string[],
+      processingMode: ProcessingMode = DEFAULT_PROCESSING_MODE
+    ) => {
+      // The mode travels in the request body, not in client state: the server decides
+      // what a run does and records what it did.
+      const res = await authFetch("/api/v1/extract-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentIds, processing_mode: processingMode }),
+      });
+      // A 422 means the server refused the mode — surfaced to the caller rather than
+      // downgraded, and no run is added to the list, because none was created.
+      if (!res.ok) {
+        const detail = await res
+          .json()
+          .then((body) => body?.detail)
+          .catch(() => null);
+        throw new Error(
+          typeof detail === "string" ? detail : `Batch trigger failed: ${res.status}`
+        );
+      }
+      const data = await res.json();
+      const newRun: BatchRun = {
+        run_id: data.run_id,
+        status: data.status ?? "queued",
+        processing_mode: processingMode,
+      };
+      setRuns((prev) => [newRun, ...prev]);
+      startPolling(data.run_id);
+      return newRun;
+    },
+    []
+  );
 
   return { runs, triggerBatch };
 }

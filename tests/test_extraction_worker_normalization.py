@@ -70,6 +70,9 @@ class TestWorkerNormalizesEntitiesOnIngest:
                     status VARCHAR NOT NULL DEFAULT 'queued', started_at TIMESTAMP WITH TIME ZONE NOT NULL,
                     completed_at TIMESTAMP WITH TIME ZONE, total_documents INTEGER NOT NULL DEFAULT 0,
                     processed_count INTEGER NOT NULL DEFAULT 0, skipped_count INTEGER NOT NULL DEFAULT 0,
+                    processing_mode VARCHAR(32) NOT NULL DEFAULT 'bert_only',
+                    postprocess_model TEXT, postprocess_prompt_version TEXT,
+                    postprocess_degraded BOOLEAN NOT NULL DEFAULT FALSE,
                     failed_count INTEGER NOT NULL DEFAULT 0
                 )
             """))
@@ -90,7 +93,13 @@ class TestWorkerNormalizesEntitiesOnIngest:
                     entity_value TEXT NOT NULL, normalized_value TEXT NOT NULL, confidence DOUBLE PRECISION NOT NULL,
                     page_number INTEGER, char_start INTEGER, char_end INTEGER, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                     value_kind TEXT, value_number DOUBLE PRECISION, value_number_high DOUBLE PRECISION,
-                    value_unit TEXT, value_date DATE, value_date_high DATE
+                    value_unit TEXT, value_date DATE, value_date_high DATE,
+                    source_entity_value TEXT, source_entity_type TEXT,
+                    postprocess_status TEXT NOT NULL DEFAULT 'not_applied',
+                    postprocess_model TEXT, postprocess_prompt_version TEXT,
+                    postprocess_at TIMESTAMPTZ,
+                    extraction_schema_version INTEGER NOT NULL DEFAULT 1,
+                    occurrence_count INTEGER NOT NULL DEFAULT 1
                 )
             """))
             conn.execute(
@@ -193,6 +202,9 @@ class TestWorkerNormalizesEntitiesOnIngest:
                     status VARCHAR NOT NULL DEFAULT 'queued', started_at TIMESTAMP WITH TIME ZONE NOT NULL,
                     completed_at TIMESTAMP WITH TIME ZONE, total_documents INTEGER NOT NULL DEFAULT 0,
                     processed_count INTEGER NOT NULL DEFAULT 0, skipped_count INTEGER NOT NULL DEFAULT 0,
+                    processing_mode VARCHAR(32) NOT NULL DEFAULT 'bert_only',
+                    postprocess_model TEXT, postprocess_prompt_version TEXT,
+                    postprocess_degraded BOOLEAN NOT NULL DEFAULT FALSE,
                     failed_count INTEGER NOT NULL DEFAULT 0
                 )
             """))

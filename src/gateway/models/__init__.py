@@ -86,6 +86,18 @@ class EntityDefinition(Base):
     # normalization — which is how every entity type predating this column behaves.
     value_kind = Column(String(32), nullable=True)
     value_unit = Column(String(32), nullable=True)
+    # View-layer metadata. `cardinality` decides whether this entity type renders as a pivoted
+    # column on the tenant's `subject` view ('single') or as its own child view ('multi').
+    # 'multi' is the safe default: a multi-valued entity wrongly marked 'single' is silently
+    # collapsed by the pivot's aggregate, whereas the reverse costs only an extra join.
+    # `server_default`, not just `default`: `entity_service.create` inserts through raw SQL with
+    # an explicit column list that does not name this column, so a Python-side default would
+    # never fire and the insert would violate NOT NULL. It also keeps a `create_all`-built
+    # schema identical to the one migration 037 produces.
+    cardinality = Column(String(16), server_default="multi", default="multi", nullable=False)
+    # Assigned once when the entity type is created and never changed, so renaming the display
+    # name neither renames nor orphans the generated view. NULL means "not yet rendered".
+    sql_identifier = Column(String(63), nullable=True)
     version = Column(Integer, default=1, nullable=False)
     required_flag = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)

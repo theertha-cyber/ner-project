@@ -13,6 +13,9 @@ const baseEntityType: EntityType = {
   required_flag: true,
   is_active: true,
   version: 2,
+  cardinality: "multi",
+  value_kind: "text",
+  sql_identifier: "e_vendor_name",
 };
 
 describe("EntityTypeCard", () => {

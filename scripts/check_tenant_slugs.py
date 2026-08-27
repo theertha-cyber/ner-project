@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 async def check():
     engine = create_async_engine(
-        "postgresql+asyncpg://ner:ner@localhost:54320/ner_test"
+        "postgresql+asyncpg://ner:ner@localhost:55432/ner_test"
     )
     async with engine.begin() as conn:
         result = await conn.execute(

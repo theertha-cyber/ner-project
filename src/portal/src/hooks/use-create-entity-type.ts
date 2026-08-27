@@ -1,14 +1,20 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import { useAuth } from "@/lib/auth";
-import type { EntityType } from "@/types/entity-types";
+import type { EntityCardinality, EntityType } from "@/types/entity-types";
 
+// `sql_identifier` is deliberately absent: it is system-assigned at create and never changed,
+// so the client has nothing to say about it. `cardinality` and `value_kind` are here because
+// they decide which generated relation an entity type's values land in and what type the
+// column carries — without them every entity type is `multi` and `text` forever.
 export interface CreateEntityTypePayload {
   name: string;
   description: string;
   examples: string[];
   base_label_mapping: Record<string, string[]>;
   required_flag: boolean;
+  cardinality: EntityCardinality;
+  value_kind: string;
 }
 
 export function useCreateEntityType() {

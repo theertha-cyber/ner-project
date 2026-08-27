@@ -180,7 +180,13 @@ async def run_configuration(
         per_query.append(run)
 
     query_metrics = [r.metrics for r in per_query]
-    agg = aggregate(query_metrics)
+    # The class map lets `aggregate` report structured-query success — the metric that
+    # says whether entity data was actually reachable by the generated SQL, rather than
+    # whether the right chunk ranked highly.
+    query_class_by_id = {
+        q.query_id: q.query_class for q in golden_queries if getattr(q, "query_class", None)
+    }
+    agg = aggregate(query_metrics, query_class_by_id)
     # Degraded and failed runs score zero and stay in the denominator; the counts are
     # reported alongside the score so a run that broke is visible as a broken run and
     # not just as a lower number.

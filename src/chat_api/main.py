@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +10,23 @@ from src.shared.database import get_engine, wait_for_database
 from src.shared.readiness import check_database, check_http_dependency, build_readiness_body
 from src.chat_api.middleware.tenant_context import TenantContextMiddleware
 from src.chat_api.api.v1 import chat, widget_keys, public
+
+
+def configure_logging() -> None:
+    """Uvicorn configures only its own loggers, leaving root at WARNING with no handlers,
+    so every application `logger.info` — including the `sql_attempt` line carrying the
+    generated SQL — was discarded before it could reach `docker logs`.
+
+    `force=True` because `basicConfig` is otherwise a no-op once anything has attached a
+    root handler, which would make the level depend on import order."""
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        force=True,
+    )
+
+
+configure_logging()
 
 
 @asynccontextmanager

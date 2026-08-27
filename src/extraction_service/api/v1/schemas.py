@@ -1,9 +1,28 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from src.extraction_service.services.processing_modes import (
+    DEFAULT_PROCESSING_MODE,
+    ProcessingMode,
+)
 
 
 class ExtractRequest(BaseModel):
     text: str
+
+
+class BatchExtractRequest(BaseModel):
+    """Body of `POST /api/v1/extract-batch`.
+
+    The processing mode travels with the request rather than living in client state, so
+    the server — not the browser — decides what a run does, and the run records what it
+    actually did. An unknown mode is a 422 from Pydantic's enum validation before any
+    run row is written."""
+
+    document_ids: list[str] | None = Field(default=None, alias="documentIds")
+    processing_mode: ProcessingMode = DEFAULT_PROCESSING_MODE
+
+    model_config = {"populate_by_name": True}
 
 
 class ExtractedEntity(BaseModel):
@@ -33,6 +52,13 @@ class BatchRunStatus(BaseModel):
     completed_at: datetime | None = None
     started_at: datetime | None = None
     model_version: str | None = None
+    # Additive: a client that ignores these is unaffected. `postprocess_degraded`
+    # distinguishes a run that completed with post-processing applied from one that
+    # completed because the fail-open path kept the BERT result when it could not be.
+    processing_mode: str | None = None
+    postprocess_model: str | None = None
+    postprocess_prompt_version: str | None = None
+    postprocess_degraded: bool | None = None
 
 
 class BatchRunListItem(BatchRunStatus):

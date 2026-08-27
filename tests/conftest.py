@@ -9,15 +9,18 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
 
-os.environ.setdefault("NER_DATABASE_URL", "postgresql+asyncpg://ner:ner@localhost:54320/ner_test")
-os.environ.setdefault("NER_DATABASE_URL_SYNC", "postgresql://ner:ner@localhost:54320/ner_test")
+# 55432 is the host port docker-compose.yml publishes postgres-test on. It is
+# deliberately not 5432: a locally installed PostgreSQL can bind that port too and win
+# the connections, so the suite would authenticate against the wrong server.
+os.environ.setdefault("NER_DATABASE_URL", "postgresql+asyncpg://ner:ner@localhost:55432/ner_test")
+os.environ.setdefault("NER_DATABASE_URL_SYNC", "postgresql://ner:ner@localhost:55432/ner_test")
 os.environ.setdefault("NER_JWT_SECRET", "test-secret-do-not-use-in-prod")
 os.environ.setdefault("NER_MINIO_ACCESS_KEY", "test-minio-access-key")
 os.environ.setdefault("NER_MINIO_SECRET_KEY", "test-minio-secret-key")
 
 from src.shared.config import settings
 from src.gateway.main import app
-from src.gateway.models import Base
+from src.gateway.models import Base, EntityDefinition
 
 
 def _assert_test_database(url: str) -> None:
@@ -232,6 +235,17 @@ async def setup_database(engine):
         await conn.execute(text("DROP TABLE IF EXISTS public.tenant_users CASCADE"))
         await conn.execute(text("DROP TABLE IF EXISTS public.entity_definitions CASCADE"))
         await conn.execute(text("DROP TABLE IF EXISTS public.audit_events CASCADE"))
+        # `entity_definitions` is dropped for isolation like the other two, then put straight
+        # back. Leaving it *absent* is what made the suite order-dependent: a file that does not
+        # request this fixture found it gone, and `document_service`'s delete path reads it to
+        # resolve which generated tables a document has rows in. Recreating from the model also
+        # repairs the reduced-shape table several annotation test files create by hand.
+        #
+        # Only this one. `tenant_users` and `audit_events` are left absent exactly as before —
+        # test files that need them create their own, and some of those declare columns the
+        # model does not (`tenant_users.password_hash DEFAULT ''`), so recreating them here
+        # would win the `CREATE TABLE IF NOT EXISTS` race and break those files' inserts.
+        await conn.run_sync(EntityDefinition.__table__.create, checkfirst=True)
         await conn.execute(text("DROP TABLE IF EXISTS tenant_template.documents CASCADE"))
         baseline_params = {f"id_{i}": tid for i, tid in enumerate(BASELINE_TENANT_IDS)}
         await conn.execute(

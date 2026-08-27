@@ -1,3 +1,4 @@
+import json
 import re
 from dataclasses import dataclass
 from datetime import date as _date
@@ -5,6 +6,8 @@ from typing import Callable
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+
+from src.shared.entity_views import CARDINALITY_MULTI, EntityDefinitionSpec
 
 SUPPORTED_KINDS = {"text", "number", "duration", "money", "date", "boolean"}
 
@@ -97,6 +100,32 @@ def _digits_to_number(phrase: str) -> float | None:
     return value
 
 
+_LEADING_NUMERAL_RE = re.compile(r"^(\d[\d,]*(?:\.\d+)?)\s*([a-zA-Z]*)\b")
+
+
+def _leading_numeral_to_number(phrase: str) -> float | None:
+    """A numeral at the start of a phrase, with arbitrary words after it.
+
+    `_digits_to_number` anchors on `$`, so it only reads a value that is *entirely* a
+    numeral and an optional suffix. `_words_to_number` then sees "2 years of experience",
+    collects only the alphabetic tokens, finds no number word, and returns None — the
+    digit is never consulted. The result was that "2+ years of experience" typed as 2.0
+    while "2 years of experience," typed as nothing at all, for values meaning the same
+    thing."""
+    match = _LEADING_NUMERAL_RE.match(phrase.strip())
+    if not match:
+        return None
+    raw_number, suffix = match.groups()
+    try:
+        value = float(raw_number.replace(",", ""))
+    except ValueError:
+        return None
+    suffix = suffix.lower()
+    if suffix and suffix in _MAGNITUDE_SUFFIXES:
+        value *= _MAGNITUDE_SUFFIXES[suffix]
+    return value
+
+
 def _read_number(phrase: str) -> float | None:
     phrase = phrase.strip()
     if not phrase:
@@ -104,7 +133,12 @@ def _read_number(phrase: str) -> float | None:
     value = _digits_to_number(phrase)
     if value is not None:
         return value
-    return _words_to_number(phrase)
+    # Word forms are tried before the leading-numeral fallback so a phrase mixing both
+    # ("two and a half years") still sums its words rather than stopping at a stray digit.
+    value = _words_to_number(phrase)
+    if value is not None:
+        return value
+    return _leading_numeral_to_number(phrase)
 
 
 def _extract_range(text: str) -> tuple[str, str] | None:
@@ -283,6 +317,57 @@ def load_entity_type_config(conn: Connection, tenant_id: str) -> dict[str, Entit
         row.name.lower(): EntityTypeConfig(value_kind=row.value_kind, value_unit=row.value_unit)
         for row in rows.fetchall()
     }
+
+
+def load_entity_definition_specs(conn: Connection, tenant_id: str) -> list[EntityDefinitionSpec]:
+    """The same catalog, as the value object the relational layer needs.
+
+    A sibling of `load_entity_type_config`, deliberately not an extension of it:
+    `apply_semantic_normalization` and `postprocess_document` both consume that function's
+    `dict[str, EntityTypeConfig]` return type, and widening it to carry the projection's fields
+    would change two call sites that have no interest in them.
+
+    A definition whose `sql_identifier` is NULL is omitted. It is not slugged here: a read-time
+    slug is not stable across processes, so two workers could disagree about a table's name.
+    The identifier is assigned once, at create, by `EntityService.create_entity_type`. A NULL
+    therefore means "no relation exists for this type", and the entity still reaches
+    `document_entities` — it is only absent from the relational surface.
+
+    Ordered by `sql_identifier` so the collision tie-break in `relational_projection` (first by
+    identifier sort order) is decided by the catalog rather than by row order."""
+    rows = conn.execute(
+        text(
+            "SELECT name, sql_identifier, cardinality, value_kind, is_active, base_label_mapping "
+            "FROM public.entity_definitions "
+            "WHERE tenant_id = :tid AND sql_identifier IS NOT NULL "
+            "ORDER BY sql_identifier"
+        ),
+        {"tid": tenant_id},
+    )
+    return [
+        EntityDefinitionSpec(
+            name=row.name,
+            sql_identifier=row.sql_identifier,
+            cardinality=row.cardinality or CARDINALITY_MULTI,
+            value_kind=row.value_kind,
+            is_active=bool(row.is_active),
+            base_label_mapping=_as_mapping(row.base_label_mapping),
+        )
+        for row in rows.fetchall()
+    ]
+
+
+def _as_mapping(value) -> dict | None:
+    """`base_label_mapping` reads back as a dict on JSONB and as text on a TEXT column."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value:
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
 
 
 def apply_semantic_normalization(entities: list, type_config: dict) -> tuple[list, int]:

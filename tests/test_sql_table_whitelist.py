@@ -22,6 +22,7 @@ from src.chat_api.services.sql_generator import (
     SQLValidationError,
     iter_table_references,
 )
+from src.shared.entity_views import EntityDefinitionSpec, build_query_surface
 
 
 def _validate(sql: str) -> str:
@@ -163,3 +164,151 @@ class TestRoleSwitchRejection:
     def test_ordinary_statement_is_not_caught_by_the_role_check(self):
         sql = "SELECT entity_value FROM document_entities WHERE entity_type = 'ROLE' LIMIT 100"
         assert "LIMIT" in _validate(sql).upper()
+
+
+# ------------------------------------------- the resolved relational surface (rows 22-25, 38)
+
+SURFACE = build_query_surface([
+    EntityDefinitionSpec(name="Skill", sql_identifier="e_skill"),
+    EntityDefinitionSpec(name="Email", sql_identifier="e_email", cardinality="single"),
+    EntityDefinitionSpec(
+        name="Years Experience", sql_identifier="e_years_experience",
+        cardinality="single", value_kind="number",
+    ),
+])
+
+
+def _validate_on_surface(sql: str, surface=SURFACE) -> str:
+    return SQLGenerator.__new__(SQLGenerator).validate_sql(sql, surface)
+
+
+class TestRelationalSurfaceValidation:
+    """verification.md rows 22-25 — the accepted relation set is the resolved surface."""
+
+    def test_valid_child_to_subject_join_accepted(self):
+        """Row 24 — the shape the prompt teaches: a child table joined to `subject`."""
+        sql = (
+            "SELECT s.document_id, s.filename, k.value FROM e_skill k "
+            "JOIN subject s ON s.document_id = k.document_id "
+            "WHERE k.normalized_value = 'python' LIMIT 100"
+        )
+        assert "LIMIT" in _validate_on_surface(sql).upper()
+
+    def test_subject_column_of_a_single_definition_accepted(self):
+        sql = "SELECT document_id, email, years_experience FROM subject LIMIT 100"
+        assert "LIMIT" in _validate_on_surface(sql).upper()
+
+    def test_relation_off_the_surface_rejected(self):
+        """Row 22 — a relation the resolver does not report is not readable."""
+        with pytest.raises(SQLValidationError) as exc:
+            _validate_on_surface("SELECT value FROM e_unknown LIMIT 10")
+        assert "e_unknown" in str(exc.value)
+
+    def test_child_table_retained_from_a_multi_era_rejected(self):
+        # `e_email` is `single` now: its values are `subject.email`. The retained table is on
+        # disk and unwritten since the flip, so accepting it answers every question with zero
+        # rows — the silent wrong answer the surface rule exists to prevent.
+        with pytest.raises(SQLValidationError):
+            _validate_on_surface("SELECT value FROM e_email LIMIT 10")
+
+    def test_another_tenants_relation_rejected(self):
+        """Row 25 — the surface is per-tenant; `e_skill` elsewhere means nothing here."""
+        with pytest.raises(SQLValidationError):
+            _validate_on_surface(
+                "SELECT value FROM e_skill LIMIT 10", build_query_surface([])
+            )
+
+    def test_no_surface_at_all_still_rejects_generated_relations(self):
+        with pytest.raises(SQLValidationError):
+            SQLGenerator.__new__(SQLGenerator).validate_sql("SELECT value FROM e_skill LIMIT 10")
+
+
+class TestColumnValidation:
+    """verification.md rows 23, 38 — the first authoritative column list."""
+
+    def test_undeclared_subject_column_rejected_and_named(self):
+        """Row 23 — the rejection has to name the column, or the retry cannot fix it."""
+        with pytest.raises(SQLValidationError) as exc:
+            _validate_on_surface("SELECT s.salary FROM subject s LIMIT 10")
+        assert "salary" in str(exc.value)
+        assert "subject" in str(exc.value)
+
+    def test_undeclared_child_column_rejected(self):
+        with pytest.raises(SQLValidationError) as exc:
+            _validate_on_surface("SELECT k.skill_name FROM e_skill k LIMIT 10")
+        assert "skill_name" in str(exc.value)
+
+    def test_undeclared_static_column_rejected(self):
+        """Row 38 — the static tables get the same treatment from the same map."""
+        with pytest.raises(SQLValidationError) as exc:
+            _validate_on_surface("SELECT d.owner_name FROM documents d LIMIT 10")
+        assert "owner_name" in str(exc.value)
+
+    def test_column_of_another_relation_on_the_surface_rejected(self):
+        # `value` is a child column; `subject` has no such column.
+        with pytest.raises(SQLValidationError):
+            _validate_on_surface("SELECT s.value FROM subject s LIMIT 10")
+
+    def test_unaliased_table_qualifier_resolves(self):
+        with pytest.raises(SQLValidationError):
+            _validate_on_surface("SELECT subject.salary FROM subject LIMIT 10")
+        assert "LIMIT" in _validate_on_surface(
+            "SELECT subject.filename FROM subject LIMIT 10"
+        ).upper()
+
+
+class TestColumnValidationIsPermissiveOnAmbiguity:
+    """design.md Decision 6 / Risk 5. The tokenizer is a reference parser, not a full SQL
+    parser, so every gap in it must degrade into a database error — retryable, and already
+    handled — rather than into rejecting a correct query."""
+
+    def test_select_alias_ordered_on_is_accepted(self):
+        sql = (
+            "SELECT k.document_id, COUNT(*) AS skill_count FROM e_skill k "
+            "GROUP BY k.document_id ORDER BY skill_count DESC LIMIT 10"
+        )
+        assert "LIMIT" in _validate_on_surface(sql).upper()
+
+    def test_computed_expression_columns_accepted(self):
+        sql = (
+            "SELECT s.document_id, EXTRACT(YEAR FROM s.start_date) AS y, "
+            "UPPER(s.filename) AS f FROM subject s LIMIT 10"
+        )
+        # `start_date` is not declared, so this one is a genuine rejection…
+        with pytest.raises(SQLValidationError):
+            _validate_on_surface(sql)
+        # …while the same shape over declared columns passes.
+        assert "LIMIT" in _validate_on_surface(
+            "SELECT s.document_id, UPPER(s.filename) AS f FROM subject s LIMIT 10"
+        ).upper()
+
+    def test_using_join_columns_accepted(self):
+        sql = (
+            "SELECT s.filename, k.value FROM subject s "
+            "JOIN e_skill k USING (document_id) LIMIT 100"
+        )
+        assert "LIMIT" in _validate_on_surface(sql).upper()
+
+    def test_derived_table_alias_is_unattributable_and_accepted(self):
+        sql = (
+            "SELECT t.anything FROM (SELECT document_id AS anything FROM subject) t LIMIT 10"
+        )
+        assert "LIMIT" in _validate_on_surface(sql).upper()
+
+    def test_reused_alias_for_two_relations_is_ambiguous_and_accepted(self):
+        sql = (
+            "SELECT x.value FROM e_skill x WHERE x.document_id IN "
+            "(SELECT x.document_id FROM subject x) LIMIT 10"
+        )
+        assert "LIMIT" in _validate_on_surface(sql).upper()
+
+    def test_unqualified_column_is_never_rejected(self):
+        # Attributable in principle here, but a select alias in ORDER BY / HAVING is not, and
+        # the two are indistinguishable to a reference parser.
+        assert "LIMIT" in _validate_on_surface(
+            "SELECT salary FROM subject LIMIT 10"
+        ).upper()
+
+    def test_string_literal_containing_a_dot_is_not_a_column_reference(self):
+        sql = "SELECT s.filename FROM subject s WHERE s.filename = 'a.b' LIMIT 10"
+        assert "LIMIT" in _validate_on_surface(sql).upper()

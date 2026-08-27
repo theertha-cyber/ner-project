@@ -72,7 +72,11 @@ async def eligibility_tenant_schema():
                     total_documents INTEGER NOT NULL DEFAULT 0,
                     processed_count INTEGER NOT NULL DEFAULT 0,
                     skipped_count INTEGER NOT NULL DEFAULT 0,
-                    failed_count INTEGER NOT NULL DEFAULT 0
+                    failed_count INTEGER NOT NULL DEFAULT 0,
+                    processing_mode VARCHAR(32) NOT NULL DEFAULT 'bert_only',
+                    postprocess_model TEXT,
+                    postprocess_prompt_version TEXT,
+                    postprocess_degraded BOOLEAN NOT NULL DEFAULT FALSE
                 )
             """))
             await conn.execute(text(f"""

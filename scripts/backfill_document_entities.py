@@ -9,6 +9,17 @@ to `document_entities` — `extracted_entities` is never modified.
 Idempotent: re-running for an already-backfilled document replaces (delete +
 insert) its `document_entities` rows rather than duplicating them.
 
+**Leaves the generated relational tables stale.** The tenant's generated query surface
+(`subject` and the `e_<entity>` child tables) is written only by the extraction worker,
+inside its per-document transaction, from the same in-memory entity list it hands to
+`insert_document_entities`. This script rebuilds EAV rows out of band and is deliberately
+not projection-aware: making it a second writer into the relational store is exactly the
+second synchronization path the projection design exists to prevent. After this script
+runs, the generated tables for the affected documents reflect the *previous* extraction
+until those documents are re-extracted under a new model version, which is the normal
+repair. Nothing here is lost — the relational surface is derived and always reconstructible
+from a re-extraction.
+
 Run:
     python scripts/backfill_document_entities.py --tenant <tenant_id> [--dry-run]
 """

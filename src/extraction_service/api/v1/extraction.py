@@ -7,12 +7,18 @@ from src.extraction_service.api.v1.schemas import (
     ExtractRequest,
     ExtractResponse,
     ExtractedEntity,
+    BatchExtractRequest,
     BatchExtractResponse,
     BatchRunStatus,
     BatchRunListItem,
     BatchRunListResponse,
     EligibleDocument,
     EligibleDocumentListResponse,
+)
+from src.extraction_service.services.processing_modes import (
+    DEFAULT_PROCESSING_MODE,
+    ProcessingMode,
+    is_postprocessing_configured,
 )
 from src.extraction_service.services.extraction_engine import infer
 from src.extraction_service.services.entity_store import (
@@ -129,7 +135,8 @@ async def list_eligible_documents(
 @router.post("/extract-batch", response_model=BatchExtractResponse, status_code=202)
 async def trigger_batch_extraction(
     request: Request,
-    document_ids: str | None = Query(None, alias="documentIds", description="Comma-separated document IDs; omit to process all eligible documents"),
+    body: BatchExtractRequest | None = None,
+    document_ids: str | None = Query(None, alias="documentIds", description="Comma-separated document IDs; omit to process all eligible documents. Deprecated — send `documentIds` in the request body instead."),
     db: AsyncSession = Depends(get_db),
 ):
     tenant_id = _get_tenant_id(request)
@@ -138,9 +145,27 @@ async def trigger_batch_extraction(
     if role not in ("tenant_admin", "business_user"):
         raise HTTPException(status_code=403, detail="Only tenant admins and business users can trigger batch extraction")
 
+    processing_mode = body.processing_mode if body else DEFAULT_PROCESSING_MODE
+    # Rejected outright rather than downgraded: a caller who asked for post-processing
+    # and silently got BERT-only would have no way to know the run's data is not what
+    # they requested. Nothing is written before this check, so no run is created.
+    if processing_mode == ProcessingMode.BERT_LLM_POSTPROCESS and not is_postprocessing_configured():
+        raise HTTPException(
+            status_code=422,
+            detail="LLM post-processing is not configured for this deployment",
+        )
+
     schema = _schema(tenant_id)
-    if document_ids:
+    # The query parameter is still accepted for one release so existing clients keep
+    # working; the body is the supported form.
+    if body is not None and body.document_ids:
+        doc_ids = [d.strip() for d in body.document_ids if d and d.strip()]
+    elif document_ids:
         doc_ids = [d.strip() for d in document_ids.split(",") if d.strip()]
+    else:
+        doc_ids = []
+
+    if doc_ids:
         # Explicitly-named training documents are rejected rather than silently
         # dropped: the picker never offers them, so naming one is a caller error.
         result = await db.execute(
@@ -167,23 +192,27 @@ async def trigger_batch_extraction(
         text(f"""
             INSERT INTO {schema}.extraction_runs
                 (id, tenant_id, document_id, model_version, status, total_documents,
-                 processed_count, skipped_count, failed_count, started_at)
-            VALUES (:id, :tenant_id, NULL, NULL, 'queued', :total_docs, 0, 0, 0, :started_at)
+                 processed_count, skipped_count, failed_count, started_at, processing_mode)
+            VALUES (:id, :tenant_id, NULL, NULL, 'queued', :total_docs, 0, 0, 0, :started_at, :processing_mode)
         """),
         {
             "id": run_id,
             "tenant_id": tenant_id,
             "total_docs": len(doc_ids),
             "started_at": datetime.now(timezone.utc),
+            "processing_mode": processing_mode.value,
         },
     )
     await db.commit()
 
     from src.extraction_service.celery_app import celery_app
 
+    # The mode travels as a task argument, not as something the worker looks up. A
+    # settings change while this run is queued therefore cannot alter what it does, and
+    # the mode recorded on the run stays truthful.
     celery_app.send_task(
         "run_batch_extraction",
-        args=[tenant_id, run_id, doc_ids],
+        args=[tenant_id, run_id, doc_ids, processing_mode.value],
         queue=settings.extraction_celery_queue,
     )
 
@@ -211,6 +240,10 @@ async def list_batch_runs(
                 completed_at=run.get("completed_at"),
                 started_at=run.get("started_at"),
                 model_version=run.get("model_version"),
+                processing_mode=run.get("processing_mode"),
+                postprocess_model=run.get("postprocess_model"),
+                postprocess_prompt_version=run.get("postprocess_prompt_version"),
+                postprocess_degraded=run.get("postprocess_degraded"),
             )
             for run in runs
         ]
@@ -238,4 +271,8 @@ async def get_batch_status(
         completed_at=run.get("completed_at"),
         started_at=run.get("started_at"),
         model_version=run.get("model_version"),
+        processing_mode=run.get("processing_mode"),
+        postprocess_model=run.get("postprocess_model"),
+        postprocess_prompt_version=run.get("postprocess_prompt_version"),
+        postprocess_degraded=run.get("postprocess_degraded"),
     )

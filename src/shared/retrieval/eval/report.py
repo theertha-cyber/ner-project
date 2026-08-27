@@ -62,8 +62,8 @@ def build_markdown_summary(report: dict) -> str:
         f"Run: {report['run_timestamp']} · Queries: {report['query_count']}",
         f"Corpus: `{report.get('corpus')}` · Scoring rule: `{report.get('scoring_rule')}`",
         "",
-        "| Configuration | recall@k | precision@k | MRR@k | nDCG@k | degraded | failed |",
-        "|---|---|---|---|---|---|---|",
+        "| Configuration | recall@k | precision@k | MRR@k | nDCG@k | structured SQL | degraded | failed |",
+        "|---|---|---|---|---|---|---|---|",
     ]
 
     best_name, best_ndcg = None, -1.0
@@ -73,9 +73,16 @@ def build_markdown_summary(report: dict) -> str:
             continue
         # Degraded and failed queries score zero and stay in the denominator, so the
         # counts explain the score rather than sitting beside an unaffected one.
+        # `structured SQL` is the metric entity-quality changes are judged on: whether
+        # the generated SQL actually retrieved the rows the question needed.
+        structured_count = agg.get("structured_query_count", 0)
+        structured = (
+            f"{agg.get('structured_query_success', 0.0):.3f} ({structured_count})"
+            if structured_count else "—"
+        )
         lines.append(
             f"| {config['name']} | {agg['recall_at_k']:.3f} | {agg['precision_at_k']:.3f} | "
-            f"{agg['mrr_at_k']:.3f} | {agg['ndcg_at_k']:.3f} | "
+            f"{agg['mrr_at_k']:.3f} | {agg['ndcg_at_k']:.3f} | {structured} | "
             f"{config['degraded_query_count']} | {config.get('failed_query_count', 0)} |"
         )
         if agg["ndcg_at_k"] > best_ndcg:

@@ -184,18 +184,17 @@ class TestRecoveredQueryReachesAnswerGeneration:
         assert [d["outcome"] for d in result.plan_trace[0].diagnostics] == ["success"]
 
 
-class TestWrongEntityTypeDefectThroughTheStack:
-    async def test_wrong_type_defect_consumes_retry_budget(self):
+class TestWrongRelationDefectThroughTheStack:
+    async def test_wrong_relation_defect_consumes_retry_budget(self):
         """verification.md row 53 — the defect is retryable, so the loop spends a second
         generation on it instead of terminating as a zero-row success."""
-        wrong_type_sql = (
-            "SELECT normalized_value FROM document_entities "
-            "WHERE entity_type = 'PROGRAMMING_LANGUAGE' AND normalized_value = 'aws' LIMIT 100"
+        wrong_relation_sql = (
+            "SELECT document_id, value FROM e_skill "
+            "WHERE normalized_value = 'oracle' LIMIT 100"
         )
-        llm = FakeLLM(wrong_type_sql, GOOD_SQL)
+        llm = FakeLLM(wrong_relation_sql, GOOD_SQL)
         session = FakeSession(
-            entity_types=("PROGRAMMING_LANGUAGE", "TOOL_FRAMEWORK", "SKILL"),
-            value_types={"aws": ["TOOL_FRAMEWORK"]},
+            value_types={"oracle": ["EMPLOYER"]},
             data_results=[[], [("python",)]],
         )
         orchestrator = _orchestrator(make_generator(llm))
@@ -206,7 +205,8 @@ class TestWrongEntityTypeDefectThroughTheStack:
         assert not result.status.has_failure()
         outcomes = [d["outcome"] for d in result.plan_trace[0].diagnostics]
         assert outcomes == ["empty_with_defect", "success"]
-        assert "TOOL_FRAMEWORK" in llm.prompts[1]
+        assert "e_employer" in llm.prompts[1]
+        assert "entity_type" not in llm.prompts[1]
 
     async def test_attempt_trace_reaches_retrieval_status(self):
         """verification.md row 61 — a failed structured invocation carries its
@@ -244,7 +244,7 @@ class TestDiagnosticsStayInternal:
         for key in ("outcome", "attempt", "max_attempts", "diagnostics"):
             assert key not in payload
 
-    async def test_profile_queries_use_the_tool_context_schema(self):
+    async def test_grounding_queries_use_the_tool_context_schema(self):
         """Row 32 — bounded sampling stays inside the authenticated tenant."""
         llm = FakeLLM(GOOD_SQL)
         session = FakeSession(samples=[("SKILL", "python")])
@@ -252,13 +252,85 @@ class TestDiagnosticsStayInternal:
 
         await _run_structured_plan(orchestrator, session, schema=SCHEMA)
 
-        profile_index = next(
+        sample_index = next(
             i for i, s in enumerate(session.statements) if "ROW_NUMBER() OVER" in s
         )
         preceding_search_path = [
-            s for s in session.statements[:profile_index]
+            s for s in session.statements[:sample_index]
             if s.strip().upper().startswith("SET SEARCH_PATH TO ")
         ][-1]
         assert preceding_search_path.strip().split()[-1] == SCHEMA
         assert set(session.search_paths) == {SCHEMA}
-        assert "- python" in llm.prompts[0]
+        assert "value in the data: python" in llm.prompts[0]
+
+
+class TestRelationalSurfaceEndToEnd:
+    """verification.md rows 35, 37, 39 — the relational statement takes the same read-only,
+    validated, time-bounded path the EAV statement took, and every way it can fail still
+    reports the structured source as unavailable rather than as an empty answer."""
+
+    async def test_valid_relational_select_reaches_answer_generation(self):
+        """Row 35 — one generation call, executed read-only, cited in the answer."""
+        llm = FakeLLM(GOOD_SQL)
+        session = FakeSession(data_results=[[("python",)]])
+        orchestrator = _orchestrator(make_generator(llm))
+
+        result = await _run_structured_plan(orchestrator, session)
+
+        assert not result.status.has_failure()
+        assert result.sql_results == [{"value": "python"}]
+        assert session.statements.count("BEGIN READ ONLY") == 1
+        assert "COMMIT" in session.statements
+
+        state = await _answer_from(orchestrator, result.sql_results)
+        assert state["reply"] != FALLBACK_REPLY
+
+    async def test_relation_outside_the_surface_is_rejected(self):
+        """Row 37 — another tenant's relation, or one no definition claims, is refused by
+        the validation layer before the database is asked."""
+        off_surface = "SELECT document_id, value FROM e_contract LIMIT 100"
+        llm = FakeLLM(off_surface, off_surface, off_surface)
+        session = FakeSession()
+        orchestrator = _orchestrator(make_generator(llm))
+
+        result = await _run_structured_plan(orchestrator, session)
+
+        assert session.data_queries == []
+        assert result.status.has_failure()
+        assert [d["outcome"] for d in result.plan_trace[0].diagnostics] == [
+            "validation_error"
+        ] * 3
+
+    async def test_timeout_cancels_and_the_source_is_skipped(self):
+        """Row 39 — the 10s bound is unchanged, and an exhausted budget skips the source
+        instead of reporting that nothing was found."""
+        import asyncio
+
+        llm = FakeLLM(GOOD_SQL, GOOD_SQL, GOOD_SQL)
+        session = FakeSession(data_results=[asyncio.TimeoutError()] * 3)
+        orchestrator = _orchestrator(make_generator(llm), _AnswerLLM("Alice knows Python."))
+
+        result = await _run_structured_plan(orchestrator, session)
+
+        assert result.status.has_failure()
+        assert result.sql_results == []
+        assert "ROLLBACK" in session.statements
+
+        state = await _answer_from(orchestrator, result.sql_results)
+        assert state["reply"] == FALLBACK_REPLY
+
+    async def test_unprojected_tenant_reports_the_source_unavailable(self):
+        """Rows 31, 32 end-to-end: the coverage probe's failure is a failed capability, and
+        the turn falls back rather than asserting that no records exist."""
+        llm = FakeLLM(GOOD_SQL)
+        session = FakeSession(projected=False, extracted=True, data_results=[])
+        orchestrator = _orchestrator(make_generator(llm), _AnswerLLM("Nobody knows Python."))
+
+        result = await _run_structured_plan(orchestrator, session)
+
+        assert result.status.has_failure()
+        assert result.status.failed_capability_names() == [STRUCTURED_CAPABILITY_NAME]
+        assert session.data_queries == []
+
+        state = await _answer_from(orchestrator, result.sql_results)
+        assert state["reply"] == FALLBACK_REPLY

@@ -24,6 +24,9 @@ const mockEntityTypes: EntityTypeListResponse = {
       required_flag: true,
       is_active: true,
       version: 2,
+      cardinality: "multi",
+      value_kind: "text",
+      sql_identifier: "e_vendor_name",
     },
     {
       id: "et-2",
@@ -35,6 +38,9 @@ const mockEntityTypes: EntityTypeListResponse = {
       required_flag: false,
       is_active: false,
       version: 1,
+      cardinality: "multi",
+      value_kind: "text",
+      sql_identifier: "e_ship_to_location",
     },
   ],
 };

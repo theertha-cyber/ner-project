@@ -2,7 +2,12 @@
 far apart the two words were. Model serving drops every `O` prediction before
 responding, so two labelled words pages apart arrive adjacent in the list. Observed:
 'Marian Engineering College, Central' — a 35-character value carrying a 77-character
-span covering unrelated text in between."""
+span covering unrelated text in between.
+
+Expected values here carry no trailing punctuation: spans are now punctuation-trimmed
+with `char_start`/`char_end` moved by the characters removed, so the offsets keep
+delimiting exactly the stored value. The adjacency behaviour these tests exist to guard
+is unchanged."""
 
 import os
 
@@ -31,8 +36,8 @@ class TestAdjacentContinuationStillMerges:
             _pred("College,", "I-INSTITUTION", word_index=42, char_start=315, char_end=323),
         ])
         assert len(entities) == 1
-        assert entities[0].entity_value == "Marian Engineering College,"
-        assert (entities[0].char_start, entities[0].char_end) == (296, 323)
+        assert entities[0].entity_value == "Marian Engineering College"
+        assert (entities[0].char_start, entities[0].char_end) == (296, 322)
 
 
 class TestGappedContinuationSplits:
@@ -45,8 +50,8 @@ class TestGappedContinuationSplits:
             _pred("Central", "I-INSTITUTION", word_index=53, char_start=366, char_end=373),
         ])
         assert len(entities) == 2
-        assert entities[0].entity_value == "Marian Engineering College,"
-        assert entities[0].char_end == 323, "the first entity must not absorb the gap"
+        assert entities[0].entity_value == "Marian Engineering College"
+        assert entities[0].char_end == 322, "the first entity must not absorb the gap"
         assert entities[1].entity_value == "Central"
         assert (entities[1].char_start, entities[1].char_end) == (366, 373)
 
@@ -63,7 +68,7 @@ class TestGappedContinuationSplits:
             _pred("Python,", "B-PROGRAMMING_LANGUAGE", word_index=528),
             _pred("Java,", "B-PROGRAMMING_LANGUAGE", word_index=529),
         ])
-        assert [e.entity_value for e in entities] == ["Python,", "Java,"]
+        assert [e.entity_value for e in entities] == ["Python", "Java"]
 
 
 class TestPredictionsWithoutWordIndex:

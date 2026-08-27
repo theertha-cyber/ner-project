@@ -5,14 +5,53 @@ import { SlideOver } from "@/components/ui";
 import { useToast } from "@/hooks/use-toast";
 import { useCreateEntityType } from "@/hooks/use-create-entity-type";
 import { useUpdateEntityType } from "@/hooks/use-update-entity-type";
-import type { EntityType } from "@/types/entity-types";
+import type { EntityCardinality, EntityType } from "@/types/entity-types";
 
 const BASE_LABELS = ["PER", "ORG", "LOC", "MISC"] as const;
+
+// Explained in query terms rather than schema terms: the admin choosing this does not know
+// that `single` means a column on `subject` and `multi` means a child table, and should not
+// have to. What they do know is whether a document has one of these or many.
+const CARDINALITY_OPTIONS: {
+  value: EntityCardinality;
+  label: string;
+  hint: string;
+}[] = [
+  { value: "single", label: "Single value", hint: "one value per document" },
+  { value: "multi", label: "Multiple values", hint: "many values per document" },
+];
+
+// Mirrors `SUPPORTED_KINDS` in `semantic_normalizer.py`. It decides the column type a `single`
+// entity type receives, so a numeric or date entity type left at `text` cannot be compared or
+// ordered in generated SQL.
+const VALUE_KINDS = ["text", "number", "duration", "money", "date", "boolean"] as const;
+
+const DEFAULT_CARDINALITY: EntityCardinality = "multi";
+const DEFAULT_VALUE_KIND = "text";
 
 export interface DefineEntityTypeSlideOverProps {
   open: boolean;
   onClose: () => void;
   editTarget: EntityType | null;
+}
+
+function cardinalityChangeMessage(from: EntityCardinality, to: EntityCardinality): string {
+  // The operation looks instantaneous while the new representation stays empty until the
+  // affected documents are re-extracted. Nothing is migrated and nothing is dropped, so this
+  // dialog is the only thing standing between the admin and reading a successful save as
+  // "the query surface now reflects this".
+  if (from === "multi" && to === "single") {
+    return (
+      "Values already extracted for this entity type stay where they are — in its own table, " +
+      "with every value per document. Switching to a single value does not move them. " +
+      "Documents must be re-extracted before the single value is populated."
+    );
+  }
+  return (
+    "Values already extracted for this entity type stay where they are — one value per " +
+    "document, on the document row. Switching to multiple values does not move them. " +
+    "Documents must be re-extracted before the full set of values is populated."
+  );
 }
 
 export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineEntityTypeSlideOverProps) {
@@ -27,6 +66,9 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
   const [examples, setExamples] = useState("");
   const [selectedLabel, setSelectedLabel] = useState<string>(BASE_LABELS[0]);
   const [requiredFlag, setRequiredFlag] = useState(false);
+  const [cardinality, setCardinality] = useState<EntityCardinality>(DEFAULT_CARDINALITY);
+  const [valueKind, setValueKind] = useState<string>(DEFAULT_VALUE_KIND);
+  const [pendingConfirm, setPendingConfirm] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -37,42 +79,72 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
       const firstKey = Object.keys(editTarget.base_label_mapping)[0];
       setSelectedLabel(firstKey ?? BASE_LABELS[0]);
       setRequiredFlag(editTarget.required_flag);
+      setCardinality(editTarget.cardinality ?? DEFAULT_CARDINALITY);
+      setValueKind(editTarget.value_kind ?? DEFAULT_VALUE_KIND);
     } else {
       setName("");
       setDescription("");
       setExamples("");
       setSelectedLabel(BASE_LABELS[0]);
       setRequiredFlag(false);
+      setCardinality(DEFAULT_CARDINALITY);
+      setValueKind(DEFAULT_VALUE_KIND);
     }
+    setPendingConfirm(false);
   }, [open, editTarget]);
 
   function buildPayload() {
+    // Merged into the persisted mapping rather than replacing it. The chip row is a four-way
+    // single select, so rebuilding the mapping from it drops every other key — and the
+    // relational projection routes entities by the *full* key set, so a dropped key silently
+    // empties part of a base-model tenant's query surface with no visible error.
+    const entityName = name || editTarget?.name || "";
+    const base_label_mapping = {
+      ...(editTarget?.base_label_mapping ?? {}),
+      [selectedLabel]: [entityName],
+    };
+
     return {
       description,
       examples: examples
         .split(", ")
         .map((s) => s.trim())
         .filter(Boolean),
-      base_label_mapping: { [selectedLabel]: [name || editTarget?.name || ""] },
+      base_label_mapping,
       required_flag: requiredFlag,
+      cardinality,
+      value_kind: valueKind,
     };
+  }
+
+  function sendUpdate() {
+    if (!editTarget) return;
+    updateMutation.mutate(
+      { entityTypeName: editTarget.name, payload: buildPayload() },
+      {
+        onSuccess: () => {
+          toast("Entity type updated successfully");
+          setPendingConfirm(false);
+          onClose();
+        },
+        onError: (err) => {
+          setPendingConfirm(false);
+          toast(err.message ?? "Update failed", "bad");
+        },
+      },
+    );
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (isEdit && editTarget) {
-      updateMutation.mutate(
-        { entityTypeName: editTarget.name, payload: buildPayload() },
-        {
-          onSuccess: () => {
-            toast("Entity type updated successfully");
-            onClose();
-          },
-          onError: (err) => {
-            toast(err.message ?? "Update failed", "bad");
-          },
-        },
-      );
+      // Create mode never prompts — there is nothing yet to be inconsistent with — and neither
+      // does an edit that leaves cardinality alone.
+      if (editTarget.cardinality !== cardinality) {
+        setPendingConfirm(true);
+        return;
+      }
+      sendUpdate();
     } else {
       createMutation.mutate(
         { name, ...buildPayload() },
@@ -188,6 +260,54 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
             </div>
           </div>
 
+          {/* CARDINALITY */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-secondary">
+              Cardinality
+            </label>
+            <div className="flex gap-2">
+              {CARDINALITY_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setCardinality(option.value)}
+                  className={[
+                    "flex-1 rounded px-3 py-2 text-left border transition-colors",
+                    cardinality === option.value
+                      ? "border-brand-primary bg-brand-primary text-white"
+                      : "border-border hover:border-brand-primary hover:text-brand-primary",
+                  ].join(" ")}
+                  aria-pressed={cardinality === option.value}
+                >
+                  <span className="block text-xs font-medium">{option.label}</span>
+                  <span className="block text-xs opacity-80">{option.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* VALUE KIND */}
+          <div>
+            <label
+              htmlFor="entity-value-kind"
+              className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-secondary"
+            >
+              Value Kind
+            </label>
+            <select
+              id="entity-value-kind"
+              value={valueKind}
+              onChange={(e) => setValueKind(e.target.value)}
+              className="w-full rounded border border-border px-3 py-2 text-sm"
+            >
+              {VALUE_KINDS.map((kind) => (
+                <option key={kind} value={kind}>
+                  {kind}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* REQUIRED FLAG */}
           <div className="flex items-center justify-between">
             <div>
@@ -228,6 +348,44 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
             </button>
           </div>
         </form>
+
+        {/* Cardinality change confirmation */}
+        {pendingConfirm && editTarget && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm cardinality change"
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-5"
+          >
+            <div className="w-full max-w-sm rounded-xl border border-border bg-surface-raised p-5 flex flex-col gap-3">
+              <h3 className="text-sm font-semibold text-text-primary">
+                {cardinality === "single"
+                  ? "Change to a single value?"
+                  : "Change to multiple values?"}
+              </h3>
+              <p className="text-xs text-text-secondary">
+                {cardinalityChangeMessage(editTarget.cardinality, cardinality)}
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingConfirm(false)}
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary hover:bg-surface"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={sendUpdate}
+                  disabled={isPending}
+                  className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:bg-brand-hover disabled:opacity-50"
+                >
+                  Change cardinality
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </SlideOver>
   );

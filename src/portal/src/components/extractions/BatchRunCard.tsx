@@ -7,11 +7,24 @@ const STATUS_STYLE: Record<BatchRunStatus, string> = {
   failed: "bg-status-failed text-white",
 };
 
+const PROCESSING_MODE_LABEL: Record<string, string> = {
+  bert_only: "BERT",
+  bert_llm_postprocess: "BERT + LLM",
+};
+
 function progressPct(run: BatchRun): number {
   const total = run.total_documents ?? 0;
   const processed = run.processed_count ?? 0;
   if (total === 0) return 0;
   return Math.round((processed / total) * 100);
+}
+
+function modeLabel(run: BatchRun): string | null {
+  if (!run.processing_mode) return null;
+  const label = PROCESSING_MODE_LABEL[run.processing_mode] ?? run.processing_mode;
+  // A run that completed because the fail-open path kept the BERT result must not read
+  // the same as one where post-processing actually ran.
+  return run.postprocess_degraded ? `${label} (degraded)` : label;
 }
 
 export interface BatchRunCardProps {
@@ -23,6 +36,7 @@ export interface BatchRunCardProps {
 
 export function BatchRunCard({ run, modelLabel, isSelected, onClick }: BatchRunCardProps) {
   const pct = progressPct(run);
+  const mode = modeLabel(run);
   const dateStr = run.started_at
     ? new Date(run.started_at).toLocaleString(undefined, {
         month: "short",
@@ -63,7 +77,21 @@ export function BatchRunCard({ run, modelLabel, isSelected, onClick }: BatchRunC
         <span>
           {pct}% docs{modelLabel ? ` · ${modelLabel}` : ""}
         </span>
-        {dateStr && <span>{dateStr}</span>}
+        <span className="flex items-center gap-2">
+          {mode && (
+            <span
+              data-testid="processing-mode"
+              className={
+                run.postprocess_degraded
+                  ? "text-status-failed font-medium"
+                  : "text-text-secondary"
+              }
+            >
+              {mode}
+            </span>
+          )}
+          {dateStr && <span>{dateStr}</span>}
+        </span>
       </div>
     </button>
   );

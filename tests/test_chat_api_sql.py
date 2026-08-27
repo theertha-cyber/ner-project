@@ -90,8 +90,10 @@ class TestValidatedStatementExecution:
     async def test_valid_select_passes_and_executes(self):
         from tests.test_chat_api_sql_retry import SCHEMA, FakeLLM, FakeSession, make_generator
 
-        sql = "SELECT normalized_value FROM document_entities WHERE entity_type = 'SKILL' LIMIT 100"
-        session = FakeSession(data_results=[[("python",)]])
+        sql = "SELECT document_id, normalized_value FROM e_skill LIMIT 100"
+        session = FakeSession(
+            data_results=[[("python",)]], data_columns=("normalized_value",),
+        )
 
         rows = await make_generator(FakeLLM(sql)).generate_and_execute("q", session, SCHEMA)
 
@@ -141,18 +143,96 @@ class TestValidatedStatementExecution:
 
 
 class TestSQLPrompt:
-    def test_prompt_includes_document_join_instruction(self):
-        import inspect
-        from src.chat_api.services import sql_generator as mod
-        source = inspect.getsource(mod)
-        assert "SHOULD" in source, "Prompt must use SHOULD for JOIN instruction"
-        assert "AS d" in source or "as d" in source, "Prompt must alias documents as d"
-        assert "d.filename AS document_name" in source or "d.filename" in source
-        assert "documents" in source.lower()
+    """verification.md row 1 and Risk 7 — the prompt teaches the relational surface, and no
+    fragment of the EAV query model survives in it.
 
-    def test_prompt_references_document_entities_not_extracted_entities(self):
-        import inspect
-        from src.chat_api.services import sql_generator as mod
-        source = inspect.getsource(mod)
-        assert "document_entities" in source
-        assert "extracted_entities" not in source
+    Asserted against the *rendered* prompt rather than against the module source: the source
+    still mentions `document_entities` in the grounding and defect probes, which read it, and
+    the requirement is about what the generator is told, not about what the module contains.
+    """
+
+    async def _prompt(self, definitions=None) -> str:
+        from tests.test_chat_api_sql_retry import (
+            SCHEMA, DEFINITIONS, FakeLLM, FakeSession, make_generator,
+        )
+
+        llm = FakeLLM("SELECT document_id, value FROM e_skill LIMIT 100")
+        session = FakeSession(
+            entity_definitions=DEFINITIONS if definitions is None else definitions,
+            data_results=[[("python",)]],
+        )
+        await make_generator(llm).generate_and_execute("which skills?", session, SCHEMA)
+        return llm.prompts[0]
+
+    async def test_prompt_describes_the_tenants_relations(self):
+        prompt = await self._prompt()
+
+        assert "subject" in prompt
+        assert "e_skill" in prompt
+        assert "one row per extracted document" in prompt
+
+    async def test_prompt_never_teaches_the_eav_query_model(self):
+        """Row 1 — no instruction to select from `document_entities`, and no `entity_type`
+        filter vocabulary. A full read of the rendered prompt, not a spot check."""
+        prompt = await self._prompt()
+
+        assert "document_entities" not in prompt
+        assert "entity_type" not in prompt
+        assert "one row per fact" not in prompt
+        assert "self-join" not in prompt
+
+    async def test_prompt_declares_the_subject_column_layout(self):
+        prompt = await self._prompt()
+
+        assert "subject.email" in prompt
+        assert "TEXT" in prompt
+
+    async def test_prompt_lists_the_child_table_columns(self):
+        prompt = await self._prompt()
+
+        assert "normalized_value" in prompt
+        assert "value_number" in prompt
+
+    async def test_prompt_requires_every_row_to_project_document_id(self):
+        """Row 5.5 — the graph's scope filter and citation assembly both need it."""
+        prompt = await self._prompt()
+
+        assert "MUST project `document_id`" in prompt
+
+    async def test_prompt_keeps_the_non_eav_reasoning_guidance(self):
+        """Task 5.3 — the guidance that was never EAV-specific stays."""
+        prompt = await self._prompt()
+
+        for directive in (
+            "Every condition in the question is a real constraint",
+            "NOT EXISTS",
+            "group by exactly the thing being ranked",
+            "ILIKE",
+            "Prefer the typed columns for anything quantitative",
+            "select the facts",
+        ):
+            assert directive in prompt
+
+    async def test_prompt_lists_the_static_tables_without_the_entity_store(self):
+        """Task 5.4 — document metadata questions still work; the EAV store is not offered."""
+        prompt = await self._prompt()
+
+        assert "documents (" in prompt
+        assert "document_chunks" in prompt
+        assert "extraction_runs" in prompt
+
+    async def test_prompt_warns_that_a_filename_is_not_a_name(self):
+        prompt = await self._prompt()
+
+        assert "`subject.filename` is never the subject's name" in prompt
+
+    async def test_prompt_carries_only_the_querying_tenants_relations(self):
+        from tests.test_chat_api_sql_retry import definition_row
+
+        prompt = await self._prompt(definitions=(
+            definition_row("Skill", "e_skill"),
+            definition_row("Contract", "e_contract", tenant_id="globex"),
+        ))
+
+        assert "e_skill" in prompt
+        assert "e_contract" not in prompt

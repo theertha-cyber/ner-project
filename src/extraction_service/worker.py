@@ -5,16 +5,32 @@ from datetime import datetime, timezone
 from sqlalchemy import text, create_engine
 from src.shared.config import settings
 from src.extraction_service.celery_app import celery_app
-from src.extraction_service.services.document_entity_store import insert_document_entities
+from src.extraction_service.services.document_entity_store import (
+    delete_document_entities,
+    insert_document_entities,
+)
 from src.extraction_service.services.entity_normalizer import (
+    collapse_duplicates,
+    filter_valid_entities,
     merge_wordpieces,
     reconstruct_entities,
 )
+from src.extraction_service.services.entity_postprocessor import postprocess_document
 from src.extraction_service.services.entity_store import get_already_extracted
+from src.extraction_service.services.processing_modes import (
+    DEFAULT_PROCESSING_MODE,
+    ProcessingMode,
+)
+from src.extraction_service.services.relational_projection import (
+    delete_relational_entities,
+    project_document_entities,
+)
 from src.extraction_service.services.semantic_normalizer import (
     apply_semantic_normalization,
+    load_entity_definition_specs,
     load_entity_type_config,
 )
+from src.shared.entity_views import reconcile_entity_tables_sync
 
 _TOKEN_RE = re.compile(r"\S+")
 
@@ -107,6 +123,25 @@ def _get_documents_to_process(tenant_id: str, doc_ids: list[str]) -> list[str]:
         return [row[0] for row in result.fetchall()]
 
 
+def _get_document_filenames(tenant_id: str, doc_ids: list[str]) -> dict[str, str]:
+    """`document_id -> filename`, for the denormalized `filename` column on `subject`.
+
+    Read separately rather than by widening `_get_documents_to_process`, whose `list[str]`
+    return type the eligibility arithmetic below depends on. `filename` is carried on `subject`
+    so generated SQL can name a document without joining `documents` — a join the model has to
+    get right on every question that mentions a file."""
+    if not doc_ids:
+        return {}
+    engine = _get_sync_engine()
+    schema = _schema(tenant_id)
+    with engine.connect() as conn:
+        result = conn.execute(
+            text(f"SELECT id, filename FROM {schema}.documents WHERE id = ANY(:ids)"),
+            {"ids": list(doc_ids)},
+        )
+        return {row[0]: row[1] for row in result.fetchall()}
+
+
 def _get_cached_model_version(tenant_id: str) -> str:
     """Promoted version from the local `model_versions` cache. Reads `version_number`
     — `version` is a legacy column that is NULL on every row, and `str(None)` from it
@@ -179,13 +214,22 @@ def _update_run_status(tenant_id: str, run_id: str, status: str, **kwargs):
 
 
 @celery_app.task(bind=True, name="run_batch_extraction", max_retries=0)
-def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
+def run_batch_extraction(
+    self,
+    tenant_id: str,
+    run_id: str,
+    doc_ids: list[str],
+    processing_mode: str = DEFAULT_PROCESSING_MODE.value,
+):
     model_version = _get_active_model_version(tenant_id)
     if model_version is None:
         _update_run_status(tenant_id, run_id, "failed")
         return
 
     docs = _get_documents_to_process(tenant_id, doc_ids)
+    # Idempotency is decided by model version alone. The processing mode deliberately
+    # plays no part: flipping the UI toggle must not silently reprocess and overwrite
+    # entities a previous run already produced.
     already = get_already_extracted(tenant_id, doc_ids, model_version)
 
     to_process = [d for d in docs if d not in already]
@@ -193,8 +237,36 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
 
     _update_run_status(tenant_id, run_id, "running")
 
+    # The catalog and the generated schema are settled once, here, before any document is
+    # touched. Reconciliation runs in its **own** transaction: inside a per-document one it
+    # would hold schema locks for the length of that document's writes and couple the schema
+    # state to a single document's success. It is not optional and not a nicety —
+    # `TenantService.create_tenant` clones `tenant_template` via `pg_tables` + `CREATE TABLE
+    # (LIKE ...)`, so a freshly provisioned tenant starts with zero generated tables and its
+    # first run would otherwise fail every document.
+    engine = _get_sync_engine()
+    schema = _schema(tenant_id)
+    try:
+        with engine.connect() as conn:
+            entity_specs = load_entity_definition_specs(conn, tenant_id)
+        with engine.begin() as conn:
+            reconcile_entity_tables_sync(conn, schema, entity_specs)
+    except Exception as e:
+        # Every document would fail at projection anyway, and leaving the run at "running"
+        # forever hides why. Same shape as the missing-model and missing-serving paths above.
+        print(f"EXTRACTION_WORKER_ERROR run={run_id} reconcile_failed: {e}", flush=True)
+        _update_run_status(tenant_id, run_id, "failed")
+        return
+
+    filenames = _get_document_filenames(tenant_id, to_process)
+
     processed = 0
     failed = 0
+    rejected_total = 0
+    postprocess_degraded = False
+    # A run-level ceiling rather than a per-document one: exhausting it degrades the
+    # remainder of the run to BERT-only instead of stalling or failing it.
+    postprocess_budget_remaining = settings.postprocess_token_budget
 
     for doc_id in to_process:
         try:
@@ -246,7 +318,10 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
 
             aligned_predictions = _align_predictions_with_offsets(predictions, token_records)
             merged_predictions = merge_wordpieces(aligned_predictions)
-            normalized_entities = reconstruct_entities(merged_predictions)
+            # `token_records` carries the `O` words model serving filtered out, so an
+            # entity whose tokens straddle a small gap reads back as the document's own
+            # text ("two and a half years") rather than the labelled fragments.
+            normalized_entities = reconstruct_entities(merged_predictions, token_records)
 
             with engine.connect() as conn:
                 type_config = load_entity_type_config(conn, tenant_id)
@@ -254,7 +329,51 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
             if unparseable_count:
                 print(f"WORKER: doc={doc_id} semantic_unparseable={unparseable_count}", flush=True)
 
+            normalized_entities, rejected_count = filter_valid_entities(normalized_entities)
+            if rejected_count:
+                print(f"WORKER: doc={doc_id} rejected_invalid={rejected_count}", flush=True)
+            before_collapse = len(normalized_entities)
+            normalized_entities = collapse_duplicates(normalized_entities)
+            collapsed_count = before_collapse - len(normalized_entities)
+            if collapsed_count:
+                print(f"WORKER: doc={doc_id} collapsed_duplicates={collapsed_count}", flush=True)
+            rejected_total += rejected_count
+
+            if processing_mode == ProcessingMode.BERT_LLM_POSTPROCESS.value:
+                # Runs after deduplication so the token spend is proportional to distinct
+                # facts, and after the validity gate so obvious artifacts are already
+                # gone. Never raises: a failure marks the run degraded and keeps the
+                # deterministic result.
+                outcome, tokens_used = postprocess_document(
+                    normalized_entities,
+                    token_records,
+                    type_config,
+                    {name.upper() for name in type_config},
+                    token_budget_remaining=postprocess_budget_remaining,
+                )
+                postprocess_budget_remaining -= tokens_used
+                normalized_entities = collapse_duplicates(outcome.entities)
+                if outcome.degraded:
+                    postprocess_degraded = True
+                    print(
+                        f"WORKER: doc={doc_id} postprocess_degraded reasons={outcome.discarded[:3]}",
+                        flush=True,
+                    )
+
             with engine.begin() as conn:
+                # Full replace, so a re-run is idempotent. `get_already_extracted` is scoped by
+                # model version, so a new model legitimately makes every document eligible
+                # again — and `document_entities` has no `run_id`, no `model_version`, and no
+                # unique constraint, so without the delete the two generations would be
+                # indistinguishable. The relational delete covers **every** existing generated
+                # table, including deactivated definitions', or their stale rows would survive
+                # to be re-exposed on reactivation.
+                delete_document_entities(conn, schema, doc_id)
+                delete_relational_entities(conn, schema, doc_id, entity_specs)
+
+                # `extracted_entities` is deliberately NOT deleted: it is the idempotency
+                # ledger `get_already_extracted` joins against, and duplication across runs is
+                # the per-run audit trail rather than a defect.
                 for pred in predictions:
                     conn.execute(
                         text(f"""
@@ -272,6 +391,18 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
                         },
                     )
                 insert_document_entities(conn, schema, doc_id, normalized_entities)
+                # Same list, same transaction. The relational surface is either consistent with
+                # `document_entities` or absent for this document — never partially written. A
+                # missing table or column raises here, which fails the document and rolls all
+                # five writes back rather than reporting a success over an incomplete surface.
+                project_document_entities(
+                    conn,
+                    schema,
+                    doc_id,
+                    filenames.get(doc_id),
+                    normalized_entities,
+                    entity_specs,
+                )
 
             processed += 1
 
@@ -282,11 +413,23 @@ def run_batch_extraction(self, tenant_id: str, run_id: str, doc_ids: list[str]):
             failed += 1
             continue
 
-    _update_run_status(
-        tenant_id, run_id, "completed",
-        completed_at=datetime.now(timezone.utc),
-        processed_count=processed,
-        skipped_count=len(skipped),
-        failed_count=failed,
-        model_version=model_version,
-    )
+    if rejected_total:
+        print(f"WORKER: run={run_id} rejected_invalid_total={rejected_total}", flush=True)
+
+    run_fields = {
+        "completed_at": datetime.now(timezone.utc),
+        "processed_count": processed,
+        "skipped_count": len(skipped),
+        "failed_count": failed,
+        "model_version": model_version,
+        "processing_mode": processing_mode,
+    }
+    if processing_mode == ProcessingMode.BERT_LLM_POSTPROCESS.value:
+        run_fields["postprocess_model"] = settings.azure_openai_chat_deployment
+        run_fields["postprocess_prompt_version"] = settings.postprocess_prompt_version
+        run_fields["postprocess_degraded"] = postprocess_degraded
+
+    # A post-processing failure never fails the run: it is an optional enhancement over
+    # a successful extraction, and `max_retries=0` means a failed run is not retried.
+    # The degraded flag plus the per-row `postprocess_status` carry what went wrong.
+    _update_run_status(tenant_id, run_id, "completed", **run_fields)

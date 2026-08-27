@@ -7,6 +7,13 @@ from src.shared.exceptions import NotFoundError
 from src.document_service.services.content_hash import compute_content_hash
 from src.document_service.services.ocr_worker import is_allowed_file, get_extension, trigger_ocr
 from src.document_service.services.storage import MinioStorageClient
+from src.extraction_service.services.relational_projection import (
+    build_relational_delete_statements,
+)
+from src.shared.entity_views import (
+    list_existing_generated_tables,
+    load_definition_specs,
+)
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
@@ -303,6 +310,18 @@ async def delete_document(
         text(f"DELETE FROM {_schema(tenant_id)}.document_entities WHERE document_id = :id"),
         {"id": doc_id},
     )
+    # The generated relational tables declare no foreign key to `documents`, so this
+    # propagation is what maintains referential integrity — without it a deleted document
+    # would keep answering generated SQL queries. The statements come from the same pure
+    # builder the extraction worker uses, so the sync and async callers cannot diverge into a
+    # half-deleted document. Inactive definitions are covered too: their tables are retained,
+    # so their rows would otherwise survive.
+    specs = await load_definition_specs(session, tenant_id)
+    existing = await list_existing_generated_tables(session, _schema(tenant_id))
+    for statement, params in build_relational_delete_statements(
+        _schema(tenant_id), doc_id, specs, existing
+    ):
+        await session.execute(text(statement), params)
     await session.execute(
         text(f"UPDATE {_schema(tenant_id)}.documents SET status = 'deleted' WHERE id = :id"),
         {"id": doc_id},

@@ -1,8 +1,10 @@
 """Provision the least-privilege role that generated chat SQL executes under, then
 smoke-check it against every tenant schema.
 
-Grants are derived from `WHITELISTED_TABLES`, so this is the one place that has to run
-after the whitelist changes or a tenant is added. Idempotent — safe to re-run.
+Grants are derived from `WHITELISTED_TABLES` plus each tenant's generated relational
+surface, so this is the one place that has to run after the whitelist changes, after a
+tenant is added, and before the generator starts naming a tenant's generated relations.
+Idempotent — safe to re-run.
 
 Run before enabling `NER_SQL_EXECUTION_ROLE_ENABLED`:
 
@@ -24,6 +26,7 @@ from src.chat_api.services.sql_execution_role import (
     smoke_check_schema,
 )
 from src.shared.config import settings
+from src.shared.entity_views import resolve_generated_tables
 
 
 def _async_dsn(dsn: str) -> str:
@@ -50,13 +53,17 @@ async def main(check_only: bool) -> int:
             else:
                 await provision_role(conn, role, schemas)
                 print(f"Provisioned role '{role}' over {len(schemas)} tenant schema(s).")
+            # Resolved here, under the connection role: the smoke check runs as the restricted
+            # role, which holds no privilege on `public.entity_definitions`. Same resolver the
+            # grants came from, so the checked set is the granted set.
+            generated = await resolve_generated_tables(conn, schemas)
 
         # Each smoke check runs in its own connection so an aborted transaction from a
         # missing grant cannot mask the next schema's result.
         for schema in schemas:
             async with engine.connect() as conn:
                 try:
-                    await smoke_check_schema(conn, role, schema)
+                    await smoke_check_schema(conn, role, schema, generated.get(schema, set()))
                     print(f"  OK   {schema}")
                 except Exception as exc:  # noqa: BLE001 - reported, not swallowed
                     failures.append(f"{schema}: {type(exc).__name__}: {exc}")

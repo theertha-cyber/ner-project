@@ -33,14 +33,14 @@ class StructuredRetrievalTool:
 
     name = "structured_retrieval"
     description = (
-        "Query the database of entities extracted from the tenant's documents — every "
-        "fact an extraction model found, stored with its type (skill, tool, programming "
-        "language, employer, email, degree, …), its value, and its source document. Use "
-        "this whenever the question names or implies a category of fact about a subject "
-        "or across subjects. Listing or enumerating the values of a type for one subject "
-        "('list the tools in X's resume', 'what languages does Y know', 'every company Z "
-        "worked at') is its most common use, alongside counting, filtering, comparing, "
-        "ranking, and aggregating."
+        "Query the structured facts extracted from the tenant's documents — one subject "
+        "per document (a candidate, a contract, an invoice), each carrying its "
+        "single-valued facts (email, name, years of experience, …) and its many-valued "
+        "ones (skills, tools, employers, degrees, …). Use this whenever the question "
+        "names or implies a category of fact about a subject or across subjects. Listing "
+        "or enumerating a kind of fact for one subject ('list the tools in X's resume', "
+        "'what languages does Y know', 'every company Z worked at') is its most common "
+        "use, alongside counting, filtering, comparing, ranking, and aggregating."
     )
     args_schema = {
         "type": "object",

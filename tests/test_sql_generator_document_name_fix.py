@@ -51,3 +51,23 @@ class TestDocumentNameDeterministicFix:
         # Every remaining "document_name" occurrence must be an "AS document_name"
         # alias target — a bare occurrence is what caused the UndefinedColumnError.
         assert result.count("document_name") == result.count("AS document_name")
+
+    def test_relational_statement_is_left_alone(self):
+        """design.md Decision 8 — the repair is gated on `document_entities`, so it cannot
+        fire on relational SQL, where `subject.filename` is denormalized and resolves on its
+        own. Deleting the repair would break the static-table path it still guards."""
+        from src.shared.entity_views import EntityDefinitionSpec, build_query_surface
+
+        surface = build_query_surface([
+            EntityDefinitionSpec(name="Skill", sql_identifier="e_skill"),
+        ])
+        sql = (
+            "SELECT s.document_id, s.filename, k.value FROM e_skill k "
+            "JOIN subject s ON s.document_id = k.document_id LIMIT 100"
+        )
+
+        result = self.generator.validate_sql(sql, surface)
+
+        assert result == sql
+        assert "documents" not in result
+        assert "document_name" not in result

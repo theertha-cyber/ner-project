@@ -3,8 +3,8 @@ required. Seeds a few chunks into a scratch schema on NER_DATABASE_URL, then let
 run repeated queries against dense/sparse/hybrid and see the ranked results.
 
 Usage:
-    NER_DATABASE_URL="postgresql+asyncpg://ner:ner@localhost:54320/ner_test" \\
-    NER_DATABASE_URL_SYNC="postgresql://ner:ner@localhost:54320/ner_test" \\
+    NER_DATABASE_URL="postgresql+asyncpg://ner:ner@localhost:55432/ner_test" \\
+    NER_DATABASE_URL_SYNC="postgresql://ner:ner@localhost:55432/ner_test" \\
     NER_JWT_SECRET=x NER_MINIO_ACCESS_KEY=x NER_MINIO_SECRET_KEY=x NER_OPENAI_API_KEY=x \\
         python scripts/try_hybrid_retrieval.py "your query here"
 

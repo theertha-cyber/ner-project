@@ -25,6 +25,8 @@ const payload = {
   examples: ["Acme Corp"],
   base_label_mapping: { ORG: ["vendor_name"] },
   required_flag: false,
+  cardinality: "multi" as const,
+  value_kind: "text",
 };
 
 describe("useCreateEntityType", () => {

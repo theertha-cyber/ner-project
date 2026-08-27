@@ -33,6 +33,9 @@ const editTarget: EntityType = {
   required_flag: true,
   is_active: true,
   version: 1,
+  cardinality: "multi",
+  value_kind: "text",
+  sql_identifier: "e_vendor_name",
 };
 
 describe("DefineEntityTypeSlideOver", () => {
@@ -158,5 +161,31 @@ describe("DefineEntityTypeSlideOver", () => {
       { wrapper: createWrapper() },
     );
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDefined();
+  });
+});
+
+describe("DefineEntityTypeSlideOver — cardinality and value kind controls", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it("renders both cardinality options with their query-terms explanations", () => {
+    render(
+      <DefineEntityTypeSlideOver open={true} onClose={vi.fn()} editTarget={null} />,
+      { wrapper: createWrapper() },
+    );
+    expect(screen.getByText("Single value")).toBeDefined();
+    expect(screen.getByText("one value per document")).toBeDefined();
+    expect(screen.getByText("Multiple values")).toBeDefined();
+    expect(screen.getByText("many values per document")).toBeDefined();
+  });
+
+  it("renders the value kind select", () => {
+    render(
+      <DefineEntityTypeSlideOver open={true} onClose={vi.fn()} editTarget={null} />,
+      { wrapper: createWrapper() },
+    );
+    const select = screen.getByLabelText("Value Kind") as HTMLSelectElement;
+    expect(select.value).toBe("text");
   });
 });

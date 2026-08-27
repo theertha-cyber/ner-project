@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
-DATABASE_URL = os.environ.get("NER_DATABASE_URL", "postgresql+asyncpg://ner:ner@localhost:54320/ner_test")
+DATABASE_URL = os.environ.get("NER_DATABASE_URL", "postgresql+asyncpg://ner:ner@localhost:55432/ner_test")
 
 ALLOW_NONSTANDARD_TEST_DB_ENV = "NER_ALLOW_NONSTANDARD_TEST_DB"
 
@@ -55,7 +55,11 @@ TABLES = [
         total_documents INTEGER NOT NULL DEFAULT 0,
         processed_count INTEGER NOT NULL DEFAULT 0,
         skipped_count INTEGER NOT NULL DEFAULT 0,
-        failed_count INTEGER NOT NULL DEFAULT 0
+        failed_count INTEGER NOT NULL DEFAULT 0,
+        processing_mode VARCHAR(32) NOT NULL DEFAULT 'bert_only',
+        postprocess_model TEXT,
+        postprocess_prompt_version TEXT,
+        postprocess_degraded BOOLEAN NOT NULL DEFAULT FALSE
     )
     """,
     """
@@ -114,12 +118,43 @@ PUBLIC_TABLES = [
         base_label_mapping JSON,
         value_kind VARCHAR(32),
         value_unit VARCHAR(32),
+        -- Both added by migration 037. Restated here rather than left out because the tests
+        -- that assert on them would otherwise pass against a schema the migration would never
+        -- produce, which is the one shape a test database must not have.
+        cardinality VARCHAR(16) NOT NULL DEFAULT 'multi',
+        sql_identifier VARCHAR(63),
         version INTEGER NOT NULL DEFAULT 1,
         required_flag BOOLEAN DEFAULT FALSE,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )
+    """,
+    # `CREATE TABLE IF NOT EXISTS` above is a no-op against a database created before these two
+    # columns existed, so they are added separately as well.
+    """
+    ALTER TABLE public.entity_definitions
+        ADD COLUMN IF NOT EXISTS cardinality VARCHAR(16) NOT NULL DEFAULT 'multi',
+        ADD COLUMN IF NOT EXISTS sql_identifier VARCHAR(63)
+    """,
+    """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'ck_entity_definitions_cardinality'
+              AND conrelid = 'public.entity_definitions'::regclass
+        ) THEN
+            ALTER TABLE public.entity_definitions
+                ADD CONSTRAINT ck_entity_definitions_cardinality
+                CHECK (cardinality IN ('multi', 'single'));
+        END IF;
+    END $$;
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_entity_definitions_tenant_sql_identifier
+        ON public.entity_definitions (tenant_id, sql_identifier)
+        WHERE sql_identifier IS NOT NULL
     """,
     """
     CREATE TABLE IF NOT EXISTS public.audit_events (
@@ -132,6 +167,21 @@ PUBLIC_TABLES = [
         tenant_id VARCHAR,
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
+    """,
+]
+
+
+# `CREATE TABLE IF NOT EXISTS` leaves an already-created table exactly as it is, so a
+# schema seeded before a column was added never gains it. These reconcile an existing
+# fixture database to the current shape, mirroring what the tenant migrations do to real
+# schemas. Each is idempotent.
+RECONCILE = [
+    """
+    ALTER TABLE "{schema}".extraction_runs
+        ADD COLUMN IF NOT EXISTS processing_mode VARCHAR(32) NOT NULL DEFAULT 'bert_only',
+        ADD COLUMN IF NOT EXISTS postprocess_model TEXT,
+        ADD COLUMN IF NOT EXISTS postprocess_prompt_version TEXT,
+        ADD COLUMN IF NOT EXISTS postprocess_degraded BOOLEAN NOT NULL DEFAULT FALSE
     """,
 ]
 
@@ -149,6 +199,8 @@ async def main():
             await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
             for table_ddl in TABLES:
                 await conn.execute(text(table_ddl.format(schema=schema)))
+            for reconcile_ddl in RECONCILE:
+                await conn.execute(text(reconcile_ddl.format(schema=schema)))
             print(f"  Created tables in schema {schema}")
 
         await conn.execute(text("""
