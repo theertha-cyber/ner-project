@@ -1,3 +1,4 @@
+import asyncio
 import re
 import logging
 from src.shared.conversation_history import recent_messages
@@ -84,13 +85,11 @@ class GuardrailService:
             return "pii"
         return None
 
-    async def classify_domain(self, message: str, conversation_context: list[dict] | None, llm_client, llm_model: str) -> bool:
-        """Returns True if the query is in-domain. Fails open (treats the query as
-        in-domain) on any classifier error, since tenant isolation is enforced
-        structurally elsewhere and an unsourced answer is already refused downstream —
-        the guardrail here is a scope/cost filter, not a security boundary."""
+    async def _classify_once(self, message: str, history: list[dict], llm_client, llm_model: str) -> bool:
+        """One classifier call. Returns True (in-domain) on any error, so a provider
+        failure never manifests as a decline."""
         messages = [{"role": "system", "content": DOMAIN_CLASSIFIER_SYSTEM_PROMPT}]
-        for turn in recent_messages(conversation_context):
+        for turn in history:
             messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": message})
 
@@ -103,6 +102,39 @@ class GuardrailService:
         except Exception as e:
             logger.warning("Domain classifier failed, failing open (admitting query): %s", e)
             return True
+
+    async def classify_domain(self, message: str, conversation_context: list[dict] | None, llm_client, llm_model: str) -> bool:
+        """Returns True if the query is in-domain. Fails open (treats the query as
+        in-domain) on any classifier error, since tenant isolation is enforced
+        structurally elsewhere and an unsourced answer is already refused downstream —
+        the guardrail here is a scope/cost filter, not a security boundary.
+
+        Blocks only when the message reads as out-of-domain BOTH with and without the
+        conversation history. History is genuinely load-bearing — "and him?" or "tell me
+        more" classify as out-of-domain stripped of context and in-domain with it — but
+        it also flips clearly in-domain questions the other way: "what tool frameworks has
+        <candidate> used" classified in_domain 5/5 bare and out_of_domain 5/5 once a few
+        ordinary prior turns about that same candidate were prepended. Neither view is
+        trustworthy alone, and the two failure directions are not symmetric: admitting an
+        out-of-domain question costs one wasted retrieval, while declining a real one is
+        user-visible breakage that also persists — the decline is written to the
+        conversation and fed back here on the next turn. So the two views are consulted
+        concurrently (no added latency; each is a `max_tokens=5` call) and disagreement
+        resolves to admit. Only unanimous out-of-domain declines."""
+        history = recent_messages(conversation_context)
+        if not history:
+            return await self._classify_once(message, [], llm_client, llm_model)
+
+        with_history, without_history = await asyncio.gather(
+            self._classify_once(message, history, llm_client, llm_model),
+            self._classify_once(message, [], llm_client, llm_model),
+        )
+        if with_history != without_history:
+            logger.info(
+                "Domain classifier split (with_history=%s bare=%s), admitting query",
+                with_history, without_history,
+            )
+        return with_history or without_history
 
     def enforce_sources(
         self,

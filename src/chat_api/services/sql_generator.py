@@ -3,6 +3,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from openai import AsyncOpenAI, AsyncAzureOpenAI
+from langsmith.wrappers import wrap_openai
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
@@ -792,14 +793,14 @@ class SQLGenerator:
         self.sample_values_per_type = max(0, settings.sql_entity_sample_values_per_type)
         self.sample_max_values = max(0, settings.sql_entity_sample_max_values)
         if settings.azure_openai_endpoint:
-            self.client = AsyncAzureOpenAI(
+            self.client = wrap_openai(AsyncAzureOpenAI(
                 azure_endpoint=settings.azure_openai_endpoint,
                 api_key=settings.openai_api_key,
                 api_version=settings.azure_openai_api_version,
-            )
+            ))
             self.model = settings.azure_openai_chat_deployment
         else:
-            self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+            self.client = wrap_openai(AsyncOpenAI(api_key=settings.openai_api_key))
             self.model = "gpt-4o"
 
     def _render_surface(self, grounding: SurfaceGrounding | None) -> str:

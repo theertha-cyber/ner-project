@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 from openai import AsyncOpenAI, AsyncAzureOpenAI
+from langsmith.wrappers import wrap_openai
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
@@ -34,14 +35,14 @@ class RAGOrchestrator:
         self.guardrails = GuardrailService()
         self.tool_registry = build_default_registry()
         if settings.azure_openai_endpoint:
-            self.llm_client = AsyncAzureOpenAI(
+            self.llm_client = wrap_openai(AsyncAzureOpenAI(
                 azure_endpoint=settings.azure_openai_endpoint,
                 api_key=settings.openai_api_key,
                 api_version=settings.azure_openai_api_version,
-            )
+            ))
             self.llm_model = settings.azure_openai_chat_deployment
         else:
-            self.llm_client = AsyncOpenAI(api_key=settings.openai_api_key)
+            self.llm_client = wrap_openai(AsyncOpenAI(api_key=settings.openai_api_key))
             self.llm_model = "gpt-4o"
 
     async def execute(self, message: str, session: AsyncSession, schema: str, tenant_id: str,
@@ -153,7 +154,11 @@ class RAGOrchestrator:
             "session": session,
             "token_sink": token_sink,
         }
-        return await self._graph.ainvoke(state)
+        return await self._graph.ainvoke(state, config={
+            "run_name": "chat_graph",
+            "tags": ["chat_graph"],
+            "metadata": {"tenant_id": tenant_id, "conversation_id": conversation_id},
+        })
 
     async def _sql_source(self, message: str, session: AsyncSession, schema: str,
                           conversation_context: list[dict] | None,

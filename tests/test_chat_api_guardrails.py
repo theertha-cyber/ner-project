@@ -34,6 +34,29 @@ class ScriptedClassifierClient:
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=create))
 
 
+class HistorySensitiveClassifierClient:
+    """Returns a different verdict depending on whether conversation history was
+    included in the call, so the two views `classify_domain` consults can be scripted
+    independently. History is detected structurally: a bare call carries exactly the
+    system prompt plus the user message."""
+
+    def __init__(self, with_history: str, without_history: str):
+        self.with_history = with_history
+        self.without_history = without_history
+        self.call_count = 0
+        self.verdicts_served: list[str] = []
+
+        async def create(**kwargs):
+            self.call_count += 1
+            messages = kwargs["messages"]
+            verdict = self.without_history if len(messages) == 2 else self.with_history
+            self.verdicts_served.append(verdict)
+            message = SimpleNamespace(content=verdict)
+            return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=create))
+
+
 class TestSourceCitationEnforcement:
     def setup_method(self):
         self.guardrails = GuardrailService()
@@ -181,6 +204,56 @@ class TestDomainClassification:
         client = ScriptedClassifierClient(raises=RuntimeError("classifier down"))
         is_in_domain = await self.guardrails.classify_domain("Which contracts mention Acme Corp?", None, client, "gpt-4o")
         assert is_in_domain is True
+
+    async def test_history_induced_decline_is_overridden(self):
+        """A question the classifier calls in-domain on its own must not be declined
+        just because prior turns are prepended. Observed in production: "what tool
+        frameworks has <candidate> used" classified in_domain with no history and
+        out_of_domain 5/5 once ordinary earlier turns about that same candidate were
+        included. Disagreement resolves to admit."""
+        history = [{"role": "user", "content": "which candidates suit an AI engineer role"},
+                   {"role": "assistant", "content": "Arjun Jayakumar built a RAG pipeline."}]
+        client = HistorySensitiveClassifierClient(
+            with_history="out_of_domain", without_history="in_domain",
+        )
+        admitted = await self.guardrails.classify_domain(
+            "what tool frameworks has Arjun Jayakumar used", history, client, "gpt-4o",
+        )
+        assert admitted is True
+        assert client.call_count == 2
+
+    async def test_bare_out_of_domain_rescued_by_history(self):
+        """The mirror case: an anaphoric follow-up ("and him?") reads as out-of-domain
+        stripped of context, and history is what makes it legible. Admitting on
+        disagreement has to hold in this direction too, or history stops earning its
+        place in the call."""
+        history = [{"role": "user", "content": "which candidates suit an AI engineer role"},
+                   {"role": "assistant", "content": "Arjun Jayakumar built a RAG pipeline."}]
+        client = HistorySensitiveClassifierClient(
+            with_history="in_domain", without_history="out_of_domain",
+        )
+        admitted = await self.guardrails.classify_domain("and him?", history, client, "gpt-4o")
+        assert admitted is True
+
+    async def test_unanimous_out_of_domain_still_declines(self):
+        """Genuine out-of-domain requests read the same way with and without history,
+        so consensus still declines them — the rule loosens false declines without
+        disarming the filter."""
+        history = [{"role": "user", "content": "which candidates suit an AI engineer role"},
+                   {"role": "assistant", "content": "Arjun Jayakumar built a RAG pipeline."}]
+        client = HistorySensitiveClassifierClient(
+            with_history="out_of_domain", without_history="out_of_domain",
+        )
+        admitted = await self.guardrails.classify_domain("tell me a joke", history, client, "gpt-4o")
+        assert admitted is False
+
+    async def test_no_history_makes_a_single_call(self):
+        """With no history the two views are the same call, so only one is made."""
+        client = HistorySensitiveClassifierClient(
+            with_history="in_domain", without_history="in_domain",
+        )
+        await self.guardrails.classify_domain("Which contracts mention Acme Corp?", None, client, "gpt-4o")
+        assert client.call_count == 1
 
     def test_no_complexity_assessment_method_remains(self):
         """Covers verification.md row 55: complexity assessment is removed entirely."""
