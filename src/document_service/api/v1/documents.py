@@ -81,7 +81,7 @@ async def upload_document(
     if not is_allowed_file(file.filename or ""):
         raise HTTPException(
             status_code=422,
-            detail={"code": "VALIDATION_ERROR", "message": f"File type '{get_extension(file.filename or '')}' is not supported. Allowed: .pdf, .jpg, .jpeg, .png, .tif, .tiff"},
+            detail={"code": "VALIDATION_ERROR", "message": f"File type '{get_extension(file.filename or '')}' is not supported. Allowed: .pdf, .jpg, .jpeg, .png, .tif, .tiff, .doc, .docx"},
         )
 
     file_data = await file.read()

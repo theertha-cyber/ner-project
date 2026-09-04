@@ -28,6 +28,19 @@ def make_token(tid, role="business_user"):
 PDF_CONTENT = b"%PDF-1.4 fake pdf content for testing purposes " * 10
 PNG_CONTENT = b"\x89PNG\r\n\x1a\nfake png content " * 10
 
+# Minimal valid DOCX content: a ZIP file containing the minimum OOXML structure
+import zipfile
+def _make_minimal_docx():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+        zf.writestr('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+        zf.writestr('word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>')
+        zf.writestr('word/document.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Hello DOCX World</w:t></w:r></w:p></w:body></w:document>')
+    return buf.getvalue()
+
+DOCX_CONTENT = _make_minimal_docx()
+
 _coll_counter = 0
 
 
@@ -774,3 +787,73 @@ async def test_7_12_jwt_without_tenant_returns_401(client):
         headers=auth_header(bad_token),
     )
     assert resp.status_code == 401, f"Expected 401, got {resp.status_code}: {resp.text}"
+
+
+@pytest.mark.asyncio
+async def test_docx_upload_returns_201(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+
+    with patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls, \
+         patch("src.document_service.api.v1.documents.trigger_ocr") as mock_ocr:
+        mock_storage = mock_storage_cls.return_value
+        mock_ocr.return_value = None
+
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("test.docx", io.BytesIO(DOCX_CONTENT), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            headers=auth_header(token),
+        )
+
+    assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
+    data = resp.json()
+    assert "id" in data
+    assert data["filename"] == "test.docx"
+    assert data["content_type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    assert data["status"] == "pending"
+    assert data["file_size"] == len(DOCX_CONTENT)
+    assert mock_storage.upload_file.called
+
+
+@pytest.mark.asyncio
+async def test_doc_upload_returns_201(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+
+    doc_content = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 fake doc content"
+
+    with patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls, \
+         patch("src.document_service.api.v1.documents.trigger_ocr") as mock_ocr:
+        mock_storage = mock_storage_cls.return_value
+        mock_ocr.return_value = None
+
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("test.doc", io.BytesIO(doc_content), "application/msword")},
+            headers=auth_header(token),
+        )
+
+    assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
+    data = resp.json()
+    assert "id" in data
+    assert data["filename"] == "test.doc"
+    assert data["content_type"] == "application/msword"
+    assert data["status"] == "pending"
+    assert data["file_size"] == len(doc_content)
+    assert mock_storage.upload_file.called
+
+
+@pytest.mark.asyncio
+async def test_unsupported_type_rejection_with_doc_types(seeded_tenant, client):
+    """Confirm that unsupported file types are still rejected after adding DOC/DOCX."""
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+
+    resp = await client.post(
+        "/api/v1/documents",
+        files={"file": ("malware.exe", io.BytesIO(b"fake exe"), "application/x-msdownload")},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
+    assert "not supported" in resp.text.lower()

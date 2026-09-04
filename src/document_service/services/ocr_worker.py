@@ -43,7 +43,7 @@ async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], e
         await session.commit()
 
 
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".doc", ".docx"}
 
 
 def get_extension(filename: str) -> str:
@@ -82,6 +82,53 @@ def extract_text_image(file_bytes: bytes) -> list[dict]:
     import pytesseract
     image = Image.open(io.BytesIO(file_bytes))
     text = pytesseract.image_to_string(image)
+    return [{
+        "span_index": 0,
+        "text": text,
+        "char_start": 0,
+        "char_end": len(text),
+        "page_number": 0,
+    }]
+
+
+def extract_text_docx(file_bytes: bytes) -> list[dict]:
+    """Extract text from a .docx file using python-docx."""
+    import io
+    from docx import Document
+    doc = Document(io.BytesIO(file_bytes))
+    text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    return [{
+        "span_index": 0,
+        "text": text,
+        "char_start": 0,
+        "char_end": len(text),
+        "page_number": 0,
+    }]
+
+
+def extract_text_doc(file_bytes: bytes) -> list[dict]:
+    """Extract text from a .doc file using antiword subprocess, or raise if unavailable."""
+    import subprocess
+    import tempfile
+    import os
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
+        try:
+            result = subprocess.run(
+                ["antiword", tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"antiword failed (exit {result.returncode}): {result.stderr.strip()}")
+            text = result.stdout
+        finally:
+            os.unlink(tmp_path)
+    except FileNotFoundError:
+        raise RuntimeError("antiword is not installed. Install it with: apt-get install antiword")
     return [{
         "span_index": 0,
         "text": text,
@@ -158,6 +205,10 @@ async def process_document(document_id: str, tenant_id: str, blob_path: str, con
                 spans = extract_text_pdf_as_image(file_data)
         elif ext in ("jpg", "jpeg", "png", "tif", "tiff"):
             spans = extract_text_image(file_data)
+        elif ext == "docx":
+            spans = extract_text_docx(file_data)
+        elif ext == "doc":
+            spans = extract_text_doc(file_data)
         else:
             raise ValueError(f"Unsupported file extension: {ext}")
 
