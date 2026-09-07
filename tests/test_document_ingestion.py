@@ -815,3 +815,193 @@ async def test_7_12_jwt_without_tenant_returns_401(client):
         headers=auth_header(bad_token),
     )
     assert resp.status_code == 401, f"Expected 401, got {resp.status_code}: {resp.text}"
+
+
+# =========================================================================================
+# Retention through the upload route — verification.md rows 70 and 71.
+#
+# Added by `tenant-pluggable-data-foundation`. The six scenarios above are unmodified
+# except for their mock patch targets and this fixture's DDL; these two are new.
+# =========================================================================================
+
+from src.document_service.api.v1 import documents as documents_route  # noqa: E402
+from src.document_service.ingestion import (  # noqa: E402
+    DocumentIngestionService,
+    RecordingDispatcher,
+)
+from src.document_service.services import ocr_worker  # noqa: E402
+from src.shared.document_retention import (  # noqa: E402
+    RETENTION_EPHEMERAL,
+    RETENTION_PLATFORM_BLOB,
+)
+from src.shared.integration_profile.store import PROFILE_TABLE  # noqa: E402
+
+
+class _RecordingStore:
+    """A content store that records what it was asked to do."""
+
+    kind = "platform_minio"
+
+    def __init__(self):
+        self.objects = {}
+        self.puts = []
+        self.deletes = []
+
+    def put(self, tenant_id, document_id, data, filename=None):
+        reference = f"tenants/{tenant_id}/documents/{document_id}"
+        self.objects[reference] = data
+        self.puts.append(reference)
+        return reference
+
+    def open(self, reference):
+        return self.objects.get(reference)
+
+    def delete(self, reference):
+        self.deletes.append(reference)
+        self.objects.pop(reference, None)
+
+
+async def _ensure_profile_table(engine):
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                f"""
+                CREATE TABLE IF NOT EXISTS {PROFILE_TABLE} (
+                    tenant_id VARCHAR(64) PRIMARY KEY,
+                    source_adapter VARCHAR(64) NOT NULL DEFAULT 'platform_upload',
+                    content_store_adapter VARCHAR(64) NOT NULL DEFAULT 'platform_minio',
+                    relational_adapter VARCHAR(64) NOT NULL DEFAULT 'platform_postgresql',
+                    index_adapter VARCHAR(64) NOT NULL DEFAULT 'platform_pgvector',
+                    retention_mode VARCHAR(32) NOT NULL DEFAULT 'platform_blob',
+                    configuration JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+                    secret_references JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+                    status VARCHAR(32) NOT NULL DEFAULT 'draft',
+                    status_reason TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        )
+
+
+async def _set_retention(engine, tenant_id, mode):
+    await _ensure_profile_table(engine)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                f"INSERT INTO {PROFILE_TABLE} (tenant_id, retention_mode, status) "
+                f"VALUES (:tid, :mode, 'active') "
+                f"ON CONFLICT (tenant_id) DO UPDATE SET retention_mode = :mode"
+            ),
+            {"tid": tenant_id, "mode": mode},
+        )
+
+
+@pytest.mark.asyncio
+async def test_8_6_platform_retention_stores_the_original_durably(seeded_tenant, client):
+    """Row 70."""
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    await _set_retention(engine, tid, RETENTION_PLATFORM_BLOB)
+
+    durable, working = _RecordingStore(), _RecordingStore()
+    service = DocumentIngestionService(
+        dispatcher=RecordingDispatcher(), durable_store=durable, working_store=working
+    )
+    with patch.object(documents_route, "ingestion_service", service):
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("retained.pdf", io.BytesIO(PDF_CONTENT), "application/pdf")},
+            headers=auth_header(token),
+        )
+    assert resp.status_code == 201, resp.text
+    doc_id = resp.json()["id"]
+
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    f"SELECT blob_path, retention_mode FROM tenant_{tid}.documents "
+                    f"WHERE id = :id"
+                ),
+                {"id": doc_id},
+            )
+        ).fetchone()
+    await engine.dispose()
+
+    assert durable.puts == [row.blob_path], "the persisted reference is not the store's"
+    assert working.puts == []
+    assert row.retention_mode == RETENTION_PLATFORM_BLOB
+
+
+@pytest.mark.asyncio
+async def test_8_7_ephemeral_retention_stores_no_durable_original(
+    seeded_tenant, client, monkeypatch
+):
+    """Row 71."""
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    await _set_retention(engine, tid, RETENTION_EPHEMERAL)
+
+    durable, working = _RecordingStore(), _RecordingStore()
+    service = DocumentIngestionService(
+        dispatcher=RecordingDispatcher(), durable_store=durable, working_store=working
+    )
+
+    page_text = "Ephemeral upload content."
+    monkeypatch.setattr(
+        ocr_worker,
+        "extract_text_pdf",
+        lambda data: [
+            {
+                "span_index": 0,
+                "text": page_text,
+                "char_start": 0,
+                "char_end": len(page_text),
+                "page_number": 0,
+            }
+        ],
+    )
+
+    async def fake_embed(texts):
+        return [[0.0] * 4 for _ in texts]
+
+    monkeypatch.setattr(ocr_worker, "_embed_chunks", fake_embed)
+    monkeypatch.setattr(
+        ocr_worker,
+        "_store_for",
+        lambda mode: working if mode == RETENTION_EPHEMERAL else durable,
+    )
+
+    with patch.object(documents_route, "ingestion_service", service):
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("transient.pdf", io.BytesIO(PDF_CONTENT), "application/pdf")},
+            headers=auth_header(token),
+        )
+    assert resp.status_code == 201, resp.text
+    doc_id = resp.json()["id"]
+
+    await ocr_worker.process_document(doc_id, tid)
+
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    f"SELECT blob_path, retention_mode, status FROM tenant_{tid}.documents "
+                    f"WHERE id = :id"
+                ),
+                {"id": doc_id},
+            )
+        ).fetchone()
+    await engine.dispose()
+
+    assert row.retention_mode == RETENTION_EPHEMERAL
+    assert durable.puts == [], "an ephemeral upload reached the durable store"
+    assert row.status == "processed"
+    # The working copy is gone and the row no longer names it.
+    assert working.deletes, "the working copy was never deleted"
+    assert row.blob_path is None

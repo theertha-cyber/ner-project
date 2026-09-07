@@ -11,7 +11,7 @@ Land and verify this group alone. Nothing here changes observable behaviour, so 
 - [x] 2.1 Define the content-store contract with exactly three operations — put returning an opaque storage reference or nothing, open by reference, delete by reference. The contract must name no bucket, container, endpoint, region, or credential.
 - [x] 2.2 Implement the platform MinIO adapter over the existing `MinioStorageClient`, with key construction moved inside the adapter and a delete operation exposed. Support two configured instances: durable and working.
 - [x] 2.3 Configure the working store instance with an independent object-lifetime policy so an abandoned working copy expires without depending on the application. Record the chosen duration against approval item A2.
-- [ ] 2.4 Verify rows 23–27 in `tests/test_content_store.py` (reference round-trip, idempotent delete, contract introspection, no precomputed key, key construction confined to the adapter).
+- [x] 2.4 Verify rows 23–27 in `tests/test_content_store.py` (reference round-trip, idempotent delete, contract introspection, no precomputed key, key construction confined to the adapter).
 
 ## 3. Ingestion boundary and upload adapter
 
@@ -25,9 +25,9 @@ Do not split this group across releases — a half-extracted use case with the r
 - [x] 3.6 Write `source_type='platform_upload'` and the reserved `source_id='platform-upload'` on every upload, and reserve that identifier against future configured sources.
 - [x] 3.7 Verify rows 1–7 in `tests/test_ingestion_boundary.py` (ingestion operation owns the row write, sole-writer static check, HTTP-free invocation, purpose carriage, absent optional metadata, non-synthesised timestamps, adapter cannot assert tenant).
 - [x] 3.8 Verify rows 8–11 in `tests/test_ingestion_boundary.py` (upload declares `single_use`, incompatible combination rejected, resolution decided once and recorded, platform-computed checksum).
-- [ ] 3.9 Verify rows 12–17 in `tests/test_ingestion_boundary.py` and confirm every existing scenario in `tests/test_document_ingestion.py` and `tests/test_document_content_hash.py` still passes with edits confined to mock patch targets and fixture DDL, and record the reviewed diff as evidence (unchanged behaviour, reserved source recorded, identifier stable, identifier reserved, role policy at the boundary, route references no store).
+- [x] 3.9 Verify rows 12–17 in `tests/test_ingestion_boundary.py` and confirm every existing scenario in `tests/test_document_ingestion.py` and `tests/test_document_content_hash.py` still passes with edits confined to mock patch targets and fixture DDL, and record the reviewed diff as evidence (unchanged behaviour, reserved source recorded, identifier stable, identifier reserved, role policy at the boundary, route references no store).
 - [x] 3.10 Verify rows 18–20 in `tests/test_ingestion_boundary.py` (default dispatch unchanged, dispatch carries no content, recording dispatcher observes exactly one dispatch).
-- [ ] 3.11 Verify rows 64–71 in `tests/test_document_ingestion.py` (the six existing upload scenarios unmodified, plus the two retention scenarios).
+- [x] 3.11 Verify rows 64–71 in `tests/test_document_ingestion.py` (the six existing upload scenarios unmodified, plus the two retention scenarios).
 
 ## 4. Processing pipeline corrections
 
@@ -37,8 +37,8 @@ Do not split this group across releases — a half-extracted use case with the r
 - [x] 4.4 Order reprocessing as resolve-then-purge: delete the document's existing text spans and chunks only after bytes are successfully resolved, scoped by document id only. Do not touch the delete-document path.
 - [x] 4.5 Delete the working copy and null the persisted storage reference when an `ephemeral` document reaches `processed` or `failed`.
 - [x] 4.6 Make a reprocess request whose bytes are unresolvable fail explicitly, leaving spans, chunks, and document status unchanged.
-- [ ] 4.7 Verify rows 72–81 in `tests/test_document_ingestion.py` and `tests/test_ocr_media_type_resolution.py` (three existing OCR scenarios, resolution from persisted state, both media-type resolution paths, repeat dispatch no-op, reprocess idempotency, cross-document isolation, derived data preserved when bytes are gone).
-- [ ] 4.8 Verify rows 41–42 in `tests/test_content_store.py` (OCR never parses the storage reference; processing succeeds with no durable reference).
+- [x] 4.7 Verify rows 72–81 in `tests/test_document_ingestion.py` and `tests/test_ocr_media_type_resolution.py` (three existing OCR scenarios, resolution from persisted state, both media-type resolution paths, repeat dispatch no-op, reprocess idempotency, cross-document isolation, derived data preserved when bytes are gone).
+- [x] 4.8 Verify rows 41–42 in `tests/test_content_store.py` (OCR never parses the storage reference; processing succeeds with no durable reference).
 
 ## 5. Retention lifecycle
 
@@ -50,9 +50,9 @@ Do not split this group across releases — a half-extracted use case with the r
 ## 6. Schema — provenance, retention, visibility
 
 - [x] 6.1 Write the Alembic migration adding `origin`, `source_type`, `source_id`, `external_id`, `source_version`, `source_created_at`, `source_modified_at`, `origin_metadata`, `retention_mode`, and the ingesting-actor kind to `tenant_template.documents`, all additive and defaulted, with a `DO $$` loop over `tenant_%` schemas following the `030`/`034` pattern. Constrain `retention_mode` to the three declared values. No unique constraint on the external identity. No foreign keys. No new column duplicating `blob_path`.
-- [ ] 6.2 Verify rows 82–87 in `tests/test_document_provenance_migration.py` (existing rows readable with defaults including `source_id='platform-upload'` and `retention_mode='platform_blob'`, every `tenant_%` schema carries the columns, new tenant inherits them, retention mode constrained, duplicate external identities permitted, no second storage-reference column).
+- [x] 6.2 Verify rows 82–87 in `tests/test_document_provenance_migration.py` (existing rows readable with defaults including `source_id='platform-upload'` and `retention_mode='platform_blob'`, every `tenant_%` schema carries the columns, new tenant inherits them, retention mode constrained, duplicate external identities permitted, no second storage-reference column).
 - [x] 6.3 Narrow the non-administrative list filter in `list_documents` so it applies only to documents whose ingesting actor is a human; system-ingested documents are visible tenant-wide.
-- [ ] 6.4 Verify rows 88–92 in `tests/test_document_visibility.py` (own uploads visible, another user's upload hidden, system-ingested visible tenant-wide, listing and retrieval agree, administrators unaffected).
+- [x] 6.4 Verify rows 88–92 in `tests/test_document_visibility.py` (own uploads visible, another user's upload hidden, system-ingested visible tenant-wide, listing and retrieval agree, administrators unaffected).
 
 ## 7. Control plane — integration profiles
 
@@ -62,8 +62,8 @@ Do not split this group across releases — a half-extracted use case with the r
 - [x] 7.4 Implement defaults-only execution: any recorded non-default adapter selection may be stored but cannot be activated, and ingestion always uses executable adapters regardless of what is recorded.
 - [x] 7.5 Implement the secret-reference resolution seam: resolution takes tenant identity and reference, reads the reference only from that tenant's own profile, resolves once at the edge, and passes resolved values into an immutable tenant-bound context. Adapters receive values, never references or a resolver. An unresolvable reference moves the profile to `error` with a sanitised reason.
 - [x] 7.6 Record source type, content-store kind, and retention mode on ingestion observability output using values from the declared set only, and confirm no tenant configuration reaches a log record, span attribute, or metric label.
-- [ ] 7.7 Verify rows 43–63 in `tests/test_tenant_integration_profile.py` (profile existence and `public` placement, readable with unreadable tenant schema, non-default recordable but not activatable, ingestion uses executable adapters, unknown key rejected, secret grammar enforced, valid reference stored verbatim, no value inspection, five status-model scenarios, admin reads, cross-tenant resolution, no persisted or logged secrets, tenant-facing refusal, observability content).
-- [ ] 7.8 Verify rows 93–99 in `tests/shared/test_tenant_credential_hygiene.py` (no persisted credential, schema-based rejection, resolved values do not outlive the operation, adapters hold no resolver, profile errors rather than process failure, sanitised reason) and confirm the existing `NER_JWT_SECRET` startup fail-fast test passes unmodified.
+- [x] 7.7 Verify rows 43–63 in `tests/test_tenant_integration_profile.py` (profile existence and `public` placement, readable with unreadable tenant schema, non-default recordable but not activatable, ingestion uses executable adapters, unknown key rejected, secret grammar enforced, valid reference stored verbatim, no value inspection, five status-model scenarios, admin reads, cross-tenant resolution, no persisted or logged secrets, tenant-facing refusal, observability content).
+- [x] 7.8 Verify rows 93–99 in `tests/shared/test_tenant_credential_hygiene.py` (no persisted credential, schema-based rejection, resolved values do not outlive the operation, adapters hold no resolver, profile errors rather than process failure, sanitised reason) and confirm the existing `NER_JWT_SECRET` startup fail-fast test passes unmodified.
 
 ## 8. Architectural invariants
 

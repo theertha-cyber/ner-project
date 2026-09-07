@@ -21,7 +21,7 @@ from src.shared.integration_profile.config_schema import (
 )
 from src.shared.integration_profile.secrets import (
     SecretResolutionError,
-    resolve_for_tenant,
+    resolve_all_for_tenant,
     sanitised_reason,
 )
 from src.shared.integration_profile.status import (
@@ -150,7 +150,7 @@ async def validate_profile(session, tenant_id: str) -> None:
 
     if profile.secret_references:
         try:
-            resolve_for_tenant(profile)
+            resolve_all_for_tenant(profile)
         except SecretResolutionError as exc:
             await _set_status(session, tenant_id, STATUS_ERROR, sanitised_reason(exc))
             raise

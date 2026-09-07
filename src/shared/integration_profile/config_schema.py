@@ -8,9 +8,20 @@ secret-reference grammar makes "this field holds a reference, not a value" check
 
 import re
 
-# <scheme>://<path>. The scheme names the secret source; the path is opaque to us and is
-# stored exactly as supplied so an operator can audit what a tenant was pointed at.
-SECRET_REFERENCE_RE = re.compile(r"^[a-z][a-z0-9+.-]*://[^\s]+$")
+# The schemes that name a *secret source*. A bare `<scheme>://<path>` grammar is not
+# enough: `postgres://user:hunter2@db.internal:5432/app` satisfies it while carrying a live
+# credential inline, which is precisely the leak this field exists to prevent. Restricting
+# the scheme to a declared set keeps the check schema-based — the value is rejected because
+# `postgres` is not a secret source, not because something guessed what it looked like.
+SECRET_REFERENCE_SCHEMES = frozenset(
+    {"env", "vault", "aws-secretsmanager", "azure-keyvault", "gcp-secretmanager", "file"}
+)
+
+# <scheme>://<path>. The path is opaque to us and is stored exactly as supplied, so an
+# operator can audit what a tenant was pointed at.
+SECRET_REFERENCE_RE = re.compile(
+    r"^(?:" + "|".join(re.escape(s) for s in sorted(SECRET_REFERENCE_SCHEMES)) + r")://[^\s]+$"
+)
 
 
 class ProfileValidationError(Exception):
@@ -39,7 +50,8 @@ class InvalidSecretReference(ProfileValidationError):
         # The offending value is never echoed: it is precisely the case where the field
         # may be carrying a live credential.
         super().__init__(
-            f"secret-reference field '{key}' must match '<scheme>://<path>'; "
+            f"secret-reference field '{key}' must match '<scheme>://<path>' with a "
+            f"declared secret-source scheme ({', '.join(sorted(SECRET_REFERENCE_SCHEMES))}); "
             f"a literal credential value is not accepted"
         )
 

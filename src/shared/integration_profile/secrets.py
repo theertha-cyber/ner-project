@@ -80,23 +80,32 @@ def _resolve_one(reference: str) -> str:
     return resolver.resolve(path)
 
 
-def resolve_for_tenant(profile, fields: list[str] | None = None) -> TenantSecretContext:
-    """Resolve a tenant's own recorded references into a tenant-bound context.
+def resolve_for_tenant(profile, adapter_kind: str) -> TenantSecretContext:
+    """Resolve one adapter's references from a tenant's own profile.
 
-    Only references read from `profile.secret_references` are resolvable, so a reference
-    belonging to another tenant cannot be resolved by presenting it here.
+    `profile.secret_references` is keyed by adapter kind, then by the declared field name,
+    because the declared secret fields are a property of the adapter. What comes back is
+    flat — `{field: value}` — because an adapter has no use for another adapter's secrets.
+
+    Only references recorded on *this* tenant's profile are resolvable, so presenting a
+    reference belonging to another tenant resolves nothing.
     """
-    references = dict(profile.secret_references or {})
-    wanted = fields if fields is not None else list(references)
+    references = (profile.secret_references or {}).get(adapter_kind)
+    if not references:
+        raise SecretResolutionError(f"<{adapter_kind}>", "not_recorded_for_tenant")
 
-    resolved: dict[str, str] = {}
-    for field in wanted:
-        reference = references.get(field)
-        if reference is None:
-            raise SecretResolutionError(f"<{field}>", "not_recorded_for_tenant")
-        resolved[field] = _resolve_one(reference)
+    return TenantSecretContext(
+        tenant_id=profile.tenant_id,
+        values={field: _resolve_one(ref) for field, ref in references.items()},
+    )
 
-    return TenantSecretContext(tenant_id=profile.tenant_id, values=resolved)
+
+def resolve_all_for_tenant(profile) -> dict[str, TenantSecretContext]:
+    """Every adapter's references. Used by the readiness check, not by adapters."""
+    return {
+        adapter_kind: resolve_for_tenant(profile, adapter_kind)
+        for adapter_kind in (profile.secret_references or {})
+    }
 
 
 def sanitised_reason(error: SecretResolutionError) -> str:

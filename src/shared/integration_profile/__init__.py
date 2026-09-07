@@ -16,6 +16,7 @@ from src.shared.integration_profile.secrets import (
     SecretResolutionError,
     TenantSecretContext,
     register_resolver,
+    resolve_all_for_tenant,
     resolve_for_tenant,
     sanitised_reason,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "SecretResolutionError",
     "TenantSecretContext",
     "register_resolver",
+    "resolve_all_for_tenant",
     "resolve_for_tenant",
     "sanitised_reason",
     "activate_profile",
