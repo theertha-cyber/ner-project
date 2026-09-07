@@ -1,7 +1,9 @@
+import time
 import logging
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from src.shared.config import settings
+from src.shared.observability.domain_metrics import record_rerank_duration
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,10 @@ def rerank(query: str, documents: list[str], top_k: int | None = None) -> list[d
     if not documents:
         return []
 
+    # Measured on the serving side as well as at the caller in
+    # `shared/retrieval/reranker.py`: the two numbers differ by the network hop, and the
+    # gap between them is what says whether a slow rerank is the model or the wire.
+    started = time.monotonic()
     tokenizer, model = _get_reranker()
     pairs = [[query, doc] for doc in documents]
     inputs = tokenizer(pairs, padding=True, truncation=True, return_tensors="pt")
@@ -39,4 +45,5 @@ def rerank(query: str, documents: list[str], top_k: int | None = None) -> list[d
     )
     if top_k is not None:
         ranked = ranked[:top_k]
+    record_rerank_duration(time.monotonic() - started)
     return ranked

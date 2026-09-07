@@ -1,3 +1,4 @@
+import time
 import json
 import os
 import tempfile
@@ -15,6 +16,11 @@ from transformers import TrainerCallback
 from src.shared.config import settings
 from src.shared.auth import create_access_token
 from src.training_service.celery_app import celery_app
+from src.shared.observability.domain_metrics import (
+    record_training_completion,
+    record_training_failure,
+    record_training_transition,
+)
 
 TRAINING_DEVICE = os.getenv("NER_TRAINING_DEVICE", settings.training_device)
 BASE_MODEL = "dslim/bert-base-NER"
@@ -117,7 +123,37 @@ def _extract_label_set(records: list[dict]) -> list[str]:
     return ["O"] + sorted_labels
 
 
+def _training_failure_cause(exc: BaseException) -> str:
+    """Map a raised exception onto the enumerated failure causes.
+
+    Deliberately coarse. The alternative — inferring a cause from the message text — would
+    put the exception's words one string operation away from a metric label, and a
+    training failure message routinely quotes a path, a dataset row or a tenant identifier.
+    Anything not confidently classifiable is `training_error`, and the specific class is on
+    the span and in the log record where it can be read safely.
+    """
+    name = type(exc).__name__
+    if name in ("TimeoutError", "SoftTimeLimitExceeded"):
+        return "timeout"
+    if name in ("KeyboardInterrupt", "CancelledError"):
+        return "cancelled"
+    if name in ("FileNotFoundError", "NoCredentialsError", "ClientError", "EndpointConnectionError"):
+        return "export_error"
+    return "training_error"
+
+
 def _update_job_progress(tenant_id: str, job_id: str, **fields):
+    """Write job fields, and count a state transition when the status is one of them.
+
+    Counted here rather than at each caller: this is the single funnel every status write
+    passes through, and ADR-009 makes the `training_jobs` row the authority on a job's
+    identity and state. A counter at each caller would be a convention the next author has
+    to remember; a counter here cannot be bypassed without bypassing the write itself.
+    """
+    status = fields.get("status")
+    if status is not None:
+        record_training_transition(str(status))
+
     engine = _get_sync_engine()
     schema = _schema(tenant_id)
     set_clauses = []
@@ -203,6 +239,7 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
 
     mlflow_run = mlflow.start_run(experiment_id=experiment_id)
     mlflow_run_id = mlflow_run.info.run_id
+    job_started = time.monotonic()
 
     try:
         _update_job_progress(
@@ -431,8 +468,19 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
             )
 
         mlflow.end_run(status="FINISHED")
+        # Lifecycle only. F1, precision, recall and loss are logged to MLflow above and
+        # are deliberately not mirrored here: MLflow versions them against the run, the
+        # params and the artifact, and a Prometheus copy would be a second source of truth
+        # with worse fidelity, no run linkage and a retention window that disagrees.
+        # "Is the job stuck" is an operational question; "is this model good" is not.
+        # See design Decision 9.
+        record_training_completion(
+            "completed", time.monotonic() - job_started, epochs=num_epochs
+        )
 
     except Exception as exc:
+        record_training_failure(_training_failure_cause(exc))
+        record_training_completion("failed", time.monotonic() - job_started)
         mlflow.set_tag("error_message", str(exc))
         mlflow.end_run(status="FAILED")
         _update_job_progress(

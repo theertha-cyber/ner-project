@@ -17,6 +17,12 @@ os.environ.setdefault("NER_DATABASE_URL_SYNC", "postgresql://ner:ner@localhost:5
 os.environ.setdefault("NER_JWT_SECRET", "test-secret-do-not-use-in-prod")
 os.environ.setdefault("NER_MINIO_ACCESS_KEY", "test-minio-access-key")
 os.environ.setdefault("NER_MINIO_SECRET_KEY", "test-minio-secret-key")
+# Secret-class and without a default, like the three above: `Settings` refuses to
+# construct without it, so the import below would fail before a single test collected.
+os.environ.setdefault("NER_TELEMETRY_PEPPER", "test-telemetry-pepper")
+# Empty disables OTLP export. The suite asserts on emitted records and in-memory
+# spans; a real exporter would only add a background thread reconnecting to nothing.
+os.environ.setdefault("NER_OTLP_ENDPOINT", "")
 
 from src.shared.config import settings
 from src.gateway.main import app
@@ -268,3 +274,29 @@ async def client(engine, setup_database):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+def captured_spans(monkeypatch):
+    """Collect the stage spans a block of code emits.
+
+    `src/shared/observability/spans.py` reads the *global* tracer provider, and the SDK
+    allows exactly one of those per process — the foundation's cross-service test already
+    ran into this. So rather than installing a provider, this patches the module's private
+    `_tracer` to hand back one built on a local in-memory exporter. That keeps every test
+    in the session independent of whichever provider happened to be installed first.
+
+    Yields the exporter; call `.get_finished_spans()` after the code under test has run.
+    """
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from src.shared.observability import spans as spans_module
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider(resource=Resource.create({"service.name": "test"}))
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(spans_module, "_tracer", lambda: provider.get_tracer("ner.workload"))
+    return exporter

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
 from src.shared.config import settings
 from src.annotation_service.middleware.tenant_context import TenantContextMiddleware
+from src.shared.observability import init_observability
 from src.annotation_service.api.v1 import spans, tasks, export, import_, review
 
 
@@ -47,6 +48,12 @@ app.add_middleware(
     allow_headers=["*"],
     allow_private_network=settings.cors_allow_private_network,
 )
+
+# One call wires logging, tracing, RED metrics, `/metrics` and the shared correlation
+# middleware for this process. Mounted last so it is the outermost middleware: the
+# correlation identifier has to exist before the tenant middleware builds an error
+# body quoting it.
+init_observability("annotation_service", app)
 
 
 @app.exception_handler(AppError)

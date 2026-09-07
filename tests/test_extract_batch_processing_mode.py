@@ -295,15 +295,27 @@ class TestModeDoesNotAffectSkipLogic:
     """Row 73 — flipping the toggle must not reprocess and overwrite existing entities."""
 
     def test_skip_set_is_computed_from_the_model_version_alone(self):
+        """The whole worker module is inspected, not one function.
+
+        `run_batch_extraction` is now a thin span wrapper around
+        `_run_batch_extraction`, added by `observability-workload-instrumentation` so that
+        every one of the task's seven exits records the run's outcome. Pinning this
+        assertion to one function name made it silently vacuous the moment the body moved
+        — it raised `StopIteration` here, but a rename in the other direction would have
+        found the line in a helper and passed for the wrong reason. The claim is about the
+        module, so the module is what is read.
+        """
         import inspect
 
-        from src.extraction_service.worker import run_batch_extraction
+        from src.extraction_service import worker
 
-        source = inspect.getsource(run_batch_extraction)
-        skip_line = next(line for line in source.splitlines() if "get_already_extracted(" in line)
+        source = inspect.getsource(worker)
+        skip_lines = [line for line in source.splitlines() if "get_already_extracted(" in line]
 
-        assert "model_version" in skip_line
-        assert "processing_mode" not in skip_line
+        assert skip_lines, "the skip set is not computed anywhere in the worker"
+        for line in skip_lines:
+            assert "processing_mode" not in line
+        assert any("model_version" in line for line in skip_lines)
 
     def test_already_extracted_signature_takes_no_mode(self):
         import inspect

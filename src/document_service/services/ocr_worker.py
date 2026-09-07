@@ -45,6 +45,10 @@ async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], e
 
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
+# Rasterisation resolution for scanned PDFs; 200 DPI is the accuracy/speed knee
+# for tesseract on typical document scans.
+OCR_DPI = 200
+
 
 def get_extension(filename: str) -> str:
     dot = filename.rfind(".")
@@ -76,37 +80,76 @@ def extract_text_pdf(file_bytes: bytes) -> list[dict]:
     return spans
 
 
+_TESSERACT_HINT = (
+    "OCR engine unavailable. The 'tesseract' binary and the pytesseract "
+    "package are both required for image and scanned-PDF text extraction."
+)
+
+
+def _ocr_image(image) -> str:
+    """Run tesseract on a single PIL image, normalising it first."""
+    try:
+        import pytesseract
+    except ImportError as exc:  # pragma: no cover - depends on runtime image
+        raise RuntimeError(_TESSERACT_HINT) from exc
+
+    from pytesseract import TesseractNotFoundError
+
+    if image.mode not in ("L", "RGB"):
+        image = image.convert("RGB")
+    try:
+        return pytesseract.image_to_string(image)
+    except TesseractNotFoundError as exc:
+        raise RuntimeError(_TESSERACT_HINT) from exc
+
+
 def extract_text_image(file_bytes: bytes) -> list[dict]:
-    from PIL import Image
+    """OCR a raster image. Multi-frame TIFFs yield one span per frame."""
+    from PIL import Image, ImageSequence
     import io
-    import pytesseract
+
     image = Image.open(io.BytesIO(file_bytes))
-    text = pytesseract.image_to_string(image)
-    return [{
-        "span_index": 0,
-        "text": text,
-        "char_start": 0,
-        "char_end": len(text),
-        "page_number": 0,
-    }]
-
-
-def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
-    from pdf2image import convert_from_bytes
-    import pytesseract
-    images = convert_from_bytes(file_bytes)
     spans = []
     char_offset = 0
-    for page_num, image in enumerate(images):
-        text = pytesseract.image_to_string(image)
+    for frame_num, frame in enumerate(ImageSequence.Iterator(image)):
+        text = _ocr_image(frame)
         spans.append({
-            "span_index": page_num,
+            "span_index": frame_num,
             "text": text,
             "char_start": char_offset,
             "char_end": char_offset + len(text),
-            "page_number": page_num,
+            "page_number": frame_num,
         })
         char_offset += len(text) + 1
+    image.close()
+    return spans
+
+
+def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
+    """OCR a scanned PDF by rasterising pages with PyMuPDF (no poppler needed)."""
+    import fitz
+    from PIL import Image
+    import io
+
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    spans = []
+    char_offset = 0
+    try:
+        for page_num, page in enumerate(doc):
+            pixmap = page.get_pixmap(dpi=OCR_DPI)
+            image = Image.open(io.BytesIO(pixmap.tobytes("png")))
+            text = _ocr_image(image)
+            image.close()
+            spans.append({
+                "span_index": page_num,
+                "text": text,
+                "char_start": char_offset,
+                "char_end": char_offset + len(text),
+                "page_number": page_num,
+            })
+            char_offset += len(text) + 1
+    finally:
+        doc.close()
     return spans
 
 
@@ -153,11 +196,11 @@ async def process_document(document_id: str, tenant_id: str, blob_path: str, con
     try:
         ext = blob_path.split(".")[-1].lower() if "." in blob_path else ""
         if ext == "pdf":
-            spans = extract_text_pdf(file_data)
+            spans = await asyncio.to_thread(extract_text_pdf, file_data)
             if not spans or all(not s["text"].strip() for s in spans):
-                spans = extract_text_pdf_as_image(file_data)
+                spans = await asyncio.to_thread(extract_text_pdf_as_image, file_data)
         elif ext in ("jpg", "jpeg", "png", "tif", "tiff"):
-            spans = extract_text_image(file_data)
+            spans = await asyncio.to_thread(extract_text_image, file_data)
         else:
             raise ValueError(f"Unsupported file extension: {ext}")
 

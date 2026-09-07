@@ -236,6 +236,39 @@ class OrchestrationResult:
         self.status.stop_reason = value
 
 
+def _langsmith_extra() -> dict:
+    """`langsmith_extra` for the wrapped client, resolved on use and never raising."""
+    try:
+        from src.shared.observability.langsmith_link import langsmith_extra
+
+        return langsmith_extra()
+    except Exception:
+        return {}
+
+
+def _metrics():
+    """The domain-metric recorders, resolved on first use rather than imported at the top.
+
+    `domain_metrics` imports the chat service modules' own constants so a rename there is
+    an ImportError rather than a stale label (design Decision 2). `src/shared/retrieval/`
+    must not pull `src.chat_api` into its import graph — `test_retrieval_tools.py` asserts
+    that in a subprocess, because the retrieval tools are shared by services that do not
+    ship chat_api at all. A function-local import keeps the recorders reachable without
+    putting chat_api on this module's import path; `sys.modules` makes every call after
+    the first a dict lookup.
+    """
+    from src.shared.observability import domain_metrics
+
+    return domain_metrics
+
+
+def _stage_span(name: str, **attributes):
+    """`spans.stage_span`, resolved on use — same import-isolation reason as `_metrics`."""
+    from src.shared.observability.spans import stage_span
+
+    return stage_span(name, **attributes)
+
+
 def _resolve_entry(entry: PlanEntry, registry: ToolRegistry):
     """Returns (tool_or_None, invalid_reason_or_None). Marks the entry rejected in place."""
     try:
@@ -275,9 +308,15 @@ async def plan_retrieval(
     rejected but kept in the plan so the caller can trace them. Raises whatever the LLM
     client raises — the caller is responsible for the degraded fallback."""
     messages = _build_messages(message, conversation_context)
-    response = await llm_client.chat.completions.create(
-        model=llm_model, messages=messages, tools=registry.export_schemas(), tool_choice="auto", temperature=0,
-    )
+    async with _metrics().measure_llm_call("rag_orchestration") as call:
+        response = await llm_client.chat.completions.create(
+            model=llm_model, messages=messages, tools=registry.export_schemas(), tool_choice="auto", temperature=0,
+            # `RAGOrchestrator.llm_client` is wrapped by `wrap_openai`, so this links the
+            # planning run to the enclosing OTel span. A client that is not wrapped
+            # ignores the argument.
+            langsmith_extra=_langsmith_extra(),
+        )
+        call.usage(response)
 
     assistant_message = response.choices[0].message
     tool_calls = getattr(assistant_message, "tool_calls", None) or []
@@ -312,7 +351,16 @@ async def _invoke_entry(entry: PlanEntry, registry: ToolRegistry, context: ToolC
         return None, trace
 
     tool = registry.get(entry.capability_name)
-    result = await tool.call(entry.arguments, context)
+    with _stage_span("retrieval", capability=entry.capability_name) as span:
+        result = await tool.call(entry.arguments, context)
+        span.set("result_count", len(result.results))
+        span.set("degraded", result.degraded)
+        span.set("errored", result.error is not None)
+    # Recorded here rather than inside each tool: this is the one place every dispatched
+    # capability passes through, so a third tool added later is measured without being
+    # touched. The result *count* is the measurement — no passage, title or snippet from
+    # `result.results` becomes an attribute or a label.
+    _metrics().record_retrieval(entry.capability_name, len(result.results))
     trace = PlanTraceEntry(
         capability_name=entry.capability_name, argument_keys=sorted(entry.arguments.keys()) if entry.arguments else [],
         executed=True, rejection_reason=None, error=result.error, result_count=len(result.results),
@@ -423,7 +471,36 @@ def _accumulate(
     # single invocation's normalised scores are strictly decreasing in its own order,
     # so its relative ordering is unchanged by construction.
     chunks = sorted(chunks_by_key.values(), key=lambda c: c.merge_rank_score or 0.0, reverse=True)
-    return chunks[: settings.retrieval_merge_max_chunks], sql_results, statuses, completeness
+    kept = chunks[: settings.retrieval_merge_max_chunks]
+
+    # Hit rate: how much of what the capabilities returned survived deduplication and the
+    # merge cap. A retrieval that returns fifty chunks of which two are kept is doing
+    # different work from one that returns three and keeps three, and a duration
+    # histogram cannot tell them apart.
+    _record_hit_rates(entries_and_results, kept, sql_results)
+    return kept, sql_results, statuses, completeness
+
+
+def _record_hit_rates(
+    entries_and_results: list[tuple[PlanEntry, ToolResult | None]],
+    kept_chunks: list[RetrievalResult],
+    sql_results: list[dict],
+) -> None:
+    returned: dict[str, int] = {}
+    for entry, result in entries_and_results:
+        if result is None or result.error:
+            continue
+        returned[entry.capability_name] = returned.get(entry.capability_name, 0) + len(result.results)
+
+    survived = {
+        SEMANTIC_CAPABILITY_NAME: len(kept_chunks),
+        STRUCTURED_CAPABILITY_NAME: len(sql_results),
+    }
+    for capability, total in returned.items():
+        if total:
+            _metrics().record_retrieval_hit_rate(
+                capability, min(1.0, survived.get(capability, 0) / total)
+            )
 
 
 RECOVERY_SKIP_BUDGET = "insufficient remaining budget for semantic recovery"

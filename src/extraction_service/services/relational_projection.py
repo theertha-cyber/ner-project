@@ -51,6 +51,7 @@ parameter.
 from __future__ import annotations
 
 import logging
+import time
 
 from sqlalchemy import text
 
@@ -68,6 +69,7 @@ from src.shared.entity_views import (
     subject_columns,
     typed_field_for_value_kind,
 )
+from src.shared.observability.domain_metrics import record_projection
 
 logger = logging.getLogger(__name__)
 
@@ -392,11 +394,30 @@ def project_document_entities(
     A missing table or column raises rather than being caught. Run-start reconciliation makes
     that unreachable in normal operation, so reaching it means the catalog and the physical
     schema genuinely disagree — a condition an operator needs to see as `failed_count`, not one
-    to paper over into a run that reports success while writing an incomplete query surface."""
-    for statement, params in build_projection_statements(
-        schema, document_id, filename, entities, specs
-    ):
-        conn.execute(text(statement), params)
+    to paper over into a run that reports success while writing an incomplete query surface.
+
+    The drift indicator compares what the EAV store holds for this document against what
+    the relational surface received. They are not expected to be equal — a `single`
+    definition collapses many entities into one column, and an entity routed by no active
+    definition is written nowhere by design — so the comparison is between the entities
+    that *routed* and the rows that were actually written. A disagreement there means a
+    statement did not execute, which is the failure mode that leaves the query surface
+    quietly incomplete while the run reports success."""
+    started = time.monotonic()
+    statements = list(
+        build_projection_statements(schema, document_id, filename, entities, specs)
+    )
+    written = 0
+    for statement, params in statements:
+        result = conn.execute(text(statement), params)
+        rowcount = getattr(result, "rowcount", None)
+        written += rowcount if isinstance(rowcount, int) and rowcount >= 0 else 1
+
+    record_projection(
+        time.monotonic() - started,
+        source_rows=len(statements),
+        projected_rows=written,
+    )
 
 
 def delete_relational_entities(

@@ -1,0 +1,113 @@
+# Release-gate telemetry scan.
+#
+# The repository has had no CI configuration at all — no `.github/`, no Makefile, no
+# tox.ini — so this is the first workflow. It is deliberately narrow: it brings up the
+# compose stack, drives one seeded flow, and reads back what the three telemetry backends
+# actually hold. It does not run the unit suite, which is a separate concern with a
+# separate runtime.
+#
+# It is a **separate job** rather than a step inside a unit-test job on purpose (design
+# risk 5). A slow, stack-dependent check wedged into the fast feedback loop is a check
+# people learn to skip; as its own job it can be slow without making anything else slow,
+# and its failure is legible on its own.
+#
+# `--dry-run` runs first and unconditionally. It needs no stack, takes under a second, and
+# proves the scan's own checkers still catch a planted leak — so a scan that has quietly
+# stopped finding anything fails here rather than passing as "clean".
+#
+# **Merge versus release gating is not yet settled.** design.md's Open Questions assumes
+# this blocks merge to `main`, since a leak merged is a leak in every later branch, and
+# notes that the decision needs a real runtime figure first. The `Record scan runtime`
+# step below exists to produce that figure; until it has run a few times, the workflow is
+# wired to run on pull requests and report, and the branch-protection rule that would make
+# it blocking is deliberately not part of this change.
+
+name: telemetry-scan
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "scripts/telemetry_scan.py"
+      - "deploy/observability/**"
+      - "docker-compose.yml"
+      - ".github/workflows/telemetry-scan.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # No dependencies: the scan uses only the standard library, precisely so that it can
+      # run before, and independently of, the application image being installable.
+      - name: Self-check the scan's own checkers
+        run: python scripts/telemetry_scan.py --dry-run
+
+      - name: Write a .env for the stack
+        run: |
+          cp .env.example .env
+          {
+            echo "NER_TELEMETRY_PEPPER=ci-telemetry-pepper-not-a-secret"
+            echo "NER_JWT_SECRET=ci-jwt-secret-not-a-secret"
+            echo "NER_MINIO_ACCESS_KEY=minioadmin"
+            echo "NER_MINIO_SECRET_KEY=minioadmin"
+          } >> .env
+
+      - name: Bring up the stack
+        run: docker compose up -d --wait --wait-timeout 600
+
+      - name: Show what came up
+        if: always()
+        run: docker compose ps
+
+      - name: Run the scan
+        id: scan
+        run: |
+          start=$(date +%s)
+          set +e
+          python scripts/telemetry_scan.py
+          code=$?
+          set -e
+          end=$(date +%s)
+          echo "runtime_seconds=$((end - start))" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      # The number design.md's Open Questions is waiting on. Recorded whether the scan
+      # passed or failed, because a failing run's duration is just as informative for the
+      # merge-versus-release decision.
+      - name: Record scan runtime
+        if: always()
+        run: |
+          echo "### Telemetry scan" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Runtime: ${{ steps.scan.outputs.runtime_seconds }}s" >> "$GITHUB_STEP_SUMMARY"
+          echo "Result: ${{ steps.scan.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+
+      # A failing scan is usually an export problem, not a leak, and the collector's own
+      # log says which. Uploaded rather than printed: the service logs are long, and a
+      # findings list printed by the scan is what should be read first.
+      - name: Collect stack logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 400 > stack-logs.txt
+
+      - name: Upload stack logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stack-logs
+          path: stack-logs.txt
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

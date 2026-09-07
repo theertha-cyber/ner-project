@@ -1,3 +1,5 @@
+import logging
+import time
 import re
 import uuid
 import requests
@@ -31,6 +33,16 @@ from src.extraction_service.services.semantic_normalizer import (
     load_entity_type_config,
 )
 from src.shared.entity_views import reconcile_entity_tables_sync
+from src.shared.observability.domain_metrics import (
+    record_extraction_failure,
+    record_extraction_job,
+    record_extraction_partial_failure,
+    record_extraction_stage,
+    record_extraction_volume,
+)
+from src.shared.observability.spans import stage_span
+
+logger = logging.getLogger(__name__)
 
 _TOKEN_RE = re.compile(r"\S+")
 
@@ -197,6 +209,22 @@ def _get_active_model_version(tenant_id: str) -> str:
     return _get_cached_model_version(tenant_id)
 
 
+def _accumulate_entity_counts(entities, counts: dict) -> None:
+    """Tally this document's entities by type, for the run span.
+
+    Wrapped so it can never fail the document it is measuring. The counting sits inside
+    the per-document `try` that decides `failed_count`, and an exception here would turn a
+    successful extraction into a failed one over a telemetry line — which is precisely the
+    inversion this whole change is careful to avoid everywhere else.
+    """
+    try:
+        for entity in entities:
+            entity_type = getattr(entity, "entity_type", None) or "unknown"
+            counts[entity_type] = counts.get(entity_type, 0) + 1
+    except Exception:
+        logger.debug("entity_type_counts_unavailable", exc_info=True)
+
+
 def _update_run_status(tenant_id: str, run_id: str, status: str, **kwargs):
     engine = _get_sync_engine()
     schema = _schema(tenant_id)
@@ -221,10 +249,50 @@ def run_batch_extraction(
     doc_ids: list[str],
     processing_mode: str = DEFAULT_PROCESSING_MODE.value,
 ):
+    """One extraction run, inside one span.
+
+    A wrapper rather than a `with` around the body: the task has seven exits — five early
+    returns and two normal ones — and every one of them needs the run's outcome recorded.
+
+    The span carries per-entity-type counts; the metric carries an aggregate only. Entity
+    types are tenant-configured, so a type name is neither enumerable at declaration nor
+    safe as a label in a store shared across tenants — a tenant that configures
+    `policy_holder` and `claim_number` is identifiable from label values alone. The span
+    is already tenant-scoped, bounded by trace retention rather than kept for a year, and
+    covered by the release-gate scan, so ADR-010's granularity is preserved exactly where
+    it is queried. See design Decision 12.
+    """
+    with stage_span("extraction_run", processing_mode=processing_mode) as span:
+        try:
+            outcome = _run_batch_extraction(
+                self, tenant_id, run_id, doc_ids, processing_mode, span
+            )
+        except Exception as exc:
+            span.set("outcome", "failed")
+            span.record_error(exc)
+            record_extraction_failure(exc)
+            record_extraction_job(tenant_id, "failed")
+            raise
+        span.set("outcome", outcome)
+        record_extraction_job(tenant_id, outcome)
+        return None
+
+
+def _run_batch_extraction(
+    self,
+    tenant_id: str,
+    run_id: str,
+    doc_ids: list[str],
+    processing_mode: str,
+    span,
+) -> str:
+    run_started = time.monotonic()
     model_version = _get_active_model_version(tenant_id)
     if model_version is None:
         _update_run_status(tenant_id, run_id, "failed")
-        return
+        record_extraction_stage("inference", time.monotonic() - run_started)
+        return "failed"
+    span.set("model_version", model_version)
 
     docs = _get_documents_to_process(tenant_id, doc_ids)
     # Idempotency is decided by model version alone. The processing mode deliberately
@@ -254,14 +322,21 @@ def run_batch_extraction(
     except Exception as e:
         # Every document would fail at projection anyway, and leaving the run at "running"
         # forever hides why. Same shape as the missing-model and missing-serving paths above.
-        print(f"EXTRACTION_WORKER_ERROR run={run_id} reconcile_failed: {e}", flush=True)
+        logger.error(
+            "extraction_reconcile_failed",
+            extra={"run_id": run_id, "error_class": type(e).__name__},
+        )
         _update_run_status(tenant_id, run_id, "failed")
-        return
+        record_extraction_failure(e)
+        record_extraction_stage("persist", time.monotonic() - run_started)
+        return "failed"
 
     filenames = _get_document_filenames(tenant_id, to_process)
 
     processed = 0
     failed = 0
+    entities_total = 0
+    entities_by_type: dict[str, int] = {}
     rejected_total = 0
     postprocess_degraded = False
     # A run-level ceiling rather than a per-document one: exhausting it degrades the
@@ -290,8 +365,13 @@ def run_batch_extraction(
             for span_text, page_number, span_char_start in span_rows:
                 token_records.extend(_tokenize_span(span_text, page_number, span_char_start))
             tokens = [t["token"] for t in token_records]
-            doc_text_preview = " ".join(span_text for span_text, _, _ in span_rows)[:80]
-            print(f"WORKER: doc={doc_id} spans={len(span_rows)} tokens={len(tokens)} text_preview={doc_text_preview!r}", flush=True)
+            # No text preview. This line used to print 80 characters of the document's
+            # own span text, which is tenant personal data, straight to stdout — where
+            # no logging filter can reach it. The counts are what the line was read for.
+            logger.info(
+                "document_tokenized",
+                extra={"doc_id": doc_id, "spans": len(span_rows), "tokens": len(tokens)},
+            )
             if not tokens:
                 failed += 1
                 continue
@@ -310,7 +390,8 @@ def run_batch_extraction(
             )
             if infer_resp.status_code == 404:
                 _update_run_status(tenant_id, run_id, "failed")
-                return
+                record_extraction_stage("inference", time.monotonic() - run_started)
+                return "failed"
             infer_resp.raise_for_status()
             body = infer_resp.json()
             predictions = body.get("predictions", [])
@@ -327,16 +408,25 @@ def run_batch_extraction(
                 type_config = load_entity_type_config(conn, tenant_id)
             normalized_entities, unparseable_count = apply_semantic_normalization(normalized_entities, type_config)
             if unparseable_count:
-                print(f"WORKER: doc={doc_id} semantic_unparseable={unparseable_count}", flush=True)
+                logger.warning(
+                    "semantic_values_unparseable",
+                    extra={"doc_id": doc_id, "unparseable": unparseable_count},
+                )
 
             normalized_entities, rejected_count = filter_valid_entities(normalized_entities)
             if rejected_count:
-                print(f"WORKER: doc={doc_id} rejected_invalid={rejected_count}", flush=True)
+                logger.warning(
+                    "entities_rejected_invalid",
+                    extra={"doc_id": doc_id, "rejected": rejected_count},
+                )
             before_collapse = len(normalized_entities)
             normalized_entities = collapse_duplicates(normalized_entities)
             collapsed_count = before_collapse - len(normalized_entities)
             if collapsed_count:
-                print(f"WORKER: doc={doc_id} collapsed_duplicates={collapsed_count}", flush=True)
+                logger.info(
+                    "duplicate_entities_collapsed",
+                    extra={"doc_id": doc_id, "collapsed": collapsed_count},
+                )
             rejected_total += rejected_count
 
             if processing_mode == ProcessingMode.BERT_LLM_POSTPROCESS.value:
@@ -355,9 +445,11 @@ def run_batch_extraction(
                 normalized_entities = collapse_duplicates(outcome.entities)
                 if outcome.degraded:
                     postprocess_degraded = True
-                    print(
-                        f"WORKER: doc={doc_id} postprocess_degraded reasons={outcome.discarded[:3]}",
-                        flush=True,
+                    # `outcome.discarded` holds rejected candidate *values*. Only how
+                    # many were discarded may be recorded, never which.
+                    logger.warning(
+                        "postprocess_degraded",
+                        extra={"doc_id": doc_id, "discarded": len(outcome.discarded)},
                     )
 
             with engine.begin() as conn:
@@ -405,16 +497,30 @@ def run_batch_extraction(
                 )
 
             processed += 1
+            _accumulate_entity_counts(normalized_entities, entities_by_type)
+            entities_total += len(normalized_entities)
 
         except Exception as e:
-            import traceback
-            print(f"EXTRACTION_WORKER_ERROR doc={doc_id}: {e}", flush=True)
-            traceback.print_exc()
+            # `exc_info` rather than the interpolated exception: a driver or model
+            # error quotes the offending value back, and the traceback goes through
+            # the formatter rather than straight to stdout.
+            logger.error(
+                "extraction_document_failed",
+                extra={"doc_id": doc_id, "error_class": type(e).__name__},
+                exc_info=True,
+            )
             failed += 1
+            # A document that failed inside a run that continues: the run is partial, not
+            # dead, and the two are different operational facts.
+            record_extraction_partial_failure("inference")
+            record_extraction_failure(e)
             continue
 
     if rejected_total:
-        print(f"WORKER: run={run_id} rejected_invalid_total={rejected_total}", flush=True)
+        logger.warning(
+            "entities_rejected_invalid_total",
+            extra={"run_id": run_id, "rejected_total": rejected_total},
+        )
 
     run_fields = {
         "completed_at": datetime.now(timezone.utc),
@@ -433,3 +539,16 @@ def run_batch_extraction(
     # a successful extraction, and `max_retries=0` means a failed run is not retried.
     # The degraded flag plus the per-row `postprocess_status` carry what went wrong.
     _update_run_status(tenant_id, run_id, "completed", **run_fields)
+
+    record_extraction_stage("persist", time.monotonic() - run_started)
+    record_extraction_volume(pages=processed, entities=entities_total)
+    span.set("documents_processed", processed)
+    span.set("documents_failed", failed)
+    span.set("documents_skipped", len(skipped))
+    span.set("entities_extracted", entities_total)
+    span.set("retries", getattr(self.request, "retries", 0) if hasattr(self, "request") else 0)
+    # ADR-010 measures dataset readiness per entity type, so the per-type breakdown has to
+    # survive somewhere. It survives here, as a span attribute, and nowhere else.
+    for entity_type, count in sorted(entities_by_type.items()):
+        span.set(f"entities.{entity_type}", count)
+    return "partial" if failed else "succeeded"

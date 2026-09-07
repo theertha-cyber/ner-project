@@ -1,3 +1,4 @@
+import time
 import os
 import logging
 import numpy as np
@@ -67,10 +68,27 @@ def _resolve_active_version(tenant_id: str) -> tuple[str, int]:
         return "base", 0
 
 
+# Window geometry from the most recent `_infer_with_onnx` call, read by `infer` when it
+# records the inference. A module-level dict rather than a return value because the
+# geometry is decided several frames below the recorder and threading it back would change
+# the signature of every function in between for a metric.
+_last_geometry: dict[str, int] = {}
+
+
 def _load_model_for_tenant(tenant_id: str, version_number: int, artifact_path: str) -> bool:
+    """Make a tenant's model ready to serve, from cache or from the artifact store.
+
+    The two are separated because they are different orders of magnitude and different
+    problems. A cache hit is microseconds; a cold start downloads an artifact and builds
+    an ONNX session, and a cold-start *rate* that stays high means the cache is being
+    evicted faster than it is used — which is a capacity decision nobody can make without
+    the number.
+    """
+    started = time.monotonic()
     model_id = f"{tenant_id}_v{version_number}"
     cached = model_cache.get(model_id)
     if cached is not None:
+        record_model_load("cache_hit", time.monotonic() - started)
         return True
 
     local_dir = download_model_artifacts(tenant_id, version_number, artifact_path)
@@ -88,10 +106,12 @@ def _load_model_for_tenant(tenant_id: str, version_number: int, artifact_path: s
     if onnx_path is None:
         import shutil
         shutil.rmtree(local_dir, ignore_errors=True)
+        record_model_load("cold_start", time.monotonic() - started)
         return False
 
     session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
     model_cache.put(model_id, {"session": session, "local_dir": local_dir}, memory)
+    record_model_load("cold_start", time.monotonic() - started)
     return True
 
 
@@ -251,6 +271,13 @@ def _infer_with_onnx(tokens: list[str], tenant_id: str) -> list[dict]:
     budget, overlap = _window_geometry()
     piece_counts = _wordpiece_counts(tokenizer, tokens)
     windows = _build_windows(piece_counts, budget, overlap)
+    # Geometry, not content. How many windows a document was cut into and how wide the
+    # budget was explains a slow inference; the tokens themselves are the document text.
+    _last_geometry["windows"] = len(windows)
+    _last_geometry["batch_size"] = len(windows)
+    annotate_current_span(
+        window_budget=budget, window_overlap=overlap, windows=len(windows)
+    )
 
     oversized = [i for i, c in enumerate(piece_counts) if c > budget]
     if oversized:
@@ -352,24 +379,61 @@ def _infer_with_base_model(tokens: str | list[str]) -> list[dict]:
 
 
 def infer(tenant_id: str, tokens: list[str]) -> tuple[list[dict], str] | tuple[None, None]:
+    """Answer with the tenant's promoted model, or with the base model.
+
+    Which of those happened is not derivable from the service name, the duration or the
+    status code, and it is the first thing anyone asks about a bad extraction — so the
+    path is a label and an attribute, and the two ways of reaching the base model are kept
+    apart:
+
+    - `base_model_no_promoted` — the tenant has no promoted model yet. Under ADR-008 this
+      is the *normal* Version 0 path and a success, not a degraded one.
+    - `base_model_error_fallback` — the tenant has a promoted model and it raised. Also
+      returns an answer, and is a failure that needs someone to look at it.
+
+    Counting those together would make a broken ONNX artifact indistinguishable from an
+    ordinary new tenant, which is precisely the confusion ADR-008 supersedes ADR-002 to
+    avoid.
+    """
+    started = time.monotonic()
     artifact_path, version_number = _resolve_active_version(tenant_id)
 
-    if artifact_path == "base":
-        predictions = _infer_with_base_model(tokens)
-        return predictions, "0"
+    with stage_span("inference") as span:
+        span.set("model_version", str(version_number))
+        if artifact_path == "base":
+            span.set("path", "base_model_no_promoted")
+            predictions = _infer_with_base_model(tokens)
+            span.set("predictions", len(predictions))
+            record_inference("base_model_no_promoted", time.monotonic() - started)
+            return predictions, "0"
 
-    try:
-        predictions = _infer_with_onnx(tokens, tenant_id)
-        return predictions, str(version_number)
-    except Exception as exc:
-        logger.warning("Fine-tuned model inference failed for tenant=%s version=%d: %s. Falling back to base model.", tenant_id, version_number, exc)
-        predictions = _infer_with_base_model(tokens)
-        return predictions, "0"
+        try:
+            predictions = _infer_with_onnx(tokens, tenant_id)
+            span.set("path", "tenant_onnx")
+            span.set("predictions", len(predictions))
+            record_inference(
+                "tenant_onnx",
+                time.monotonic() - started,
+                windows=_last_geometry.get("windows"),
+                batch_size=_last_geometry.get("batch_size"),
+            )
+            return predictions, str(version_number)
+        except Exception as exc:
+            logger.warning("Fine-tuned model inference failed for tenant=%s version=%d: %s. Falling back to base model.", tenant_id, version_number, exc)
+            span.set("path", "base_model_error_fallback")
+            span.record_error(exc)
+            predictions = _infer_with_base_model(tokens)
+            record_inference(
+                "base_model_error_fallback", time.monotonic() - started, exc=exc
+            )
+            return predictions, "0"
 
 
 _label_list_cache: dict[str, list[str]] = {}
 _label_list_ttl: dict[str, float] = {}
 import time
+from src.shared.observability.domain_metrics import record_inference, record_model_load
+from src.shared.observability.spans import annotate_current_span, stage_span
 
 
 def _resolve_label_list(tenant_id: str) -> list[str]:

@@ -502,6 +502,27 @@ def _build_client():
     return OpenAI(api_key=settings.openai_api_key)
 
 
+def _record_call(duration_seconds: float, input_tokens: int = 0, output_tokens: int = 0,
+                 exc: BaseException | None = None) -> None:
+    """Record one post-processing provider call.
+
+    Audited against task 5.3's drift requirement and found not to apply: this module
+    rewrites entity values in memory and writes nothing to the relational surface, so
+    there are no source and projected row counts to disagree. `relational_projection.py`
+    is the only projector, and it carries the drift indicator.
+    """
+    from src.shared.observability.domain_metrics import record_llm_call
+
+    record_llm_call(
+        "entity_postprocess",
+        None,
+        duration_seconds,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        exc=exc,
+    )
+
+
 def call_postprocessor(system_prompt: str, user_payload: str) -> tuple[object, int]:
     """One provider call. Returns the parsed body and the tokens it consumed.
 
@@ -516,6 +537,7 @@ def call_postprocessor(system_prompt: str, user_payload: str) -> tuple[object, i
 
     while attempts < 2:
         attempts += 1
+        call_started = time.monotonic()
         try:
             response = client.chat.completions.create(
                 model=settings.azure_openai_chat_deployment,
@@ -530,6 +552,16 @@ def call_postprocessor(system_prompt: str, user_payload: str) -> tuple[object, i
             content = response.choices[0].message.content
             usage = getattr(response, "usage", None)
             tokens = getattr(usage, "total_tokens", 0) or 0
+            # Recorded directly rather than through `measure_llm_call`: this is the one
+            # LLM call on a synchronous path, and an async context manager cannot wrap it.
+            # The operation label distinguishes post-processing spend from the chat path's,
+            # which matters because post-processing is opt-in per tenant and its cost is a
+            # decision someone makes deliberately.
+            _record_call(
+                time.monotonic() - call_started,
+                input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
+                output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
+            )
             try:
                 return json.loads(content), tokens
             except (TypeError, json.JSONDecodeError) as exc:
@@ -592,10 +624,16 @@ def postprocess_document(
         raw, tokens_used = call_postprocessor(system_prompt, user_payload)
         accepted, discarded = validate_decisions(raw, candidates, allowed_types)
     except PostprocessUnavailable as exc:
-        logger.warning("Entity post-processing degraded: %s", exc)
+        logger.warning(
+            "entity_postprocess_degraded",
+            extra={"reason": "unavailable", "error_class": type(exc).__name__},
+        )
         return _degrade(entities, indices, str(exc)), 0
     except Exception as exc:  # noqa: BLE001 - the stage must never fail the extraction
-        logger.warning("Entity post-processing degraded on an unexpected error: %s", exc)
+        logger.warning(
+            "entity_postprocess_degraded",
+            extra={"reason": "unexpected_error", "error_class": type(exc).__name__},
+        )
         return _degrade(entities, indices, str(exc)), 0
 
     for candidate in candidates:

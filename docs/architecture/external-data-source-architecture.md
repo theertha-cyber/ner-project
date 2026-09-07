@@ -8,6 +8,26 @@
 
 ---
 
+> ### Naming and decision reconciliation (added 2026-09-07)
+>
+> Terminology across the three architecture documents and the OpenSpec change
+> `tenant-pluggable-data-foundation` is now settled. Where this document uses a
+> superseded term, read it as the chosen one:
+>
+> | Concept | Chosen term | Superseded term |
+> |---|---|---|
+> | Pull-side source port | `DocumentSource` | `SourceConnector` |
+> | Configured-source table | `document_sources` | `data_sources` |
+> | Configured source identifier | `source_id` (reserved value `platform-upload` for platform upload) | `source_instance_id` |
+> | Stored-bytes locator in the application contract | `storage_reference` | `blob_path` (remains the physical column name until the `document-metadata-column-reconciliation` change) |
+>
+> Two design points are also revised by that change and take precedence over any
+> contrary statement here: content access is **re-openable or explicitly single-use**
+> rather than a one-shot byte buffer, and ingestion writes bytes through the
+> **content-store boundary** rather than to MinIO directly. Retention is explicit,
+> with three modes — `platform_blob`, `ephemeral`, `source_only` — and is never
+> inferred from a NULL storage reference.
+
 ## 1. Problem
 
 Documents enter the platform through exactly one door: `POST /api/v1/documents`, a multipart upload handled inline in `src/document_service/api/v1/documents.py:50`. That handler validates the file, hashes it, writes it to MinIO, inserts a `tenant_{tid}.documents` row, and fires OCR. Everything downstream — OCR, text spans, chunking, embeddings, extraction, RAG — hangs off that single row. `Confirmed`

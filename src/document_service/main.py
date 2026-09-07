@@ -8,6 +8,7 @@ from src.shared.config import settings
 from src.shared.database import get_engine, wait_for_database
 from src.shared.readiness import check_database, check_minio, build_readiness_body
 from src.document_service.middleware.tenant_context import TenantContextMiddleware
+from src.shared.observability import init_observability
 from src.document_service.api.v1 import documents
 
 
@@ -51,6 +52,12 @@ app.add_middleware(
     allow_headers=["*"],
     allow_private_network=settings.cors_allow_private_network,
 )
+
+# One call wires logging, tracing, RED metrics, `/metrics` and the shared correlation
+# middleware for this process. Mounted last so it is the outermost middleware: the
+# correlation identifier has to exist before the tenant middleware builds an error
+# body quoting it.
+init_observability("document_service", app)
 
 
 @app.exception_handler(AppError)

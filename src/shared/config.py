@@ -15,6 +15,26 @@ class Settings(BaseSettings):
     # INFO surfaces the generated SQL in `docker logs`, which includes literals derived
     # from the user's question; drop to WARNING where those logs are retained or shipped.
     log_level: str = "INFO"
+    # Record serialization. `json` is the default everywhere so the collector can parse
+    # records without a regex; `console` renders the same fields human-readably for a
+    # developer reading `docker logs` directly.
+    log_format: str = "json"
+    # OTLP collector endpoint. Empty means export is disabled and the tracer provider is
+    # a no-op — the state a bare-metal run or a test process is in, and the one-setting
+    # rollback if telemetry overhead ever causes a production problem.
+    otlp_endpoint: str = ""
+    # Pepper for the telemetry user hash. Secret-class, so no default: an unkeyed or
+    # well-known-keyed hash over a small user set is reversible by enumeration, which
+    # would put raw user identity back into the log store the hash exists to keep it out
+    # of. Absent value fails startup rather than falling back.
+    telemetry_pepper: str
+    # Provider rates for the LLM cost counter, in USD per 1000 tokens. Configuration
+    # rather than a table in source: published prices change, and a hardcoded rate goes
+    # stale silently while continuing to emit a confident-looking number. Zero — the
+    # default — means tokens and latency are still recorded and the cost counter simply
+    # stays flat, which is the honest state for a deployment that has not supplied rates.
+    llm_cost_per_1k_input_usd: float = 0.0
+    llm_cost_per_1k_output_usd: float = 0.0
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     access_token_ttl_minutes: int = 15

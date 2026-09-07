@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError, ExpiredSignatureError
+from jose.exceptions import JWTClaimsError
 from passlib.context import CryptContext
 from src.shared.config import settings
 from src.shared.exceptions import AuthError
@@ -74,11 +75,43 @@ def create_service_token(tenant_id: str, ttl_seconds: int = 60) -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def _count_auth_failure(reason: str) -> None:
+    """Count one rejection under an enumerated reason.
+
+    Function-local and guarded for the same reason as `TenantMismatchError`: this module
+    is imported by code that runs before `init_observability`, and a token that cannot be
+    validated because telemetry is not ready would be a far worse failure than a missing
+    count.
+
+    No token value or fragment is ever a label — the reason is drawn from the exception
+    type, not from the token.
+    """
+    try:
+        from src.shared.observability.domain_metrics import record_auth_failure
+
+        record_auth_failure(reason)
+    except Exception:
+        pass
+
+
 def decode_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         return payload
     except ExpiredSignatureError:
+        _count_auth_failure("expired_token")
         raise AuthError("Token has expired")
-    except JWTError:
+    except JWTClaimsError:
+        # Decoded and verified, rejected on a claim — a different operational fact from a
+        # token that never parsed.
+        _count_auth_failure("invalid_claims")
+        raise AuthError("Invalid token")
+    except JWTError as e:
+        # `jose` raises the same `JWTError` for a token that failed signature verification
+        # and one that was never a JWT at all. The two are worth telling apart: a wave of
+        # signature failures is a key-rotation or an attack, a wave of malformed tokens is
+        # a broken client. The message is inspected here and discarded — only the
+        # enumerated reason leaves this function.
+        reason = "invalid_signature" if "signature" in str(e).lower() else "malformed_token"
+        _count_auth_failure(reason)
         raise AuthError("Invalid token")

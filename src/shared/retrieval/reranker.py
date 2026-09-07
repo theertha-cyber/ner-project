@@ -1,10 +1,28 @@
 import logging
 from typing import Protocol
+import time
+
 import httpx
 from src.shared.config import settings
 from src.shared.retrieval.models import RetrievalResult
 
 logger = logging.getLogger(__name__)
+
+
+def _metrics():
+    """The domain-metric recorders, resolved on first use rather than imported at the top.
+
+    `domain_metrics` imports the chat service modules' own constants so a rename there is
+    an ImportError rather than a stale label (design Decision 2). `src/shared/retrieval/`
+    must not pull `src.chat_api` into its import graph — `test_retrieval_tools.py` asserts
+    that in a subprocess, because the retrieval tools are shared by services that do not
+    ship chat_api at all. A function-local import keeps the recorders reachable without
+    putting chat_api on this module's import path; `sys.modules` makes every call after
+    the first a dict lookup.
+    """
+    from src.shared.observability import domain_metrics
+
+    return domain_metrics
 
 
 class Reranker(Protocol):
@@ -36,6 +54,7 @@ class CrossEncoderReranker:
             headers["Authorization"] = f"Bearer {jwt_token}"
 
         documents = [r.chunk_text for r in results]
+        started = time.perf_counter()
 
         async with httpx.AsyncClient(timeout=settings.rerank_timeout_seconds) as client:
             try:
@@ -46,6 +65,11 @@ class CrossEncoderReranker:
                 )
                 response.raise_for_status()
                 data = response.json()
+                # Measured around the provider call only. The reranker is a network hop
+                # to model_serving, so its latency is a different fact from the retrieval
+                # that produced the candidates, and folding them together is what makes a
+                # slow answer undiagnosable today.
+                _metrics().record_rerank_duration(time.perf_counter() - started)
                 return [
                     results[r["index"]].model_copy(update={"similarity_score": r["score"]})
                     for r in data["results"]

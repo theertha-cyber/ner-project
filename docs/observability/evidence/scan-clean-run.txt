@@ -1,0 +1,6 @@
+Capturing telemetry…
+  logs: 63 records
+  spans: 124 records
+  metrics: 13 records
+
+PASS: no seeded value and no personal-data pattern in any captured record.

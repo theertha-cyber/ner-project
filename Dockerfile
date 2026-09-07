@@ -11,6 +11,11 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
+# OCR engine for image uploads and scanned PDFs (pytesseract shells out to it).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /usr/local /usr/local
 
 COPY tenant_schema_ddl.py .

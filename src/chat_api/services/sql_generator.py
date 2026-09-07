@@ -48,6 +48,16 @@ _WRONG_RELATION_DEFECT_PREFIX = "wrong_relation:"
 # answer a document-scoped question tenant-wide, silently, with a plausible number.
 _SCOPE_DEFECT_PREFIX = "scope:"
 
+# What `_defect_class` can return, which is the prefix and nothing after it. Declared here
+# rather than in the observability module so that adding a fourth defect kind and
+# forgetting to widen this set is a failing declaration test rather than a metric label
+# silently landing on `other`.
+DEFECT_CLASSES = frozenset({
+    _FILENAME_DEFECT_PREFIX,
+    _WRONG_RELATION_DEFECT_PREFIX,
+    _SCOPE_DEFECT_PREFIX,
+})
+
 
 class SQLAttemptOutcome:
     """Closed set of per-attempt outcomes. `EMPTY_WITH_DEFECT` is the *only* way a
@@ -178,6 +188,70 @@ _FILENAME_FILTER_RE = re.compile(
     r"(?:\w+\.)?filename\s+(?:I?LIKE)\s*'([^']*)'|(?:\w+\.)?filename\s*=\s*'([^']*)'",
     re.IGNORECASE,
 )
+
+
+def _stage_span(name: str, **attributes):
+    """`spans.stage_span`, resolved on use — same cycle-avoidance as `_metrics`."""
+    from src.shared.observability.spans import stage_span
+
+    return stage_span(name, **attributes)
+
+
+def _stage_annotate(**attributes):
+    """Attach attributes to whichever span is already current — the generation stage's."""
+    from src.shared.observability.spans import annotate_current_span
+
+    annotate_current_span(**attributes)
+
+
+def _langsmith_extra() -> dict:
+    """`langsmith_extra` for the wrapped client, resolved on use and never raising."""
+    try:
+        from src.shared.observability.langsmith_link import langsmith_extra
+
+        return langsmith_extra()
+    except Exception:
+        return {}
+
+
+def _metrics():
+    """The domain-metric recorders, resolved on first use rather than imported at the top.
+
+    `src/shared/observability/domain_metrics.py` imports this module's own constants —
+    `SQLAttemptOutcome`, `DEFECT_CLASSES`, `_defect_class` — so that a rename here is an
+    ImportError there rather than a stale label value no dashboard matches (design
+    Decision 2). Importing it back at module scope would close that cycle. `sys.modules`
+    makes every call after the first a dict lookup.
+    """
+    from src.shared.observability import domain_metrics
+
+    return domain_metrics
+
+
+def _defect_class(defect: str | None) -> str | None:
+    """The defect's category, without its payload.
+
+    `SQLAttempt.defect` carries the evidence inline — `filename:<literal>`,
+    `wrong_relation:<literal>|<relation>` — and those literals come from the tenant's own
+    documents: a filename is routinely a candidate's name. The category is what a log
+    reader needs; the literal is what the retry prompt needs, and only the prompt gets it.
+    """
+    if not defect:
+        return None
+    prefix, separator, _ = defect.partition(":")
+    return f"{prefix}{separator}" if separator else defect
+
+
+def _error_class(error: str | None) -> str | None:
+    """The exception type, without the driver's message.
+
+    `_sanitize_error` already strips the echoed statement, but a database error message
+    can still quote the offending literal back — `invalid input syntax for type integer:
+    "Priya"`. The type name alone distinguishes the failure modes worth distinguishing.
+    """
+    if not error:
+        return None
+    return error.split(":", 1)[0].strip() or None
 
 
 def _filename_filter_literals(sql: str) -> list[str]:
@@ -1011,12 +1085,18 @@ Question: {natural_language_query}
 
 Return ONLY the SQL query, no explanations:"""
 
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            max_tokens=500,
-        )
+        async with _metrics().measure_llm_call("sql_generation") as call:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                max_tokens=500,
+                # `self.client` is wrapped by `wrap_openai`, so this argument links the
+                # LangSmith run to the enclosing OTel span in both directions. Ignored
+                # entirely when LangSmith is disabled, which is the default.
+                langsmith_extra=_langsmith_extra(),
+            )
+            call.usage(response)
 
         sql = response.choices[0].message.content.strip()
         sql = re.sub(r"^```sql\s*", "", sql, flags=re.IGNORECASE)
@@ -1094,9 +1174,11 @@ Return ONLY the SQL query, no explanations:"""
         role = self._execution_role()
         limit = _statement_limit(sql)
         probe_sql = _with_limit(sql, limit + 1) if (completeness_sink is not None and limit) else sql
+        execution_started = time.monotonic()
 
         try:
             async with asyncio.timeout(10):
+                _metrics().assert_tenant_schema(schema, "chat_api.sql_generator.execute_sql")
                 result = await session.execute(
                     text(f"SET search_path TO {schema}")
                 )
@@ -1127,6 +1209,13 @@ Return ONLY the SQL query, no explanations:"""
                         "matched": matched,
                         "truncated": truncated,
                     })
+                # Duration, row count and whether the cap was hit. Truncation is the one
+                # of the three that changes what the user is told — an answer built from
+                # a capped row set is a different claim about the tenant's data — so it
+                # is a label rather than something to be inferred from a bucket edge.
+                _metrics().record_sql_execution(
+                    time.monotonic() - execution_started, len(rows), truncated
+                )
                 return rows
         except asyncio.TimeoutError:
             await session.execute(text("ROLLBACK"))
@@ -1148,7 +1237,10 @@ Return ONLY the SQL query, no explanations:"""
             row = result.first()
             return int(row[0]) if row is not None else None
         except Exception as e:
-            logger.warning("Matched-row count failed, reporting unknown: %s", _sanitize_error(e))
+            logger.warning(
+                "matched_row_count_failed",
+                extra={"outcome": "unknown", "error_class": type(e).__name__},
+            )
             return None
 
     async def _fetch_entity_value_samples(self, session: AsyncSession, schema: str) -> dict[str, list[str]]:
@@ -1165,6 +1257,7 @@ Return ONLY the SQL query, no explanations:"""
         if self.sample_values_per_type == 0 or self.sample_max_values == 0:
             return {}
         try:
+            _metrics().assert_tenant_schema(schema, "chat_api.sql_generator.sample_values")
             await session.execute(text(f"SET search_path TO {schema}"))
             result = await session.execute(
                 text(
@@ -1193,7 +1286,10 @@ Return ONLY the SQL query, no explanations:"""
                 samples.setdefault(entity_type, []).append(str(value)[:MAX_SAMPLE_VALUE_CHARS])
             return samples
         except Exception as e:
-            logger.warning("Failed to fetch entity value samples for prompt grounding: %s", str(e))
+            logger.warning(
+                "entity_sample_fetch_failed",
+                extra={"schema": schema, "error_class": type(e).__name__},
+            )
             return {}
 
     # One query, two facts: does the relational surface hold rows for this question's extent,
@@ -1248,6 +1344,7 @@ Return ONLY the SQL query, no explanations:"""
             params = {DOCUMENT_SCOPE_PARAM: list(document_ids)}
 
         try:
+            _metrics().assert_tenant_schema(schema, "chat_api.sql_generator.relation_values")
             await session.execute(text(f"SET search_path TO {schema}"))
             exists = await session.execute(
                 text(self._SUBJECT_EXISTS_SQL),
@@ -1264,7 +1361,10 @@ Return ONLY the SQL query, no explanations:"""
             )
             row = result.first()
         except Exception as e:
-            logger.warning("Coverage probe failed schema=%s: %s", schema, _sanitize_error(e))
+            logger.warning(
+                "coverage_probe_failed",
+                extra={"schema": schema, "error_class": type(e).__name__},
+            )
             return None
 
         if row is None or bool(row[0]) or not bool(row[1]):
@@ -1290,7 +1390,10 @@ Return ONLY the SQL query, no explanations:"""
         try:
             resolved = await resolve_query_surface(session, [schema])
         except Exception as e:
-            logger.warning("query surface resolution failed schema=%s: %s", schema, _sanitize_error(e))
+            logger.warning(
+                "query_surface_resolution_failed",
+                extra={"schema": schema, "error_class": type(e).__name__},
+            )
             return QuerySurface(table_names=set())
         return resolved.get(schema) or QuerySurface(table_names=set())
 
@@ -1377,6 +1480,7 @@ Return ONLY the SQL query, no explanations:"""
         if not literals:
             return None
         try:
+            _metrics().assert_tenant_schema(schema, "chat_api.sql_generator.filename_probe")
             await session.execute(text(f"SET search_path TO {schema}"))
             for literal in literals:
                 result = await session.execute(
@@ -1386,7 +1490,10 @@ Return ONLY the SQL query, no explanations:"""
                 if result.first() is None:
                     return f"{_FILENAME_DEFECT_PREFIX}{literal}"
         except Exception as e:
-            logger.warning("Filename defect check failed: %s", _sanitize_error(e))
+            logger.warning(
+                "filename_defect_check_failed",
+                extra={"schema": schema, "error_class": type(e).__name__},
+            )
             return None
         return None
 
@@ -1423,6 +1530,7 @@ Return ONLY the SQL query, no explanations:"""
         }
 
         try:
+            _metrics().assert_tenant_schema(schema, "chat_api.sql_generator.wrong_relation_probe")
             await session.execute(text(f"SET search_path TO {schema}"))
             for value in values:
                 result = await session.execute(
@@ -1445,7 +1553,10 @@ Return ONLY the SQL query, no explanations:"""
                     continue
                 return f"{_WRONG_RELATION_DEFECT_PREFIX}{value}|{targets[0]}"
         except Exception as e:
-            logger.warning("Wrong-relation defect check failed: %s", _sanitize_error(e))
+            logger.warning(
+                "wrong_relation_defect_check_failed",
+                extra={"schema": schema, "error_class": type(e).__name__},
+            )
             return None
         return None
 
@@ -1470,7 +1581,10 @@ Return ONLY the SQL query, no explanations:"""
         try:
             await session.execute(text("ROLLBACK"))
         except Exception as e:
-            logger.warning("Rollback between SQL attempts failed: %s", _sanitize_error(e))
+            logger.warning(
+                "sql_rollback_failed",
+                extra={"error_class": type(e).__name__},
+            )
 
     async def _run_attempt(
         self,
@@ -1558,7 +1672,23 @@ Return ONLY the SQL query, no explanations:"""
         # Zero rows with nothing wrong with the query: a real answer, not a failure.
         return record(SQLAttemptOutcome.SUCCESS, sql=validated_sql, row_count=0), rows
 
-    async def generate_and_execute(
+    async def generate_and_execute(self, *args, **kwargs) -> list[dict] | None:
+        """The recovery loop, inside one span.
+
+        A wrapper rather than a `with` around the loop body: the loop has five exits —
+        four returns and a raise — and the attributes that matter (`attempts`,
+        `repair_depth`, the outcome, the abandon reason) are written at those exits by
+        `_stage_annotate`, which needs a current span to write to. One span opened here
+        covers all five, and a sixth exit added later is covered without being touched.
+
+        The span carries the *shape* of the generation. The question, the generated
+        statement and the defect payloads stay out of it — spans reach the same collector
+        as the logs, and there is no redaction filter on that path either.
+        """
+        with _stage_span("sql_generation"):
+            return await self._generate_and_execute(*args, **kwargs)
+
+    async def _generate_and_execute(
         self,
         natural_language_query: str,
         session: AsyncSession,
@@ -1586,27 +1716,62 @@ Return ONLY the SQL query, no explanations:"""
         # confident wrong answer rather than an empty one.
         coverage = await self._coverage_reason(session, schema, surface, document_ids)
         if coverage is not None:
-            logger.warning("sql_coverage schema=%s outcome=unavailable reason=%s", schema, coverage)
+            logger.warning(
+                "sql_coverage",
+                extra={"schema": schema, "outcome": "unavailable", "reason": coverage},
+            )
+            # Decided before any attempt was made: the surface has no relational
+            # coverage, so the reason the answer is empty has nothing to do with the
+            # question. Counted as an abandonment with its own reason rather than folded
+            # into attempt exhaustion, which it is not.
+            _metrics().record_sql_generation("abandoned", "no_relational_coverage")
             raise SQLGenerationFailed([], reason=coverage)
-        grounding = await self._fetch_surface_grounding(session, schema, surface)
+        with _stage_span("catalogue_slice") as catalogue_span:
+            grounding = await self._fetch_surface_grounding(session, schema, surface)
+            # The slice *size* only. `RelationGrounding.samples` are real values drawn
+            # from the tenant's own data — the single highest-leverage prompt input and
+            # the single worst thing to put on a span. How many relations and how many
+            # sample values is what diagnoses a thin grounding; which values they are is
+            # not a telemetry question.
+            catalogue_span.set("relations", len(grounding.relations))
+            catalogue_span.set(
+                "sample_values", sum(len(r.samples) for r in grounding.relations)
+            )
+            catalogue_span.set(
+                "relations_with_samples", sum(1 for r in grounding.relations if r.samples)
+            )
+        _metrics().record_retrieval("catalogue_slice", len(grounding.relations))
         attempts: list[SQLAttempt] = []
+        abandon_reason = "attempts_exhausted"
 
         for attempt_number in range(1, self.max_attempts + 1):
             if attempt_number > 1 and deadline is not None and time.monotonic() >= deadline:
                 logger.warning(
-                    "sql_attempt schema=%s attempt=%d/%d outcome=abandoned reason=deadline_exhausted",
-                    schema, attempt_number, self.max_attempts,
+                    "sql_attempt",
+                    extra={
+                        "schema": schema,
+                        "attempt": attempt_number,
+                        "max_attempts": self.max_attempts,
+                        "outcome": "abandoned",
+                        "reason": "deadline_exhausted",
+                    },
                 )
+                # Running out of time and running out of attempts are different failures
+                # with different fixes — one is a budget question, the other a generation
+                # quality question — so they must not share an abandon reason.
+                abandon_reason = "deadline_exhausted"
                 break
 
             # A fresh sink per attempt: a later attempt's completeness must never be
             # reported alongside an earlier attempt's rows.
             attempt_completeness: dict = {}
+            attempt_started = time.monotonic()
             attempt, rows = await self._run_attempt(
                 attempt_number, natural_language_query, session, schema,
                 conversation_context, grounding, attempts, document_ids, attempt_completeness,
                 surface,
             )
+            attempt_duration_ms = int((time.monotonic() - attempt_started) * 1000)
             if completeness_sink is not None and attempt.outcome == SQLAttemptOutcome.SUCCESS:
                 completeness_sink.clear()
                 completeness_sink.update(attempt_completeness)
@@ -1614,14 +1779,54 @@ Return ONLY the SQL query, no explanations:"""
             if attempt_sink is not None:
                 attempt_sink.append(attempt.as_trace_dict())
 
+            # The *shape* of the attempt, never the statement. The generated SQL carries
+            # literal filter values drawn from extracted resume data — a candidate's name
+            # lands in a WHERE clause — so logging it put tenant personal data in an
+            # application log, which ADR-001's isolation model extends to cover. Attempt
+            # number, outcome, defect class, row count and duration answer every question
+            # the old line was actually read for. `error_class` rather than the message:
+            # a driver error can quote the offending literal back.
             log = logger.info if attempt.outcome == SQLAttemptOutcome.SUCCESS else logger.warning
             log(
-                "sql_attempt schema=%s attempt=%d/%d outcome=%s rows=%s defect=%s error=%s sql=%s",
-                schema, attempt.attempt, attempt.max_attempts, attempt.outcome,
-                attempt.row_count, attempt.defect, attempt.error, attempt.sql,
+                "sql_attempt",
+                extra={
+                    "schema": schema,
+                    "attempt": attempt.attempt,
+                    "max_attempts": attempt.max_attempts,
+                    "outcome": attempt.outcome,
+                    "rows": attempt.row_count,
+                    "defect": _defect_class(attempt.defect),
+                    "error_class": _error_class(attempt.error),
+                    "duration_ms": attempt_duration_ms,
+                },
             )
 
+            # The same fields as the log line, for the same reason: the outcome constant
+            # and the defect *class*. `attempt.defect` carries `filename:<literal>` and
+            # `scope:<relations>`, and those literals come from the tenant's own
+            # documents — a filename is routinely a candidate's name. `record_sql_attempt`
+            # strips the payload through `_defect_class`, in one place.
+            _metrics().record_sql_attempt(attempt.outcome, attempt.defect)
+
             if attempt.outcome not in RETRYABLE_OUTCOMES:
+                # Repair depth is attempts minus one: the number of times the loop had to
+                # correct itself. This is the Phase 1 repair-loop claim as a measured
+                # quantity rather than a hand-run question suite.
+                _metrics().record_sql_repair_depth(attempt.attempt - 1)
+                _metrics().record_sql_generation("succeeded")
+                _stage_annotate(
+                    attempts=attempt.attempt,
+                    repair_depth=attempt.attempt - 1,
+                    outcome="succeeded",
+                )
                 return rows
 
+        _metrics().record_sql_repair_depth(max(0, len(attempts) - 1))
+        _metrics().record_sql_generation("abandoned", abandon_reason)
+        _stage_annotate(
+            attempts=len(attempts),
+            repair_depth=max(0, len(attempts) - 1),
+            outcome="abandoned",
+            abandon_reason=abandon_reason,
+        )
         raise SQLGenerationFailed(attempts)

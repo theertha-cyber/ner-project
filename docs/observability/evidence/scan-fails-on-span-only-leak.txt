@@ -1,0 +1,8 @@
+
+FAIL: 1 finding(s).
+  [spans] seeded entity value: Priyadarshini Raghunathan
+      in: span leak_probe candidate=Priyadarshini Raghunathan duration_ms=0.19
+Capturing telemetry…
+  logs: 61 records
+  spans: 124 records
+  metrics: 13 records

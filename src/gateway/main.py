@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
 from src.gateway.api.v1 import admin, auth, entity_types, users, extraction_proxy, dashboard, chat_proxy, analytics_proxy
 from src.gateway.middleware.tenant_context import TenantContextMiddleware
+from src.shared.observability import init_observability
 from src.shared.database import get_engine, wait_for_database
 from src.shared.readiness import check_database, build_readiness_body
 from src.shared.config import settings
@@ -51,6 +52,12 @@ app.add_middleware(
     allow_headers=["*"],
     allow_private_network=settings.cors_allow_private_network,
 )
+
+# One call wires logging, tracing, RED metrics, `/metrics` and the shared correlation
+# middleware for this process. Mounted last so it is the outermost middleware: the
+# correlation identifier has to exist before the tenant middleware builds an error
+# body quoting it.
+init_observability("gateway", app)
 
 
 @app.exception_handler(AppError)

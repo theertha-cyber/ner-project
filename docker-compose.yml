@@ -31,6 +31,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
     depends_on:
       postgres-test:
@@ -96,6 +97,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_REDIS_URL: "redis://redis:6379/0"
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_DOCUMENT_SERVICE_URL: "http://document_service:8000"
@@ -128,6 +130,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_MODEL_SERVING_URL: "http://model_serving:8000"
       NER_CHAT_API_PORT: 8006
       NER_ENTITY_RESOLUTION_ENABLED: "true"
@@ -147,6 +150,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_MINIO_ENDPOINT: "minio:9000"
     depends_on:
       postgres-test:
@@ -164,6 +168,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
       NER_REDIS_URL: "redis://redis:6379/0"
       NER_CELERY_BROKER_URL: "redis://redis:6379/0"
@@ -189,6 +194,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
       NER_TRAINING_SERVICE_URL: "http://training_service:8000"
@@ -210,6 +216,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
     depends_on:
       postgres-test:
         condition: service_healthy
@@ -226,6 +233,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
       NER_REDIS_URL: "redis://redis:6379/0"
       NER_CELERY_BROKER_URL: "redis://redis:6379/0"
@@ -250,6 +258,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
       NER_REDIS_URL: "redis://redis:6379/0"
       NER_CELERY_BROKER_URL: "redis://redis:6379/0"
@@ -282,6 +291,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_ANALYTICS_SERVICE_URL: "http://analytics_service:8000"
     depends_on:
       postgres-test:
@@ -297,6 +307,7 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
       NER_REDIS_URL: "redis://redis:6379/0"
       NER_CELERY_BROKER_URL: "redis://redis:6379/0"
@@ -317,6 +328,73 @@ services:
         condition: service_started
       db-init:
         condition: service_completed_successfully
+
+  # --- Local observability stack -------------------------------------------------
+  # Four acceptance criteria — a trace spanning two services, a trace extending into a
+  # worker, logs joining traces, and collector-down not breaking requests — are not
+  # verifiable without somewhere for telemetry to land. Including it here also decouples
+  # this change from story 4.5's cloud approval, which is the tracker's only external
+  # blocker.
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deploy/observability/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus exposition of everything pushed over OTLP
+    depends_on:
+      tempo:
+        condition: service_started
+      loki:
+        condition: service_started
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./deploy/observability/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"
+
+  loki:
+    image: grafana/loki:3.3.2
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=6h"
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      # Local stack only. This is a laptop-scoped viewer over telemetry that already
+      # contains no tenant content by construction; it is not exposed off the host.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./deploy/observability/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
 
   portal:
     build:
@@ -340,3 +418,4 @@ services:
 volumes:
   minio-data:
   postgres-data:
+  tempo-data:

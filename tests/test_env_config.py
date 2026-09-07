@@ -15,6 +15,7 @@ NER_JWT_SECRET=custom-secret
 NER_REDIS_URL=redis://custom:6379/1
 NER_MINIO_ACCESS_KEY=custom-minio-user
 NER_MINIO_SECRET_KEY=custom-minio-pass
+NER_TELEMETRY_PEPPER=custom-telemetry-pepper
 """
     env_vars = [k for k in os.environ if k.startswith("NER_")]
     backup = {k: os.environ.pop(k) for k in env_vars}
@@ -41,6 +42,7 @@ def test_settings_fallback_defaults():
         os.environ["NER_JWT_SECRET"] = "test-jwt-secret"
         os.environ["NER_MINIO_ACCESS_KEY"] = "test-minio-user"
         os.environ["NER_MINIO_SECRET_KEY"] = "test-minio-pass"
+        os.environ["NER_TELEMETRY_PEPPER"] = "test-telemetry-pepper"
 
         settings = Settings(_env_file=None)
 
