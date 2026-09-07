@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     minio_access_key: str
     minio_secret_key: str
     minio_bucket: str = "ner-platform"
+    # The working store. A separate bucket rather than a prefix so its expiry rule
+    # applies to working copies and to nothing else.
+    minio_working_bucket: str = "ner-platform-working"
+    # Approval item A2. One day is the smallest expiry an S3 lifecycle rule expresses,
+    # and it is comfortably above the slowest realistic OCR run (a 50 MB scanned PDF
+    # rasterised at 200 DPI takes minutes, not hours). Raise it only with a measured
+    # reason: every hour added is an hour an abandoned working copy survives, and the
+    # expiry is what makes `ephemeral` retention a guarantee rather than an intention.
+    working_copy_expiry_days: int = 1
     mlflow_tracking_uri: str = "http://localhost:5000"
     model_serving_port: int = 8004
     extraction_celery_queue: str = "extraction"

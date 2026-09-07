@@ -2,15 +2,15 @@
 
 Land and verify this group alone. Nothing here changes observable behaviour, so a later bisect separates mechanical substitution from real work.
 
-- [ ] 1.1 Add a single shared `schema_for_tenant(tenant_id)` helper in `src/shared/` and replace the ten local `_schema` definitions (document service API, OCR worker, annotation service ×5, chat API ×2, extraction service ×2) with imports of it. Output must be byte-identical for every input.
-- [ ] 1.2 Route database engine acquisition through one resolver in `src/shared/database.py` that still returns today's process-global engine. No call site changes what it does with the engine.
-- [ ] 1.3 Run the full test suite with no test file modified and confirm the pass/fail set is identical to the pre-change baseline. Record the baseline diff as evidence.
+- [x] 1.1 Add a single shared `schema_for_tenant(tenant_id)` helper in `src/shared/` and replace the ten local `_schema` definitions (document service API, OCR worker, annotation service ×5, chat API ×2, extraction service ×2) with imports of it. Output must be byte-identical for every input.
+- [x] 1.2 Route database engine acquisition through one resolver in `src/shared/database.py` that still returns today's process-global engine. No call site changes what it does with the engine.
+- [x] 1.3 Run the full test suite with no test file modified and confirm the pass/fail set is identical to the pre-change baseline. Record the baseline diff as evidence.
 
 ## 2. Content-store boundary
 
-- [ ] 2.1 Define the content-store contract with exactly three operations — put returning an opaque storage reference or nothing, open by reference, delete by reference. The contract must name no bucket, container, endpoint, region, or credential.
-- [ ] 2.2 Implement the platform MinIO adapter over the existing `MinioStorageClient`, with key construction moved inside the adapter and a delete operation exposed. Support two configured instances: durable and working.
-- [ ] 2.3 Configure the working store instance with an independent object-lifetime policy so an abandoned working copy expires without depending on the application. Record the chosen duration against approval item A2.
+- [x] 2.1 Define the content-store contract with exactly three operations — put returning an opaque storage reference or nothing, open by reference, delete by reference. The contract must name no bucket, container, endpoint, region, or credential.
+- [x] 2.2 Implement the platform MinIO adapter over the existing `MinioStorageClient`, with key construction moved inside the adapter and a delete operation exposed. Support two configured instances: durable and working.
+- [x] 2.3 Configure the working store instance with an independent object-lifetime policy so an abandoned working copy expires without depending on the application. Record the chosen duration against approval item A2.
 - [ ] 2.4 Verify rows 23–27 in `tests/test_content_store.py` (reference round-trip, idempotent delete, contract introspection, no precomputed key, key construction confined to the adapter).
 
 ## 3. Ingestion boundary and upload adapter
