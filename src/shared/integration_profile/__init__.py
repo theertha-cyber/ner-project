@@ -3,6 +3,22 @@ from src.shared.integration_profile.adapters import (
     SUPPORTED_ADAPTERS,
     unsupported_selections,
 )
+from src.shared.integration_profile.config_schema import (
+    SECRET_REFERENCE_RE,
+    InvalidSecretReference,
+    ProfileValidationError,
+    UnknownConfigurationKey,
+    WrongConfigurationType,
+    validate_configuration,
+    validate_secret_references,
+)
+from src.shared.integration_profile.secrets import (
+    SecretResolutionError,
+    TenantSecretContext,
+    register_resolver,
+    resolve_for_tenant,
+    sanitised_reason,
+)
 from src.shared.integration_profile.status import (
     PERMITTED_TRANSITIONS,
     STATUSES,
@@ -15,6 +31,13 @@ from src.shared.integration_profile.status import (
     TransitionRejected,
     assert_transition,
 )
+from src.shared.integration_profile.service import (
+    activate_profile,
+    record_resolution_failure,
+    transition_profile,
+    validate_profile,
+    write_profile,
+)
 from src.shared.integration_profile.store import (
     PROFILE_TABLE,
     IntegrationProfile,
@@ -23,6 +46,23 @@ from src.shared.integration_profile.store import (
 )
 
 __all__ = [
+    "SECRET_REFERENCE_RE",
+    "InvalidSecretReference",
+    "ProfileValidationError",
+    "UnknownConfigurationKey",
+    "WrongConfigurationType",
+    "validate_configuration",
+    "validate_secret_references",
+    "SecretResolutionError",
+    "TenantSecretContext",
+    "register_resolver",
+    "resolve_for_tenant",
+    "sanitised_reason",
+    "activate_profile",
+    "record_resolution_failure",
+    "transition_profile",
+    "validate_profile",
+    "write_profile",
     "EXECUTABLE_ADAPTERS",
     "SUPPORTED_ADAPTERS",
     "unsupported_selections",

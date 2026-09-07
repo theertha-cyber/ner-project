@@ -6,6 +6,7 @@ references no HTTP type, constructs no storage client, and names no provider API
 adapter translates its source into a `NormalizedDocument` and calls `ingest`.
 """
 
+import logging
 import uuid
 
 from sqlalchemy import text
@@ -34,8 +35,11 @@ from src.document_service.ingestion.errors import (
 )
 from src.document_service.services.content_hash import compute_content_hash
 from src.document_service.services.ocr_worker import get_extension, is_allowed_file
+from src.shared.observability.domain_metrics import record_document_ingestion
 from src.shared.integration_profile.store import load_profile
 from src.shared.tenant_schema import schema_for_tenant
+
+logger = logging.getLogger(__name__)
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
@@ -101,6 +105,26 @@ class DocumentIngestionService:
         )
         await session.commit()
 
+        content_store_kind = getattr(store, "kind", None)
+        # Which adapters served this ingestion. Three values, each from a declared set;
+        # nothing the tenant configured reaches a label.
+        record_document_ingestion(
+            source_type=document.source.source_type,
+            content_store_kind=content_store_kind,
+            retention_mode=retention_mode,
+        )
+        logger.info(
+            "document_ingested",
+            extra={
+                "source_type": document.source.source_type,
+                "content_store_kind": content_store_kind,
+                "retention_mode": retention_mode,
+                # Shape, never content: a size and a boolean, no filename and no bytes.
+                "file_size": len(data),
+                "has_external_id": document.source.external_id is not None,
+            },
+        )
+
         self._dispatcher.dispatch(document_id, tenant_id)
 
         return IngestionResult(
@@ -110,7 +134,7 @@ class DocumentIngestionService:
             retention_mode=retention_mode,
             storage_reference=storage_reference,
             duplicate_of=duplicate_of,
-            content_store_kind=getattr(store, "kind", None),
+            content_store_kind=content_store_kind,
         )
 
     # --- steps ------------------------------------------------------------------------
@@ -156,7 +180,13 @@ class DocumentIngestionService:
     def _write_content(
         self, retention_mode, tenant_id, document_id, data, filename
     ) -> tuple[ContentStore | None, str | None]:
-        """The reference is the store's return value. Nothing predicts it."""
+        """The reference is the store's return value. Nothing predicts it.
+
+        Note what is *not* consulted: the profile's `content_store_adapter`. Only the
+        platform defaults are executable in this change, so ingestion uses them regardless
+        of what a profile records. A recorded selection is a statement of intent, never a
+        claim that the adapter exists.
+        """
         if retention_mode == RETENTION_PLATFORM_BLOB:
             store = self._durable()
         elif retention_mode == RETENTION_EPHEMERAL:

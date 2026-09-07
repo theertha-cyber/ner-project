@@ -708,6 +708,33 @@ CELERY_WORKER_UP = _declare(Family(
     labels=(Label("queue", CELERY_QUEUES),),
 ))
 
+# --- Document ingestion adapters (section 5b) ---------------------------------------------
+
+# Every value comes from the declared supported set. Nothing tenant-supplied — no host, no
+# bucket, no endpoint, no credential — may become a label: `AGENTS.md` invariant 4 requires
+# metric labels to come from finite declared sets, and a tenant's configuration is neither
+# finite nor ours to publish.
+INGESTION_SOURCE_TYPES = frozenset({
+    "platform_upload", "keka", "s3", "azure_blob", "sharepoint", OTHER,
+})
+CONTENT_STORE_KINDS = frozenset({
+    "platform_minio", "tenant_s3", "tenant_azure_blob", NONE, OTHER,
+})
+RETENTION_MODE_VALUES = frozenset({"platform_blob", "ephemeral", "source_only", OTHER})
+
+DOCUMENT_INGESTIONS = _declare(Family(
+    "ner_document_ingestions_total",
+    "counter",
+    "Documents accepted by the ingestion operation, by the adapters that served them "
+    "and the retention mode resolved for them.",
+    labels=(
+        Label("source_type", INGESTION_SOURCE_TYPES),
+        Label("content_store_kind", CONTENT_STORE_KINDS),
+        Label("retention_mode", RETENTION_MODE_VALUES),
+    ),
+))
+
+
 # --- Model serving and training (section 6) -----------------------------------------------
 
 INFERENCE_DURATION = _declare(Family(
@@ -1311,3 +1338,21 @@ def record_training_completion(final_state: str, duration_seconds: float, epochs
 
 def record_training_failure(cause: str) -> None:
     _record(TRAINING_FAILURES, 1, cause=cause)
+
+
+def record_document_ingestion(
+    source_type: str, content_store_kind: str | None, retention_mode: str
+) -> None:
+    """Record which adapters served one ingestion.
+
+    All three values are coerced against their declared sets, so a value from outside them
+    lands under `other` rather than widening cardinality — and a tenant's configuration
+    cannot reach a metric label even by mistake.
+    """
+    _record(
+        DOCUMENT_INGESTIONS,
+        1,
+        source_type=source_type,
+        content_store_kind=content_store_kind,
+        retention_mode=retention_mode,
+    )
