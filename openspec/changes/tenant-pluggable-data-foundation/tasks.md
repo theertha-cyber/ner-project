@@ -23,10 +23,10 @@ Do not split this group across releases — a half-extracted use case with the r
 - [x] 3.4 Define the dispatcher contract carrying document identity and tenant identity only — no bytes, no storage reference, no media type — with an in-process default preserving today's `asyncio.create_task` behaviour.
 - [x] 3.5 Thin the upload route in `src/document_service/api/v1/documents.py` to an adapter: keep tenant and role resolution, the role-to-purpose policy, multipart handling, and status mapping; remove key construction, the storage client, the row insert, and the direct OCR trigger. Response body and status codes unchanged.
 - [x] 3.6 Write `source_type='platform_upload'` and the reserved `source_id='platform-upload'` on every upload, and reserve that identifier against future configured sources.
-- [ ] 3.7 Verify rows 1–7 in `tests/test_ingestion_boundary.py` (ingestion operation owns the row write, sole-writer static check, HTTP-free invocation, purpose carriage, absent optional metadata, non-synthesised timestamps, adapter cannot assert tenant).
-- [ ] 3.8 Verify rows 8–11 in `tests/test_ingestion_boundary.py` (upload declares `single_use`, incompatible combination rejected, resolution decided once and recorded, platform-computed checksum).
+- [x] 3.7 Verify rows 1–7 in `tests/test_ingestion_boundary.py` (ingestion operation owns the row write, sole-writer static check, HTTP-free invocation, purpose carriage, absent optional metadata, non-synthesised timestamps, adapter cannot assert tenant).
+- [x] 3.8 Verify rows 8–11 in `tests/test_ingestion_boundary.py` (upload declares `single_use`, incompatible combination rejected, resolution decided once and recorded, platform-computed checksum).
 - [ ] 3.9 Verify rows 12–17 in `tests/test_ingestion_boundary.py` and confirm every existing scenario in `tests/test_document_ingestion.py` and `tests/test_document_content_hash.py` still passes with edits confined to mock patch targets and fixture DDL, and record the reviewed diff as evidence (unchanged behaviour, reserved source recorded, identifier stable, identifier reserved, role policy at the boundary, route references no store).
-- [ ] 3.10 Verify rows 18–20 in `tests/test_ingestion_boundary.py` (default dispatch unchanged, dispatch carries no content, recording dispatcher observes exactly one dispatch).
+- [x] 3.10 Verify rows 18–20 in `tests/test_ingestion_boundary.py` (default dispatch unchanged, dispatch carries no content, recording dispatcher observes exactly one dispatch).
 - [ ] 3.11 Verify rows 64–71 in `tests/test_document_ingestion.py` (the six existing upload scenarios unmodified, plus the two retention scenarios).
 
 ## 4. Processing pipeline corrections
@@ -43,9 +43,9 @@ Do not split this group across releases — a half-extracted use case with the r
 ## 5. Retention lifecycle
 
 - [x] 5.1 Implement the three retention modes and record the resolved value on the document. Reject any value outside `platform_blob`, `ephemeral`, `source_only` at the database level.
-- [ ] 5.2 Verify rows 28–31 in `tests/test_retention_lifecycle.py` (mode stored not inferred, platform retention reopens from the durable store, retention follows tenant configuration, adapter cannot override).
-- [ ] 5.3 Verify rows 32–37 in `tests/test_retention_lifecycle.py` against a **real working store instance**, not an in-memory stand-in (ephemeral end to end, working copy deleted on success, deleted on failure, durable store untouched, ephemeral query document retrievable, NULL reference is not a failure).
-- [ ] 5.4 Verify rows 38–40 in `tests/test_retention_lifecycle.py` (retained document reprocesses, expired ephemeral reprocess fails explicitly with derived data intact, retry within the window reuses the working copy).
+- [x] 5.2 Verify rows 28–31 in `tests/test_retention_lifecycle.py` (mode stored not inferred, platform retention reopens from the durable store, retention follows tenant configuration, adapter cannot override).
+- [x] 5.3 Verify rows 32–37 in `tests/test_retention_lifecycle.py` against a **real working store instance**, not an in-memory stand-in (ephemeral end to end, working copy deleted on success, deleted on failure, durable store untouched, ephemeral query document retrievable, NULL reference is not a failure).
+- [x] 5.4 Verify rows 38–40 in `tests/test_retention_lifecycle.py` (retained document reprocesses, expired ephemeral reprocess fails explicitly with derived data intact, retry within the window reuses the working copy).
 
 ## 6. Schema — provenance, retention, visibility
 
@@ -67,7 +67,7 @@ Do not split this group across releases — a half-extracted use case with the r
 
 ## 8. Architectural invariants
 
-- [ ] 8.1 Verify rows 21–22 in `tests/test_pipeline_source_neutrality.py` (no `source_type`, `source_id`, or storage-adapter-kind conditional exists in the OCR worker, chunking, embedding, extraction, retrieval, or chat modules; two documents from different source types produce equivalent spans and equal chunk counts).
+- [x] 8.1 Verify rows 21–22 in `tests/test_pipeline_source_neutrality.py` (no `source_type`, `source_id`, or storage-adapter-kind conditional exists in the OCR worker, chunking, embedding, extraction, retrieval, or chat modules; two documents from different source types produce equivalent spans and equal chunk counts).
 - [ ] 8.2 Confirm by review that no port, repository, or dialect abstraction was introduced over PostgreSQL, pgvector, SQLAlchemy, Celery, MLflow, or model serving, and that `src/shared/retrieval/` is untouched by this change.
 - [ ] 8.3 Confirm by review that no pull-source connector, sync engine, tenant-hosted database routing, index boundary, or business-database query path was implemented, and that no `document_sources` table was created.
 
