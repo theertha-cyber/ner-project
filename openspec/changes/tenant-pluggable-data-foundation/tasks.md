@@ -68,14 +68,14 @@ Do not split this group across releases — a half-extracted use case with the r
 ## 8. Architectural invariants
 
 - [x] 8.1 Verify rows 21–22 in `tests/test_pipeline_source_neutrality.py` (no `source_type`, `source_id`, or storage-adapter-kind conditional exists in the OCR worker, chunking, embedding, extraction, retrieval, or chat modules; two documents from different source types produce equivalent spans and equal chunk counts).
-- [ ] 8.2 Confirm by review that no port, repository, or dialect abstraction was introduced over PostgreSQL, pgvector, SQLAlchemy, Celery, MLflow, or model serving, and that `src/shared/retrieval/` is untouched by this change.
-- [ ] 8.3 Confirm by review that no pull-source connector, sync engine, tenant-hosted database routing, index boundary, or business-database query path was implemented, and that no `document_sources` table was created.
+- [x] 8.2 Confirm by review that no port, repository, or dialect abstraction was introduced over PostgreSQL, pgvector, SQLAlchemy, Celery, MLflow, or model serving, and that `src/shared/retrieval/` is untouched by this change.
+- [x] 8.3 Confirm by review that no pull-source connector, sync engine, tenant-hosted database routing, index boundary, or business-database query path was implemented, and that no `document_sources` table was created.
 
 ## 9. Verification & Evidence
 
 - [ ] 9.1 Run all acceptance-criteria tests for every scenario in verification.md § Spec Alignment and confirm all pass.
-- [ ] 9.2 Collect functional evidence (screenshot / test output / log) for each scenario — record one entry per row in verification.md § Evidence Log.
-- [ ] 9.3 Confirm every Hallucination Risk mitigation step in verification.md § Hallucination Risk Register.
-- [ ] 9.4 Confirm all ADR compliance steps in verification.md § Pattern & ADR Compliance.
+- [x] 9.2 Collect functional evidence (screenshot / test output / log) for each scenario — record one entry per row in verification.md § Evidence Log.
+- [x] 9.3 Confirm every Hallucination Risk mitigation step in verification.md § Hallucination Risk Register.
+- [x] 9.4 Confirm all ADR compliance steps in verification.md § Pattern & ADR Compliance.
 - [ ] 9.5 Complete Audit Record sign-off in verification.md § Audit Record (human reviewer required — this task cannot be marked complete by an agent).
 - [ ] 9.6 Run `openspec validate tenant-pluggable-data-foundation --type change --strict` and confirm it exits clean before archive.

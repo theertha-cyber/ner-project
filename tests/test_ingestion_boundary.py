@@ -10,6 +10,7 @@ import inspect
 import io
 import os
 import pathlib
+import re
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import patch
@@ -310,24 +311,23 @@ async def test_row_1_upload_creates_the_row_through_the_ingestion_operation(
 # --- Row 2: exactly one writer of the documents table ----------------------------------
 
 
+# `INSERT INTO <anything>.documents`, with the schema written any way a call site might
+# write it — a literal, an f-string placeholder, or an interpolated call such as
+# `{_schema(tenant_id)}.documents`. Matching on the table name itself rather than on the
+# text before the first parenthesis is what makes the last of those detectable.
+# The trailing word boundary keeps document_chunks and document_entities out.
+_DOCUMENTS_INSERT_RE = re.compile(
+    r"insert\s+into\s+[^\s(]*(?:\([^)]*\))?[^\s(]*\.?documents\b", re.IGNORECASE
+)
+
+
 def _documents_insert_sites() -> list[str]:
     """Every INSERT targeting a `documents` relation in application source."""
     sites = []
     for path in SRC_ROOT.rglob("*.py"):
         source = path.read_text(encoding="utf-8", errors="ignore")
-        lowered = source.lower()
-        index = 0
-        while True:
-            index = lowered.find("insert into", index)
-            if index == -1:
-                break
-            fragment = lowered[index : index + 200]
-            # `.documents (` or `documents (` — not document_chunks, not document_entities.
-            if "documents" in fragment.split("(")[0].split("values")[0]:
-                target = fragment.split("insert into", 1)[1].strip().split()[0]
-                if target.endswith("documents") or target.endswith(".documents"):
-                    sites.append(str(path.relative_to(SRC_ROOT)))
-            index += len("insert into")
+        if _DOCUMENTS_INSERT_RE.search(source):
+            sites.append(str(path.relative_to(SRC_ROOT)))
     return sorted(set(sites))
 
 
