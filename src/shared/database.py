@@ -7,6 +7,32 @@ from src.shared.config import settings
 _engine = None
 
 
+class EngineResolver:
+    """The single place an engine is chosen.
+
+    Today there is exactly one engine for every tenant, and this resolver returns it —
+    `tenant_id` is accepted and deliberately ignored. It exists so that the named
+    `tenant-postgresql-data-plane` change, which routes a tenant to its own PostgreSQL,
+    is a substitution here rather than a sweep of every `get_engine()` call site.
+    Nothing may branch on the tenant until that change lands.
+    """
+
+    def resolve(self, tenant_id: str | None = None):
+        global _engine
+        if _engine is None:
+            _engine = create_async_engine(settings.database_url, poolclass=NullPool)
+        return _engine
+
+
+_resolver = EngineResolver()
+
+
+def set_engine_resolver(resolver: EngineResolver) -> None:
+    """Replace the resolver. For tests and for the later data-plane change."""
+    global _resolver
+    _resolver = resolver
+
+
 def _retrying():
     return retry(
         retry=retry_if_exception_type(Exception),
@@ -16,11 +42,8 @@ def _retrying():
     )
 
 
-def get_engine():
-    global _engine
-    if _engine is None:
-        _engine = create_async_engine(settings.database_url, poolclass=NullPool)
-    return _engine
+def get_engine(tenant_id: str | None = None):
+    return _resolver.resolve(tenant_id)
 
 
 @_retrying()

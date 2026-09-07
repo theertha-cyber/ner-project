@@ -16,16 +16,13 @@ from src.chat_api.services.rag_orchestrator import RAGOrchestrator, STREAM_DONE
 from src.chat_api.services.guardrails import GuardrailService
 from src.chat_api.services.rate_limiter import rate_limiter, INTERNAL_RATE_LIMIT, INTERNAL_WINDOW
 from src.chat_api.services.title_generator import derive_conversation_title
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 orchestrator = RAGOrchestrator()
 guardrails = GuardrailService()
-
-
-def _schema(tenant_id: str) -> str:
-    return f"tenant_{tenant_id.replace('-', '_')}"
 
 
 def _parse_persisted_source(s) -> Source | Citation:

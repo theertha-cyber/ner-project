@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
 from src.shared.retrieval import Chunk, chunk_text as _shared_chunk_text
 from src.document_service.services.storage import MinioStorageClient
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 
 async def _embed_chunks(texts: list[str]) -> list[list[float]]:
@@ -18,7 +19,7 @@ async def _embed_chunks(texts: list[str]) -> list[list[float]]:
 async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], embeddings: list[list[float]], purpose: str):
     engine = get_engine()
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    schema = f"tenant_{tenant_id.replace('-', '_')}"
+    schema = _schema(tenant_id)
     async with session_factory() as session:
         for i, chunk in enumerate(chunks):
             emb_str = "[" + ",".join(str(v) for v in embeddings[i]) + "]" if i < len(embeddings) else None
@@ -151,10 +152,6 @@ def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
     finally:
         doc.close()
     return spans
-
-
-def _schema(tid: str) -> str:
-    return f"tenant_{tid.replace('-', '_')}"
 
 
 async def process_document(document_id: str, tenant_id: str, blob_path: str, content_type: str):

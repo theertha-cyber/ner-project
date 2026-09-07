@@ -41,14 +41,11 @@ from src.shared.observability.domain_metrics import (
     record_extraction_volume,
 )
 from src.shared.observability.spans import stage_span
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 logger = logging.getLogger(__name__)
 
 _TOKEN_RE = re.compile(r"\S+")
-
-
-def _schema(tenant_id: str) -> str:
-    return f"tenant_{tenant_id.replace('-', '_')}"
 
 
 def _tokenize_span(span_text: str, page_number, span_char_start) -> list[dict]:

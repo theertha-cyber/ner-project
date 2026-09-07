@@ -14,6 +14,7 @@ from src.shared.entity_views import (
     list_existing_generated_tables,
     load_definition_specs,
 )
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
@@ -27,10 +28,6 @@ ROLE_ALLOWED_PURPOSES = {
     "tenant_admin": {"training"},
     "business_user": {"query"},
 }
-
-
-def _schema(tenant_id: str) -> str:
-    return f"tenant_{tenant_id.replace('-', '_')}"
 
 
 def get_tenant_id(request: Request) -> str:

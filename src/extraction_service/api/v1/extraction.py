@@ -30,6 +30,7 @@ from src.extraction_service.services.entity_store import (
 from src.extraction_service.worker import _get_active_model_version
 from src.extraction_service.dependencies import get_db
 from src.shared.config import settings
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 router = APIRouter(prefix="/api/v1", tags=["extraction"])
 
@@ -46,10 +47,6 @@ def _get_role(request: Request) -> str:
     if role is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return role
-
-
-def _schema(tenant_id: str) -> str:
-    return f"tenant_{tenant_id.replace('-', '_')}"
 
 
 def _tokenize_text(text: str) -> list[str]:
