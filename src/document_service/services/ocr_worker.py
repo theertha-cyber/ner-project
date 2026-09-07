@@ -5,8 +5,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
 from src.shared.retrieval import Chunk, chunk_text as _shared_chunk_text
-from src.document_service.services.storage import MinioStorageClient
 from src.shared.tenant_schema import schema_for_tenant as _schema
+from src.shared.document_retention import (
+    RETENTION_EPHEMERAL,
+    RETENTION_PLATFORM_BLOB,
+    RETENTION_SOURCE_ONLY,
+)
 
 
 async def _embed_chunks(texts: list[str]) -> list[list[float]]:
@@ -154,52 +158,262 @@ def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
     return spans
 
 
-async def process_document(document_id: str, tenant_id: str, blob_path: str, content_type: str):
+# --- Media-type resolution -------------------------------------------------------------
+
+MEDIA_TYPE_PDF = "application/pdf"
+IMAGE_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/tiff"})
+
+# Types a client sends when it does not know or does not care. Treating one of these as
+# authoritative would reroute real documents, so they fall through to the next step.
+_UNINFORMATIVE_MEDIA_TYPES = frozenset(
+    {"", "application/octet-stream", "binary/octet-stream", "*/*"}
+)
+
+_EXTENSION_MEDIA_TYPES = {
+    ".pdf": MEDIA_TYPE_PDF,
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+}
+
+_MAGIC_PREFIXES = (
+    (b"%PDF", MEDIA_TYPE_PDF),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"II*\x00", "image/tiff"),
+    (b"MM\x00*", "image/tiff"),
+)
+
+
+def _media_type_from_declaration(declared: str | None) -> str | None:
+    if not declared:
+        return None
+    value = declared.split(";")[0].strip().lower()
+    if value in _UNINFORMATIVE_MEDIA_TYPES:
+        return None
+    if value == MEDIA_TYPE_PDF or value in IMAGE_MEDIA_TYPES:
+        return value
+    # Aliases real clients send.
+    if value in ("image/jpg", "image/pjpeg"):
+        return "image/jpeg"
+    if value in ("image/x-tiff", "image/tif"):
+        return "image/tiff"
+    return None
+
+
+def _media_type_from_filename(filename: str | None) -> str | None:
+    return _EXTENSION_MEDIA_TYPES.get(get_extension(filename or ""))
+
+
+def _media_type_from_content(data: bytes | None) -> str | None:
+    if not data:
+        return None
+    for prefix, media_type in _MAGIC_PREFIXES:
+        if data.startswith(prefix):
+            return media_type
+    return None
+
+
+def resolve_media_type(
+    declared: str | None, filename: str | None, data: bytes | None
+) -> str | None:
+    """Declared type, then filename extension, then a content sniff.
+
+    Never the storage reference. The extension remains the fallback, which is what the
+    worker used before this change, so a PDF uploaded as `application/octet-stream`
+    resolves exactly as it always did.
+    """
+    for candidate in (
+        _media_type_from_declaration(declared),
+        _media_type_from_filename(filename),
+        _media_type_from_content(data),
+    ):
+        if candidate:
+            return candidate
+    return None
+
+
+# --- Content resolution ----------------------------------------------------------------
+
+
+class ContentUnresolvable(Exception):
+    """The document's bytes cannot be obtained under its recorded retention mode."""
+
+
+class SourceOnlyNotSupported(ContentUnresolvable):
+    """`source_only` resolution needs a reopenable source adapter.
+
+    None exists yet; the pull-side contract arrives with `external-document-sources`.
+    Raised explicitly rather than silently treated as "the bytes are gone", because the
+    two are different facts and an operator needs to tell them apart.
+    """
+
+
+def _store_for(retention_mode: str):
+    # Imported at call time so the worker and the content store can depend on each other's
+    # packages without an import cycle at module load.
+    from src.document_service.content_store import get_durable_store, get_working_store
+
+    if retention_mode == RETENTION_EPHEMERAL:
+        return get_working_store()
+    return get_durable_store()
+
+
+def resolve_content(document) -> bytes | None:
+    """Obtain the bytes implied by the document's recorded retention mode.
+
+    The recorded value decides — never a re-derivation, and never the shape of the
+    reference. Returns None when the resolution is well defined but the bytes are gone.
+    """
+    retention_mode = getattr(document, "retention_mode", None) or RETENTION_PLATFORM_BLOB
+    if retention_mode == RETENTION_SOURCE_ONLY:
+        raise SourceOnlyNotSupported(
+            "source_only retention requires a reopenable source adapter, "
+            "which this change does not implement"
+        )
+    reference = getattr(document, "blob_path", None)
+    if not reference:
+        return None
+    return _store_for(retention_mode).open(reference)
+
+
+# --- Processing ------------------------------------------------------------------------
+
+_DOCUMENT_COLUMNS = "id, purpose, status, content_type, filename, blob_path, retention_mode"
+
+
+async def _load_document(session, schema: str, document_id: str):
+    result = await session.execute(
+        text(f"SELECT {_DOCUMENT_COLUMNS} FROM {schema}.documents WHERE id = :id"),
+        {"id": document_id},
+    )
+    return result.fetchone()
+
+
+async def _release_working_copy(session_factory, schema: str, document) -> None:
+    """At a terminal state an ephemeral document's working copy goes, and the row stops
+    naming it in the same step, so the reference and the object cannot disagree."""
+    if (getattr(document, "retention_mode", None) or "") != RETENTION_EPHEMERAL:
+        return
+    reference = getattr(document, "blob_path", None)
+    if reference:
+        try:
+            _store_for(RETENTION_EPHEMERAL).delete(reference)
+        except Exception:
+            # The working store's own expiry is the backstop. A failed delete must not
+            # turn a processed document into a failed one.
+            traceback.print_exc()
+    async with session_factory() as session:
+        await session.execute(
+            text(f"UPDATE {schema}.documents SET blob_path = NULL WHERE id = :id"),
+            {"id": document.id},
+        )
+        await session.commit()
+
+
+async def _purge_derived_data(session_factory, schema: str, document_id: str) -> None:
+    """Scoped by document id only, so reprocessing one document cannot touch another."""
+    async with session_factory() as session:
+        await session.execute(
+            text(f"DELETE FROM {schema}.document_chunks WHERE document_id = :id"),
+            {"id": document_id},
+        )
+        await session.execute(
+            text(f"DELETE FROM {schema}.document_text_spans WHERE document_id = :id"),
+            {"id": document_id},
+        )
+        await session.commit()
+
+
+async def process_document(document_id: str, tenant_id: str, *, reprocess: bool = False):
+    """Process a document from its identity alone.
+
+    Everything else — where the bytes are, what they are, what the document is for — is
+    read from persisted state, so a dispatch is replayable after a restart or through a
+    queue.
+    """
     engine = get_engine()
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     schema = _schema(tenant_id)
 
-    purpose = "query"
     async with session_factory() as session:
         try:
-            result = await session.execute(
-                text(f"SELECT purpose FROM {schema}.documents WHERE id = :id"),
-                {"id": document_id},
-            )
-            row = result.fetchone()
-            if row is not None and row.purpose:
-                purpose = row.purpose
-
-            await session.execute(
-                text(f"UPDATE {schema}.documents SET status = 'processing' WHERE id = :id"),
-                {"id": document_id},
-            )
-            await session.commit()
+            document = await _load_document(session, schema, document_id)
         except Exception:
             await session.rollback()
             return
+    if document is None:
+        return
 
-    storage = MinioStorageClient()
-    file_data = storage.get_file(blob_path)
+    purpose = document.purpose or "query"
+
+    if not reprocess:
+        # Claim the document. A repeated dispatch finds it already out of `pending` and
+        # does no work, so a second delivery cannot duplicate an extraction.
+        async with session_factory() as session:
+            try:
+                claimed = await session.execute(
+                    text(
+                        f"UPDATE {schema}.documents SET status = 'processing' "
+                        f"WHERE id = :id AND status = 'pending'"
+                    ),
+                    {"id": document_id},
+                )
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                return
+        if claimed.rowcount == 0:
+            return
+
+    # Resolve before purging. Purge-then-fetch would destroy a document's derived data
+    # whenever the bytes turn out to be gone, converting a recoverable state into
+    # permanent loss.
+    try:
+        file_data = resolve_content(document)
+    except ContentUnresolvable:
+        if reprocess:
+            raise
+        file_data = None
+
     if file_data is None:
+        if reprocess:
+            # The document processed successfully once; its spans, chunks and citations
+            # remain valid. Fail the request and change nothing.
+            raise ContentUnresolvable(
+                f"Document {document_id} cannot be reprocessed: its bytes are no longer "
+                f"resolvable under '{document.retention_mode}' retention"
+            )
         async with session_factory() as session:
             await session.execute(
                 text(f"UPDATE {schema}.documents SET status = 'failed', error_message = :msg WHERE id = :id"),
                 {"id": document_id, "msg": "File not found in storage"},
             )
             await session.commit()
+        await _release_working_copy(session_factory, schema, document)
         return
 
+    if reprocess:
+        await _purge_derived_data(session_factory, schema, document_id)
+        async with session_factory() as session:
+            await session.execute(
+                text(f"UPDATE {schema}.documents SET status = 'processing' WHERE id = :id"),
+                {"id": document_id},
+            )
+            await session.commit()
+
     try:
-        ext = blob_path.split(".")[-1].lower() if "." in blob_path else ""
-        if ext == "pdf":
+        media_type = resolve_media_type(document.content_type, document.filename, file_data)
+        if media_type == MEDIA_TYPE_PDF:
             spans = await asyncio.to_thread(extract_text_pdf, file_data)
             if not spans or all(not s["text"].strip() for s in spans):
                 spans = await asyncio.to_thread(extract_text_pdf_as_image, file_data)
-        elif ext in ("jpg", "jpeg", "png", "tif", "tiff"):
+        elif media_type in IMAGE_MEDIA_TYPES:
             spans = await asyncio.to_thread(extract_text_image, file_data)
         else:
-            raise ValueError(f"Unsupported file extension: {ext}")
+            raise ValueError(f"Unsupported media type: {media_type or 'unresolved'}")
 
         async with session_factory() as session:
             for span in spans:
@@ -229,6 +443,7 @@ async def process_document(document_id: str, tenant_id: str, blob_path: str, con
         # Only query documents feed retrieval. Training documents stop after text
         # spans are stored: they are annotated/extracted, never embedded.
         if purpose != "query":
+            await _release_working_copy(session_factory, schema, document)
             return
 
         try:
@@ -254,6 +469,8 @@ async def process_document(document_id: str, tenant_id: str, blob_path: str, con
         except Exception as chunk_err:
             traceback.print_exc()
 
+        await _release_working_copy(session_factory, schema, document)
+
     except Exception as exc:
         error_msg = f"{type(exc).__name__}: {str(exc)}"
         traceback.print_exc()
@@ -263,7 +480,9 @@ async def process_document(document_id: str, tenant_id: str, blob_path: str, con
                 {"id": document_id, "msg": error_msg},
             )
             await session.commit()
+        await _release_working_copy(session_factory, schema, document)
 
 
-def trigger_ocr(document_id: str, tenant_id: str, blob_path: str, content_type: str):
-    asyncio.create_task(process_document(document_id, tenant_id, blob_path, content_type))
+def trigger_ocr(document_id: str, tenant_id: str):
+    """Dispatch by identity only. No bytes, no storage reference, no media type."""
+    asyncio.create_task(process_document(document_id, tenant_id))

@@ -1,12 +1,22 @@
-import uuid
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from src.shared.database import get_engine
 from src.shared.exceptions import NotFoundError
-from src.document_service.services.content_hash import compute_content_hash
-from src.document_service.services.ocr_worker import is_allowed_file, get_extension, trigger_ocr
-from src.document_service.services.storage import MinioStorageClient
+from src.document_service.ingestion import (
+    PLATFORM_UPLOAD_SOURCE_ID,
+    SOURCE_TYPE_PLATFORM_UPLOAD,
+    ActorKind,
+    ContentAccess,
+    ContentAcquisition,
+    DocumentIngestionService,
+    FileTooLarge,
+    IngestingActor,
+    IncompatibleRetention,
+    NormalizedDocument,
+    SourceReference,
+    UnsupportedFileType,
+)
 from src.extraction_service.services.relational_projection import (
     build_relational_delete_statements,
 )
@@ -18,7 +28,6 @@ from src.shared.tenant_schema import schema_for_tenant as _schema
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 VALID_PURPOSES = {"query", "training"}
 
 # Upload purpose is a role capability, not an uploader choice: tenant admins upload
@@ -47,8 +56,9 @@ async def get_session() -> AsyncSession:
             await session.close()
 
 
-def generate_uuid():
-    return str(uuid.uuid4())
+# The one ingestion operation this route adapts onto. Module-level so a test can swap
+# the dispatcher or either content store without reaching into the route body.
+ingestion_service = DocumentIngestionService()
 
 
 @router.post("", status_code=201)
@@ -75,74 +85,61 @@ async def upload_document(
             },
         )
 
-    if not is_allowed_file(file.filename or ""):
-        raise HTTPException(
-            status_code=422,
-            detail={"code": "VALIDATION_ERROR", "message": f"File type '{get_extension(file.filename or '')}' is not supported. Allowed: .pdf, .jpg, .jpeg, .png, .tif, .tiff"},
-        )
-
     file_data = await file.read()
-    if len(file_data) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail={"code": "FILE_TOO_LARGE", "message": f"File exceeds 50MB limit ({len(file_data) / 1024 / 1024:.1f}MB)"},
-        )
 
     tenant_id = get_tenant_id(request)
-    uploaded_by = getattr(request.state, "user_id", None)
-    doc_id = generate_uuid()
-    ext = get_extension(file.filename or "").lstrip(".")
-    blob_path = f"tenants/{tenant_id}/documents/{doc_id}.{ext}"
-    checksum = compute_content_hash(file_data)
-
-    # Identify (never reject or merge) an earlier upload of byte-identical content.
-    # Scoped to this tenant's schema and tenant_id — duplicates never cross tenants —
-    # and skips soft-deleted rows the API would no longer serve. Ordered by
-    # created_at so three copies all point at the original, not at each other.
-    duplicate_result = await session.execute(
-        text(f"""
-            SELECT id FROM {_schema(tenant_id)}.documents
-            WHERE tenant_id = :tid AND checksum = :checksum AND status != 'deleted'
-            ORDER BY created_at
-            LIMIT 1
-        """),
-        {"tid": tenant_id, "checksum": checksum},
+    normalized = NormalizedDocument(
+        # Trusted: it comes from the JWT the middleware resolved, never from the payload.
+        tenant_id=tenant_id,
+        filename=file.filename,
+        content=ContentAccess.from_bytes(file_data),
+        purpose=purpose,
+        actor=IngestingActor(
+            kind=ActorKind.HUMAN,
+            user_id=getattr(request.state, "user_id", None),
+        ),
+        source=SourceReference(
+            source_type=SOURCE_TYPE_PLATFORM_UPLOAD,
+            source_id=PLATFORM_UPLOAD_SOURCE_ID,
+        ),
+        # Once the HTTP request ends the browser cannot be asked for these bytes again.
+        acquisition=ContentAcquisition.SINGLE_USE,
+        declared_media_type=file.content_type,
+        declared_size=file.size,
     )
-    duplicate_row = duplicate_result.fetchone()
-    duplicate_of = duplicate_row[0] if duplicate_row else None
 
-    storage = MinioStorageClient()
-    storage.upload_file(tenant_id, doc_id, ext, file_data)
-
-    await session.execute(
-        text(f"""
-            INSERT INTO {_schema(tenant_id)}.documents (id, tenant_id, filename, content_type, file_size, checksum, status, blob_path, purpose, uploaded_by)
-            VALUES (:id, :tid, :filename, :content_type, :file_size, :checksum, 'pending', :blob_path, :purpose, :uploaded_by)
-        """),
-        {
-            "id": doc_id,
-            "tid": tenant_id,
-            "filename": file.filename,
-            "content_type": file.content_type or "application/octet-stream",
-            "file_size": len(file_data),
-            "checksum": checksum,
-            "blob_path": blob_path,
-            "purpose": purpose,
-            "uploaded_by": uploaded_by,
-        },
-    )
-    await session.commit()
-
-    trigger_ocr(doc_id, tenant_id, blob_path, file.content_type or "")
+    try:
+        result = await ingestion_service.ingest(session, normalized)
+    except UnsupportedFileType as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "message": f"File type '{exc.extension}' is not supported. Allowed: .pdf, .jpg, .jpeg, .png, .tif, .tiff",
+            },
+        )
+    except FileTooLarge as exc:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "FILE_TOO_LARGE",
+                "message": f"File exceeds 50MB limit ({exc.size_bytes / 1024 / 1024:.1f}MB)",
+            },
+        )
+    except IncompatibleRetention as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "INCOMPATIBLE_RETENTION", "message": str(exc)},
+        )
 
     return {
-        "id": doc_id,
+        "id": result.document_id,
         "filename": file.filename,
         "content_type": file.content_type,
         "status": "pending",
-        "file_size": len(file_data),
-        "checksum": checksum,
-        "duplicate_of": duplicate_of,
+        "file_size": result.file_size,
+        "checksum": result.checksum,
+        "duplicate_of": result.duplicate_of,
     }
 
 
@@ -159,31 +156,38 @@ async def list_documents(
     tenant_id = get_tenant_id(request)
     role = getattr(request.state, "role", None)
     user_id = getattr(request.state, "user_id", None)
-    conditions = ["tenant_id = :tid"]
+    # Each condition is a template over the table alias, because the count query names
+    # the table bare and the listing query aliases it `d`. Prefixing a rendered string
+    # cannot express a condition over two columns.
+    conditions = ["{p}tenant_id = :tid"]
     params = {"tid": tenant_id}
 
     if role != "tenant_admin":
-        conditions.append("uploaded_by = :uploaded_by")
+        # Ownership scoping applies only to documents a *person* ingested. A
+        # system-ingested document is visible tenant-wide, because retrieval filters on
+        # purpose alone (`retriever.py`) and would otherwise cite a document this listing
+        # denied existed.
+        conditions.append("({p}ingested_by_kind <> 'human' OR {p}uploaded_by = :uploaded_by)")
         params["uploaded_by"] = user_id
 
     if status_filter:
-        conditions.append("status = :status")
+        conditions.append("{p}status = :status")
         params["status"] = status_filter
 
     if purpose:
-        conditions.append("purpose = :purpose")
+        conditions.append("{p}purpose = :purpose")
         params["purpose"] = purpose
 
     if search:
-        conditions.append("filename ILIKE :search")
+        conditions.append("{p}filename ILIKE :search")
         params["search"] = f"%{search}%"
 
-    where = " AND ".join(conditions)
+    where = " AND ".join(c.format(p="") for c in conditions)
     offset = (page - 1) * per_page
 
     # LEFT JOIN so a document whose uploader was deleted (or that predates the
     # uploaded_by column) still lists, with a null email the client renders as unknown.
-    document_where = " AND ".join(f"d.{c}" for c in conditions)
+    document_where = " AND ".join(c.format(p="d.") for c in conditions)
     result = await session.execute(
         text(f"""
             SELECT d.id, d.filename, d.content_type, d.file_size, d.status, d.error_message,

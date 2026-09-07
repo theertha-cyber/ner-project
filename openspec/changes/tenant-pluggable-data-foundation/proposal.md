@@ -54,7 +54,7 @@ Text extraction, chunking, embedding, reranking, rank fusion, the `Retriever` pr
 
 No new services and no new containers. One new configured storage instance — the working store — which requires an independent object-lifetime policy so an abandoned working copy expires without depending on the application. The migrations are additive and defaulted, so existing rows and queries keep working.
 
-**Risk concentrated in one place:** this change touches the platform's only document entry point. The regression gate is that every existing test in `tests/test_document_ingestion.py` and `tests/test_document_content_hash.py` passes **unmodified**.
+**Risk concentrated in one place:** this change touches the platform's only document entry point. The regression gate is that every existing **scenario** in `tests/test_document_ingestion.py` and `tests/test_document_content_hash.py` still passes, with the edits to those two files confined to mock patch targets and fixture DDL — never to a `GIVEN`, a `WHEN`, or an asserted outcome. The original "pass unmodified, clean `git diff`" gate was found unsatisfiable during implementation: those tests patch `documents.MinioStorageClient`, `documents.trigger_ocr`, and `documents.generate_uuid`, and `mock.patch` raises `AttributeError` on an absent attribute, so the gate directly contradicts the requirement that the route reference no content store. Their fixture also builds `documents` without the provenance columns this change writes. The behavioural diff on both files is reviewed line by line as evidence instead.
 
 ## Named follow-on changes
 

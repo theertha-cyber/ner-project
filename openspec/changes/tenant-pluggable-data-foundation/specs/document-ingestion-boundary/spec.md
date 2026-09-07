@@ -96,7 +96,7 @@ The system SHALL implement the platform upload route as an adapter that translat
 #### Scenario: Upload behaviour is unchanged
 
 - **GIVEN** the existing document ingestion test suite
-- **WHEN** it is executed against the refactored upload route without modification to any test
+- **WHEN** it is executed against the refactored upload route, with edits to those tests confined to mock patch targets and fixture DDL and none to a `GIVEN`, a `WHEN`, or an asserted outcome
 - **THEN** every test SHALL pass
 
 #### Scenario: Uploaded documents record the reserved platform source

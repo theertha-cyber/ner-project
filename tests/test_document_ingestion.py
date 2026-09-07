@@ -1,7 +1,7 @@
 import io
 import os
 import uuid
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from httpx import AsyncClient, ASGITransport
@@ -31,6 +31,36 @@ PNG_CONTENT = b"\x89PNG\r\n\x1a\nfake png content " * 10
 _coll_counter = 0
 
 
+class _FakeContentStore:
+    """Stands in for the platform content store.
+
+    Same three operations, real reference values, no MinIO. Wrapped in a `MagicMock` at
+    each patch site so `.put.called` still reads as it did when the route held a storage
+    client directly.
+    """
+
+    kind = "platform_minio"
+
+    def __init__(self):
+        self.objects = {}
+
+    def put(self, tenant_id, document_id, data, filename=None):
+        reference = f"tenants/{tenant_id}/documents/{document_id}"
+        self.objects[reference] = data
+        return reference
+
+    def open(self, reference):
+        return self.objects.get(reference)
+
+    def delete(self, reference):
+        self.objects.pop(reference, None)
+
+
+def _fake_store():
+    return MagicMock(wraps=_FakeContentStore())
+
+
+
 @pytest.fixture(autouse=True)
 async def cleanup_public():
     engine = create_async_engine(
@@ -58,6 +88,17 @@ def _create_tables_sql(schema: str) -> list:
                 blob_path VARCHAR(500),
                 purpose VARCHAR(20) NOT NULL DEFAULT 'query',
                 uploaded_by VARCHAR,
+                origin VARCHAR(32) NOT NULL DEFAULT 'push',
+                source_type VARCHAR(64) NOT NULL DEFAULT 'platform_upload',
+                source_id VARCHAR(128) NOT NULL DEFAULT 'platform-upload',
+                external_id VARCHAR(512),
+                source_version VARCHAR(256),
+                source_created_at TIMESTAMPTZ,
+                source_modified_at TIMESTAMPTZ,
+                origin_metadata JSONB,
+                retention_mode VARCHAR(32) NOT NULL DEFAULT 'platform_blob'
+                    CHECK (retention_mode IN ('platform_blob', 'ephemeral', 'source_only')),
+                ingested_by_kind VARCHAR(32) NOT NULL DEFAULT 'human',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -193,8 +234,8 @@ async def test_7_1_upload_pdf_returns_201(seeded_tenant, client):
     slug = seeded_tenant["slug"]
     token = make_token(tid)
 
-    with patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls, \
-         patch("src.document_service.api.v1.documents.trigger_ocr") as mock_ocr:
+    with patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls, \
+         patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_ocr:
         mock_storage = mock_storage_cls.return_value
         mock_ocr.return_value = None
 
@@ -211,7 +252,7 @@ async def test_7_1_upload_pdf_returns_201(seeded_tenant, client):
     assert data["content_type"] == "application/pdf"
     assert data["status"] == "pending"
     assert data["file_size"] == len(PDF_CONTENT)
-    assert mock_storage.upload_file.called
+    assert mock_storage.put.called
 
 
 @pytest.mark.asyncio
@@ -256,9 +297,9 @@ async def test_7_4_pdf_ocr_processing(seeded_tenant, client):
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
         mock_storage = mock_storage_cls.return_value
         mock_trigger.return_value = None
@@ -308,9 +349,9 @@ async def test_7_5_image_ocr_processing(seeded_tenant, client):
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
         mock_storage = mock_storage_cls.return_value
         mock_trigger.return_value = None
@@ -351,9 +392,9 @@ async def test_7_6_corrupt_pdf_fails(seeded_tenant, client):
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
         mock_storage = mock_storage_cls.return_value
         mock_trigger.return_value = None
@@ -581,9 +622,9 @@ async def test_8_1_upload_without_purpose_defaults_to_query(seeded_tenant, clien
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
         mock_storage_cls.return_value
         mock_trigger.return_value = None
@@ -613,9 +654,9 @@ async def test_8_2_upload_with_training_purpose(seeded_tenant, client):
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
         mock_storage_cls.return_value
         mock_trigger.return_value = None
