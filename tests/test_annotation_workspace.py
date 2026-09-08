@@ -77,7 +77,23 @@ def _create_tables_sql(schema: str) -> list:
                 char_end INTEGER NOT NULL,
                 text_content VARCHAR NOT NULL,
                 confidence FLOAT NOT NULL,
+                source VARCHAR(16) NOT NULL DEFAULT 'keyword',
                 created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """,
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.llm_prelabel_jobs (
+                id VARCHAR PRIMARY KEY,
+                document_id VARCHAR NOT NULL REFERENCES {schema}.documents(id) ON DELETE CASCADE,
+                status VARCHAR(16) NOT NULL DEFAULT 'queued',
+                content_hash VARCHAR(64) NOT NULL,
+                config_version VARCHAR(64) NOT NULL,
+                served_from_cache BOOLEAN NOT NULL DEFAULT false,
+                spans JSONB,
+                counts JSONB,
+                error_message TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                completed_at TIMESTAMPTZ
             )
         """,
         f"""
@@ -91,6 +107,21 @@ def _create_tables_sql(schema: str) -> list:
                 dataset_version INTEGER,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ
+            )
+        """,
+        # The export endpoint always queries imported_annotations, so the export
+        # tests below cannot run without it even when no imported rows exist.
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.imported_annotations (
+                id VARCHAR PRIMARY KEY,
+                tokens TEXT[] NOT NULL,
+                tags TEXT[] NOT NULL,
+                source_file VARCHAR NOT NULL,
+                row_index INTEGER NOT NULL,
+                reviewed BOOLEAN NOT NULL DEFAULT FALSE,
+                reviewed_at TIMESTAMPTZ,
+                reviewed_by VARCHAR,
+                created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """,
     ]
@@ -148,6 +179,7 @@ async def seeded_tenant():
                 validation_rule VARCHAR(500),
                 target_table VARCHAR(255),
                 base_label_mapping JSON,
+                qa_examples JSONB,
                 version INTEGER DEFAULT 1,
                 required_flag BOOLEAN DEFAULT false,
                 is_active BOOLEAN DEFAULT true,
@@ -361,6 +393,9 @@ async def test_7_6_prelabel_generates_suggestions(seeded_document, client):
     assert spans_by_type["ORG"]["char_start"] == 18
     assert spans_by_type["ORG"]["char_end"] == 27
     assert spans_by_type["ORG"]["confidence"] == 0.85
+    # verification.md row 21: every suggestion now records which mechanism produced it, and
+    # this path is the keyword matcher whatever else is configured for the tenant.
+    assert all(span["source"] == "keyword" for span in data)
 
 
 @pytest.mark.asyncio
@@ -967,3 +1002,125 @@ async def test_7_18_export_with_document_filter(seeded_document, client):
     assert resp.status_code == 200
     lines = resp.text.strip().split("\n")
     assert len(lines) >= 1
+
+
+# --- llm-assisted-prelabeling: source tracking (verification.md rows 26, 28) ---
+
+
+@pytest.mark.asyncio
+async def test_list_suggested_spans_includes_source(seeded_document, client):
+    """verification.md row 26.
+
+    Both sources in one document, because that is the state a reviewer actually lands in: a
+    keyword run followed by an LLM run leaves a mixed list, and a list that does not say which
+    is which gives them no basis for weighing one against the other."""
+    tid = seeded_document["tid"]
+    schema = seeded_document["schema"]
+    doc_id = seeded_document["doc_id"]
+    token = make_token(tid)
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        for index in range(2):
+            await conn.execute(
+                text(
+                    f"INSERT INTO {schema}.suggested_spans "
+                    "(id, document_id, entity_type, char_start, char_end, text_content, "
+                    " confidence, source) "
+                    "VALUES (:id, :doc_id, 'PER', :cs, :ce, 'John Doe', 0.85, 'keyword')"
+                ),
+                {"id": str(uuid.uuid4()), "doc_id": doc_id, "cs": index * 10, "ce": index * 10 + 8},
+            )
+        for index in range(3):
+            await conn.execute(
+                text(
+                    f"INSERT INTO {schema}.suggested_spans "
+                    "(id, document_id, entity_type, char_start, char_end, text_content, "
+                    " confidence, source) "
+                    "VALUES (:id, :doc_id, 'ORG', :cs, :ce, 'Acme Corp', 0.75, 'llm')"
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "doc_id": doc_id,
+                    "cs": 100 + index * 10,
+                    "ce": 100 + index * 10 + 9,
+                },
+            )
+    await engine.dispose()
+
+    resp = await client.get(
+        f"/api/v1/documents/{doc_id}/spans?type=suggested", headers=auth_header(token)
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 5
+    assert all("source" in span for span in data)
+    sources = [span["source"] for span in data]
+    assert sources.count("keyword") == 2
+    assert sources.count("llm") == 3
+
+
+@pytest.mark.asyncio
+async def test_promote_llm_sourced_span(seeded_document, client):
+    """verification.md row 28.
+
+    Promotion is the human-approval gate, and it does not care where a suggestion came from —
+    a reviewer who accepts a span has taken responsibility for it either way. A promote path
+    that branched on `source` would be the beginning of two classes of confirmed span."""
+    tid = seeded_document["tid"]
+    schema = seeded_document["schema"]
+    doc_id = seeded_document["doc_id"]
+    token = make_token(tid)
+    suggest_id = str(uuid.uuid4())
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                f"INSERT INTO {schema}.suggested_spans "
+                "(id, document_id, entity_type, char_start, char_end, text_content, "
+                " confidence, source) "
+                "VALUES (:id, :doc_id, 'PER', 0, 8, 'John Doe', 0.75, 'llm')"
+            ),
+            {"id": suggest_id, "doc_id": doc_id},
+        )
+    await engine.dispose()
+
+    resp = await client.post(
+        f"/api/v1/documents/{doc_id}/spans/promote/{suggest_id}", headers=auth_header(token)
+    )
+
+    assert resp.status_code == 201
+    promoted = resp.json()
+    assert promoted["entity_type"] == "PER"
+    assert promoted["char_start"] == 0
+    assert promoted["char_end"] == 8
+    assert promoted["text"] == "John Doe"
+
+    engine2 = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine2.connect() as conn:
+        remaining = (
+            await conn.execute(
+                text(f"SELECT COUNT(*) FROM {schema}.suggested_spans WHERE id = :id"),
+                {"id": suggest_id},
+            )
+        ).scalar()
+        confirmed = (
+            await conn.execute(
+                text(
+                    f"SELECT entity_type, char_start, char_end, text_content "
+                    f"FROM {schema}.spans WHERE document_id = :doc_id"
+                ),
+                {"doc_id": doc_id},
+            )
+        ).fetchall()
+    await engine2.dispose()
+
+    assert remaining == 0
+    assert (confirmed[0][0], confirmed[0][1], confirmed[0][2], confirmed[0][3]) == (
+        "PER",
+        0,
+        8,
+        "John Doe",
+    )

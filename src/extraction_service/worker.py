@@ -17,6 +17,10 @@ from src.extraction_service.services.entity_normalizer import (
 )
 from src.extraction_service.services.entity_postprocessor import postprocess_document
 from src.extraction_service.services.entity_store import get_already_extracted
+from src.extraction_service.services.prediction_routing import (
+    purge_expired_predictions,
+    record_routed_predictions,
+)
 from src.extraction_service.services.processing_modes import (
     DEFAULT_PROCESSING_MODE,
     ProcessingMode,
@@ -258,6 +262,21 @@ def run_batch_extraction(
         _update_run_status(tenant_id, run_id, "failed")
         return
 
+    # The age half of the retention bound (design.md Decision 11), run once per run in its own
+    # transaction. A resolved prediction is already deleted when its outcome is recorded; this
+    # covers the abandoned path. Deliberately inline rather than on a schedule — a periodic task
+    # registration is machinery this change does not introduce. A failure here is logged and
+    # ignored: cleanup falling behind must never fail an extraction run.
+    try:
+        with engine.begin() as conn:
+            purged = purge_expired_predictions(
+                conn, schema, settings.retained_prediction_max_age_days
+            )
+        if purged:
+            print(f"WORKER: run={run_id} purged_expired_predictions={purged}", flush=True)
+    except Exception as e:
+        print(f"EXTRACTION_WORKER_WARN run={run_id} purge_failed: {e}", flush=True)
+
     filenames = _get_document_filenames(tenant_id, to_process)
 
     processed = 0
@@ -390,6 +409,27 @@ def run_batch_extraction(
                             "confidence": pred.get("confidence", 0.0),
                         },
                     )
+                # Routing writes the same list `document_entities` gets, in the same
+                # transaction, from predictions this run already produced — no second
+                # inference pass (design.md Decision 2). `routed_predictions` is a separate
+                # store no business-facing surface reads, so retaining the below-threshold
+                # part of it changes nothing a business consumer sees.
+                routing_counts = record_routed_predictions(
+                    conn,
+                    schema,
+                    run_id,
+                    doc_id,
+                    normalized_entities,
+                    model_version,
+                    settings.review_confidence_threshold,
+                    settings.confidence_threshold,
+                )
+                print(
+                    f"WORKER: doc={doc_id} routed_accepted={routing_counts['accepted']} "
+                    f"routed_queued={routing_counts['queued']}",
+                    flush=True,
+                )
+
                 insert_document_entities(conn, schema, doc_id, normalized_entities)
                 # Same list, same transaction. The relational surface is either consistent with
                 # `document_entities` or absent for this document — never partially written. A

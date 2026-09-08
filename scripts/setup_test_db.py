@@ -116,6 +116,9 @@ PUBLIC_TABLES = [
         validation_rule VARCHAR(500),
         target_table VARCHAR(255),
         base_label_mapping JSON,
+        -- Added by migration 038. Few-shot question/answer context for LLM pre-labeling;
+        -- nullable, because an entity type without QA pairs is fully eligible for extraction.
+        qa_examples JSONB,
         value_kind VARCHAR(32),
         value_unit VARCHAR(32),
         -- Both added by migration 037. Restated here rather than left out because the tests
@@ -135,7 +138,8 @@ PUBLIC_TABLES = [
     """
     ALTER TABLE public.entity_definitions
         ADD COLUMN IF NOT EXISTS cardinality VARCHAR(16) NOT NULL DEFAULT 'multi',
-        ADD COLUMN IF NOT EXISTS sql_identifier VARCHAR(63)
+        ADD COLUMN IF NOT EXISTS sql_identifier VARCHAR(63),
+        ADD COLUMN IF NOT EXISTS qa_examples JSONB
     """,
     """
     DO $$

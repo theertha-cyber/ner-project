@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { SlideOver, Spinner } from "@/components/ui";
 import { authFetch } from "@/lib/auth-fetch";
 import { useSubmitTrainingJob } from "@/hooks/use-submit-training-job";
+import { useTrainingReadiness } from "@/hooks/use-training-readiness";
 
 export interface SubmitJobSlideoverProps {
   open: boolean;
@@ -14,6 +15,11 @@ export function SubmitJobSlideover({ open, onClose }: SubmitJobSlideoverProps) {
   const [serverError, setServerError] = useState<string | null>(null);
 
   const submitMutation = useSubmitTrainingJob();
+  // Fetched only while the panel is open, and read only to display. Nothing below disables
+  // the submit button on it: the check is advisory, and turning it into a gate here would
+  // duplicate `NER_MIN_ENTITIES_PER_TYPE` and pre-empt the System Admin approval step
+  // ADR-009 puts this decision behind.
+  const { data: readiness, isLoading: readinessLoading } = useTrainingReadiness(open);
 
   useEffect(() => {
     if (!open) {
@@ -94,6 +100,56 @@ export function SubmitJobSlideover({ open, onClose }: SubmitJobSlideoverProps) {
               `${spanCount} confirmed spans`
             ) : (
               "Unable to check span count"
+            )}
+          </div>
+
+          {/* Per-entity-type readiness. Shown before submission because that is the only
+              point at which it can save anything — the same shortfall discovered after a GPU
+              run has already cost the run. */}
+          <div
+            className="rounded-lg p-3 font-body text-sm flex flex-col gap-2"
+            style={{ background: "var(--surface-3)", border: "1px solid var(--line)", color: "var(--ink-2)" }}
+          >
+            {readinessLoading && (
+              <span className="flex items-center gap-2">
+                <Spinner size="sm" /> Checking per-type readiness...
+              </span>
+            )}
+            {!readinessLoading && !readiness && (
+              <span>Unable to check per-type readiness</span>
+            )}
+            {readiness && (
+              <>
+                <div style={{ color: "var(--ink-3)" }}>
+                  {readiness.threshold_per_entity_type} entities per type unlocks training
+                </div>
+                {readiness.shortfalling_entity_types.length === 0 ? (
+                  <div style={{ color: "var(--good)" }}>
+                    Every entity type meets the threshold.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <div>
+                      {readiness.shortfalling_entity_types.length} entity type
+                      {readiness.shortfalling_entity_types.length === 1 ? "" : "s"} below the
+                      threshold:
+                    </div>
+                    <ul className="flex flex-col gap-0.5">
+                      {readiness.shortfalling_entity_types.map((row) => (
+                        <li key={row.entity_type} className="flex justify-between gap-4">
+                          <span>{row.entity_type}</span>
+                          <span style={{ color: "var(--ink-3)" }}>
+                            {row.count} / {readiness.threshold_per_entity_type}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div style={{ color: "var(--ink-3)" }}>
+                      You can still submit. A System Admin decides whether to run it.
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 

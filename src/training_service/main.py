@@ -9,7 +9,7 @@ from src.shared.database import get_engine, wait_for_database
 from src.shared.readiness import check_database, check_redis, build_readiness_body
 from src.training_service.middleware.tenant_context import TenantContextMiddleware
 from src.training_service.celery_app import celery_app
-from src.training_service.api.v1 import training_jobs, models
+from src.training_service.api.v1 import training_jobs, models, retrain_request, promotion_evidence
 
 
 @asynccontextmanager
@@ -70,6 +70,8 @@ async def app_error_handler(request: Request, exc: AppError):
 
 app.include_router(training_jobs.router)
 app.include_router(models.router)
+app.include_router(retrain_request.router)
+app.include_router(promotion_evidence.router)
 
 
 @app.get("/health")

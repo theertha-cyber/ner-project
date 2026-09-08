@@ -272,6 +272,32 @@ services:
       db-init:
         condition: service_completed_successfully
 
+  celery_worker_annotation_llm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Its own queue, not the default and not `extraction`: LLM pre-labeling is network I/O and
+    # must not queue behind — or autoscale — the GPU-bound training work (ADR-006). The queue
+    # name mirrors `settings.annotation_llm_celery_queue`.
+    command: celery -A src.annotation_service.celery_app worker -Q annotation.llm_jobs --pool=solo --loglevel=info
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      NER_ANNOTATION_SERVICE_URL: "http://annotation_service:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+
   analytics_service:
     build:
       context: .

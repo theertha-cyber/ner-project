@@ -190,7 +190,7 @@ entry. Do not pre-fill — entries must describe real observations.
 | Every THEN clause in specs has a corresponding evidence entry | - [ ] |
 | Hallucination risk register reviewed and all mitigations confirmed | - [ ] |
 
-**Archive approved by:** ___________________________
+**Archive approved by:** ____Hanna_______________________
 
 **Date:** ___________
 

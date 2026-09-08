@@ -2,6 +2,8 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useUpload } from "@/hooks/use-upload";
+import { usePrelabelTrigger } from "@/hooks/use-prelabel-trigger";
+import { useEntityTypes } from "@/hooks/use-entity-types";
 
 const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/tiff"];
 const MAX_SIZE = 50 * 1024 * 1024;
@@ -9,10 +11,25 @@ const MAX_BATCH = 20;
 
 type FileStatus = "pending" | "uploading" | "success" | "failed" | "cancelled" | "rejected";
 
+type AnnotationMode = "manual" | "automated";
+
 interface BatchItem {
   name: string;
   status: FileStatus;
   error?: string;
+  /** Set once the upload succeeds; the pre-label trigger loop addresses documents by this. */
+  docId?: string;
+}
+
+/**
+ * Pre-label trigger outcome, held separately from `BatchItem.status`. Upload and pre-labeling
+ * are independent concerns: a document that uploaded fine but failed to queue is still a
+ * successful upload, and writing a trigger failure into the upload status would make an LLM
+ * outage look like an ingestion outage.
+ */
+interface TriggerFailure {
+  name: string;
+  error: string;
 }
 
 interface DocumentUploadProps {
@@ -28,9 +45,26 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
   const [batch, setBatch] = useState<BatchItem[]>([]);
   const [batchIndex, setBatchIndex] = useState<number | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
+  const [annotationMode, setAnnotationMode] = useState<AnnotationMode>("manual");
+  // The batch reports against the mode it actually ran under, not the live selector, which
+  // resets to Manual the moment the batch finishes.
+  const [batchMode, setBatchMode] = useState<AnnotationMode>("manual");
+  const [triggerIndex, setTriggerIndex] = useState<number | null>(null);
+  const [triggerTotal, setTriggerTotal] = useState(0);
+  const [queuedCount, setQueuedCount] = useState(0);
+  const [triggerFailures, setTriggerFailures] = useState<TriggerFailure[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const cancelRequested = useRef(false);
   const { upload, progress, isUploading, reset, cancel } = useUpload();
+  const { trigger } = usePrelabelTrigger();
+  const { data: entityTypesData } = useEntityTypes();
+
+  // Gate on *active entity type count only*. Change 1 extracts entity types that have no
+  // `qa_examples` too, so QA pairs are an enhancement and must never be a precondition here.
+  const activeEntityTypeCount = (entityTypesData?.entity_types ?? []).filter(
+    (et) => et.is_active,
+  ).length;
+  const automatedDisabled = activeEntityTypeCount === 0;
 
   const validate = useCallback((file: File): string | null => {
     if (!ACCEPTED_TYPES.includes(file.type)) {
@@ -56,6 +90,13 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
       reset();
       cancelRequested.current = false;
 
+      const modeForBatch: AnnotationMode = automatedDisabled ? "manual" : annotationMode;
+      setBatchMode(modeForBatch);
+      setTriggerIndex(null);
+      setTriggerTotal(0);
+      setQueuedCount(0);
+      setTriggerFailures([]);
+
       const items: BatchItem[] = files.map((file) => {
         const err = validate(file);
         return err
@@ -63,6 +104,11 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
           : { name: file.name, status: "pending" };
       });
       setBatch(items);
+
+      // Only successfully uploaded documents land here — rejected files `continue` before the
+      // upload call and failures never reach the push — so the trigger loop below is already
+      // filtered by construction.
+      const uploaded: { index: number; name: string; docId: string }[] = [];
 
       for (let i = 0; i < files.length; i++) {
         if (items[i].status === "rejected") continue;
@@ -84,10 +130,14 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
         });
 
         try {
-          await upload(files[i], purpose);
+          const result = await upload(files[i], purpose);
+          const docId = result?.id ?? "";
+          // A response without an id cannot be addressed by the per-document pre-label
+          // endpoint, so there is nothing to queue — the upload itself still succeeded.
+          if (docId) uploaded.push({ index: i, name: files[i].name, docId });
           setBatch((prev) => {
             const next = [...prev];
-            next[i] = { ...next[i], status: "success" };
+            next[i] = { ...next[i], status: "success", docId };
             return next;
           });
         } catch (err) {
@@ -112,8 +162,40 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
       }
 
       setBatchIndex(null);
+
+      // A distinct second pass, entered only after the upload loop has exited. Sequential
+      // awaits, never `Promise.all` — a browser firing N concurrent POSTs has no backpressure
+      // and produces partial failures that are hard to report.
+      if (modeForBatch === "automated" && uploaded.length > 0) {
+        setTriggerTotal(uploaded.length);
+        const failures: TriggerFailure[] = [];
+        let queued = 0;
+
+        for (let i = 0; i < uploaded.length; i++) {
+          setTriggerIndex(i);
+          try {
+            await trigger(uploaded[i].docId);
+            queued += 1;
+          } catch (err) {
+            // Recorded, never rethrown and never `break`: one document failing to queue must
+            // not deny the rest, and must not touch the upload item's status.
+            failures.push({
+              name: uploaded[i].name,
+              error: err instanceof Error ? err.message : "Failed to queue for pre-labeling",
+            });
+          }
+        }
+
+        setQueuedCount(queued);
+        setTriggerFailures(failures);
+        setTriggerIndex(null);
+      }
+
+      // Automated is opt-in per batch: a mode that persisted would silently send later
+      // batches to an external LLM.
+      setAnnotationMode("manual");
     },
-    [upload, validate, reset, purpose],
+    [upload, validate, reset, purpose, annotationMode, automatedDisabled, trigger],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -165,7 +247,8 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
   const succeededCount = batch.filter((item) => item.status === "success").length;
   const nonRejectedTotal = batch.length - rejectedItems.length;
   const isBatch = nonRejectedTotal > 1;
-  const isBatchDone = nonRejectedTotal > 0 && batchIndex === null;
+  const isTriggering = triggerIndex !== null;
+  const isBatchDone = nonRejectedTotal > 0 && batchIndex === null && !isTriggering;
 
   return (
     <div className="flex flex-col gap-3">
@@ -174,6 +257,46 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
           ? "These documents are uploaded for annotation."
           : "These documents are uploaded for querying (chat-searchable)."}
       </p>
+
+      {/* Annotation mode — training uploads only. Query documents are never annotated, so the
+          control would be a dead one there. Same `purpose` branch as the copy above. */}
+      {purpose === "training" && (
+        <fieldset className="flex flex-col gap-1.5" disabled={isUploading || isTriggering}>
+          <legend className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>
+            Annotation mode
+          </legend>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-1.5 text-sm" style={{ color: "var(--ink-2)" }}>
+              <input
+                type="radio"
+                name="annotation-mode"
+                value="manual"
+                checked={annotationMode === "manual"}
+                onChange={() => setAnnotationMode("manual")}
+              />
+              Manual
+            </label>
+            <label className="flex items-center gap-1.5 text-sm" style={{ color: "var(--ink-2)" }}>
+              <input
+                type="radio"
+                name="annotation-mode"
+                value="automated"
+                checked={annotationMode === "automated"}
+                disabled={automatedDisabled}
+                onChange={() => setAnnotationMode("automated")}
+              />
+              Automated
+            </label>
+          </div>
+          {automatedDisabled && (
+            <p className="text-xs" style={{ color: "var(--ink-3)" }}>
+              Automated pre-labeling needs at least one active entity type. Configure entity
+              types first.
+            </p>
+          )}
+        </fieldset>
+      )}
+
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -234,6 +357,12 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
               Cancel
             </button>
           </div>
+        ) : isTriggering ? (
+          <div className="flex w-full max-w-xs flex-col items-center gap-2">
+            <span className="text-sm" style={{ color: "var(--ink-3)" }}>
+              Queueing {triggerIndex! + 1} of {triggerTotal} for pre-labeling
+            </span>
+          </div>
         ) : isBatchDone ? (
           <div className="flex flex-col items-center gap-1">
             <div className="flex items-center gap-2" style={{ color: "var(--color-success)" }}>
@@ -246,6 +375,21 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
                   : "Upload successful"}
               </span>
             </div>
+            {batchMode === "automated" && (
+              <div className="mt-0.5 flex flex-col items-center gap-0.5 text-xs" style={{ color: "var(--ink-3)" }}>
+                <span>{queuedCount} queued for pre-labeling</span>
+                {triggerFailures.length > 0 && (
+                  <>
+                    <span>{triggerFailures.length} failed to queue for pre-labeling</span>
+                    {triggerFailures.map((failure) => (
+                      <span key={failure.name}>
+                        {failure.name}: {failure.error}
+                      </span>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
             {(failedItems.length > 0 || cancelledItems.length > 0) && (
               <div className="mt-1 flex flex-col gap-0.5 text-xs" style={{ color: "var(--bad)" }} role="alert">
                 {failedItems.map((item) => (

@@ -8,10 +8,14 @@ import {
   PenLine,
   FileDown,
   Tags,
+  Sparkles,
+  Layers,
+  ListChecks,
   Users,
   MessageSquare,
   KeyRound,
   ArrowUpRight,
+  RefreshCw,
 } from "lucide-react";
 import type { AuthUser } from "@/lib/auth";
 
@@ -38,8 +42,12 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
         { id: "dashboard", icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", roles: ["tenant_admin"] },
         { id: "documents", icon: File, label: "Uploaded Documents", href: "/documents", roles: ["tenant_admin"] },
         { id: "entity-types", icon: Tags, label: "Entity Types", href: "/entity-types", roles: ["tenant_admin"] },
+        { id: "schema-proposals", icon: Sparkles, label: "Suggest Entity Types", href: "/schema-proposals", roles: ["tenant_admin"] },
+        { id: "prelabel-batches", icon: Layers, label: "Batch Pre-labeling", href: "/prelabel-batches", roles: ["tenant_admin"] },
         { id: "annotation", icon: PenLine, label: "Annotation", href: "/annotation", roles: ["tenant_admin"] },
+        { id: "review-queue", icon: ListChecks, label: "Review Queue", href: "/review-queue", roles: ["tenant_admin"] },
         { id: "imported-documents", icon: FileDown, label: "Import Annotations", href: "/imported-documents", roles: ["tenant_admin"] },
+        { id: "retraining", icon: RefreshCw, label: "Retraining", href: "/retraining", roles: ["tenant_admin"] },
         { id: "training-jobs", icon: BrainCircuit, label: "Models & Training", href: "/training-jobs", roles: ["tenant_admin"], badge: 1 },
         { id: "users", icon: Users, label: "Create User", href: "/users", roles: ["tenant_admin"] },
         { id: "chat", icon: MessageSquare, label: "Chat", href: "/chat", roles: ["tenant_admin"] },
@@ -49,6 +57,7 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
       return [
         { id: "dashboard", icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", roles: ["annotator"] },
         { id: "annotation", icon: PenLine, label: "Annotation", href: "/annotation", roles: ["annotator"], badge: 4 },
+        { id: "review-queue", icon: ListChecks, label: "Review Queue", href: "/review-queue", roles: ["annotator"] },
         { id: "imported-documents", icon: FileDown, label: "Import Annotations", href: "/imported-documents", roles: ["annotator"] },
       ];
     case "business_user":
@@ -69,6 +78,8 @@ export const SCREEN_TITLES: Record<string, [title: string, path: string]> = {
   models: ["Models & Training", "/training-jobs"],
   documents: ["Uploaded Documents", "/documents"],
   "imported-documents": ["Import Pre-Annotated Files", "/imported-documents"],
+  "review-queue": ["Review Queue", "/review-queue"],
+  retraining: ["Retraining", "/retraining"],
   "entity-types": ["Entity Types", "/entity-types"],
   users: ["Users", "/users"],
   extractions: ["Extractions", "/extractions"],

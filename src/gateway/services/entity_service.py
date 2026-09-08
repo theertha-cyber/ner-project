@@ -17,10 +17,22 @@ from src.shared.exceptions import ValidationError, NotFoundError
 # missing from the other — which is how `cardinality` stayed invisible to the UI after `037`
 # added it.
 _ENTITY_COLUMNS = """
-    id, name, description, examples, validation_rule, target_table,
+    id, name, description, examples, qa_examples, validation_rule, target_table,
     base_label_mapping, value_kind, value_unit, cardinality, sql_identifier,
     version, required_flag, is_active, created_at, updated_at
 """
+
+
+def _serialize_qa_examples(qa_examples) -> str | None:
+    """JSON text for the `qa_examples` column, or NULL.
+
+    The API layer has already validated the shape (`QaExample`), and a value arriving through
+    `model_dump` is a list of plain dicts. Serialized here rather than passed through so an
+    explicit `qa_examples: []` clears the column to an empty array instead of being confused
+    with "field not sent" — the update path only writes keys that are present at all."""
+    if qa_examples is None:
+        return None
+    return json.dumps(qa_examples)
 
 
 def _validate_value_kind(value_kind) -> str | None:
@@ -100,10 +112,10 @@ class EntityService:
         await self.db.execute(
             text("""
                 INSERT INTO public.entity_definitions
-                    (id, tenant_id, name, description, examples, validation_rule,
+                    (id, tenant_id, name, description, examples, qa_examples, validation_rule,
                      target_table, base_label_mapping, value_kind, value_unit, cardinality,
                      sql_identifier, required_flag, is_active, version)
-                VALUES (:id, :tid, :name, :desc, :examples, :rule,
+                VALUES (:id, :tid, :name, :desc, :examples, :qa_examples, :rule,
                         :target, :mapping, :value_kind, :value_unit, :cardinality,
                         :sql_identifier, :required, :active, 1)
             """),
@@ -113,6 +125,7 @@ class EntityService:
                 "name": payload["name"],
                 "desc": payload.get("description"),
                 "examples": json.dumps(payload.get("examples")) if payload.get("examples") is not None else None,
+                "qa_examples": _serialize_qa_examples(payload.get("qa_examples")),
                 "rule": payload.get("validation_rule"),
                 "target": payload.get("target_table"),
                 "mapping": json.dumps(mapping) if isinstance(mapping, dict) else mapping,
@@ -183,7 +196,7 @@ class EntityService:
         # changed, so renaming an entity type's display name cannot rename its table, break a
         # saved query, or orphan the old one.
         allowed_fields = {
-            "description", "examples", "validation_rule", "target_table",
+            "description", "examples", "qa_examples", "validation_rule", "target_table",
             "base_label_mapping", "required_flag", "value_kind", "value_unit",
             "cardinality",
         }
@@ -194,6 +207,8 @@ class EntityService:
                 updates["base_label_mapping"] = json.dumps(updates["base_label_mapping"])
             if "examples" in updates and updates["examples"] is not None:
                 updates["examples"] = json.dumps(updates["examples"])
+            if "qa_examples" in updates:
+                updates["qa_examples"] = _serialize_qa_examples(updates["qa_examples"])
             set_clause = ", ".join(f"{k} = :{k}" for k in updates)
             updates["name"] = name
             updates["tid"] = tenant_id
@@ -261,6 +276,10 @@ class EntityService:
             "name": r.name,
             "description": r.description,
             "examples": json.loads(r.examples) if isinstance(r.examples, str) else (r.examples or []),
+            # `[]` rather than `None` for the empty case, matching `examples`: the edit form
+            # renders a list either way, and "configured none" and "never set" are not
+            # distinctions any caller acts on.
+            "qa_examples": json.loads(r.qa_examples) if isinstance(r.qa_examples, str) else (r.qa_examples or []),
             "validation_rule": r.validation_rule,
             "target_table": r.target_table,
             "base_label_mapping": json.loads(r.base_label_mapping) if isinstance(r.base_label_mapping, str) else (r.base_label_mapping or {}),

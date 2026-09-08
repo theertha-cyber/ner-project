@@ -6,6 +6,24 @@ import { SubmitJobSlideover } from "./submit-job-slideover";
 const mockFetch = vi.fn();
 globalThis.fetch = mockFetch;
 
+// The readiness report is stubbed at the hook rather than the fetch layer. Every test below
+// sequences `mockFetch` with `mockResolvedValueOnce`, and a second concurrent request whose
+// ordering against the span fetch is not guaranteed would consume those responses at random.
+// What this file is about is what the panel submits; readiness rendering has its own file.
+vi.mock("@/hooks/use-training-readiness", () => ({
+  useTrainingReadiness: () => ({
+    data: {
+      threshold_per_entity_type: 200,
+      entity_types: [],
+      shortfalling_entity_types: [],
+      ready: true,
+      advisory: true,
+      blocks_submission: false,
+    },
+    isLoading: false,
+  }),
+}));
+
 function createWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return function Wrapper({ children }: { children: React.ReactNode }) {
