@@ -5,9 +5,7 @@
 System Admin SPA for managing tenants, viewing tenant details, editing quotas, and monitoring GPU training jobs across all tenants.
 
 ---
-
 ## Requirements
-
 ### Requirement: Tenant Management Dashboard
 
 The system SHALL provide a System Admin SPA at `/admin/*` that displays a paginated list of all tenants with their status, user count, document count, and storage usage. The dashboard SHALL allow the System Admin to create new tenants, view tenant details, edit tenant metadata and quotas, and deactivate tenants.
@@ -30,7 +28,7 @@ The system SHALL provide a System Admin SPA at `/admin/*` that displays a pagina
 
 ### Requirement: Tenant Detail View
 
-The system SHALL provide a tenant detail page at `/admin/tenants/{tenant_id}` that displays tenant metadata, current quotas and usage, a list of users belonging to this tenant, and controls to edit quotas, deactivate the tenant, or navigate to the tenant's own admin panel.
+The system SHALL provide a tenant detail page at `/admin/tenants/{tenant_id}` that displays tenant metadata, current quotas and usage, a list of users belonging to this tenant, and controls to edit quotas, deactivate the tenant, create a new user in this tenant, or navigate to the tenant's own admin panel.
 
 #### Scenario: System Admin views tenant details
 
@@ -39,7 +37,15 @@ The system SHALL provide a tenant detail page at `/admin/tenants/{tenant_id}` th
 - **THEN** the page SHALL display the tenant name, slug, status, created_at
 - **AND** SHALL show quota usage: users (e.g., `3 / 10`), documents, storage
 - **AND** SHALL list all users for this tenant
-- **AND** SHALL have an "Edit Quotas" button and a "Deactivate Tenant" button
+- **AND** SHALL have an "Edit Quotas" button, a "Deactivate Tenant" button, and a "Create User" button
+
+#### Scenario: System Admin creates a user in the tenant from this view
+
+- **GIVEN** an authenticated System Admin on `/admin/tenants/tid-123` for tenant "acme-corp"
+- **WHEN** they click "Create User", fill in email, password, and role, and submit
+- **THEN** the request SHALL be sent to `POST /api/v1/admin/tenants/tid-123/users`
+- **AND** on success the new user SHALL appear in the tenant's user list on the page
+- **AND** the users quota usage indicator SHALL update to reflect the new count
 
 ### Requirement: GPU Job Monitoring
 
@@ -52,3 +58,4 @@ The system SHALL display a read-only list of training jobs across all tenants in
 - **THEN** the page SHALL display 3 job rows
 - **AND** each row SHALL show `tenant`, `status`, `model_version`, `duration`, `f1_score`
 - **AND** the view SHALL be read-only (no create/edit/delete controls)
+

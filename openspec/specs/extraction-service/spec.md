@@ -5,9 +5,7 @@
 Exposes real-time and batch NER extraction endpoints for tenants. Routes inference through the model-serving layer and stores extracted entities with confidence scores and span offsets.
 
 ---
-
 ## Requirements
-
 ### Requirement: Real-time extraction
 
 The system SHALL expose a real-time extraction endpoint that accepts a text paragraph and returns entities extracted by the tenant's active model. When no fine-tuned model is promoted, the system SHALL extract using the base model (version 0) with CoNLL labels. The response SHALL include a `model_version` field indicating which model produced the results. The endpoint SHALL resolve tenant_id from the JWT token and route the inference request through the model-serving internal endpoint. The system SHALL return extracted entities with confidence scores and source span offsets.
@@ -40,7 +38,7 @@ The system SHALL expose a real-time extraction endpoint that accepts a text para
 
 ### Requirement: Batch extraction
 
-The system SHALL support batch extraction on existing documents. Batch extraction SHALL process documents in `processed` status and SHALL skip documents already extracted with the current active model version (idempotent). When no promoted model exists, batch extraction SHALL use version 0 (base model). Each batch run SHALL record the model version used. Idempotency SHALL be determined by checking `extracted_entities` for existing rows with matching `document_id` and `model_version` — NOT by querying `extraction_runs.document_id`, which is NULL for batch runs. Batch extraction SHALL run asynchronously via a Celery task. The system SHALL persist a batch extraction run record in the database before processing begins, and the run SHALL be immediately queryable via the status endpoint after dispatch. For each successfully processed document the worker SHALL persist predicted entities to the `extracted_entities` table with their `run_id`, `document_id`, `entity_id`, `value`, and `confidence`. When no explicit `documentIds` are provided, batch extraction SHALL only consider documents with `purpose='query'`; when explicit `documentIds` are provided, no `purpose` filtering SHALL be applied.
+The system SHALL support batch extraction on existing documents. Batch extraction SHALL process documents in `processed` status and SHALL skip documents already extracted with the current active model version (idempotent). When no promoted model exists, batch extraction SHALL use version 0 (base model). Each batch run SHALL record the model version used. Idempotency SHALL be determined by checking `extracted_entities` for existing rows with matching `document_id` and `model_version` — NOT by querying `extraction_runs.document_id`, which is NULL for batch runs. Batch extraction SHALL run asynchronously via a Celery task. The system SHALL persist a batch extraction run record in the database before processing begins, and the run SHALL be immediately queryable via the status endpoint after dispatch. For each successfully processed document the worker SHALL persist predicted entities to the `extracted_entities` table with their `run_id`, `document_id`, `entity_id`, `value`, and `confidence`. For each successfully processed document the worker SHALL ALSO run entity normalization over the ordered prediction sequence and persist the resulting complete logical entities to `document_entities`, in the same database transaction as the raw token rows. When no explicit `documentIds` are provided, batch extraction SHALL only consider documents with `purpose='query'`; when explicit `documentIds` are provided, no `purpose` filtering SHALL be applied.
 
 #### Scenario: Trigger batch extraction
 
@@ -50,6 +48,56 @@ The system SHALL support batch extraction on existing documents. Batch extractio
 - **AND** the response SHALL contain `run_id` and `status`: "queued"
 - **AND** a subsequent GET to `/api/v1/extract-batch/{run_id}` SHALL return `status`: "queued"
 
+#### Scenario: Omitted processing mode defaults to BERT-only
+
+- **GIVEN** a batch extraction request with no `processing_mode` field
+- **WHEN** the request is accepted
+- **THEN** the run SHALL record `processing_mode = 'bert_only'`
+- **AND** no post-processing call SHALL be made for any document in the run
+
+#### Scenario: Requested processing mode reaches and is enforced by the worker
+
+- **GIVEN** a batch extraction request with `processing_mode = 'bert_llm_postprocess'`
+- **WHEN** the Celery task is dispatched
+- **THEN** the mode SHALL be present in the task arguments
+- **AND** the worker SHALL run post-processing for that run regardless of any tenant setting changed after dispatch
+
+#### Scenario: Unknown processing mode is rejected
+
+- **GIVEN** a batch extraction request with `processing_mode = 'llm_only'`
+- **WHEN** the request is validated
+- **THEN** the response SHALL have status 422
+- **AND** no extraction run SHALL be created
+
+#### Scenario: Post-processing requested without configuration is rejected, not silently downgraded
+
+- **GIVEN** a deployment with no post-processor configured
+- **WHEN** a request specifies `processing_mode = 'bert_llm_postprocess'`
+- **THEN** the response SHALL have status 422
+- **AND** no extraction run SHALL be created
+
+#### Scenario: Changing the mode does not reprocess existing results
+
+- **GIVEN** a document already extracted under the current active model version in `bert_only` mode
+- **WHEN** batch extraction is triggered for that document with `processing_mode = 'bert_llm_postprocess'`
+- **THEN** the document SHALL be skipped
+- **AND** its existing entities SHALL NOT be modified or deleted
+
+#### Scenario: The run records the mode actually used
+
+- **GIVEN** a completed run dispatched with `processing_mode = 'bert_llm_postprocess'`
+- **WHEN** its status is queried
+- **THEN** the response SHALL report the processing mode used
+- **AND** when post-processing ran, the post-processor model and prompt version SHALL be reported
+
+#### Scenario: A run degraded by post-processing failure is reported as such
+
+- **GIVEN** a run in `bert_llm_postprocess` mode where every post-processing call failed
+- **WHEN** its status is queried
+- **THEN** `status` SHALL be `completed`
+- **AND** a degraded indicator SHALL be reported
+- **AND** `processed_count` SHALL reflect the documents whose entities were persisted
+
 #### Scenario: Batch extraction persists extracted entities with document linkage
 
 - **GIVEN** a tenant with a promoted model and one document in `processed` status
@@ -58,6 +106,14 @@ The system SHALL support batch extraction on existing documents. Batch extractio
 - **AND** one or more rows SHALL exist in `extracted_entities` linked to the `run_id`
 - **AND** each row SHALL have non-null `entity_id`, `value`, `confidence`, and `document_id`
 - **AND** `document_id` SHALL match the source document's ID
+
+#### Scenario: Batch extraction persists normalized entities
+
+- **GIVEN** a tenant with a promoted model and one document in `processed` status whose text contains `Arjun Jayakumar works at InApp`
+- **WHEN** batch extraction completes for that document
+- **THEN** `document_entities` SHALL contain one row per complete logical entity for that `document_id`
+- **AND** a row SHALL exist with `entity_type = 'PER'` and `entity_value = 'Arjun Jayakumar'`
+- **AND** no `document_entities` row SHALL have a `B-` or `I-` prefixed `entity_type`
 
 #### Scenario: Batch extraction skips already-extracted documents
 
@@ -101,6 +157,13 @@ The system SHALL support batch extraction on existing documents. Batch extractio
 - **WHEN** a Tenant Admin POSTs to `/api/v1/extract-batch?documentIds=<that document's id>`
 - **THEN** the response SHALL have status 202
 - **AND** that document SHALL be included in the batch run
+
+#### Scenario: The documentIds query parameter remains accepted for one release
+
+- **GIVEN** an existing client that sends `documentIds` as a query parameter and no request body
+- **WHEN** it POSTs to `/api/v1/extract-batch`
+- **THEN** the request SHALL be accepted
+- **AND** the run SHALL use the default processing mode
 
 ### Requirement: Get extraction run status
 
@@ -305,3 +368,11 @@ The system SHALL apply a configurable confidence threshold during extraction. En
 - **GIVEN** a confidence threshold of 0.50
 - **WHEN** extraction runs on text containing a predicted entity with confidence 0.30
 - **THEN** that entity SHALL NOT appear in the results
+
+#### Scenario: The threshold is meaningful against the returned scale
+
+- **GIVEN** any extraction result returned by the real-time extraction endpoint
+- **WHEN** its entities are inspected
+- **THEN** every returned entity's confidence SHALL lie in `[0, 1]`
+- **AND** every returned entity's confidence SHALL be greater than or equal to the configured threshold
+

@@ -1,19 +1,20 @@
 ## Purpose
 
 <!-- TBD: This spec covers the portal dashboard feature, including the summary endpoint, hero section, stat cards, activity panel, secondary metrics panel, and data freshness behaviour. -->
-
 ## Requirements
-
 ### Requirement: Dashboard Data Shape
 
-The system SHALL define a `DashboardData` TypeScript type that mirrors the mockup's `dashData(role)` shape. Every role's dashboard SHALL include: `kicker` (string), `title` (string), `line` (string), `stats` (array of 4 `StatItem`), `pTitle` (string), `pMeta` (string), `pRows` (array of 4 `ActivityRow`), `sideTop` (string), `sideMeta` (string), `big` (string), `bigUnit` (string), `bar` (number 0–100), `sideMetrics` (array of 3 `{k, v}`), `sideBot` (string), `sideRows` (array of `{label, val, pct, c}`). Numeric values that cannot be fetched from an unavailable service SHALL be `null`; the component SHALL render `—` in place of `null`.
+The system SHALL define a `DashboardData` TypeScript type that mirrors the mockup's `dashData(role)` shape. Every role's dashboard SHALL include: `kicker` (string), `title` (string), `line` (string), `stats` (array of 4 `StatItem`), `pTitle` (string), `pMeta` (string), `pRows` (array of 4 `ActivityRow`), `sideTop` (string), `sideMeta` (string), `big` (string), `bigUnit` (string), `bar` (number 0–100), `sideMetrics` (array of 3 `{k, v}`), `sideBot` (string), `sideRows` (array of `{label, val, pct, c}`). Numeric values that cannot be fetched from an unavailable service SHALL be `null`; the component SHALL render `—` in place of `null`. Role-specific differences (including the `system_admin` differences below) are differences in the *data* populating this shape only — no role introduces a new component, prop, or layout structure beyond what this shape and the existing `StatCard`/`ActivityPanel`/`MetricsPanel` components already render.
 
 #### Scenario: system_admin data shape
 
 - **GIVEN** the authenticated user has role `system_admin`
 - **WHEN** `GET /api/v1/dashboard/summary` is called
-- **THEN** the response contains `kicker: "Platform control plane"`, 4 stats (Active tenants, Documents, Pending approvals, Avg model F1), `pTitle: "Approval queue"` with 4 training job rows, and a side panel titled "Platform health" with SLA, latency, error rate, and GPU metrics
-- **AND** the `sideRows` section contains storage usage by tenant (label, val, pct, colour)
+- **THEN** the response contains a `kicker`/`title`/`line` framed around platform operations, tenant management, and approvals
+- **AND** `stats` contains exactly 4 items: Active Tenants, Active Users, Pending Approvals, Training Jobs Running — none of which reference a tenant's model F1, precision, recall, or loss
+- **AND** `pTitle: "Platform Activity"` with the most recent cross-tenant `audit_events` rows ordered chronologically — a generic feed of recent platform audit events (examples include tenant created/deactivated, user onboarded, training approved/rejected, model promoted, but the response is not limited to these), not limited to pending-approval items
+- **AND** a side panel titled "Platform Health" reports a deterministic overall status ("Healthy", "Degraded", or "Critical" — computed from service reachability, never a hand-picked string) plus per-service Online/Offline reachability for Gateway, Chat API, Extraction Service, Training Service, and Model Serving
+- **AND** the side panel contains no SLA, p95 latency, error-rate, or GPU metrics
 
 #### Scenario: tenant_admin data shape
 
@@ -53,9 +54,12 @@ Each role handler SHALL accept the `db` session and `tenant_id` parameters and e
 
 - **GIVEN** the caller has role `system_admin`
 - **WHEN** `GET /api/v1/dashboard/summary` is called
-- **THEN** the response includes the real tenant count in `stats[0].value`
+- **THEN** the response includes the real active-tenant count in `stats[0].value`
 - **AND** `sources.tenants` is `true`
-- **AND** training-dependent fields (pending approvals count, avg F1) are fetched from the training service
+- **AND** the Active Users stat is fetched from `public.tenant_users`
+- **AND** the Pending Approvals and Training Jobs Running stats are fetched by iterating tenant Postgres schemas
+- **AND** the Platform Activity feed is fetched from `public.audit_events`, generically (no `action`/`kind` allowlist applied)
+- **AND** the Platform Health panel reflects live, concurrently-issued `/health` checks against Gateway, Chat API, Extraction Service, Training Service, and Model Serving, with the overall status derived deterministically from their results
 
 #### Scenario: tenant_admin summary returns real data from wired sources
 
@@ -189,13 +193,19 @@ Cards SHALL have a hover effect that translates the card up by 2px and changes t
 
 The dashboard page SHALL render a primary activity panel displaying `pTitle` and `pMeta` as the panel header, followed by a list of exactly 4 `ActivityRow` items. Each row SHALL show: a coloured dot indicator (left side), `title` (primary text), `sub` (secondary text), and a coloured status `tag` pill (right-aligned). The dot indicator SHALL be a small `<div>` with `border-radius: 50%` coloured according to the row's `tk` status key (same colour mapping as the existing tag colours).
 
-Each row SHALL be clickable and navigate to the screen identified by `row.go` (mapped via `navFor` hrefs — `"training"` → `/training-jobs`, `"annotation"` → `/annotation`, `"documents"` → `/documents`, `"extractions"` → `/extractions`, `"models"` → `/models`).
+Each row SHALL be clickable and navigate to the screen identified by `row.go` (mapped via `navFor` hrefs — `"training"` → `/training-jobs`, `"annotation"` → `/annotation`, `"documents"` → `/documents`, `"extractions"` → `/extractions`, `"models"` → `/training-jobs`, `"users"` → `/users`, `"tenants"` → `/admin/tenants`).
 
 #### Scenario: activity row navigates on click
 
 - **GIVEN** a `system_admin` activity row has `go: "training"`
 - **WHEN** the user clicks the row
 - **THEN** the router navigates to `/training-jobs`
+
+#### Scenario: tenant lifecycle activity row navigates to tenant admin console
+
+- **GIVEN** a `system_admin` Platform Activity row represents a `tenant.create` or `tenant.deactivate` event and has `go: "tenants"`
+- **WHEN** the user clicks the row
+- **THEN** the router navigates to `/admin/tenants`
 
 #### Scenario: status dot and tag render correct colours
 
@@ -213,6 +223,8 @@ Each row SHALL be clickable and navigate to the screen identified by `row.go` (m
 The dashboard page SHALL render a secondary panel to the right of the activity panel (two-column grid on desktop, 16px gap). The top section SHALL display: `sideTop` title and `sideMeta` label stacked vertically (title above, meta below with 4px and 16px margins respectively), `big` + `bigUnit` as the primary metric, a horizontal progress bar (height 8px) filled to `bar` percent using the brand primary colour, and three `sideMetrics` displayed as an inline flex row (space-between) with each metric showing `k` label and `v` value in JetBrains Mono.
 
 Below the top section, if `sideRows` is non-empty, a bottom section SHALL render showing `sideBot` as the sub-header followed by a mini bar chart where each row shows a colour-coded bar (height 6px) scaled to `pct` and a label + value.
+
+For `system_admin`, `sideMetrics` and `sideRows` values of literal `"Online"`/`"Offline"` SHALL render using a status colour treatment (green for `"Online"`, red for `"Offline"`) rather than the default text colour. The `big` value SHALL likewise render with a status colour when it is one of the deterministic Platform Health statuses: green for `"Healthy"`, amber for `"Degraded"`, red for `"Critical"`. This extends the existing colour-mapping function used elsewhere in this panel; it does not introduce a new component or layout.
 
 #### Scenario: progress bar fills to correct percentage
 
@@ -235,7 +247,21 @@ Below the top section, if `sideRows` is non-empty, a bottom section SHALL render
 - **WHEN** the mini bar renders
 - **THEN** the bar background colour matches the specified CSS colour string
 
----
+#### Scenario: system_admin service status renders with status colour
+
+- **GIVEN** the authenticated user has role `system_admin`
+- **AND** a `sideMetrics` entry has `v: "Offline"`
+- **WHEN** the secondary panel renders
+- **THEN** that metric's value SHALL render in the red/bad status colour, not the default secondary text colour
+
+#### Scenario: system_admin overall Platform Health status renders with severity colour
+
+- **GIVEN** the authenticated user has role `system_admin`
+- **AND** `big` is `"Critical"`
+- **WHEN** the secondary panel renders
+- **THEN** `big` SHALL render in the red/bad status colour
+- **AND** if `big` were `"Degraded"` instead, it SHALL render in the amber/warn status colour
+- **AND** if `big` were `"Healthy"` instead, it SHALL render in the green/good status colour
 
 ### Requirement: Data Freshness
 
@@ -253,3 +279,4 @@ The dashboard SHALL use TanStack Query (`@tanstack/react-query`) to fetch from `
 - **GIVEN** any page in the portal is rendered
 - **WHEN** a component calls `useQueryClient()`
 - **THEN** it receives the shared `QueryClient` instance without error
+

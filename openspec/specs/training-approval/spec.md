@@ -33,6 +33,29 @@ The system SHALL allow a System Admin to approve a training job that is in "pend
 - **WHEN** a Tenant Admin POSTs to `/api/v1/training-jobs/{job_id}/approve`
 - **THEN** the response SHALL have status 403
 
+#### Scenario: Approve a pending training job with valid hyperparameters
+
+- **GIVEN** a training job in "pending_approval" status with `hyperparams: null`
+- **WHEN** a System Admin POSTs to `/api/v1/training-jobs/{job_id}/approve` with `{"learning_rate": 2e-5, "num_epochs": 3, "batch_size": 8, "max_seq_length": 128}`
+- **THEN** the response SHALL have status 200
+- **AND** the response body SHALL contain `status`: "queued" and `hyperparams` matching the submitted values
+- **AND** a Celery task SHALL be enqueued using those hyperparameters
+
+#### Scenario: Approve without supplying hyperparameters
+
+- **GIVEN** a training job in "pending_approval" status
+- **WHEN** a System Admin POSTs to `/api/v1/training-jobs/{job_id}/approve` with an empty body
+- **THEN** the response SHALL have status 422
+- **AND** the error SHALL indicate hyperparameters are required to approve
+
+#### Scenario: Approve with invalid hyperparameters
+
+- **GIVEN** a training job in "pending_approval" status
+- **WHEN** a System Admin POSTs to `/api/v1/training-jobs/{job_id}/approve` with `{"num_epochs": -1}`
+- **THEN** the response SHALL have status 422
+- **AND** the error SHALL describe which parameter is invalid
+- **AND** the job SHALL remain in "pending_approval" status with `hyperparams` unchanged
+
 ### Requirement: Reject training job
 
 The system SHALL allow a System Admin to reject a training job that is in "pending_approval" status. The system MAY accept an optional rejection reason. Upon rejection, the system SHALL transition the job status to "rejected".

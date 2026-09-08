@@ -1,12 +1,12 @@
-## ADDED Requirements
+## Purpose
 
+<!-- TBD: This spec covers the authenticated application shell — sidebar, topbar, placeholder screens, and the authenticated route group layout. -->
+## Requirements
 ### Requirement: Sidebar Layout
 
-The system SHALL render a sticky 248 px sidebar (`position: sticky; top: 0; height: 100vh`) containing, from top to bottom: a logo block, a tenant switcher pill, a scrollable role-specific nav section, and a user strip pinned to the bottom. The sidebar background SHALL be `var(--surface-2)` (solid, no glass or backdrop-filter effect).
+The system SHALL render a sticky 248 px sidebar (`position: sticky; top: 0; height: 100vh`) containing, from top to bottom: a logo block, a scrollable role-specific nav section, and a user strip pinned to the bottom. The sidebar background SHALL be `var(--surface-2)` (solid, no glass or backdrop-filter effect). The sidebar SHALL NOT render a tenant pill or any other tenant-switcher affordance.
 
-**Logo block**: orange rounded square (`width: 30px; height: 30px; border-radius: 8px`) with "n" glyph (`font-weight: 800; font-size: 17px`) in Hanken Grotesk with white text, followed by "nerplatform" wordmark in Hanken Grotesk (`font-weight: 700; font-size: 16px; letter-spacing: -0.02em`).
-
-**Tenant pill**: a container with `background: var(--surface-3); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; margin: 4px 12px 14px`. Displays a 26×26px avatar square with `background: var(--primary-soft); color: var(--primary-2)` showing `tenantInitials`, followed by `tenantName` (12.5px, weight-600) and `tenantSlug` in JetBrains Mono (10px, `var(--ink-3)`), and a `▾` caret on the right edge. The pill SHALL be display-only (no navigation or modal on click — hover `border-color: var(--primary-line)` only).
+**Logo block**: orange rounded square (`width: 30px; height: 30px; border-radius: 8px`) with "n" glyph (`font-weight: 800; font-size: 17px`) in Hanken Grotesk with white text, followed by "NER Platform" wordmark (proper capitalization and spacing) in Hanken Grotesk (`font-weight: 700; font-size: 16px; letter-spacing: -0.02em`).
 
 **Nav section** (`flex: 1; overflow: auto; padding: 4px 12px`): renders `navFor(user.role)` as `<button>` elements with `padding: 9px 11px; border-radius: 10px; font-family: Inter; font-size: 13.5px; margin-bottom: 2px`. Active item (pathname starts with `item.href`) SHALL have background and colour treatment driven by the mockup's primary-colour highlight variables. Badge counts render as pill chips in JetBrains Mono (10px, weight-600) when present.
 
@@ -32,13 +32,17 @@ The system SHALL render a sticky 248 px sidebar (`position: sticky; top: 0; heig
 - **WHEN** the sidebar renders for an `annotator` user
 - **THEN** a badge chip displaying "4" appears next to the Annotation label
 
-#### Scenario: tenant pill shows correct values with muted avatar
+#### Scenario: wordmark reads NER Platform
 
-- **GIVEN** `AuthUser.tenantSlug = "acme"` and the derived tenant name is "Acme"
-- **WHEN** the sidebar renders
-- **THEN** the tenant pill has a visible `var(--surface-3)` background fill
-- **AND** the avatar square uses `var(--primary-soft)` background (not full brand orange)
-- **AND** the `▾` caret is visible on the right edge
+- **GIVEN** the sidebar renders
+- **WHEN** the logo block is inspected
+- **THEN** the wordmark text is exactly "NER Platform"
+
+#### Scenario: no tenant pill is rendered
+
+- **GIVEN** the sidebar renders for any authenticated user
+- **WHEN** the sidebar DOM is inspected
+- **THEN** no tenant-initial avatar, tenant name, or tenant slug element is present between the logo block and the nav section
 
 #### Scenario: user strip chevron is rendered in a framed box
 
@@ -91,13 +95,9 @@ The system SHALL render a sticky 248 px sidebar (`position: sticky; top: 0; heig
 
 ### Requirement: Topbar Layout
 
-The system SHALL render a 62 px fixed-height topbar (`border-bottom; z-index: 50; position: sticky; top: 0`) containing, in order: screen title + path, a flex spacer, a search placeholder, an optional role-switcher pill, a dark mode toggle, and a user avatar. The topbar SHALL remain visible at the top of the viewport at all times. The topbar background SHALL be `var(--surface-2)` (solid, no glass or backdrop-filter effect).
+The system SHALL render a 62 px fixed-height topbar (`border-bottom; z-index: 50; position: sticky; top: 0`) containing, in order: screen title + path, a flex spacer, a dark mode toggle, and a user avatar. The topbar SHALL remain visible at the top of the viewport at all times. The topbar background SHALL be `var(--surface-2)` (solid, no glass or backdrop-filter effect). The topbar SHALL NOT render a search box/placeholder or a role-switcher/demo-role affordance.
 
 **Screen title + path**: displayed side-by-side with `align-items: baseline` and a `gap: 9px`. Title in Hanken Grotesk 700 16px, path in JetBrains Mono 11px `var(--ink-3)`, both derived from `SCREEN_TITLES` keyed on the current pathname.
-
-**Search placeholder**: a non-interactive visual element showing "⌕ search · ⌘K" in JetBrains Mono, styled with `width: 230px; border-radius: 10px; padding: 7px 12px; background: var(--surface-3); border: 1px solid var(--line)`. SHALL NOT open any dialog.
-
-**Role-switcher pill**: rendered only when `process.env.NEXT_PUBLIC_DEMO_MODE === "true"`. The ENTIRE pill container (including the `AS` label and four role chips) SHALL be wrapped in a single `<div>` with `background: var(--surface-3); border: 1px solid var(--line); border-radius: 10px; padding: 3px`. The `AS` label SHALL appear first inside the container in JetBrains Mono 10px `var(--ink-3)` with `padding: 0 6px`. The four role chips (SA / TA / AN / BU) SHALL follow. Clicking a chip calls `setDemoRole` replacing `AuthUser.role` in context for demo purposes only.
 
 **Dark mode toggle**: a 36×36 button with `border-radius: 10px` that calls `useDarkMode().toggle()`. Icon shows ☀ in dark mode and ☽ in light mode.
 
@@ -117,18 +117,18 @@ The system SHALL render a 62 px fixed-height topbar (`border-bottom; z-index: 50
 - **THEN** the title "Tenants" and path "/admin/tenants" are displayed in the same horizontal row with baseline alignment
 - **AND** they are NOT stacked vertically
 
-#### Scenario: role-switcher hidden in production mode
+#### Scenario: no search box is rendered
 
-- **GIVEN** `NEXT_PUBLIC_DEMO_MODE` is not `"true"`
+- **GIVEN** the topbar renders
+- **WHEN** the topbar DOM is inspected
+- **THEN** no search input, search icon, or "⌘K" hint element is present
+
+#### Scenario: no role-switcher is rendered regardless of demo mode
+
+- **GIVEN** `NEXT_PUBLIC_DEMO_MODE` is `"true"` or unset
 - **WHEN** the topbar renders
-- **THEN** no role-switcher pill, AS label, or SA/TA/AN/BU chips are visible
-
-#### Scenario: role-switcher wrapped in single bordered pill
-
-- **GIVEN** `NEXT_PUBLIC_DEMO_MODE === "true"`
-- **WHEN** the topbar renders
-- **THEN** the `AS` label and four role chips (SA, TA, AN, BU) are rendered inside a single container with a visible border and background fill
-- **AND** the `AS` label appears before the chips inside the same pill container
+- **THEN** no `AS` label or SA/TA/AN/BU chips are visible
+- **AND** the topbar accepts no `demoRole` or `onDemoRoleChange` props
 
 #### Scenario: dark mode toggle has 10px border radius
 
@@ -148,12 +148,6 @@ The system SHALL render a 62 px fixed-height topbar (`border-bottom; z-index: 50
 - **WHEN** the user clicks the dark mode toggle
 - **THEN** `useDarkMode().toggle()` is called
 - **AND** the `dark` class is added to `document.documentElement`
-
-#### Scenario: search placeholder is non-interactive
-
-- **GIVEN** the topbar is rendered
-- **WHEN** the user clicks the search area
-- **THEN** no dialog, modal, or command palette opens
 
 ### Requirement: Placeholder Screens
 
@@ -209,3 +203,4 @@ The `(auth)` group SHALL NOT appear in the URL. Existing URLs (`/admin/tenants`,
 - **WHEN** they navigate to `/dashboard`
 - **THEN** the dashboard page renders (not redirected to `/admin`)
 - **AND** the dashboard shows the system_admin hero with "Platform control plane" kicker
+

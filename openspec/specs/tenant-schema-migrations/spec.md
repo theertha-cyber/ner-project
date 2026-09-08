@@ -5,9 +5,7 @@
 Ensure that Alembic migrations affecting tenant-scoped tables are propagated to all existing tenant schemas at migration time, preventing schema drift between `tenant_template` and provisioned tenant schemas.
 
 ---
-
 ## Requirements
-
 ### Requirement: Tenant-scoped migrations propagate to existing tenant schemas
 
 When an Alembic migration changes the shape of a tenant-scoped table (adds a table, column, or index) in the `tenant_template` schema, the system SHALL apply the equivalent DDL to every tenant schema that already exists at migration time, regardless of that tenant's `status`, in the same migration run. A tenant's schema SHALL NOT permanently retain an outdated shape after a migration that changes the corresponding tenant-scoped table has been applied.
@@ -130,3 +128,99 @@ Provisioning a new tenant SHALL create the tenant's schema and every table prese
 - **WHEN** a new tenant is provisioned successfully
 - **THEN** that tenant's schema SHALL contain all N tables
 - **AND** listing documents for that tenant SHALL return an empty list rather than an error
+
+### Requirement: The `document_entities` table exists on the template and every tenant schema
+
+The migration introducing normalized entity storage SHALL create the `document_entities` table in `tenant_template` and in every tenant schema that exists at migration time, regardless of that tenant's `status`. The table SHALL have columns `id` (UUID primary key), `document_id` (UUID), `entity_type` (TEXT), `entity_value` (TEXT), `normalized_value` (TEXT), `confidence` (DOUBLE PRECISION), `page_number` (INTEGER), `char_start` (INTEGER), `char_end` (INTEGER), and `created_at` (TIMESTAMPTZ). The migration SHALL create indexes on `document_id`, on `entity_type`, and on `normalized_value`. The migration SHALL be re-runnable without error and SHALL NOT alter `extracted_entities` in any schema.
+
+#### Scenario: Template and existing tenant schemas both receive the table
+
+- **GIVEN** an existing tenant with an already-provisioned schema `tenant_<id>`
+- **WHEN** the migration is applied (`alembic upgrade head`)
+- **THEN** `tenant_template.document_entities` SHALL exist with the specified columns
+- **AND** `tenant_<id>.document_entities` SHALL also exist with the specified columns and indexes
+
+#### Scenario: Inactive tenant schemas are not skipped
+
+- **GIVEN** a tenant with `status: "inactive"` and an already-provisioned schema
+- **WHEN** the migration is applied
+- **THEN** that tenant's schema SHALL also contain `document_entities`
+
+#### Scenario: Raw entity table is untouched
+
+- **GIVEN** a tenant schema with populated `extracted_entities` rows
+- **WHEN** the migration is applied
+- **THEN** `extracted_entities` SHALL retain its columns and all of its rows
+
+#### Scenario: Re-running the migration DDL is a no-op
+
+- **GIVEN** a tenant schema that already contains `document_entities`
+- **WHEN** the migration's per-tenant-schema DDL is executed against that schema again
+- **THEN** no error SHALL occur
+- **AND** the schema's shape SHALL be unchanged
+
+#### Scenario: Downgrade removes only the new table
+
+- **GIVEN** the migration has been applied
+- **WHEN** the migration is downgraded
+- **THEN** `document_entities` SHALL be dropped from the template and every tenant schema
+- **AND** `extracted_entities` SHALL be unaffected
+
+### Requirement: Semantic value columns are added to the template and every existing tenant schema
+
+The system SHALL add the nullable columns `value_kind`, `value_number`, `value_number_high`, `value_unit`, `value_date`, and `value_date_high` to `document_entities` in `tenant_template` and in every existing `tenant_%` schema, together with a partial index on `(entity_type, value_number)` where `value_number` is not NULL and a partial index on `(entity_type, value_date)` where `value_date` is not NULL. The migration SHALL be idempotent, SHALL tolerate a tenant schema in which `document_entities` does not exist, and SHALL NOT alter any existing column's type, nullability, or data.
+
+#### Scenario: Template and existing tenant schemas both gain the columns
+
+- **GIVEN** a database with `tenant_template` and two provisioned tenant schemas, each holding a `document_entities` table
+- **WHEN** the migration runs
+- **THEN** all three schemas' `document_entities` tables SHALL contain the six semantic value columns
+- **AND** each SHALL carry both partial indexes
+
+#### Scenario: Existing rows are preserved
+
+- **GIVEN** a tenant schema whose `document_entities` table holds rows
+- **WHEN** the migration runs
+- **THEN** the row count SHALL be unchanged
+- **AND** every existing row's `entity_value`, `normalized_value`, `confidence`, `page_number`, `char_start`, and `char_end` SHALL be unchanged
+- **AND** every new column SHALL be NULL for those rows
+
+#### Scenario: Tenant schema missing the table is skipped
+
+- **GIVEN** a `tenant_%` schema with no `document_entities` table
+- **WHEN** the migration runs
+- **THEN** the migration SHALL complete successfully
+- **AND** the remaining tenant schemas SHALL still be migrated
+
+#### Scenario: Re-running the migration is a no-op
+
+- **GIVEN** the migration has already been applied
+- **WHEN** it runs again
+- **THEN** it SHALL complete successfully without error
+- **AND** the schema SHALL be unchanged
+
+#### Scenario: Newly provisioned tenants inherit the columns
+
+- **GIVEN** the migration has been applied to `tenant_template`
+- **WHEN** a new tenant is provisioned by cloning the template
+- **THEN** the new tenant's `document_entities` table SHALL contain the six semantic value columns and both partial indexes
+
+### Requirement: Entity definition value kind columns are added to the public schema
+
+The system SHALL add the nullable columns `value_kind` and `value_unit` to `public.entity_definitions`. A NULL `value_kind` SHALL be interpreted as `text`. The migration SHALL NOT backfill values and SHALL NOT alter any existing column.
+
+#### Scenario: Columns are added without touching existing definitions
+
+- **GIVEN** `public.entity_definitions` holds existing rows
+- **WHEN** the migration runs
+- **THEN** the table SHALL contain `value_kind` and `value_unit`
+- **AND** every existing row SHALL have NULL in both
+- **AND** no other column SHALL be altered
+
+#### Scenario: Downgrade removes the columns
+
+- **GIVEN** the migration has been applied
+- **WHEN** the migration is downgraded
+- **THEN** `value_kind` and `value_unit` SHALL be removed
+- **AND** the remaining columns and rows SHALL be unchanged
+
