@@ -115,7 +115,7 @@ async def upload_document(
             status_code=422,
             detail={
                 "code": "VALIDATION_ERROR",
-                "message": f"File type '{exc.extension}' is not supported. Allowed: .pdf, .jpg, .jpeg, .png, .tif, .tiff",
+                "message": f"File type '{exc.extension}' is not supported. Allowed: .pdf, .jpg, .jpeg, .png, .tif, .tiff, .doc, .docx",
             },
         )
     except FileTooLarge as exc:

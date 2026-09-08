@@ -48,7 +48,7 @@ async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], e
         await session.commit()
 
 
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".doc", ".docx"}
 
 # Rasterisation resolution for scanned PDFs; 200 DPI is the accuracy/speed knee
 # for tesseract on typical document scans.
@@ -130,6 +130,57 @@ def extract_text_image(file_bytes: bytes) -> list[dict]:
     return spans
 
 
+def extract_text_docx(file_bytes: bytes) -> list[dict]:
+    """Extract paragraph text from a DOCX document."""
+    import io
+    from docx import Document
+
+    document = Document(io.BytesIO(file_bytes))
+    extracted = "\n".join(
+        paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()
+    )
+    return [{
+        "span_index": 0,
+        "text": extracted,
+        "char_start": 0,
+        "char_end": len(extracted),
+        "page_number": 0,
+    }]
+
+
+def extract_text_doc(file_bytes: bytes) -> list[dict]:
+    """Extract legacy DOC text through the optional antiword executable."""
+    import os
+    import subprocess
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as temporary_file:
+        temporary_file.write(file_bytes)
+        temporary_path = temporary_file.name
+    try:
+        result = subprocess.run(
+            ["antiword", temporary_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("antiword is not installed") from exc
+    finally:
+        os.unlink(temporary_path)
+    if result.returncode != 0:
+        raise RuntimeError("antiword failed")
+    extracted = result.stdout
+    return [{
+        "span_index": 0,
+        "text": extracted,
+        "char_start": 0,
+        "char_end": len(extracted),
+        "page_number": 0,
+    }]
+
+
 def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
     """OCR a scanned PDF by rasterising pages with PyMuPDF (no poppler needed)."""
     import fitz
@@ -161,6 +212,8 @@ def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
 # --- Media-type resolution -------------------------------------------------------------
 
 MEDIA_TYPE_PDF = "application/pdf"
+MEDIA_TYPE_DOC = "application/msword"
+MEDIA_TYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 IMAGE_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/tiff"})
 
 # Types a client sends when it does not know or does not care. Treating one of these as
@@ -176,6 +229,8 @@ _EXTENSION_MEDIA_TYPES = {
     ".png": "image/png",
     ".tif": "image/tiff",
     ".tiff": "image/tiff",
+    ".doc": MEDIA_TYPE_DOC,
+    ".docx": MEDIA_TYPE_DOCX,
 }
 
 _MAGIC_PREFIXES = (
@@ -193,7 +248,7 @@ def _media_type_from_declaration(declared: str | None) -> str | None:
     value = declared.split(";")[0].strip().lower()
     if value in _UNINFORMATIVE_MEDIA_TYPES:
         return None
-    if value == MEDIA_TYPE_PDF or value in IMAGE_MEDIA_TYPES:
+    if value in {MEDIA_TYPE_PDF, MEDIA_TYPE_DOC, MEDIA_TYPE_DOCX} or value in IMAGE_MEDIA_TYPES:
         return value
     # Aliases real clients send.
     if value in ("image/jpg", "image/pjpeg"):
@@ -412,6 +467,10 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
                 spans = await asyncio.to_thread(extract_text_pdf_as_image, file_data)
         elif media_type in IMAGE_MEDIA_TYPES:
             spans = await asyncio.to_thread(extract_text_image, file_data)
+        elif media_type == MEDIA_TYPE_DOCX:
+            spans = await asyncio.to_thread(extract_text_docx, file_data)
+        elif media_type == MEDIA_TYPE_DOC:
+            spans = await asyncio.to_thread(extract_text_doc, file_data)
         else:
             raise ValueError(f"Unsupported media type: {media_type or 'unresolved'}")
 

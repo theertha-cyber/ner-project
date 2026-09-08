@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useUpload } from "@/hooks/use-upload";
 
-const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/tiff"];
+const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/tiff", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"];
 const MAX_SIZE = 50 * 1024 * 1024;
 const MAX_BATCH = 20;
 
@@ -34,7 +34,7 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
 
   const validate = useCallback((file: File): string | null => {
     if (!ACCEPTED_TYPES.includes(file.type)) {
-      return `File type "${file.type}" is not supported. Accepted: PDF, JPEG, PNG, TIFF.`;
+      return `File type "${file.type}" is not supported. Accepted: PDF, DOC, DOCX, JPEG, PNG, TIFF.`;
     }
     if (file.size > MAX_SIZE) {
       return `File exceeds the 50MB limit (${(file.size / (1024 * 1024)).toFixed(1)}MB).`;
@@ -199,7 +199,7 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif"
+          accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.doc,.docx"
           multiple
           className="hidden"
           onChange={handleInputChange}
@@ -267,7 +267,7 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
               <span className="font-medium text-brand-primary">Click to upload</span> or drag and drop
             </p>
             <p className="mt-1 text-xs" style={{ color: "var(--ink-3)" }}>
-              PDF, JPEG, PNG, or TIFF (max 50MB, up to {MAX_BATCH} files)
+              PDF, DOC, DOCX, JPEG, PNG, or TIFF (max 50MB, up to {MAX_BATCH} files)
             </p>
           </>
         )}

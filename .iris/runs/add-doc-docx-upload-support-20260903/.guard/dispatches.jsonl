@@ -1,0 +1,5 @@
+{"v":1,"at":"2026-09-03T04:46:35.533Z","event":"dispatch","agent":"triage","chain":"direct","session":"ses_f9aa49c15ffegJLvvCE6QqIrmh"}
+{"v":1,"at":"2026-09-03T05:22:49.975Z","event":"dispatch","agent":"ralph-preflight","chain":"direct","session":"ses_f9aa49c15ffegJLvvCE6QqIrmh"}
+{"v":1,"at":"2026-09-03T05:32:52.849Z","event":"dispatch","agent":"ralph-preflight","chain":"direct","session":"ses_f9aa49c15ffegJLvvCE6QqIrmh"}
+{"v":1,"at":"2026-09-03T05:49:11.593Z","event":"dispatch","agent":"ralph","chain":"direct","session":"ses_f9aa49c15ffegJLvvCE6QqIrmh"}
+{"v":1,"at":"2026-09-03T06:57:02.880Z","event":"dispatch","agent":"qa-governor","chain":"direct","session":"ses_f9aa49c15ffegJLvvCE6QqIrmh"}

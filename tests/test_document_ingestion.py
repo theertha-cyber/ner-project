@@ -28,6 +28,19 @@ def make_token(tid, role="business_user"):
 PDF_CONTENT = b"%PDF-1.4 fake pdf content for testing purposes " * 10
 PNG_CONTENT = b"\x89PNG\r\n\x1a\nfake png content " * 10
 
+# Minimal valid DOCX content: a ZIP file containing the minimum OOXML structure
+import zipfile
+def _make_minimal_docx():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+        zf.writestr('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+        zf.writestr('word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>')
+        zf.writestr('word/document.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Hello DOCX World</w:t></w:r></w:p></w:body></w:document>')
+    return buf.getvalue()
+
+DOCX_CONTENT = _make_minimal_docx()
+
 _coll_counter = 0
 
 
@@ -1005,3 +1018,27 @@ async def test_8_7_ephemeral_retention_stores_no_durable_original(
     # The working copy is gone and the row no longer names it.
     assert working.deletes, "the working copy was never deleted"
     assert row.blob_path is None
+
+
+def test_docx_extractor_returns_paragraph_text():
+    from src.document_service.services.ocr_worker import extract_text_docx
+
+    spans = extract_text_docx(DOCX_CONTENT)
+
+    assert spans[0]["text"] == "Hello DOCX World"
+    assert spans[0]["char_end"] == len("Hello DOCX World")
+
+
+def test_doc_and_docx_extensions_are_supported():
+    from src.document_service.services.ocr_worker import is_allowed_file
+
+    assert is_allowed_file("report.doc")
+    assert is_allowed_file("report.docx")
+
+
+def test_unsupported_type_is_rejected_by_the_ingestion_boundary():
+    from src.document_service.ingestion.errors import UnsupportedFileType
+    from src.document_service.services.ocr_worker import is_allowed_file
+
+    assert not is_allowed_file("malware.exe")
+    assert UnsupportedFileType(".exe").extension == ".exe"

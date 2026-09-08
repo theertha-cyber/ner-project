@@ -1,0 +1,19 @@
+Test Type,Section,Item,Status,Details,Evidence
+Summary,Results By Test Type,Smoke,not run — no deployed URL,,N/A
+Summary,Results By Test Type,Sanity,not run — no deployed URL,,N/A
+Summary,Results By Test Type,Regression,not run — no deployed URL,,N/A
+Summary,Results By Test Type,Integration,not run — PostgreSQL unavailable,,N/A
+Summary,Results By Test Type,Unit,not run — PostgreSQL unavailable,,unit.md (./unit.md)
+Summary,Results By Test Type,Security,not run — no deployed URL,,N/A
+Summary,Results By Test Type,Performance,not run — no deployed URL,,N/A
+Summary,Results By Test Type,Load,not run — no deployed URL,,N/A
+Summary,Results By Test Type,Accessibility,not run — no deployed URL,,N/A
+Summary,Results By Test Type,Demo & Fixture Hygiene,not run — no deployed URL,,N/A
+Summary,Results By Test Type,Code Quality,run,,code-quality.md (./code-quality.md)
+Summary,Release Gate,Release Gate Decision,conditional pass,,
+Summary,Follow-Up Work,Run unit tests against PostgreSQL,,Owner: QA; Priority: high; Required Before: Deployment to any environment,
+Summary,Follow-Up Work,Verify DOC/DOCX extraction with real files,,Owner: QA; Priority: medium; Required Before: Deployment to any environment,
+Summary,Follow-Up Work,Run full QA programme against a deployed instance,,Owner: QA; Priority: high; Required Before: Production deployment,
+Unit,Test Cases Present,testdocxuploadreturns201,not run,"Description: Upload a .docx file, verify 201 response and metadata",
+Unit,Test Cases Present,testdocuploadreturns201,not run,"Description: Upload a .doc file, verify 201 response and metadata",
+Unit,Test Cases Present,testunsupportedtyperejectionwithdoctypes,not run,Description: Verify unsupported file types still rejected after adding DOC/DOCX,
