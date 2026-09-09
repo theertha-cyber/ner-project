@@ -126,11 +126,17 @@ async def _documents_with_text(
     """Which of the submitted documents actually have extracted text.
 
     Checked at request time rather than on the worker so a caller learns immediately that the
-    request could never have succeeded, matching change 1's trigger endpoint."""
+    request could never have succeeded, matching change 1's trigger endpoint.
+
+    Q&A-pair documents (`purpose = 'qa_pair'`) are excluded here: they are guidance input to
+    a proposal, not seed or batch material, and must not enter the seed set or a pre-label
+    batch (verification.md Risk 6)."""
     result = await session.execute(
         text(
-            f"SELECT DISTINCT document_id FROM {schema}.document_text_spans "
-            "WHERE document_id = ANY(:doc_ids) AND COALESCE(text, '') <> ''"
+            f"SELECT DISTINCT s.document_id FROM {schema}.document_text_spans s "
+            f"JOIN {schema}.documents d ON d.id = s.document_id "
+            "WHERE s.document_id = ANY(:doc_ids) AND COALESCE(s.text, '') <> '' "
+            "AND COALESCE(d.purpose, '') <> 'qa_pair'"
         ),
         {"doc_ids": doc_ids},
     )
@@ -169,14 +175,55 @@ async def request_schema_proposal(
             },
         )
 
+    # Optional Q&A-pair document: uploaded separately through the ordinary document path as
+    # `purpose = 'qa_pair'` and referenced here by id so the proposal's inputs are
+    # reproducible (design.md Decision 1). Its text guides which entity types the model
+    # proposes; examples still ground against the seed documents.
+    qa_pair_document_id = body.get("qa_pair_document_id")
+    if qa_pair_document_id:
+        qa_row = await session.execute(
+            text(
+                f"SELECT d.purpose, "
+                f"  EXISTS(SELECT 1 FROM {schema}.document_text_spans s "
+                f"         WHERE s.document_id = d.id AND COALESCE(s.text, '') <> '') "
+                f"FROM {schema}.documents d WHERE d.id = :id"
+            ),
+            {"id": qa_pair_document_id},
+        )
+        qa = qa_row.fetchone()
+        if qa is None or qa[0] != "qa_pair":
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "INVALID_QA_PAIR_DOCUMENT",
+                    "message": (
+                        "qa_pair_document_id must reference a document uploaded with "
+                        "purpose 'qa_pair' (supported types: PDF, DOC, DOCX, TXT)"
+                    ),
+                },
+            )
+        if not qa[1]:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "QA_PAIR_NOT_PROCESSED",
+                    "message": "The Q&A-pair document has no extracted text yet",
+                },
+            )
+
     proposal_id = generate_uuid()
     await session.execute(
         text(
             f"INSERT INTO {schema}.schema_proposals "
-            "(id, status, seed_document_ids, requested_by) "
-            "VALUES (:id, 'queued', CAST(:seed AS JSONB), :requested_by)"
+            "(id, status, seed_document_ids, qa_pair_document_id, requested_by) "
+            "VALUES (:id, 'queued', CAST(:seed AS JSONB), :qa_pair_document_id, :requested_by)"
         ),
-        {"id": proposal_id, "seed": json.dumps(readable), "requested_by": _user_id(request)},
+        {
+            "id": proposal_id,
+            "seed": json.dumps(readable),
+            "qa_pair_document_id": qa_pair_document_id,
+            "requested_by": _user_id(request),
+        },
     )
     await session.commit()
 
@@ -186,7 +233,12 @@ async def request_schema_proposal(
         queue=settings.annotation_llm_celery_queue,
     )
 
-    return {"proposal_id": proposal_id, "status": "queued", "seed_document_count": len(readable)}
+    return {
+        "proposal_id": proposal_id,
+        "status": "queued",
+        "seed_document_count": len(readable),
+        "qa_pair_document_id": qa_pair_document_id,
+    }
 
 
 @router.get("/api/v1/schema-proposals/{proposal_id}")
@@ -202,7 +254,8 @@ async def get_schema_proposal(
 
     result = await session.execute(
         text(
-            f"SELECT id, status, seed_document_ids, error_message, created_at, completed_at "
+            f"SELECT id, status, seed_document_ids, error_message, created_at, completed_at, "
+            f"       qa_pair_document_id "
             f"FROM {schema}.schema_proposals WHERE id = :id LIMIT 1"
         ),
         {"id": proposal_id},
@@ -223,6 +276,7 @@ async def get_schema_proposal(
         "proposal_id": row[0],
         "status": row[1],
         "seed_document_ids": _coerce_json(row[2]) or [],
+        "qa_pair_document_id": row[6],
         "error_message": row[3],
         "created_at": str(row[4]),
         "completed_at": str(row[5]) if row[5] else None,
@@ -482,6 +536,12 @@ async def create_prelabel_batch(
             },
         )
 
+    guidance_text = ""
+    if batch_kind == BATCH_KIND_LARGE:
+        guidance_text = render_guidance_text(
+            await _latest_initial_guidance(session, schema)
+        )
+
     batch_id = generate_uuid()
     await session.execute(
         text(
@@ -508,7 +568,9 @@ async def create_prelabel_batch(
 
     celery_app.send_task(
         "run_prelabel_batch",
-        args=[tenant_id, batch_id],
+        # The reviewed initial batch's guidance, rendered as prompt text; empty for an
+        # initial batch or when no initial batch has been reviewed.
+        args=[tenant_id, batch_id, guidance_text],
         queue=settings.annotation_llm_celery_queue,
     )
 
@@ -518,6 +580,7 @@ async def create_prelabel_batch(
         "state": "queued",
         "batch_kind": batch_kind,
         "document_count": len(readable),
+        "guidance_applied": bool(guidance_text),
     }
 
 
@@ -604,6 +667,59 @@ async def get_prelabel_batch(
     }
 
 
+@router.post("/api/v1/prelabel-batches/{batch_id}/guidance", status_code=201)
+async def record_initial_batch_guidance(
+    batch_id: str,
+    body: dict,
+    request: Request = None,
+    session: AsyncSession = Depends(get_session),
+):
+    """A Tenant Admin's corrections and note from reviewing one document of an `initial`
+    batch. Stored per (batch, document) and folded into the prompt when the subsequent
+    `large` batch runs (design.md Decision 5). Repeated calls for the same document
+    replace the previous guidance."""
+    require_tenant_admin(request)
+    tenant_id = get_tenant_id(request)
+    schema = _schema(tenant_id)
+    batch = await _load_batch(session, schema, batch_id)
+    if batch[2] != BATCH_KIND_INITIAL:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "NOT_AN_INITIAL_BATCH",
+                "message": "Review guidance is only recorded for initial validation batches",
+            },
+        )
+
+    document_id = body.get("document_id")
+    if not document_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "VALIDATION_ERROR", "message": "document_id is required"},
+        )
+    corrected_spans = body.get("corrected_spans") or []
+    note = body.get("note")
+
+    await session.execute(
+        text(
+            f"INSERT INTO {schema}.prelabel_batch_guidance "
+            "(id, batch_id, document_id, corrected_spans, note) "
+            "VALUES (:id, :batch_id, :doc_id, CAST(:spans AS JSONB), :note) "
+            "ON CONFLICT (batch_id, document_id) DO UPDATE "
+            "SET corrected_spans = EXCLUDED.corrected_spans, note = EXCLUDED.note"
+        ),
+        {
+            "id": generate_uuid(),
+            "batch_id": batch_id,
+            "doc_id": document_id,
+            "spans": json.dumps(corrected_spans),
+            "note": note,
+        },
+    )
+    await session.commit()
+    return {"batch_id": batch_id, "document_id": document_id, "recorded": True}
+
+
 # ---------------------------------------------------------------------------
 # Sampled acceptance gate
 # ---------------------------------------------------------------------------
@@ -644,14 +760,15 @@ def _gate_acceptance_reviewer(request: Request, batch_kind: str) -> None:
 
 
 async def _latest_initial_guidance(session: AsyncSession, schema: str) -> list[dict]:
-    """Corrections and notes from the most recent reviewed `initial` batch, rendered for
-    the `large`-batch prompt. Empty when no initial batch has been reviewed."""
+    """Corrections and notes from the most recent `initial` batch that has any guidance,
+    rendered for the `large`-batch prompt. Empty when no initial batch has been reviewed."""
     batch = await session.execute(
         text(
-            f"SELECT id FROM {schema}.prelabel_batches "
-            "WHERE batch_kind = 'initial' AND id IN "
-            "  (SELECT batch_id FROM {schema}.prelabel_batch_guidance) "
-            "ORDER BY created_at DESC LIMIT 1".replace("{schema}", schema)
+            f"SELECT b.id FROM {schema}.prelabel_batches b "
+            f"WHERE b.batch_kind = 'initial' "
+            f"  AND EXISTS (SELECT 1 FROM {schema}.prelabel_batch_guidance g "
+            f"             WHERE g.batch_id = b.id) "
+            "ORDER BY b.created_at DESC LIMIT 1"
         )
     )
     batch_row = batch.fetchone()
@@ -668,6 +785,31 @@ async def _latest_initial_guidance(session: AsyncSession, schema: str) -> list[d
         {"document_id": r[0], "corrected_spans": _coerce_json(r[1]) or [], "note": r[2]}
         for r in rows.fetchall()
     ]
+
+
+def render_guidance_text(guidance: list[dict]) -> str:
+    """Reviewer guidance from an initial batch, as a prompt section. Corrected spans become
+    `"<quote>" -> <type>` lines; notes are included verbatim (design.md Decision 5)."""
+    if not guidance:
+        return ""
+    lines: list[str] = []
+    for entry in guidance:
+        for span in entry.get("corrected_spans") or []:
+            quote = (span or {}).get("text") or (span or {}).get("quote")
+            entity_type = (span or {}).get("entity_type") or (span or {}).get("type")
+            if quote and entity_type:
+                lines.append(f'  "{quote}" -> {entity_type}')
+        note = (entry.get("note") or "").strip()
+        if note:
+            lines.append(f"  note: {note}")
+    if not lines:
+        return ""
+    return (
+        "Reviewer guidance from validation on a sample of these documents. Apply it when it "
+        "helps; it does not limit which entity types or how many occurrences you extract.\n"
+        + "\n".join(lines)
+        + "\n\n"
+    )
 
 
 async def _latest_acceptance(session: AsyncSession, schema: str, batch_id: str):

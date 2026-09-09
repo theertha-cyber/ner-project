@@ -147,6 +147,7 @@ def tenant_tables_sql(schema: str) -> list[str]:
                 id VARCHAR PRIMARY KEY,
                 status VARCHAR(16) NOT NULL DEFAULT 'queued',
                 seed_document_ids JSONB NOT NULL,
+                qa_pair_document_id VARCHAR,
                 requested_by VARCHAR,
                 error_message TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -280,16 +281,16 @@ async def make_tenant(engine, entity_types=("person_name", "institute")):
     return {"tid": tid, "schema": schema}
 
 
-async def add_document(engine, tenant, document_text=DOCUMENT_TEXT):
+async def add_document(engine, tenant, document_text=DOCUMENT_TEXT, purpose="training"):
     doc_id = str(uuid.uuid4())
     schema = tenant["schema"]
     async with engine.begin() as conn:
         await conn.execute(
             text(
                 f"INSERT INTO {schema}.documents (id, tenant_id, filename, status, purpose) "
-                "VALUES (:id, :tid, 'test.txt', 'processed', 'training')"
+                "VALUES (:id, :tid, 'test.txt', 'processed', :purpose)"
             ),
-            {"id": doc_id, "tid": tenant["tid"]},
+            {"id": doc_id, "tid": tenant["tid"], "purpose": purpose},
         )
         if document_text is not None:
             await conn.execute(

@@ -95,7 +95,28 @@ def build_existing_config_block(entity_types: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def build_user_payload(seed_documents: list[dict], entity_types: list[dict]) -> str:
+def build_qa_pair_block(qa_pair_text: str | None) -> str:
+    """A Tenant Admin's question/answer document, verbatim, as guidance about which entity
+    types matter. It is context, not a grounding source: example values still have to be
+    quoted from the seed documents."""
+    text_value = (qa_pair_text or "").strip()
+    if not text_value:
+        return ""
+    return (
+        "The team also supplied this question/answer document describing what they want to "
+        "extract. Use it to decide WHICH entity types to propose. It is NOT a grounding "
+        "source and NOT a set of questions to answer about the documents below.\n"
+        "--- Q&A ---\n"
+        f"{text_value}\n"
+        "--- end Q&A ---\n\n"
+    )
+
+
+def build_user_payload(
+    seed_documents: list[dict],
+    entity_types: list[dict],
+    qa_pair_text: str | None = None,
+) -> str:
     """The whole per-request half of the prompt."""
     existing = build_existing_config_block(entity_types)
     if existing:
@@ -108,7 +129,9 @@ def build_user_payload(seed_documents: list[dict], entity_types: list[dict]) -> 
     else:
         preamble = "This team has not configured any entity types yet.\n\n"
 
-    return "{}Documents:\n\n{}".format(preamble, build_seed_block(seed_documents))
+    return "{}{}Documents:\n\n{}".format(
+        preamble, build_qa_pair_block(qa_pair_text), build_seed_block(seed_documents)
+    )
 
 
 def parse_proposal_response(response) -> list[dict]:

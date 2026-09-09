@@ -20,7 +20,7 @@ os.environ.setdefault("NER_JWT_SECRET", "test-secret-do-not-use-in-prod")
 
 from src.annotation_service.main import app
 from src.annotation_service.services.llm_client import StubLLMClient
-from src.annotation_service.worker import run_prelabel_batch_sync
+from src.annotation_service.worker import run_prelabel_batch_sync, run_schema_proposal_sync
 from src.shared.config import settings
 from tests.seed_bootstrap_support import (
     add_document,
@@ -28,6 +28,16 @@ from tests.seed_bootstrap_support import (
     drop_test_schemas,
     make_tenant,
 )
+
+PROPOSAL_RESPONSE = {
+    "candidates": [
+        {
+            "name": "person_name",
+            "description": "a person's name",
+            "examples": ["John Doe"],
+        }
+    ]
+}
 
 DEFAULT_RESPONSE = {
     "entities": [
@@ -314,3 +324,150 @@ async def test_large_batch_accept_is_idempotent(client, engine):
     notes = await _notifications(engine, tenant)
     assert len(notes) == 1  # exactly one notification, not two
     assert span_count > 0
+
+
+# ── Q&A-pair proposal input (rows 1-4) ─────────────────────────────────────
+
+
+async def _add_qa_pair(engine, tenant, text_value="What is the contract identifier? The contract identifier is C-900."):
+    return await add_document(engine, tenant, document_text=text_value, purpose="qa_pair")
+
+
+@pytest.mark.asyncio
+async def test_proposal_accepts_qa_pair_document(client, engine):
+    tenant = await make_tenant(engine)
+    seeds = [await add_document(engine, tenant) for _ in range(3)]
+    qa_id = await _add_qa_pair(engine, tenant)
+    resp = await client.post(
+        "/api/v1/schema-proposals",
+        json={"document_ids": seeds, "qa_pair_document_id": qa_id},
+        headers=auth_header(tenant["tid"]),
+    )
+    assert resp.status_code == 202, resp.text
+    proposal_id = resp.json()["proposal_id"]
+    got = await client.get(
+        f"/api/v1/schema-proposals/{proposal_id}", headers=auth_header(tenant["tid"])
+    )
+    assert got.json()["qa_pair_document_id"] == qa_id
+
+
+@pytest.mark.asyncio
+async def test_qa_pair_text_in_prompt(client, engine):
+    tenant = await make_tenant(engine)
+    seeds = [await add_document(engine, tenant) for _ in range(3)]
+    qa_id = await _add_qa_pair(engine, tenant, "What is the contract identifier?")
+    resp = await client.post(
+        "/api/v1/schema-proposals",
+        json={"document_ids": seeds, "qa_pair_document_id": qa_id},
+        headers=auth_header(tenant["tid"]),
+    )
+    proposal_id = resp.json()["proposal_id"]
+    stub = StubLLMClient(PROPOSAL_RESPONSE)
+    run_schema_proposal_sync(tenant["tid"], proposal_id, llm_client=stub)
+    assert "What is the contract identifier?" in stub.calls[-1][1]
+
+
+@pytest.mark.asyncio
+async def test_qa_pair_unsupported_type_rejected(client, engine):
+    """A document not uploaded as purpose='qa_pair' (e.g. a .csv rejected upstream never
+    becomes one) cannot be used as the Q&A pair."""
+    tenant = await make_tenant(engine)
+    seeds = [await add_document(engine, tenant) for _ in range(3)]
+    not_qa = await add_document(engine, tenant)  # purpose='training'
+    resp = await client.post(
+        "/api/v1/schema-proposals",
+        json={"document_ids": seeds, "qa_pair_document_id": not_qa},
+        headers=auth_header(tenant["tid"]),
+    )
+    assert resp.status_code == 422
+    assert "qa_pair" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_qa_pair_creates_no_entity_types(client, engine):
+    tenant = await make_tenant(engine)
+    seeds = [await add_document(engine, tenant) for _ in range(3)]
+    qa_id = await _add_qa_pair(engine, tenant)
+    await client.post(
+        "/api/v1/schema-proposals",
+        json={"document_ids": seeds, "qa_pair_document_id": qa_id},
+        headers=auth_header(tenant["tid"]),
+    )
+    async with engine.connect() as conn:
+        count = (
+            await conn.execute(
+                text("SELECT COUNT(*) FROM public.entity_definitions WHERE tenant_id = :t"),
+                {"t": tenant["tid"]},
+            )
+        ).scalar()
+    assert count == 2  # the two make_tenant seeded, unchanged
+
+
+# ── Initial-batch review guidance (rows 12-14) ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_initial_guidance_persisted(client, engine):
+    tenant = await make_tenant(engine)
+    doc = await add_document(engine, tenant)
+    batch_id = (await _trigger(client, tenant, [doc], kind="initial")).json()["batch_id"]
+    resp = await client.post(
+        f"/api/v1/prelabel-batches/{batch_id}/guidance",
+        json={
+            "document_id": doc,
+            "corrected_spans": [{"text": "Acme", "entity_type": "org"}],
+            "note": "treat internal project codenames as PROJECT",
+        },
+        headers=auth_header(tenant["tid"]),
+    )
+    assert resp.status_code == 201
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    f"SELECT corrected_spans, note FROM {tenant['schema']}.prelabel_batch_guidance "
+                    "WHERE batch_id = :b"
+                ),
+                {"b": batch_id},
+            )
+        ).fetchone()
+    assert row[1] == "treat internal project codenames as PROJECT"
+
+
+@pytest.mark.asyncio
+async def test_large_batch_prompt_includes_guidance(client, engine):
+    tenant = await make_tenant(engine)
+    initial_doc = await add_document(engine, tenant)
+    initial_id = (
+        await _trigger(client, tenant, [initial_doc], kind="initial")
+    ).json()["batch_id"]
+    await client.post(
+        f"/api/v1/prelabel-batches/{initial_id}/guidance",
+        json={"document_id": initial_doc, "note": "treat internal project codenames as PROJECT"},
+        headers=auth_header(tenant["tid"]),
+    )
+
+    large_doc = await add_document(engine, tenant)
+    trigger = await _trigger(client, tenant, [large_doc], kind="large")
+    assert trigger.json()["guidance_applied"] is True
+    guidance_text = trigger.json().get("guidance_applied")
+
+    # The task receives the rendered guidance; assert it reaches the pre-label prompt.
+    from src.annotation_service.api.v1 import seed_bootstrap as sb
+
+    rendered = sb.render_guidance_text(
+        [{"corrected_spans": [], "note": "treat internal project codenames as PROJECT"}]
+    )
+    stub = StubLLMClient(DEFAULT_RESPONSE)
+    batch_id = trigger.json()["batch_id"]
+    run_prelabel_batch_sync(tenant["tid"], batch_id, llm_client=stub, guidance_text=rendered)
+    assert "treat internal project codenames as PROJECT" in stub.calls[-1][1]
+
+
+@pytest.mark.asyncio
+async def test_large_batch_without_guidance_runs(client, engine):
+    tenant = await make_tenant(engine)
+    doc = await add_document(engine, tenant)
+    trigger = await _trigger(client, tenant, [doc], kind="large")
+    assert trigger.status_code == 202
+    assert trigger.json()["guidance_applied"] is False

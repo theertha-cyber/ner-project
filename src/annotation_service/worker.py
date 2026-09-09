@@ -153,7 +153,7 @@ def _mark_failed(connection, schema: str, job_id: str, message: str) -> None:
     )
 
 
-def extract_and_ground_document(engine, tenant_id: str, doc_id: str, client):
+def extract_and_ground_document(engine, tenant_id: str, doc_id: str, client, guidance_text: str = ""):
     """One document through the provider and the grounder. The only implementation of it.
 
     Everything between "which document" and "which spans" lives here, so the batch task
@@ -176,7 +176,8 @@ def extract_and_ground_document(engine, tenant_id: str, doc_id: str, client):
         entity_types = load_active_entity_config_sync(connection, tenant_id)
 
     response = client.complete_json(
-        SYSTEM_PROMPT, build_user_payload(document_text, entity_types)
+        SYSTEM_PROMPT,
+        build_user_payload(document_text, entity_types, guidance_text=guidance_text),
     )
 
     return ground_entities(
@@ -270,7 +271,10 @@ def run_schema_proposal_sync(tenant_id: str, proposal_id: str, llm_client=None) 
     with engine.begin() as connection:
         _mark_proposal_running(connection, schema, proposal_id)
         row = connection.execute(
-            text(f"SELECT seed_document_ids FROM {schema}.schema_proposals WHERE id = :id"),
+            text(
+                f"SELECT seed_document_ids, qa_pair_document_id "
+                f"FROM {schema}.schema_proposals WHERE id = :id"
+            ),
             {"id": proposal_id},
         ).fetchone()
         seed_ids = row[0] if row else []
@@ -278,11 +282,16 @@ def run_schema_proposal_sync(tenant_id: str, proposal_id: str, llm_client=None) 
             seed_ids = json.loads(seed_ids)
         seed_documents = _load_seed_documents(connection, schema, seed_ids or [])
         entity_types = load_active_entity_config_sync(connection, tenant_id)
+        qa_pair_id = row[1] if row else None
+        qa_pair_text = None
+        if qa_pair_id:
+            qa_docs = _load_seed_documents(connection, schema, [qa_pair_id])
+            qa_pair_text = qa_docs[0]["text"] if qa_docs else None
 
     try:
         response = client.complete_json(
             SCHEMA_PROPOSAL_SYSTEM_PROMPT,
-            build_proposal_payload(seed_documents, entity_types),
+            build_proposal_payload(seed_documents, entity_types, qa_pair_text=qa_pair_text),
         )
     except LLMUnavailable as exc:
         with engine.begin() as connection:
@@ -350,7 +359,9 @@ def _mark_batch_document(
     )
 
 
-def run_prelabel_batch_sync(tenant_id: str, batch_id: str, llm_client=None) -> dict:
+def run_prelabel_batch_sync(
+    tenant_id: str, batch_id: str, llm_client=None, guidance_text: str = ""
+) -> dict:
     """Pre-label every document in a batch, one at a time, on this worker.
 
     One job over N documents rather than N jobs, because the requirement is a single trackable
@@ -396,7 +407,9 @@ def run_prelabel_batch_sync(tenant_id: str, batch_id: str, llm_client=None) -> d
     failed = 0
     for doc_id in doc_ids:
         try:
-            result = extract_and_ground_document(engine, tenant_id, doc_id, client)
+            result = extract_and_ground_document(
+                engine, tenant_id, doc_id, client, guidance_text=guidance_text
+            )
         except Exception as exc:  # noqa: BLE001 - see docstring: one document, one failure
             failed += 1
             with engine.begin() as connection:
@@ -439,8 +452,8 @@ def run_prelabel_batch_sync(tenant_id: str, batch_id: str, llm_client=None) -> d
 
 
 @celery_app.task(bind=True, name="run_prelabel_batch", max_retries=0)
-def run_prelabel_batch(self, tenant_id: str, batch_id: str):
-    return run_prelabel_batch_sync(tenant_id, batch_id)
+def run_prelabel_batch(self, tenant_id: str, batch_id: str, guidance_text: str = ""):
+    return run_prelabel_batch_sync(tenant_id, batch_id, guidance_text=guidance_text)
 
 
 # --------------------------------------------------------------------------- LLM review route

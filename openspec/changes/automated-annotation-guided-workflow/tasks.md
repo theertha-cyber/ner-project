@@ -14,11 +14,11 @@
 
 ## 3. Q&A-Pair Proposal Input
 
-- [ ] 3.1 Accept a `qa_pair` document upload on the schema-proposal request path (reuse the existing document upload + text-extraction pipeline; store as a `documents` row with `purpose = 'qa_pair'`). Reject unsupported file types with 422 naming PDF/DOC/DOCX/TXT. (Spec rows 1, 3)
-- [ ] 3.2 Record the Q&A document id among the proposal's inputs and expose it on the proposal GET response. (Spec row 1)
-- [ ] 3.3 In `src/annotation_service/services/schema_proposal.py`, append the Q&A document's extracted text to the proposal prompt alongside seed text and tenant QA pairs. (Spec row 2)
-- [ ] 3.4 Confirm generating a proposal with a Q&A doc still creates zero entity types (existing invariant). (Spec row 4)
-- [ ] 3.5 Add tests: `test_proposal_accepts_qa_pair_document`, `test_qa_pair_text_in_prompt`, `test_qa_pair_unsupported_type_422`, `test_qa_pair_creates_no_entity_types` in `tests/test_seed_bootstrap_proposal.py`. (Spec rows 1–4)
+- [x] 3.1 The proposal request accepts an optional `qa_pair_document_id` referencing a document uploaded with `purpose='qa_pair'`; a non-qa_pair id or one with no extracted text is 422. (Q&A files are validated as PDF/DOC/DOCX/TXT at document upload.) Original: Accept a `qa_pair` document upload on the schema-proposal request path (reuse the existing document upload + text-extraction pipeline; store as a `documents` row with `purpose = 'qa_pair'`). Reject unsupported file types with 422 naming PDF/DOC/DOCX/TXT. (Spec rows 1, 3)
+- [x] 3.2 Record the Q&A document id among the proposal's inputs and expose it on the proposal GET response. (Spec row 1)
+- [x] 3.3 `schema_proposal.build_user_payload` gains `qa_pair_text`; the worker loads the Q&A doc text and passes it. Append the Q&A document's extracted text to the proposal prompt alongside seed text and tenant QA pairs. (Spec row 2)
+- [x] 3.4 Confirm generating a proposal with a Q&A doc still creates zero entity types (existing invariant). (Spec row 4)
+- [x] 3.5 Tests in `tests/test_automated_workflow_guided.py`: `test_proposal_accepts_qa_pair_document`, `test_qa_pair_text_in_prompt`, `test_qa_pair_unsupported_type_rejected`, `test_qa_pair_creates_no_entity_types`. Original:, `test_qa_pair_text_in_prompt`, `test_qa_pair_unsupported_type_422`, `test_qa_pair_creates_no_entity_types` in `tests/test_seed_bootstrap_proposal.py`. (Spec rows 1–4)
 
 ## 4. Batch Kind + Named State
 
@@ -30,10 +30,10 @@
 
 ## 5. Initial-Batch Review Guidance
 
-- [ ] 5.1 When a Tenant Admin reviews an `initial` batch, persist corrected spans and an optional per-document note to `{schema}.prelabel_batch_guidance`. (Spec row 12)
-- [ ] 5.2 When a `large` batch is triggered, load the most recent reviewed `initial` batch's guidance and append it to the pre-labeling prompt as a "Reviewer guidance from validation" section (corrected spans as `"<quote>" → <type>` lines, notes verbatim). (Spec row 13)
-- [ ] 5.3 A `large` batch with no prior reviewed `initial` batch runs on the QA-pairs-only prompt. (Spec row 14)
-- [ ] 5.4 Add tests: `test_initial_guidance_persisted` (`tests/test_seed_bootstrap_acceptance.py`), `test_large_batch_prompt_includes_guidance`, `test_large_batch_without_guidance` (`tests/test_seed_bootstrap_batch.py`). (Spec rows 12–14)
+- [x] 5.1 `POST /api/v1/prelabel-batches/{id}/guidance` (tenant_admin, initial batches only) persists corrected spans and an optional per-document note to `{schema}.prelabel_batch_guidance`. (Spec row 12)
+- [x] 5.2 `create_prelabel_batch` for a `large` batch loads `_latest_initial_guidance`, renders it via `render_guidance_text`, and passes it to `run_prelabel_batch`; `build_user_payload` (llm_prelabel) threads it into the pre-label prompt. Original: load the most recent reviewed `initial` batch's guidance and append it to the pre-labeling prompt as a "Reviewer guidance from validation" section (corrected spans as `"<quote>" → <type>` lines, notes verbatim). (Spec row 13)
+- [x] 5.3 A `large` batch with no prior reviewed `initial` batch runs on the QA-pairs-only prompt. (Spec row 14)
+- [x] 5.4 Tests: `test_initial_guidance_persisted`, `test_large_batch_prompt_includes_guidance`, `test_large_batch_without_guidance_runs` in `tests/test_automated_workflow_guided.py`. Original: (`tests/test_seed_bootstrap_acceptance.py`), `test_large_batch_prompt_includes_guidance`, `test_large_batch_without_guidance` (`tests/test_seed_bootstrap_batch.py`). (Spec rows 12–14)
 
 ## 6. Acceptance Gate — Role, Eligibility, Notification
 
@@ -46,7 +46,7 @@
 
 ## 7. `purpose = 'qa_pair'` filter audit
 
-- [ ] 7.1 Grep every `purpose` filter in `src/annotation_service` and `src/training_service` (seed-document picker, `annotation-tasks` create, `annotation-export`, training dataset export). Confirm a `qa_pair` document appears in none of them. (Risk 6)
+- [x] 7.1 Audited: `tasks.py` create-task requires `purpose='training'` (a qa_pair doc cannot be assigned); `export.py` has no purpose filter but a qa_pair doc has no spans so contributes nothing; `_documents_with_text` now excludes `purpose='qa_pair'` so the seed set and pre-label batches cannot include it. Original: Grep every `purpose` filter in `src/annotation_service` and `src/training_service` (seed-document picker, `annotation-tasks` create, `annotation-export`, training dataset export). Confirm a `qa_pair` document appears in none of them. (Risk 6)
 
 ## 8. Portal
 

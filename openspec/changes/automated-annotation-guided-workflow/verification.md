@@ -175,13 +175,27 @@ tests/test_annotation_workspace.py + test_llm_prelabel_api.py   47 passed (worke
 long-lived DB — the test DB builds its schema from `tests/seed_bootstrap_support.py`, which
 was updated to match.
 
+### Slice 2 — Q&A-pair proposal input, initial-batch guidance, purpose audit (executed)
+
+Implemented: migration `043` (`schema_proposals.qa_pair_document_id`); the proposal request
+accepts an optional `qa_pair_document_id` (must be a processed `purpose='qa_pair'` document,
+else 422) and threads its text into the proposal prompt via
+`schema_proposal.build_user_payload(qa_pair_text=…)`; a
+`POST /prelabel-batches/{id}/guidance` endpoint (tenant_admin, initial batches only) stores
+per-document corrections + note; `create_prelabel_batch` for a `large` batch loads the
+latest initial-batch guidance, renders it (`render_guidance_text`), and threads it through
+`run_prelabel_batch` → `extract_and_ground_document` → `llm_prelabel.build_user_payload`;
+`_documents_with_text` now excludes `purpose='qa_pair'`.
+
+```
+tests/test_automated_workflow_guided.py    18 passed   (11 slice-1 + 7 slice-2: rows 1-4, 12-14)
+tests/test_seed_bootstrap_*.py + test_llm_prelabel_*   73 passed   (no regression)
+```
+
 ### Not yet implemented
 
-- Q&A-pair proposal input (tasks 3.x, spec rows 1-4).
-- Initial-batch review guidance persistence + prompt injection (tasks 5.x, spec rows 12-14).
-- `purpose = 'qa_pair'` filter audit (task 7).
 - Portal (tasks 8.x).
-- Migration `042` guard test (task 2.3); explicit `partially_completed` status test (task 9.1).
+- Migration `042`/`043` guard tests (task 2.3); explicit `partially_completed` status test.
 
 ---
 

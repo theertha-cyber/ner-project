@@ -69,15 +69,23 @@ def build_entity_type_block(entity_types: list[dict]) -> str:
     return "\n".join(blocks)
 
 
-def build_user_payload(document_text: str, entity_types: list[dict]) -> str:
+def build_user_payload(
+    document_text: str, entity_types: list[dict], guidance_text: str = ""
+) -> str:
     """The per-document half of the prompt.
 
     The illustration note is repeated here rather than left to the system prompt alone: the QA
     pairs sit a few lines above it, and that adjacency is where a model is most likely to read
-    them as questions about this specific document."""
+    them as questions about this specific document.
+
+    `guidance_text`, when present, is reviewer guidance carried over from a Tenant Admin's
+    review of an initial validation batch (Automated workflow, step 3). It is advisory prompt
+    context, not a constraint on which types or how many occurrences to extract."""
+    guidance_block = f"{guidance_text}\n" if guidance_text else ""
     return (
         "Entity types to extract (extract all occurrences of all of them):\n"
         f"{build_entity_type_block(entity_types)}\n\n"
+        f"{guidance_block}"
         "Any Q/A lines above illustrate what a value of that entity type looks like. They are "
         "NOT questions to answer about the document below, and they do not limit which entity "
         "types or how many occurrences you extract.\n\n"
