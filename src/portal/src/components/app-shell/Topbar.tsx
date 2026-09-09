@@ -4,17 +4,8 @@ import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/lib/auth";
 import { useDarkMode } from "@/hooks";
-import { SCREEN_TITLES, SCREEN_TITLES_FALLBACK } from "@/lib/nav-config";
+import { navFor, crumbsFor, resolveScreenTitle } from "@/lib/nav-config";
 import { Sun, Moon } from "lucide-react";
-
-function resolveScreen(pathname: string): [string, string] {
-  for (const [, value] of Object.entries(SCREEN_TITLES)) {
-    if (pathname === value[1] || pathname.startsWith(value[1] + "/")) {
-      return value;
-    }
-  }
-  return SCREEN_TITLES_FALLBACK;
-}
 
 export function Topbar() {
   const { user } = useAuth();
@@ -23,7 +14,8 @@ export function Topbar() {
 
   if (!user) return null;
 
-  const [title] = resolveScreen(pathname);
+  const [title] = resolveScreenTitle(pathname);
+  const crumbs = crumbsFor(navFor(user.role), pathname);
 
   return (
     <header
@@ -41,7 +33,23 @@ export function Topbar() {
         gap: 16,
       }}
     >
-      <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
+        {crumbs.length > 1 &&
+          crumbs.slice(0, -1).map((c, i) => (
+            <span key={i} style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-display, sans-serif)",
+                  fontSize: 13,
+                  color: "var(--ink-3)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {c.label}
+              </span>
+              <span style={{ color: "var(--ink-3)", fontSize: 12 }}>/</span>
+            </span>
+          ))}
         <span
           style={{
             fontFamily: "var(--font-display, sans-serif)",
@@ -49,9 +57,10 @@ export function Topbar() {
             fontSize: 16,
             color: "var(--ink)",
             lineHeight: 1.2,
+            whiteSpace: "nowrap",
           }}
         >
-          {title}
+          {crumbs[crumbs.length - 1]?.label ?? title}
         </span>
       </div>
 

@@ -1,5 +1,6 @@
-import { SchemaProposalPage } from "@/components/seed-bootstrap/SchemaProposalPage";
+import { redirect } from "next/navigation";
 
-export default function SchemaProposalsRoute() {
-  return <SchemaProposalPage />;
+// Legacy route — the schema proposal screen is now step 1 of the Automated workflow.
+export default function SchemaProposalsLegacyRedirect() {
+  redirect("/annotate/automated/schema");
 }

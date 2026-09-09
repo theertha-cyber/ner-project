@@ -1,63 +1,71 @@
 import { describe, it, expect } from "vitest";
-import { navFor } from "./nav-config";
+import { navFor, flattenNav, crumbsFor } from "./nav-config";
 
 describe("navFor", () => {
-  it("system_admin returns 4 items including no Settings", () => {
+  it("system_admin stays a flat 4-item list", () => {
     const items = navFor("system_admin");
     expect(items).toHaveLength(4);
-    expect(items.find((i) => i.id === "settings")).toBeUndefined();
+    expect(items.every((i) => i.kind === "link")).toBe(true);
+    expect(flattenNav(items).map((l) => l.id)).toContain("audit");
   });
 
-  it("tenant_admin returns 13 items including no Settings", () => {
+  it("tenant_admin is grouped into Annotate / Setup / Admin sections", () => {
     const items = navFor("tenant_admin");
-    expect(items).toHaveLength(13);
-    expect(items.find((i) => i.id === "settings")).toBeUndefined();
+    const sections = items.filter((i) => i.kind === "section").map((s) => (s as { label: string }).label);
+    expect(sections).toEqual(["Annotate", "Setup", "Admin"]);
   });
 
-  it("only tenant_admin reaches the retraining decision surface", () => {
-    // Requesting a retrain is Tenant Admin work, and approving it is System Admin work. A
-    // System Admin who could do both would make the approval a formality rather than a gate,
-    // so the request surface is not on their sidebar.
-    expect(navFor("tenant_admin").find((i) => i.id === "retraining")?.href).toBe("/retraining");
-    for (const role of ["system_admin", "annotator", "business_user"] as const) {
-      expect(navFor(role).map((i) => i.id)).not.toContain("retraining");
-    }
-  });
-
-  it("tenant_admin can reach the seed-bootstrap screens", () => {
+  it("tenant_admin Annotate section has the three methods", () => {
     const items = navFor("tenant_admin");
-    expect(items.find((i) => i.id === "schema-proposals")?.href).toBe("/schema-proposals");
-    expect(items.find((i) => i.id === "prelabel-batches")?.href).toBe("/prelabel-batches");
+    const annotate = items.find((i) => i.kind === "section" && i.label === "Annotate");
+    expect(annotate && annotate.kind === "section" && annotate.items.map((l) => l.href)).toEqual([
+      "/annotate/manual",
+      "/annotate/automated",
+      "/annotate/import",
+    ]);
   });
 
-  it("only tenant_admin gets the seed-bootstrap screens", () => {
+  it("annotator sees Manual and Import but not Automated", () => {
+    const leaves = flattenNav(navFor("annotator")).map((l) => l.href);
+    expect(leaves).toContain("/annotate/manual");
+    expect(leaves).toContain("/annotate/import");
+    expect(leaves).not.toContain("/annotate/automated");
+  });
+
+  it("only tenant_admin reaches the automated (retrain) workflow", () => {
+    expect(flattenNav(navFor("tenant_admin"))).toEqual(
+      expect.arrayContaining([expect.objectContaining({ href: "/annotate/automated/retrain" })]),
+    );
     for (const role of ["system_admin", "annotator", "business_user"] as const) {
-      const ids = navFor(role).map((i) => i.id);
-      expect(ids).not.toContain("schema-proposals");
-      expect(ids).not.toContain("prelabel-batches");
+      expect(flattenNav(navFor(role)).map((l) => l.href)).not.toContain("/annotate/automated/retrain");
     }
   });
 
-  it("annotator returns 4 items including no Settings", () => {
-    const items = navFor("annotator");
-    expect(items).toHaveLength(4);
-    expect(items.find((i) => i.id === "settings")).toBeUndefined();
-  });
-
-  it("the review queue reaches the roles that work annotations", () => {
-    // Both roles that produce training data get it. A business user does not: the queue is
-    // annotation work that feeds retraining, not an extraction surface.
-    for (const role of ["tenant_admin", "annotator"] as const) {
-      expect(navFor(role).find((i) => i.id === "review-queue")?.href).toBe("/review-queue");
-    }
-    for (const role of ["system_admin", "business_user"] as const) {
-      expect(navFor(role).map((i) => i.id)).not.toContain("review-queue");
-    }
-  });
-
-  it("business_user returns 5 items including no Settings", () => {
+  it("business_user keeps its flat 4-item list", () => {
     const items = navFor("business_user");
-    expect(items).toHaveLength(5);
-    expect(items.find((i) => i.id === "settings")).toBeUndefined();
+    expect(items).toHaveLength(4);
+    expect(flattenNav(items).map((l) => l.href)).not.toContain("/annotate/manual");
+  });
+});
+
+describe("crumbsFor", () => {
+  it("derives section › landing › screen for a nested route", () => {
+    const trail = crumbsFor(navFor("tenant_admin"), "/annotation");
+    expect(trail.map((c) => c.label)).toEqual(["Annotate", "Manual", "Workspace"]);
+  });
+
+  it("derives section › landing for a landing route", () => {
+    const trail = crumbsFor(navFor("tenant_admin"), "/annotate/import");
+    expect(trail.map((c) => c.label)).toEqual(["Annotate", "Import"]);
+  });
+
+  it("maps the automated step routes under Automated", () => {
+    const trail = crumbsFor(navFor("tenant_admin"), "/annotate/automated/schema");
+    expect(trail.map((c) => c.label)).toEqual(["Annotate", "Automated", "1 · Suggest Entity Types"]);
+  });
+
+  it("falls back to the flat title map for unknown routes", () => {
+    const trail = crumbsFor(navFor("tenant_admin"), "/settings");
+    expect(trail.map((c) => c.label)).toEqual(["Settings"]);
   });
 });

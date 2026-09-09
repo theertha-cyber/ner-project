@@ -50,24 +50,27 @@ describe("Sidebar", () => {
     expect(within(nav).queryByText("Platform Settings")).not.toBeInTheDocument();
   });
 
-  it("renders nav items for tenant_admin without Settings", () => {
+  it("renders grouped nav for tenant_admin with section headers", () => {
     mockUser = createUser("tenant_admin");
     render(<Sidebar effectiveRole="tenant_admin" />);
     const nav = screen.getByRole("navigation");
     expect(within(nav).getByText("Dashboard")).toBeInTheDocument();
-    expect(within(nav).getByText("Documents")).toBeInTheDocument();
+    expect(within(nav).getByText("Annotate")).toBeInTheDocument();
+    expect(within(nav).getByText("Manual")).toBeInTheDocument();
+    expect(within(nav).getByText("Setup")).toBeInTheDocument();
+    expect(within(nav).getByText("Uploaded Documents")).toBeInTheDocument();
     expect(within(nav).getByText("Create User")).toBeInTheDocument();
     expect(within(nav).queryByText("Settings")).not.toBeInTheDocument();
   });
 
-  it("renders nav items for annotator (3 items, no Settings)", () => {
+  it("renders nav items for annotator (Manual + Import, no Automated)", () => {
     mockUser = createUser("annotator");
     render(<Sidebar effectiveRole="annotator" />);
     const nav = screen.getByRole("navigation");
-    const navItems = ["My Work", "Annotation", "Documents"];
-    for (const label of navItems) {
+    for (const label of ["Dashboard", "Annotate", "Manual", "Import"]) {
       expect(within(nav).getByText(label)).toBeInTheDocument();
     }
+    expect(within(nav).queryByText("Automated")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Settings")).not.toBeInTheDocument();
   });
 
@@ -75,7 +78,7 @@ describe("Sidebar", () => {
     mockUser = createUser("business_user");
     render(<Sidebar effectiveRole="business_user" />);
     const nav = screen.getByRole("navigation");
-    const navItems = ["Overview", "Documents", "Extractions", "Models & Training"];
+    const navItems = ["Dashboard", "Documents", "Extractions", "Chat"];
     for (const label of navItems) {
       expect(within(nav).getByText(label)).toBeInTheDocument();
     }
