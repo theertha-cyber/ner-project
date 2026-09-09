@@ -149,10 +149,44 @@ Do not archive while any item below remains unchecked.
 
 ## 7. Agent Verification Record
 
-*(To be written by the implementing agent after `/opsx:apply`.)*
+### Slice 1 — batch_kind, named state, reviewer role gates, acceptance side effects (executed)
+
+Implemented: migration `042`; `batch_kind` + `state` on `prelabel_batches` and the
+`prelabel_batch_guidance` table; `_derive_batch_state`; worker writes the terminal `state`;
+`get_prelabel_batch` reconciles on read; `_gate_acceptance_reviewer` (initial → tenant_admin,
+large → annotator) on start/get/submit/accept plus gates on `GET /prelabel-batches/{id}` and
+`GET /schema-proposals/{id}` and `require_tenant_admin` on the proposal request + candidate
+mutations + batch trigger; `accept_batch` for a `large` batch does the one-transaction
+promote → conditional eligibility UPDATE → guarded `automated_batch_approved` notification.
+
+Run in the `ner-project-annotation_service-1` container (pytest installed ad hoc; repo
+`docker cp`-ed in) against `postgres-test` / `ner_test`:
+
+```
+tests/test_automated_workflow_guided.py    11 passed   (spec rows 5-11, 20-23)
+tests/test_seed_bootstrap_acceptance.py    22 passed   (carried-over rows 15-19 + others)
+tests/test_seed_bootstrap_batch.py         }
+tests/test_seed_bootstrap_proposal.py      }  all green — no regression from the RBAC gates
+tests/test_seed_bootstrap_readiness.py     }
+tests/test_annotation_workspace.py + test_llm_prelabel_api.py   47 passed (worker.py change)
+```
+
+`python -m py_compile` clean on every changed file. Migration `042` not yet applied to a
+long-lived DB — the test DB builds its schema from `tests/seed_bootstrap_support.py`, which
+was updated to match.
+
+### Not yet implemented
+
+- Q&A-pair proposal input (tasks 3.x, spec rows 1-4).
+- Initial-batch review guidance persistence + prompt injection (tasks 5.x, spec rows 12-14).
+- `purpose = 'qa_pair'` filter audit (task 7).
+- Portal (tasks 8.x).
+- Migration `042` guard test (task 2.3); explicit `partially_completed` status test (task 9.1).
 
 ---
 
 ## 8. Outstanding Items
 
-- Implementation not started.
+- Tasks 3.x, 5.x, 7, 8.x, 2.3 (see §7).
+- Apply migration `042` in the deployment DB.
+- Fill §1 status column, §4/§5 evidence, get §6 sign-off.

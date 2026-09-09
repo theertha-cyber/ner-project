@@ -104,34 +104,36 @@ async def _completed_batch(client, engine, tenant, count, response=DEFAULT_RESPO
     return doc_ids, batch_id
 
 
-async def _start_review(client, tenant, batch_id):
+async def _start_review(client, tenant, batch_id, role="annotator"):
     resp = await client.post(
-        f"/api/v1/prelabel-batches/{batch_id}/acceptance", headers=auth_header(tenant["tid"])
+        f"/api/v1/prelabel-batches/{batch_id}/acceptance",
+        headers=auth_header(tenant["tid"], role),
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
 
 
-async def _sample_suggestions(client, tenant, batch_id):
+async def _sample_suggestions(client, tenant, batch_id, role="annotator"):
     resp = await client.get(
-        f"/api/v1/prelabel-batches/{batch_id}/acceptance", headers=auth_header(tenant["tid"])
+        f"/api/v1/prelabel-batches/{batch_id}/acceptance",
+        headers=auth_header(tenant["tid"], role),
     )
     assert resp.status_code == 200, resp.text
     return resp.json()["suggestions"]
 
 
-async def _submit_review(client, tenant, batch_id, dispositions):
+async def _submit_review(client, tenant, batch_id, dispositions, role="annotator"):
     return await client.post(
         f"/api/v1/prelabel-batches/{batch_id}/acceptance/review",
         json={"dispositions": dispositions},
-        headers=auth_header(tenant["tid"]),
+        headers=auth_header(tenant["tid"], role),
     )
 
 
-async def _accept(client, tenant, batch_id):
+async def _accept(client, tenant, batch_id, role="annotator"):
     return await client.post(
         f"/api/v1/prelabel-batches/{batch_id}/acceptance/accept",
-        headers=auth_header(tenant["tid"]),
+        headers=auth_header(tenant["tid"], role),
     )
 
 
@@ -181,7 +183,7 @@ class TestSampleSelection:
         # A second read returns the same draw rather than a new one.
         again = await client.get(
             f"/api/v1/prelabel-batches/{batch_id}/acceptance",
-            headers=auth_header(tenant["tid"]),
+            headers=auth_header(tenant["tid"], "annotator"),
         )
         assert again.json()["sampled_document_ids"] == sampled
 
@@ -291,7 +293,7 @@ class TestAcceptanceGate:
         # retention would otherwise enable.
         retry = await client.post(
             f"/api/v1/prelabel-batches/{batch_id}/acceptance",
-            headers=auth_header(tenant["tid"]),
+            headers=auth_header(tenant["tid"], "annotator"),
         )
         assert retry.status_code == 422
         assert retry.json()["detail"]["code"] == "BATCH_ALREADY_DECIDED"

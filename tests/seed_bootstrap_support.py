@@ -49,6 +49,22 @@ _TENANTS_SQL = """
     )
 """
 
+_NOTIFICATIONS_SQL = """
+    CREATE TABLE IF NOT EXISTS public.notifications (
+        id VARCHAR PRIMARY KEY,
+        tenant_id VARCHAR NOT NULL,
+        recipient_role VARCHAR(50),
+        recipient_user_id VARCHAR,
+        kind VARCHAR(64) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        body TEXT,
+        resource_type VARCHAR(64),
+        resource_id VARCHAR,
+        read_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+"""
+
 # The full shape, not the reduced one the change 1 tests use: approval runs the real
 # `EntityService.create_entity_type`, which assigns `sql_identifier` and reads `cardinality`.
 _ENTITY_DEFINITIONS_SQL = """
@@ -154,10 +170,27 @@ def tenant_tables_sql(schema: str) -> list[str]:
             CREATE TABLE IF NOT EXISTS {schema}.prelabel_batches (
                 id VARCHAR PRIMARY KEY,
                 status VARCHAR(16) NOT NULL DEFAULT 'queued',
+                batch_kind VARCHAR(16) NOT NULL DEFAULT 'large',
+                state VARCHAR(24),
+                annotator_review_status VARCHAR(32),
+                training_eligible_at TIMESTAMPTZ,
                 requested_by VARCHAR,
                 error_message TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 completed_at TIMESTAMPTZ
+            )
+        """,
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.prelabel_batch_guidance (
+                id VARCHAR PRIMARY KEY,
+                batch_id VARCHAR NOT NULL
+                    REFERENCES {schema}.prelabel_batches(id) ON DELETE CASCADE,
+                document_id VARCHAR NOT NULL
+                    REFERENCES {schema}.documents(id) ON DELETE CASCADE,
+                corrected_spans JSONB,
+                note TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (batch_id, document_id)
             )
         """,
         f"""
@@ -215,6 +248,7 @@ async def make_tenant(engine, entity_types=("person_name", "institute")):
         await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
         await conn.execute(text(_TENANTS_SQL))
         await conn.execute(text(_ENTITY_DEFINITIONS_SQL))
+        await conn.execute(text(_NOTIFICATIONS_SQL))
         for ddl in tenant_tables_sql(schema):
             await conn.execute(text(ddl))
         # The tenant-context middleware resolves the JWT's tenant against this table before any

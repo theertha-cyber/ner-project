@@ -25,17 +25,56 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.annotation_service.api.v1.spans import generate_uuid, get_session, get_tenant_id
+from src.annotation_service.api.v1._rbac import (
+    ANNOTATOR,
+    TENANT_ADMIN,
+    require_roles,
+    require_tenant_admin,
+)
 from src.annotation_service.celery_app import celery_app
 from src.annotation_service.services.batch_acceptance import (
     DISPOSITIONS,
     agreement_rate,
     draw_sample,
 )
+from src.annotation_service.services.notify import notify
 from src.shared.config import settings
 from src.shared.entity_config_version import load_active_entity_config
 from src.shared.exceptions import NotFoundError
 
 router = APIRouter(tags=["seed-bootstrap"])
+
+# `initial` batches validate the model on a handful of documents and are reviewed by the
+# Tenant Admin; `large` batches are the main run and are reviewed by an Annotator Admin,
+# whose acceptance is the final annotation gate (design.md Decision 2).
+BATCH_KIND_INITIAL = "initial"
+BATCH_KIND_LARGE = "large"
+INITIAL_BATCH_MAX_DOCS = 5
+
+
+def _derive_batch_state(batch_status: str, outcomes: list[dict]) -> str:
+    """The named lifecycle the portal renders, derived from per-document outcomes.
+
+    `prelabel_batches.status` stays the worker's job status; `state` adds the
+    `partially_completed` distinction and the `processing` label (design.md Decision 3).
+    """
+    if batch_status in ("queued", "pending"):
+        return "queued"
+    if batch_status == "running":
+        return "processing"
+    # Terminal worker status — classify by what the documents actually did.
+    if not outcomes:
+        return "failed" if batch_status == "failed" else "completed"
+    succeeded = sum(1 for o in outcomes if o["status"] == "succeeded")
+    failed = sum(1 for o in outcomes if o["status"] == "failed")
+    pending = sum(1 for o in outcomes if o["status"] == "pending")
+    if pending and not (succeeded or failed):
+        return "processing"
+    if succeeded and not failed:
+        return "completed"
+    if failed and not succeeded:
+        return "failed"
+    return "partially_completed"
 
 
 def _schema(tenant_id: str) -> str:
@@ -115,6 +154,7 @@ async def request_schema_proposal(
     Returns a handle, not a proposal: the provider call happens on the worker. The 422 is the
     one condition that can be decided here — a seed set with no readable text cannot produce
     candidates no matter how long it runs."""
+    require_tenant_admin(request)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
     doc_ids = _document_ids(body)
@@ -156,6 +196,7 @@ async def get_schema_proposal(
     session: AsyncSession = Depends(get_session),
 ):
     """The proposal and its candidates, each with its current disposition."""
+    require_tenant_admin(request)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
 
@@ -225,6 +266,7 @@ async def edit_candidate(
     The disposition becomes `edited` rather than staying `pending`, so the record distinguishes
     a candidate a human accepted as written from one they rewrote — the proposal's value as
     evidence about the model depends on that difference being visible afterwards."""
+    require_tenant_admin(request)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
     row = await _load_candidate(session, schema, candidate_id)
@@ -288,6 +330,7 @@ async def approve_candidate(
     """
     from src.gateway.services.entity_service import EntityService
 
+    require_tenant_admin(request)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
     row = await _load_candidate(session, schema, candidate_id)
@@ -353,6 +396,7 @@ async def reject_candidate(
     session: AsyncSession = Depends(get_session),
 ):
     """Record that a candidate was rejected. Creates nothing."""
+    require_tenant_admin(request)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
     row = await _load_candidate(session, schema, candidate_id)
@@ -391,9 +435,20 @@ async def create_prelabel_batch(
     One `batch_id` for the whole set, whatever its size — the point of the endpoint. The
     per-document rows are written here, at submission, rather than by the worker, so the batch
     knows what it is supposed to cover even if the worker never starts."""
+    require_tenant_admin(request)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
     doc_ids = _document_ids(body)
+
+    batch_kind = body.get("batch_kind", BATCH_KIND_LARGE)
+    if batch_kind not in (BATCH_KIND_INITIAL, BATCH_KIND_LARGE):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_BATCH_KIND",
+                "message": "batch_kind must be 'initial' or 'large'",
+            },
+        )
 
     readable = await _documents_with_text(session, schema, doc_ids)
     if not readable:
@@ -402,6 +457,18 @@ async def create_prelabel_batch(
             detail={
                 "code": "NO_PROCESSED_DOCUMENTS",
                 "message": "No document in the batch has extracted text",
+            },
+        )
+
+    if batch_kind == BATCH_KIND_INITIAL and len(readable) > INITIAL_BATCH_MAX_DOCS:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INITIAL_BATCH_TOO_LARGE",
+                "message": (
+                    f"An initial validation batch covers at most {INITIAL_BATCH_MAX_DOCS} "
+                    "documents"
+                ),
             },
         )
 
@@ -418,10 +485,10 @@ async def create_prelabel_batch(
     batch_id = generate_uuid()
     await session.execute(
         text(
-            f"INSERT INTO {schema}.prelabel_batches (id, status, requested_by) "
-            "VALUES (:id, 'queued', :requested_by)"
+            f"INSERT INTO {schema}.prelabel_batches (id, status, batch_kind, state, requested_by) "
+            "VALUES (:id, 'queued', :batch_kind, 'queued', :requested_by)"
         ),
-        {"id": batch_id, "requested_by": _user_id(request)},
+        {"id": batch_id, "batch_kind": batch_kind, "requested_by": _user_id(request)},
     )
     for position, doc_id in enumerate(readable):
         await session.execute(
@@ -445,7 +512,13 @@ async def create_prelabel_batch(
         queue=settings.annotation_llm_celery_queue,
     )
 
-    return {"batch_id": batch_id, "status": "queued", "document_count": len(readable)}
+    return {
+        "batch_id": batch_id,
+        "status": "queued",
+        "state": "queued",
+        "batch_kind": batch_kind,
+        "document_count": len(readable),
+    }
 
 
 @router.get("/api/v1/prelabel-batches/{batch_id}")
@@ -458,12 +531,13 @@ async def get_prelabel_batch(
 
     The aggregate is derived from the per-document rows rather than kept as a counter: a counter
     and the rows it counts can disagree, and the rows are the record."""
+    require_roles(request, TENANT_ADMIN, ANNOTATOR)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
 
     result = await session.execute(
         text(
-            f"SELECT id, status, error_message, created_at, completed_at "
+            f"SELECT id, status, error_message, created_at, completed_at, batch_kind, state "
             f"FROM {schema}.prelabel_batches WHERE id = :id LIMIT 1"
         ),
         {"id": batch_id},
@@ -493,14 +567,34 @@ async def get_prelabel_batch(
         for document in document_rows
     ]
 
+    batch_status = row[1]
+    cached_state = row[6]
+    state = cached_state or _derive_batch_state(batch_status, outcomes)
+
+    # Reconcile-on-read (design.md Risks): a worker that died after the last document
+    # outcome but before writing the terminal state would otherwise read `processing`
+    # forever. If the job is terminal and every document has an outcome, cache it now.
+    terminal = batch_status in ("completed", "failed")
+    all_settled = outcomes and all(o["status"] != "pending" for o in outcomes)
+    if cached_state is None and terminal and all_settled:
+        await session.execute(
+            text(f"UPDATE {schema}.prelabel_batches SET state = :state WHERE id = :id"),
+            {"state": state, "id": batch_id},
+        )
+        await session.commit()
+
+    succeeded = sum(1 for outcome in outcomes if outcome["status"] == "succeeded")
     return {
         "batch_id": row[0],
-        "status": row[1],
+        "status": batch_status,
+        "state": state,
+        "batch_kind": row[5],
         "error_message": row[2],
         "created_at": str(row[3]),
         "completed_at": str(row[4]) if row[4] else None,
         "document_count": len(outcomes),
-        "succeeded": sum(1 for outcome in outcomes if outcome["status"] == "succeeded"),
+        "progress": {"settled": sum(1 for o in outcomes if o["status"] != "pending"), "total": len(outcomes)},
+        "succeeded": succeeded,
         "failed": sum(1 for outcome in outcomes if outcome["status"] == "failed"),
         "pending": sum(1 for outcome in outcomes if outcome["status"] == "pending"),
         "ungrounded": sum(
@@ -528,13 +622,52 @@ async def _batch_document_ids(session: AsyncSession, schema: str, batch_id: str)
 
 async def _load_batch(session: AsyncSession, schema: str, batch_id: str):
     result = await session.execute(
-        text(f"SELECT id, status FROM {schema}.prelabel_batches WHERE id = :id LIMIT 1"),
+        text(
+            f"SELECT id, status, batch_kind, annotator_review_status, training_eligible_at "
+            f"FROM {schema}.prelabel_batches WHERE id = :id LIMIT 1"
+        ),
         {"id": batch_id},
     )
     row = result.fetchone()
     if not row:
         raise NotFoundError("PrelabelBatch", batch_id)
     return row
+
+
+def _gate_acceptance_reviewer(request: Request, batch_kind: str) -> None:
+    """An `initial` batch is validated by the Tenant Admin; a `large` batch's acceptance
+    review is the Annotator Admin's final annotation gate (design.md Decision 2)."""
+    if batch_kind == BATCH_KIND_INITIAL:
+        require_roles(request, TENANT_ADMIN)
+    else:
+        require_roles(request, ANNOTATOR)
+
+
+async def _latest_initial_guidance(session: AsyncSession, schema: str) -> list[dict]:
+    """Corrections and notes from the most recent reviewed `initial` batch, rendered for
+    the `large`-batch prompt. Empty when no initial batch has been reviewed."""
+    batch = await session.execute(
+        text(
+            f"SELECT id FROM {schema}.prelabel_batches "
+            "WHERE batch_kind = 'initial' AND id IN "
+            "  (SELECT batch_id FROM {schema}.prelabel_batch_guidance) "
+            "ORDER BY created_at DESC LIMIT 1".replace("{schema}", schema)
+        )
+    )
+    batch_row = batch.fetchone()
+    if not batch_row:
+        return []
+    rows = await session.execute(
+        text(
+            f"SELECT document_id, corrected_spans, note "
+            f"FROM {schema}.prelabel_batch_guidance WHERE batch_id = :id"
+        ),
+        {"id": batch_row[0]},
+    )
+    return [
+        {"document_id": r[0], "corrected_spans": _coerce_json(r[1]) or [], "note": r[2]}
+        for r in rows.fetchall()
+    ]
 
 
 async def _latest_acceptance(session: AsyncSession, schema: str, batch_id: str):
@@ -588,7 +721,8 @@ async def start_acceptance_review(
     """
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
-    await _load_batch(session, schema, batch_id)
+    batch = await _load_batch(session, schema, batch_id)
+    _gate_acceptance_reviewer(request, batch[2])
 
     existing = await _latest_acceptance(session, schema, batch_id)
     if existing is not None and existing[9] in ("accepted", "rejected"):
@@ -653,7 +787,8 @@ async def get_acceptance_review(
     """The acceptance record, the drawn sample, and the suggestions awaiting a disposition."""
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
-    await _load_batch(session, schema, batch_id)
+    batch = await _load_batch(session, schema, batch_id)
+    _gate_acceptance_reviewer(request, batch[2])
 
     row = await _latest_acceptance(session, schema, batch_id)
     if row is None:
@@ -712,7 +847,8 @@ async def submit_acceptance_review(
     """
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
-    await _load_batch(session, schema, batch_id)
+    batch = await _load_batch(session, schema, batch_id)
+    _gate_acceptance_reviewer(request, batch[2])
 
     row = await _latest_acceptance(session, schema, batch_id)
     if row is None:
@@ -826,7 +962,9 @@ async def accept_batch(
     """
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
-    await _load_batch(session, schema, batch_id)
+    batch = await _load_batch(session, schema, batch_id)
+    batch_kind = batch[2]
+    _gate_acceptance_reviewer(request, batch_kind)
 
     row = await _latest_acceptance(session, schema, batch_id)
     if row is None:
@@ -959,14 +1097,46 @@ async def accept_batch(
             "now": _now(),
         },
     )
+
+    # A `large` batch an Annotator Admin accepts is the final annotation gate: the batch
+    # becomes training-eligible and the Tenant Admin is notified — no second Tenant Admin
+    # review (design.md Decisions 2 and 6). The conditional UPDATE + guarded notify make
+    # the transition fire exactly once even if `accept` is retried (ADR-011).
+    training_eligible = False
+    if batch_kind == BATCH_KIND_LARGE:
+        eligible_result = await session.execute(
+            text(
+                f"UPDATE {schema}.prelabel_batches "
+                "SET training_eligible_at = NOW(), annotator_review_status = 'approved' "
+                "WHERE id = :id AND training_eligible_at IS NULL"
+            ),
+            {"id": batch_id},
+        )
+        if eligible_result.rowcount:
+            training_eligible = True
+            await notify(
+                session,
+                tenant_id=tenant_id,
+                kind="automated_batch_approved",
+                title="Automated batch approved",
+                body=(
+                    f"An annotator has reviewed and approved automated batch {batch_id}. "
+                    f"The {promoted} confirmed spans are now eligible for model training."
+                ),
+                resource_type="prelabel_batch",
+                resource_id=batch_id,
+            )
+
     await session.commit()
 
     return {
         "acceptance_id": acceptance_id,
         "batch_id": batch_id,
+        "batch_kind": batch_kind,
         "decision": "accepted",
         "agreement_rate": rate,
         "agreement_threshold": threshold,
         "sample_size": row[2],
         "promoted_spans": promoted,
+        "training_eligible": training_eligible,
     }

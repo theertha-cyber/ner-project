@@ -375,7 +375,10 @@ def run_prelabel_batch_sync(tenant_id: str, batch_id: str, llm_client=None) -> d
 
     with engine.begin() as connection:
         connection.execute(
-            text(f"UPDATE {schema}.prelabel_batches SET status = 'running' WHERE id = :id"),
+            text(
+                f"UPDATE {schema}.prelabel_batches "
+                "SET status = 'running', state = 'processing' WHERE id = :id"
+            ),
             {"id": batch_id},
         )
         doc_ids = [
@@ -409,16 +412,30 @@ def run_prelabel_batch_sync(tenant_id: str, batch_id: str, llm_client=None) -> d
                 connection, schema, batch_id, doc_id, "succeeded", counts=result.counts()
             )
 
+    # The worker's `status` stays `completed` whenever the loop ran to the end; `state` is
+    # the finer-grained lifecycle the portal renders (design.md Decision 3).
+    if doc_ids and succeeded and failed:
+        state = "partially_completed"
+    elif doc_ids and failed and not succeeded:
+        state = "failed"
+    else:
+        state = "completed"
+
     with engine.begin() as connection:
         connection.execute(
             text(
                 f"UPDATE {schema}.prelabel_batches "
-                "SET status = 'completed', completed_at = :now WHERE id = :id"
+                "SET status = 'completed', state = :state, completed_at = :now WHERE id = :id"
             ),
-            {"id": batch_id, "now": _now()},
+            {"id": batch_id, "state": state, "now": _now()},
         )
 
-    return {"documents": len(doc_ids), "succeeded": succeeded, "failed": failed}
+    return {
+        "documents": len(doc_ids),
+        "succeeded": succeeded,
+        "failed": failed,
+        "state": state,
+    }
 
 
 @celery_app.task(bind=True, name="run_prelabel_batch", max_retries=0)

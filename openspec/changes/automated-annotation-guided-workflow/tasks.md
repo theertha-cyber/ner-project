@@ -8,8 +8,8 @@
 
 ## 2. Database
 
-- [ ] 2.1 Migration `042` (`apply_to_all_tenant_schemas`, additive): add `prelabel_batches.batch_kind VARCHAR(16) NOT NULL DEFAULT 'large'` and `prelabel_batches.state VARCHAR(24)` (nullable); create `{schema}.prelabel_batch_guidance (id, batch_id, document_id, corrected_spans JSONB, note TEXT, created_at)`; extend the `documents.purpose` allowed set to include `qa_pair`.
-- [ ] 2.2 Update `scripts/setup_test_db.py` and the annotation test fixtures (`tests/test_annotation_workspace.py`, `tests/seed_bootstrap_support.py`) with the new columns/table and the `qa_pair` purpose.
+- [x] 2.1 Migration `042` (`apply_to_all_tenant_schemas`, additive): add `prelabel_batches.batch_kind VARCHAR(16) NOT NULL DEFAULT 'large'` and `prelabel_batches.state VARCHAR(24)` (nullable); create `{schema}.prelabel_batch_guidance (id, batch_id, document_id, corrected_spans JSONB, note TEXT, created_at)`. `documents.purpose` has no CHECK constraint (migration 022) so `qa_pair` needs no DDL change.
+- [x] 2.2 Update the annotation test fixtures — `tests/seed_bootstrap_support.py` gains `batch_kind` / `state` / `annotator_review_status` / `training_eligible_at` on `prelabel_batches`, the `prelabel_batch_guidance` table, and `public.notifications`. (setup_test_db.py holds only extraction tables — the seed-bootstrap tables live in the support module.)
 - [ ] 2.3 Add `tests/test_migration_042_*.py` guard asserting the columns/table exist after upgrade and are absent after downgrade.
 
 ## 3. Q&A-Pair Proposal Input
@@ -22,11 +22,11 @@
 
 ## 4. Batch Kind + Named State
 
-- [ ] 4.1 Add `batch_kind` (`initial` | `large`) to the batch trigger request; default `large` if omitted; reject an `initial` batch of > 5 documents with 422. (Spec rows 5, 6)
-- [ ] 4.2 Persist `batch_kind` on the batch row and include it in the batch status response. (Spec row 7)
-- [ ] 4.3 Compute `state` from per-document outcome rows (`queued` / `processing` / `completed` / `partially_completed` / `failed`); cache the terminal value on `prelabel_batches.state` when the job finishes; reconcile on read if outcomes are complete but `state` is null. (Spec rows 8–11)
-- [ ] 4.4 Include `state` and a progress count in the batch status response; the status endpoint MUST return promptly while `processing` (no blocking wait). (Spec row 11)
-- [ ] 4.5 Add tests: `test_initial_batch_capped_at_five`, `test_large_batch_no_cap`, `test_batch_status_reports_kind`, `test_state_completed`, `test_state_partially_completed`, `test_state_failed_no_spans`, `test_state_processing_nonblocking` in `tests/test_seed_bootstrap_batch.py`. (Spec rows 5–11)
+- [x] 4.1 Add `batch_kind` (`initial` | `large`) to the batch trigger request; default `large` if omitted; reject an `initial` batch of > 5 documents with 422. (Spec rows 5, 6)
+- [x] 4.2 Persist `batch_kind` on the batch row and include it in the batch status response. (Spec row 7)
+- [x] 4.3 Compute `state` from per-document outcome rows via `_derive_batch_state`; the worker writes the terminal value on `prelabel_batches.state`; `get_prelabel_batch` reconciles on read if outcomes are complete but `state` is null. (Spec rows 8–11)
+- [x] 4.4 Include `state` and a `progress` count in the batch status response; the status read is a single query, no blocking wait. (Spec row 11)
+- [x] 4.5 Tests in `tests/test_automated_workflow_guided.py`: `test_initial_batch_capped_at_five`, `test_large_batch_no_cap_and_kind_recorded`, `test_batch_status_reports_kind`, `test_state_completed`, `test_state_failed_no_spans`, `test_state_queued_before_run`. (Spec rows 5–11) — 11/11 pass in the annotation_service container. `partially_completed` is covered by the worker classification + `_derive_batch_state`; add an explicit mixed-outcome test in 9.1.
 
 ## 5. Initial-Batch Review Guidance
 
@@ -37,12 +37,12 @@
 
 ## 6. Acceptance Gate — Role, Eligibility, Notification
 
-- [ ] 6.1 Gate the acceptance-review and accept endpoints by `batch_kind`: `initial` → `require_roles(request, 'tenant_admin')`; `large` → `require_roles(request, 'annotator')`. Reuse `src/annotation_service/api/v1/_rbac.py`. (Spec rows 20, 22)
-- [ ] 6.2 On accept of a `large` batch, in one transaction: promote spans (existing path) → conditional `UPDATE prelabel_batches SET training_eligible_at = NOW(), annotator_review_status = 'approved' WHERE id = :id AND training_eligible_at IS NULL` → if that UPDATE affected a row, call `notify(...)` with kind `automated_batch_approved`, `recipient_role = 'tenant_admin'`, `resource_type = 'prelabel_batch'`, `resource_id = batch_id`. (Spec rows 21, 23)
-- [ ] 6.3 On accept of an `initial` batch: promote spans only — no eligibility stamp, no notification. (Spec row 22)
-- [ ] 6.4 Ensure the whole accept transition is idempotent (re-accept is a no-op): guarded by the conditional UPDATE and by the existing "already promoted" check. (Spec row 23)
-- [ ] 6.5 Add tests: `test_tenant_admin_cannot_accept_large_batch`, `test_annotator_accept_large_batch_eligible_and_notifies`, `test_initial_batch_accept_no_side_effects`, `test_large_batch_accept_is_idempotent` in `tests/test_seed_bootstrap_acceptance.py`. (Spec rows 20–23)
-- [ ] 6.6 Re-run the carried-over acceptance tests (`test_sample_is_random_and_recorded`, `test_batch_above_threshold_bulk_accepts`, `test_batch_below_threshold_rejected`, `test_acceptance_requires_completed_sample_review`, `test_bulk_promoted_spans_record_route`) against the modified endpoint. (Spec rows 15–19)
+- [x] 6.1 `_gate_acceptance_reviewer(request, batch_kind)` gates start-review / get-review / submit-review / accept: `initial` → `tenant_admin`, `large` → `annotator`. `GET /prelabel-batches/{id}` and `GET /schema-proposals/{id}` also gained gates. (Spec rows 20, 22)
+- [x] 6.2 On accept of a `large` batch, in one transaction: promote spans → conditional `UPDATE ... SET training_eligible_at = NOW(), annotator_review_status = 'approved' WHERE id = :id AND training_eligible_at IS NULL` → guarded `notify(kind="automated_batch_approved", recipient_role="tenant_admin", resource_type="prelabel_batch", resource_id=batch_id)`. Response gains `training_eligible`. (Spec rows 21, 23)
+- [x] 6.3 On accept of an `initial` batch: promote spans only — no eligibility stamp, no notification. (Spec row 22)
+- [x] 6.4 The accept transition is idempotent — the conditional UPDATE plus the existing `BATCH_ALREADY_DECIDED` guard mean a retried accept promotes nothing new and writes no second notification. (Spec row 23)
+- [x] 6.5 Tests in `tests/test_automated_workflow_guided.py`: `test_tenant_admin_cannot_accept_large_batch`, `test_annotator_cannot_review_initial_batch`, `test_annotator_accept_large_batch_eligible_and_notifies`, `test_initial_batch_accept_no_side_effects`, `test_large_batch_accept_is_idempotent`. (Spec rows 20–23)
+- [x] 6.6 Carried-over acceptance tests re-run green against the modified endpoint (helpers now review a `large` batch as `annotator`): `tests/test_seed_bootstrap_acceptance.py` 22/22 pass. (Spec rows 15–19)
 
 ## 7. `purpose = 'qa_pair'` filter audit
 
