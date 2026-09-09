@@ -12,7 +12,7 @@ None.
 
 ## Blocked
 
-- **CAP-2** `cap-2-tenant-scoped-connection-control-plane`: Missing required governance file `incode-opencode/governance/baseline-policy.json`; no repository-local baseline policy exists, so the non-overridable security and coding controls could not be read before implementation.
+- **CAP-2** `cap-2-tenant-scoped-connection-control-plane`: The repository-local `baseline-policy.json` was read successfully, but approved material does not determine the tenant-admin control-plane REST routes, methods, request/response schemas, lifecycle-action representations, pagination/filter contract, or error contract. `architecture-resolver` returned `ESCALATE`; sources include the technical design's Control Plane and Activation / Data Model and API Changes sections and ADRs 001 and 011.
 
 ## Skipped
 
@@ -23,7 +23,7 @@ None.
 
 ## Spec Rewrites
 
-None.
+None. The authorized reconciliation of obsolete Azure-specific integration-profile rules remains documented in CAP-2's unarchived delta and was not applied without the unresolved API contract.
 
 ## Demo/Seed Data Reconciliation
 
