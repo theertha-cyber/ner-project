@@ -1,37 +1,34 @@
-# Ralph Build Report
+# Ralph Run Report
 
-**Run:** run_20260903T054033Z
-**Date:** 2026-09-03
-**Track:** direct
-**Integration Branch:** export-from-chat
+## Run
 
-## Capabilities
+- Run: `run_20260909T163245Z`
+- Integration branch: `external-tenant-data-sources`
+- OpenSpec: `1.6.0` (matches recorded version)
 
-### CAP-1 — Add DOC/DOCX Support to Document Upload
+## Completed
 
-**Status:** COMPLETED
-**Slug:** cap-1-add-doc-docx-upload-support
+None.
 
-**Files Changed:**
-- `pyproject.toml` — added `python-docx` dependency
-- `src/document_service/services/ocr_worker.py` — added `.doc`, `.docx` to `ALLOWED_EXTENSIONS`; added `extract_text_docx()` and `extract_text_doc()` functions; updated `process_document()` dispatch
-- `src/document_service/api/v1/documents.py` — updated error message to include `.doc, .docx`
-- `src/portal/src/components/documents/DocumentUpload.tsx` — added DOC/DOCX MIME types, updated `accept` attribute, updated helper text
-- `openspec/specs/document-ingestion/spec.md` — updated Document Upload and Async OCR Processing requirements; added DOCX/DOC scenarios
-- `tests/test_document_ingestion.py` — added DOCX_CONTENT constant; added `test_docx_upload_returns_201`, `test_doc_upload_returns_201`, `test_unsupported_type_rejection_with_doc_types`
+## Blocked
 
-**Specs Archived:** 0 (baseline spec updated in-place, not archived)
-**Spec Rewrites:** 0
+- **CAP-2** `cap-2-tenant-scoped-connection-control-plane`: Missing required governance file `incode-opencode/governance/baseline-policy.json`; no repository-local baseline policy exists, so the non-overridable security and coding controls could not be read before implementation.
 
-**Test Status:** Tests could not run — PostgreSQL database not available in this environment. All Python files compile cleanly. `python-docx` dependency installed successfully.
+## Skipped
 
-## Summary
+- **CAP-3** `cap-3-durable-azure-blob-synchronization-and-source-reconciliation`: blocked by CAP-2.
+- **CAP-4** `cap-4-contract-governed-external-postgresql-query-path`: blocked by CAP-2.
+- **CAP-5** `cap-5-tenant-data-source-administration-portal`: blocked by CAP-3.
+- **CAP-6** `cap-6-local-compose-delivery-migration-and-operational-evidence`: blocked by CAP-3.
 
-| Metric | Value |
-|--------|-------|
-| Capabilities completed | 1/1 |
-| Capabilities blocked | 0 |
-| Capabilities skipped | 0 |
-| Files changed | 6 |
-| Specs archived | 0 |
-| Spec rewrites | 0 |
+## Spec Rewrites
+
+None.
+
+## Demo/Seed Data Reconciliation
+
+No selected capability completed implementation or created test data; no reconciliation was required.
+
+## Deliberately Left Alone
+
+The pre-existing working-tree changes were not modified or committed.
