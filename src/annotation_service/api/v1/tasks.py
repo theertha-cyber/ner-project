@@ -5,6 +5,14 @@ from sqlalchemy import text
 from src.shared.database import get_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.exceptions import NotFoundError, ConflictError
+from src.annotation_service.api.v1._rbac import (
+    require_tenant_admin,
+    require_annotator_or_tenant_admin,
+    require_roles,
+    TENANT_ADMIN,
+    ANNOTATOR,
+)
+from src.annotation_service.services.notify import notify
 
 router = APIRouter(tags=["tasks"])
 
@@ -40,6 +48,7 @@ async def create_task(
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
+    require_tenant_admin(request)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
 
@@ -99,6 +108,7 @@ async def list_tasks(
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
+    require_roles(request, TENANT_ADMIN, ANNOTATOR)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
 
@@ -110,6 +120,7 @@ async def list_tasks(
             t.status,
             t.created_at,
             t.updated_at,
+            t.training_eligible_at,
             d.filename,
             d.status AS document_status,
             COUNT(s.id) FILTER (WHERE s.id IS NOT NULL) AS span_count
@@ -137,9 +148,10 @@ async def list_tasks(
             "status": r[3],
             "created_at": str(r[4]),
             "updated_at": str(r[5]) if r[5] else None,
-            "filename": r[6],
-            "document_status": r[7],
-            "span_count": r[8] or 0,
+            "training_eligible_at": str(r[6]) if r[6] else None,
+            "filename": r[7],
+            "document_status": r[8],
+            "span_count": r[9] or 0,
         }
         for r in rows
     ]
@@ -152,6 +164,7 @@ async def update_task(
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
+    require_annotator_or_tenant_admin(request)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
 
@@ -203,13 +216,43 @@ async def update_task(
                 detail={"code": "NO_SPANS", "message": "Document must have at least one confirmed span before task can be completed"},
             )
 
+    training_eligible = new_status == "completed" and current_status != "completed"
+
     await session.execute(
-        text(f"UPDATE {schema}.annotation_tasks SET status = :status WHERE id = :id"),
+        text(
+            f"UPDATE {schema}.annotation_tasks "
+            "SET status = :status"
+            + (", training_eligible_at = NOW()" if training_eligible else "")
+            + " WHERE id = :id"
+        ),
         {"status": new_status, "id": task_id},
     )
+
+    if training_eligible:
+        # The annotator's completion IS final approval — there is no second Tenant Admin
+        # annotation review. Tell the Tenant Admin the data is ready for training.
+        filename_row = await session.execute(
+            text(f"SELECT filename FROM {schema}.documents WHERE id = :id"),
+            {"id": doc_id},
+        )
+        filename = (filename_row.scalar() or doc_id)
+        await notify(
+            session,
+            tenant_id=tenant_id,
+            kind="annotation_task_completed",
+            title="Annotation task completed",
+            body=(
+                f"Document {filename} has been annotated and approved. "
+                "The data is now eligible for model training."
+            ),
+            resource_type="annotation_task",
+            resource_id=task_id,
+        )
+
     await session.commit()
 
     return {
         "id": task_id,
         "status": new_status,
+        "training_eligible": training_eligible,
     }

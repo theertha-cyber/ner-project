@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { useDarkMode } from "@/hooks";
 import { navFor, crumbsFor, resolveScreenTitle } from "@/lib/nav-config";
 import { Sun, Moon } from "lucide-react";
+import { NotificationBell } from "./NotificationBell";
 
 export function Topbar() {
   const { user } = useAuth();
@@ -75,6 +76,8 @@ export function Topbar() {
         height={36}
         style={{ objectFit: "contain", flexShrink: 0 }}
       />
+
+      {(user.role === "tenant_admin" || user.role === "annotator") && <NotificationBell />}
 
       {/* Dark mode toggle */}
       <button

@@ -105,6 +105,7 @@ def _create_tables_sql(schema: str) -> list:
                 status VARCHAR(20) DEFAULT 'unannotated',
                 reviewer VARCHAR,
                 dataset_version INTEGER,
+                training_eligible_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ
             )
@@ -170,6 +171,21 @@ async def seeded_tenant():
             )
         """))
         await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS public.notifications (
+                id VARCHAR PRIMARY KEY,
+                tenant_id VARCHAR NOT NULL,
+                recipient_role VARCHAR(50),
+                recipient_user_id VARCHAR,
+                kind VARCHAR(64) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                body TEXT,
+                resource_type VARCHAR(64),
+                resource_id VARCHAR,
+                read_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """))
+        await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS public.entity_definitions (
                 id VARCHAR PRIMARY KEY,
                 tenant_id VARCHAR NOT NULL,
@@ -202,6 +218,7 @@ async def seeded_tenant():
         await conn.execute(text(f"DROP SCHEMA IF EXISTS {tenant_schema} CASCADE"))
         await conn.execute(text("DELETE FROM public.tenants WHERE id = :id"), {"id": tid})
         await conn.execute(text("DELETE FROM public.entity_definitions WHERE tenant_id = :id"), {"id": tid})
+        await conn.execute(text("DELETE FROM public.notifications WHERE tenant_id = :id"), {"id": tid})
     await engine.dispose()
 
 
@@ -614,7 +631,7 @@ async def test_7_9_prelabel_promote_suggestion(seeded_document, client):
 async def test_7_10_task_create_returns_201(seeded_document, client):
     tid = seeded_document["tid"]
     doc_id = seeded_document["doc_id"]
-    token = make_token(tid)
+    token = make_token(tid, "tenant_admin")
 
     resp = await client.post(
         "/api/v1/annotation-tasks",
@@ -634,7 +651,7 @@ async def test_8_1_task_create_for_query_purpose_document_returns_422(seeded_ent
     tid = seeded_entity_types["tid"]
     schema = seeded_entity_types["schema"]
     doc_id = str(uuid.uuid4())
-    token = make_token(tid)
+    token = make_token(tid, "tenant_admin")
 
     engine = create_async_engine(settings.database_url, poolclass=NullPool)
     async with engine.begin() as conn:
@@ -659,7 +676,7 @@ async def test_7_11_task_conflict_returns_409(seeded_document, client):
     tid = seeded_document["tid"]
     schema = seeded_document["schema"]
     doc_id = seeded_document["doc_id"]
-    token = make_token(tid)
+    token = make_token(tid, "tenant_admin")
 
     engine = create_async_engine(settings.database_url, poolclass=NullPool)
     async with engine.begin() as conn:
@@ -1124,3 +1141,89 @@ async def test_promote_llm_sourced_span(seeded_document, client):
         8,
         "John Doe",
     )
+
+
+# ── RBAC + completion notification (tenant-admin navigation restructure) ──────
+
+
+@pytest.mark.asyncio
+async def test_task_create_rejects_annotator(seeded_document, client):
+    """Assigning annotation work is Tenant Admin work — an annotator cannot create a task."""
+    tid = seeded_document["tid"]
+    doc_id = seeded_document["doc_id"]
+    resp = await client.post(
+        "/api/v1/annotation-tasks",
+        json={"document_id": doc_id, "annotator_user_id": "user-456"},
+        headers=auth_header(make_token(tid, "annotator")),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_task_create_rejects_business_user(seeded_document, client):
+    tid = seeded_document["tid"]
+    doc_id = seeded_document["doc_id"]
+    resp = await client.post(
+        "/api/v1/annotation-tasks",
+        json={"document_id": doc_id, "annotator_user_id": "user-456"},
+        headers=auth_header(make_token(tid, "business_user")),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_task_list_rejects_business_user(seeded_document, client):
+    tid = seeded_document["tid"]
+    resp = await client.get(
+        "/api/v1/annotation-tasks",
+        headers=auth_header(make_token(tid, "business_user")),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_task_completion_marks_training_eligible_and_notifies(seeded_document, client):
+    """Annotator completing a task is final approval: the task becomes training-eligible
+    and a persistent notification is written for the Tenant Admin — no second review."""
+    tid = seeded_document["tid"]
+    schema = seeded_document["schema"]
+    doc_id = seeded_document["doc_id"]
+    task_id = str(uuid.uuid4())
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.annotation_tasks (id, document_id, annotator_user_id, status) VALUES (:id, :doc_id, :uid, 'in-progress')"),
+            {"id": task_id, "doc_id": doc_id, "uid": "user-456"},
+        )
+        await conn.execute(
+            text(f"INSERT INTO {schema}.spans (id, document_id, entity_type, char_start, char_end, text_content, confidence) VALUES (:sid, :doc_id, 'PER', 0, 8, 'John Doe', 1.0)"),
+            {"sid": str(uuid.uuid4()), "doc_id": doc_id},
+        )
+    await engine.dispose()
+
+    resp = await client.patch(
+        f"/api/v1/annotation-tasks/{task_id}",
+        json={"status": "completed"},
+        headers=auth_header(make_token(tid, "annotator")),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["training_eligible"] is True
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.connect() as conn:
+        elig = (await conn.execute(
+            text(f"SELECT training_eligible_at FROM {schema}.annotation_tasks WHERE id = :id"),
+            {"id": task_id},
+        )).scalar()
+        note = (await conn.execute(
+            text("SELECT recipient_role, kind, resource_id FROM public.notifications WHERE tenant_id = :tid"),
+            {"tid": tid},
+        )).fetchone()
+    await engine.dispose()
+
+    assert elig is not None
+    assert note is not None
+    assert note[0] == "tenant_admin"
+    assert note[1] == "annotation_task_completed"
+    assert note[2] == task_id

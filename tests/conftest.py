@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS {schema}.annotation_tasks (
     status VARCHAR(20) DEFAULT 'unannotated',
     reviewer VARCHAR,
     dataset_version INTEGER,
+    training_eligible_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );

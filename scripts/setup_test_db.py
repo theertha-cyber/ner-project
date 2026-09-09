@@ -172,6 +172,21 @@ PUBLIC_TABLES = [
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS public.notifications (
+        id VARCHAR PRIMARY KEY,
+        tenant_id VARCHAR NOT NULL,
+        recipient_role VARCHAR(50),
+        recipient_user_id VARCHAR,
+        kind VARCHAR(64) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        body TEXT,
+        resource_type VARCHAR(64),
+        resource_id VARCHAR,
+        read_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+    """,
 ]
 
 

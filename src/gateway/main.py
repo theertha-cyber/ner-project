@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
-from src.gateway.api.v1 import admin, auth, entity_types, users, extraction_proxy, dashboard, chat_proxy, analytics_proxy, training_readiness
+from src.gateway.api.v1 import admin, auth, entity_types, users, extraction_proxy, dashboard, chat_proxy, analytics_proxy, training_readiness, notifications
 from src.gateway.middleware.tenant_context import TenantContextMiddleware
 from src.shared.database import get_engine, wait_for_database
 from src.shared.readiness import check_database, build_readiness_body
@@ -76,6 +76,7 @@ app.include_router(dashboard.router)
 app.include_router(chat_proxy.router)
 app.include_router(analytics_proxy.router)
 app.include_router(training_readiness.router)
+app.include_router(notifications.router)
 
 
 @app.get("/health")
