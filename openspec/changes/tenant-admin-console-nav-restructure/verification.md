@@ -10,14 +10,16 @@
 
 | # | Capability | Requirement | Scenario | Acceptance Criterion | Verification Artifact | Status |
 |---|-----------|-------------|----------|---------------------|-----------------------|--------|
-| 1 | nav-config | Role Navigation Matrix | system_admin nav stays flat | `navFor("system_admin")` returns 4 leaves, no sections | `src/portal/src/lib/nav-config.test.ts` | - [x] |
-| 2 | nav-config | Role Navigation Matrix | tenant_admin nav is grouped into Annotate / Setup / Admin | sections in order; Annotate links `/annotate/{manual,automated,import}` | `src/portal/src/lib/nav-config.test.ts` | - [x] |
-| 3 | nav-config | Role Navigation Matrix | annotator sees Manual and Import but not Automated | flattened links include manual+import, exclude automated | `src/portal/src/lib/nav-config.test.ts` | - [x] |
+| 1 | nav-config | Role Navigation Matrix | system_admin nav | `navFor("system_admin")` returns 4 flat leaves, no sections; no Settings | `src/portal/src/lib/nav-config.test.ts` | - [x] |
+| 2 | nav-config | Role Navigation Matrix | tenant_admin nav | Annotate/Setup/Admin sections in order; Annotate links `/annotate/{manual,automated,import}`; no Settings | `src/portal/src/lib/nav-config.test.ts` | - [x] |
+| 3 | nav-config | Role Navigation Matrix | annotator nav | flattened links include manual+import, exclude automated; no Settings | `src/portal/src/lib/nav-config.test.ts` | - [x] |
 | 4 | nav-config | Role Navigation Matrix | a section with no permitted links is dropped | no empty `Setup`/`Admin` header rendered | `src/portal/src/components/app-shell/sidebar.test.tsx` | - [x] |
-| 5 | nav-config | Role Navigation Matrix | business_user nav stays flat | `navFor("business_user")` returns 4 leaves | `src/portal/src/lib/nav-config.test.ts` | - [x] |
-| 6 | nav-config | Screen Title Map | breadcrumb for a nested workspace route | `crumbsFor(..., "/annotation")` → `["Annotate","Manual","Workspace"]` | `src/portal/src/lib/nav-config.test.ts` | - [x] |
-| 7 | nav-config | Screen Title Map | breadcrumb for an automated step route | trail ends with the step label under Annotate › Automated | `src/portal/src/lib/nav-config.test.ts` | - [x] |
-| 8 | nav-config | Screen Title Map | breadcrumb falls back to the title map for an off-tree route | `crumbsFor(..., "/settings")` → `["Settings"]` | `src/portal/src/lib/nav-config.test.ts` | - [x] |
+| 5 | nav-config | Role Navigation Matrix | business_user nav | `navFor("business_user")` returns 4 flat leaves, no sections; no Settings | `src/portal/src/lib/nav-config.test.ts` | - [x] |
+| 6 | nav-config | Screen Title Map | known screen lookup | `SCREEN_TITLES["tenants"]` is `["Tenants","/admin/tenants"]`; keys exist for the three `/annotate/*` landings | `src/portal/src/lib/nav-config.test.ts` | - [x] |
+| 7 | nav-config | Screen Title Map | unknown screen fallback | `resolveScreenTitle` of an off-tree, off-map path returns `["Dashboard","/dashboard"]` | `src/portal/src/lib/nav-config.test.ts` | - [x] |
+| 8 | nav-config | Screen Title Map | breadcrumb for a nested workspace route | `crumbsFor(..., "/annotation")` → `["Annotate","Manual","Workspace"]` | `src/portal/src/lib/nav-config.test.ts` | - [x] |
+| 8a | nav-config | Screen Title Map | breadcrumb for an automated step route | trail ends with the step label under Annotate › Automated | `src/portal/src/lib/nav-config.test.ts` | - [x] |
+| 8b | nav-config | Screen Title Map | breadcrumb falls back to the title map for an off-tree route | `crumbsFor(..., "/settings")` → `["Settings"]` | `src/portal/src/lib/nav-config.test.ts` | - [x] |
 | 9 | nav-config | Method Landing Routes and Legacy Redirects | legacy schema-proposals route redirects | `/schema-proposals` → `/annotate/automated/schema` | `next.config.js` redirects + `app/(auth)/schema-proposals/page.tsx` redirect shim (manual check) | - [ ] |
 | 10 | nav-config | Method Landing Routes and Legacy Redirects | automated step routes are tenant-admin only | annotator redirected away from `/annotate/automated/prelabel` | `app/(auth)/annotate/automated/layout.tsx` `RequireAuth roles={["tenant_admin"]}` (manual check) | - [ ] |
 | 11 | nav-config | Method Landing Routes and Legacy Redirects | the annotation workspace route is unchanged | `/annotation` renders the 3-pane workspace | manual check | - [ ] |

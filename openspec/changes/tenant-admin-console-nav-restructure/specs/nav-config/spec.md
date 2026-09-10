@@ -30,37 +30,41 @@ The role → nav mapping SHALL be:
 
 Settings is not a nav item for any role.
 
-#### Scenario: system_admin nav stays flat
+#### Scenario: system_admin nav
 
 - **GIVEN** the authenticated user has role `system_admin`
 - **WHEN** `navFor("system_admin")` is called
-- **THEN** it returns 4 `NavLeaf` items and no `NavSection`
+- **THEN** it returns a flat list of 4 `NavLeaf` items and no `NavSection`: Dashboard, Tenants, Models & Training, Audit Log
+- **AND** Settings is not in the returned items
 
-#### Scenario: tenant_admin nav is grouped into Annotate / Setup / Admin
+#### Scenario: tenant_admin nav
 
 - **GIVEN** the authenticated user has role `tenant_admin`
 - **WHEN** `navFor("tenant_admin")` is called
 - **THEN** the returned items include sections labelled `Annotate`, `Setup`, and `Admin` in that order
 - **AND** the `Annotate` section's links are `/annotate/manual`, `/annotate/automated`, `/annotate/import`
+- **AND** Settings is not in the returned items
 
-#### Scenario: annotator sees Manual and Import but not Automated
+#### Scenario: annotator nav
 
 - **GIVEN** the authenticated user has role `annotator`
 - **WHEN** `navFor("annotator")` is called
 - **THEN** the flattened links include `/annotate/manual` and `/annotate/import`
 - **AND** the flattened links do NOT include `/annotate/automated`
+- **AND** Settings is not in the returned items
+
+#### Scenario: business_user nav
+
+- **GIVEN** the authenticated user has role `business_user`
+- **WHEN** `navFor("business_user")` is called
+- **THEN** it returns a flat list of 4 `NavLeaf` items and no `NavSection`: Dashboard, Documents, Extractions, Chat
+- **AND** Settings is not in the returned items
 
 #### Scenario: a section with no permitted links is dropped
 
 - **GIVEN** a role whose `Setup` and `Admin` sections have zero permitted links
 - **WHEN** its nav tree is rendered
 - **THEN** no `Setup` or `Admin` header SHALL appear
-
-#### Scenario: business_user nav stays flat
-
-- **GIVEN** the authenticated user has role `business_user`
-- **WHEN** `navFor("business_user")` is called
-- **THEN** it returns 4 `NavLeaf` items and no `NavSection`
 
 ### Requirement: Screen Title Map
 
@@ -71,6 +75,19 @@ nav tree, falling back to `SCREEN_TITLES` for routes not in the tree. The map SH
 keys for `/annotate/manual`, `/annotate/automated`, `/annotate/automated/schema`,
 `/annotate/automated/prelabel`, `/annotate/automated/retrain`, and `/annotate/import`, and
 SHALL retain keys for every legacy route reached via a landing tab.
+
+#### Scenario: known screen lookup
+
+- **GIVEN** the `SCREEN_TITLES` map is imported
+- **WHEN** the key `"tenants"` is accessed
+- **THEN** it returns `["Tenants", "/admin/tenants"]`
+- **AND** keys exist for `/annotate/manual`, `/annotate/automated`, and `/annotate/import`
+
+#### Scenario: unknown screen fallback
+
+- **GIVEN** the active pathname does not match any `SCREEN_TITLES` key and is not in the nav tree
+- **WHEN** the topbar resolves the title via `resolveScreenTitle`
+- **THEN** it falls back to `["Dashboard", "/dashboard"]`
 
 #### Scenario: breadcrumb for a nested workspace route
 

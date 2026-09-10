@@ -1,4 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+`nav-config` is the single source of truth for the portal's role-based navigation: the
+`navFor(role)` function the sidebar renders, and the `SCREEN_TITLES` map the topbar reads
+for the active screen's title. Keeping the role → nav mapping in one pure, testable module
+means a route only appears for the roles permitted to use it, and the sidebar and topbar
+never disagree about what a screen is called.
+
+## Requirements
 
 ### Requirement: Role Navigation Matrix
 

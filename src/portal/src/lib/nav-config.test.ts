@@ -1,5 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { navFor, flattenNav, crumbsFor } from "./nav-config";
+import { navFor, flattenNav, crumbsFor, SCREEN_TITLES, resolveScreenTitle } from "./nav-config";
+
+describe("SCREEN_TITLES", () => {
+  it("known screen lookup", () => {
+    expect(SCREEN_TITLES["tenants"]).toEqual(["Tenants", "/admin/tenants"]);
+    for (const key of ["annotate-manual", "annotate-automated", "annotate-import"]) {
+      expect(SCREEN_TITLES[key]).toBeDefined();
+    }
+  });
+
+  it("unknown screen falls back to Dashboard", () => {
+    expect(resolveScreenTitle("/nope/not/a/route")).toEqual(["Dashboard", "/dashboard"]);
+  });
+});
 
 describe("navFor", () => {
   it("system_admin stays a flat 4-item list", () => {
