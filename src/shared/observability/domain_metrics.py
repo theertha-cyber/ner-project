@@ -908,6 +908,55 @@ BLOB_SYNC = _declare(Family(
 ))
 
 
+# --- Contract-governed external PostgreSQL query path (CAP-4, ADR-013) -----------
+#
+# The value sets mirror `src.shared.external_postgres.connector` and
+# `drift`/`validator` exactly; a drift test in
+# `tests/test_external_postgresql_chat.py` fails the build if they diverge.
+# Literals rather than imports: the external_postgres modules import this
+# module's recorder, so importing their constants here would close a package
+# import cycle. No family here carries `tenant_id`.
+EXTERNAL_PG_OUTCOMES = frozenset(
+    {"success", "drift_blocked", "validation_rejected", "execution_failed", OTHER}
+)
+
+EXTERNAL_PG_REASONS = frozenset(
+    {
+        "none",
+        "clean",
+        "drift_mismatch",
+        "metadata_unavailable",
+        "fingerprint_failure",
+        "not_single_select",
+        "write_or_ddl",
+        "multiple_statements",
+        "subquery",
+        "cte",
+        "union_or_setop",
+        "window_function",
+        "unapproved_relation",
+        "unapproved_column",
+        "unapproved_join",
+        "unapproved_function",
+        "inline_literal",
+        "role_switch",
+        OTHER,
+    }
+)
+
+EXTERNAL_PG_QUERY = _declare(Family(
+    "ner_external_pg_query_total",
+    "counter",
+    "Drift-gated external PostgreSQL executions by finite terminal outcome and "
+    "reason class. No SQL text, literal, row value, endpoint, or credential is "
+    "a label.",
+    labels=(
+        Label("outcome", EXTERNAL_PG_OUTCOMES),
+        Label("reason", EXTERNAL_PG_REASONS),
+    ),
+))
+
+
 # --------------------------------------------------------------------------------------
 # The tenant-label allowlist
 # --------------------------------------------------------------------------------------
@@ -1459,3 +1508,8 @@ def record_data_source_test(provider: str, outcome: str, reason: str) -> None:
 def record_blob_sync(trigger: str, outcome: str) -> None:
     """Record one terminal Blob sync run. Finite classes only, coerced."""
     _record(BLOB_SYNC, 1, trigger=trigger, outcome=outcome)
+
+
+def record_external_pg_query(outcome: str, reason: str) -> None:
+    """Record one external-query terminal outcome. Finite classes only, coerced."""
+    _record(EXTERNAL_PG_QUERY, 1, outcome=outcome, reason=reason)

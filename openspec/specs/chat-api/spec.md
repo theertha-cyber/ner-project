@@ -127,6 +127,8 @@ The whitelisted table set SHALL include the generated relational entity tables f
 
 The whitelisted **column** set SHALL be resolved from that same surface rather than restated: the static tables keep their declared columns, `subject` contributes its identity columns and one column per active `single` definition, and each active child table contributes the fixed child column shape. A column reference the validation layer cannot attribute to a specific relation SHALL be accepted rather than rejected, so a parser gap degrades into a database error rather than a false rejection of a correct query.
 
+Rejected statements — platform or external — SHALL be recorded as a finite safe rejection reason class with correlation metadata only; the system SHALL NOT log, metric-label, trace, or audit SQL text, literals, or row values.
+
 #### Scenario: Valid SQL query is executed
 
 - **GIVEN** a natural language question about entity counts
@@ -154,7 +156,7 @@ The whitelisted **column** set SHALL be resolved from that same surface rather t
 - **GIVEN** an LLM-generated query attempting `DROP TABLE document_entities`
 - **WHEN** the validation layer inspects the query
 - **THEN** the validation SHALL reject the query
-- **AND** the system SHALL log the rejected query
+- **AND** the system SHALL record only a finite rejection reason class and correlation metadata, never the SQL text
 - **AND** the RAG pipeline SHALL skip the SQL source for this turn
 - **AND** the response SHALL indicate the SQL source was unavailable
 
