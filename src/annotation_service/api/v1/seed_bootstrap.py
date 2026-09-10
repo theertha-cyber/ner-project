@@ -427,6 +427,9 @@ async def approve_candidate(
             # They are already known to appear verbatim in the tenant's own documents, which is
             # more than a hand-typed example can claim.
             "examples": _coerce_json(row[4]) or [],
+            # Recorded so the Entity Types page can show where a type an admin does not
+            # recognise came from (entity-type-provenance change).
+            "provenance": "suggested",
         },
     )
 

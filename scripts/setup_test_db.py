@@ -129,6 +129,8 @@ PUBLIC_TABLES = [
         version INTEGER NOT NULL DEFAULT 1,
         required_flag BOOLEAN DEFAULT FALSE,
         is_active BOOLEAN DEFAULT TRUE,
+        provenance VARCHAR(16) NOT NULL DEFAULT 'manual',
+        provenance_ref VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )
@@ -139,7 +141,9 @@ PUBLIC_TABLES = [
     ALTER TABLE public.entity_definitions
         ADD COLUMN IF NOT EXISTS cardinality VARCHAR(16) NOT NULL DEFAULT 'multi',
         ADD COLUMN IF NOT EXISTS sql_identifier VARCHAR(63),
-        ADD COLUMN IF NOT EXISTS qa_examples JSONB
+        ADD COLUMN IF NOT EXISTS qa_examples JSONB,
+        ADD COLUMN IF NOT EXISTS provenance VARCHAR(16) NOT NULL DEFAULT 'manual',
+        ADD COLUMN IF NOT EXISTS provenance_ref VARCHAR(255)
     """,
     """
     DO $$

@@ -249,6 +249,29 @@ class TestCandidateDisposition:
             "disposition"
         ] == "approved"
 
+    async def test_approved_candidate_is_suggested_provenance(self, client, engine):
+        tenant = await make_tenant(engine, entity_types=("person_name",))
+        proposal_id = await _seed_proposal(client, engine, tenant)
+        candidate = await _candidate_named(client, tenant, proposal_id, "institute")
+
+        resp = await client.post(
+            f"/api/v1/schema-proposals/candidates/{candidate['id']}/approve",
+            headers=auth_header(tenant["tid"]),
+        )
+        assert resp.status_code == 201, resp.text
+
+        async with engine.connect() as conn:
+            provenance = (
+                await conn.execute(
+                    text(
+                        "SELECT provenance FROM public.entity_definitions "
+                        "WHERE tenant_id = :tid AND name = 'institute'"
+                    ),
+                    {"tid": tenant["tid"]},
+                )
+            ).scalar()
+        assert provenance == "suggested"
+
     async def test_reject_candidate_creates_nothing(self, client, engine):
         tenant = await make_tenant(engine, entity_types=("person_name",))
         proposal_id = await _seed_proposal(client, engine, tenant)

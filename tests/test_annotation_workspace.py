@@ -199,6 +199,8 @@ async def seeded_tenant():
                 version INTEGER DEFAULT 1,
                 required_flag BOOLEAN DEFAULT false,
                 is_active BOOLEAN DEFAULT true,
+                provenance VARCHAR(16) NOT NULL DEFAULT 'manual',
+                provenance_ref VARCHAR(255),
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )

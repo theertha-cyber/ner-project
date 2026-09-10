@@ -33,6 +33,9 @@ export interface EntityType {
   value_kind: string;
   sql_identifier: string | null;
   qa_examples?: QaExample[] | null;
+  /** How the type came to exist — assigned at creation, immutable. */
+  provenance?: "manual" | "suggested" | "imported";
+  provenance_ref?: string | null;
 }
 
 export interface EntityTypeListResponse {

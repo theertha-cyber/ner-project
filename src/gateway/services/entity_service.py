@@ -19,8 +19,10 @@ from src.shared.exceptions import ValidationError, NotFoundError
 _ENTITY_COLUMNS = """
     id, name, description, examples, qa_examples, validation_rule, target_table,
     base_label_mapping, value_kind, value_unit, cardinality, sql_identifier,
-    version, required_flag, is_active, created_at, updated_at
+    version, required_flag, is_active, provenance, provenance_ref, created_at, updated_at
 """
+
+VALID_PROVENANCE = {"manual", "suggested", "imported"}
 
 
 def _serialize_qa_examples(qa_examples) -> str | None:
@@ -114,10 +116,10 @@ class EntityService:
                 INSERT INTO public.entity_definitions
                     (id, tenant_id, name, description, examples, qa_examples, validation_rule,
                      target_table, base_label_mapping, value_kind, value_unit, cardinality,
-                     sql_identifier, required_flag, is_active, version)
+                     sql_identifier, required_flag, is_active, version, provenance, provenance_ref)
                 VALUES (:id, :tid, :name, :desc, :examples, :qa_examples, :rule,
                         :target, :mapping, :value_kind, :value_unit, :cardinality,
-                        :sql_identifier, :required, :active, 1)
+                        :sql_identifier, :required, :active, 1, :provenance, :provenance_ref)
             """),
             {
                 "id": entity_id,
@@ -138,6 +140,15 @@ class EntityService:
                 "sql_identifier": sql_identifier,
                 "active": payload.get("is_active", True),
                 "required": payload.get("required_flag", False),
+                # Server-set: the create API's request model has no `provenance` field, so a
+                # client value never reaches here. `suggested` / `imported` come from the
+                # schema-proposal approval and import type-map paths, which pass a plain dict.
+                "provenance": (
+                    payload.get("provenance")
+                    if payload.get("provenance") in VALID_PROVENANCE
+                    else "manual"
+                ),
+                "provenance_ref": payload.get("provenance_ref"),
             },
         )
         await self._reconcile(tenant_id)
@@ -291,6 +302,8 @@ class EntityService:
             # Read-only metadata. A client-supplied value is ignored rather than rejected —
             # see the create and update paths, which never read it from the payload.
             "sql_identifier": r.sql_identifier,
+            "provenance": r.provenance or "manual",
+            "provenance_ref": r.provenance_ref,
             "version": r.version,
             "required_flag": r.required_flag,
             "is_active": r.is_active,

@@ -110,6 +110,12 @@ class EntityDefinition(Base):
     version = Column(Integer, default=1, nullable=False)
     required_flag = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    # How this entity type came to exist: 'manual' (created by hand), 'suggested' (approved
+    # LLM schema-proposal candidate), or 'imported' (created while mapping an annotation
+    # import). Assigned at creation, immutable thereafter. `server_default` for the same
+    # reason as `cardinality`: `entity_service.create` inserts an explicit column list.
+    provenance = Column(String(16), server_default="manual", default="manual", nullable=False)
+    provenance_ref = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -112,10 +112,37 @@
 
 ## 7. Agent Verification Record
 
-*(To be written by the implementing agent after `/opsx:apply`.)*
+Implemented: migration `044` (`entity_definitions.provenance` + `provenance_ref`, both
+`server_default`); `EntityDefinition` model columns; `entity_service` — `_ENTITY_COLUMNS`,
+server-controlled provenance on `create_entity_type` (validated set, `manual` default),
+`_row_to_dict` exposure, `update` untouched; `seed_bootstrap.approve_candidate` passes
+`provenance="suggested"`; portal `EntityType` type + `EntityTypeCard` chip.
+
+Run in the `annotation_service` container against `ner_test`, and portal in `ner-portal-test`:
+
+```
+tests/test_entity_type_provenance.py                         4 passed
+tests/test_seed_bootstrap_proposal.py                       13 passed (incl. suggested-provenance)
+tests/test_seed_bootstrap_batch.py + test_automated_...     no regression
+src/portal EntityTypeCard.test.tsx                          14 passed (2 new chip scenarios)
+```
+
+`py_compile` clean; `tsc --noEmit` no new errors. Migration `044` needs `alembic upgrade
+head` in the deployment DB.
+
+**Pre-existing, not caused by this change:** `test_entity_config.py` scenarios 14–19 error
+at fixture setup (`POST /api/v1/admin/tenants` → 422) on clean HEAD too — a live-tenant
+provisioning path the container test-DB does not build. The direct-`EntityService` tests in
+`test_entity_type_provenance.py` cover the same behaviour without that fixture.
+
+### Not done
+- Migration `044` guard test (task 2.3).
+- HTTP-level `test_entity_config.py::test_create_response_includes_provenance` /
+  `test_client_provenance_ignored` (blocked by the pre-existing fixture issue).
 
 ---
 
 ## 8. Outstanding Items
 
-- Implementation not started.
+- Task 2.3; §4/§5 evidence; §6 sign-off.
+- `import-annotation-training-eligibility` wires the `'imported'` provenance (task 4.2).
