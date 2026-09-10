@@ -1,4 +1,8 @@
-# Settings Page
+## Purpose
+
+The Settings page is the portal's account/preferences surface reached from the sidebar user
+strip. This spec pins the one behaviour that has been asserted: it renders a real Settings
+heading rather than a generic "coming soon" placeholder.
 
 ## Requirements
 
