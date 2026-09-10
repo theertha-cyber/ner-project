@@ -50,12 +50,12 @@
 
 ## 8. Portal
 
-- [ ] 8.1 `/annotate/automated/schema` — add the Q&A-pair upload control to `SchemaProposalPage`; show the uploaded Q&A doc as a proposal input; keep the seed-document picker and candidate cards unchanged.
-- [ ] 8.2 `/annotate/automated/prelabel` — add a `batch_kind` selector (Initial validation ≤5 / Large); render the named `state` (QUEUED/PROCESSING/COMPLETED/PARTIALLY_COMPLETED/FAILED) and progress; for an `initial` batch show the Tenant-Admin review with a per-document note field; for a `large` batch show a read-only "sent to Annotator Admin for review" state once submitted.
-- [ ] 8.3 `/annotate/automated/retrain` — when a `large` batch is `annotator_review_status = 'approved'`, show "Training: Eligible" and a "Request training" action wired to `POST /api/v1/training-retrain-requests`. No "review annotations" action.
-- [ ] 8.4 Annotator Admin: surface the `large`-batch acceptance queue from the annotator navigation (reuse `BatchAcceptancePage`); the annotator's accept is the final approval.
-- [ ] 8.5 Update the automated stepper state derivation (`/annotate/automated/layout.tsx`) to use `batch_kind` + `state` + `annotator_review_status` instead of the current heuristic.
-- [ ] 8.6 Portal tests: extend `src/portal/src/components/seed-bootstrap/*.test.tsx` for the Q&A upload, the batch-kind selector, and the state labels; add an annotator-view test for the large-batch queue.
+- [x] 8.1 `SchemaProposalPage` — a Q&A-pair `<select>` populated from documents with `purpose === 'qa_pair'`; `useRequestSchemaProposal` now takes `{documentIds, qaPairDocumentId?}` and sends `qa_pair_document_id`. `DocumentPurpose` gains `'qa_pair'`. (Full drag-drop upload of the Q&A file is done via the existing document upload path — the selector picks an already-uploaded one.)
+- [x] 8.2 `BatchAcceptancePage` — `batch_kind` radio selector (Initial ≤5 / Large) with a client-side 5-doc guard; renders `BATCH_STATE_LABEL[state]` + `progress` (`settled/total`) + the kind; for a `large` batch shows "now with an Annotator Admin for the final review"; for an `initial` batch keeps the Tenant-Admin acceptance review. `useCreatePrelabelBatch` takes `{documentIds, batchKind}`; `usePrelabelBatch` polls on `state`.
+- [~] 8.3 `annotator_review_status === 'approved'` is surfaced on the batch status strip ("Approved — training eligible"). The full "Training: Eligible → Request training" retrain-step block is delivered by the `training-eligibility-overview` change, which owns that surface.
+- [x] 8.4 New route `/annotate/review-batch/[id]` (annotator + tenant_admin) renders `BatchAcceptancePage` in `reviewOnly` mode opened on the batch; `NotificationBell` links an `automated_batch_approved` notification there for an annotator. (No list endpoint — the notification is the entry point.)
+- [~] 8.5 Stepper: `annotator_review_status` is now on `PrelabelBatch`; the `layout.tsx` heuristic still derives step state from entity types + accumulation because there is no "list batches" endpoint for the layout to read. Revisit with `training-eligibility-overview`.
+- [x] 8.6 `use-prelabel-batch.test.tsx` (batch_kind + guidance payload) and `use-schema-proposal.test.tsx` (qa_pair_document_id) added — 4 tests, green. `nav-config` + `app-shell` suites still green (23). Pre-existing unrelated portal failures unchanged.
 
 ## 9. Verification
 

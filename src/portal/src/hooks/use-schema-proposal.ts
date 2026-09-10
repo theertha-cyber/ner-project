@@ -12,15 +12,24 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
   return detail?.message ?? `${fallback}: ${res.status}`;
 }
 
+export interface RequestProposalPayload {
+  documentIds: string[];
+  /** Optional Q&A-pair document (uploaded separately as purpose='qa_pair'). */
+  qaPairDocumentId?: string | null;
+}
+
 export function useRequestSchemaProposal() {
   const queryClient = useQueryClient();
 
-  return useMutation<{ proposal_id: string }, Error, string[]>({
-    mutationFn: async (documentIds) => {
+  return useMutation<{ proposal_id: string }, Error, RequestProposalPayload>({
+    mutationFn: async ({ documentIds, qaPairDocumentId }) => {
       const res = await authFetch("/api/v1/schema-proposals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ document_ids: documentIds }),
+        body: JSON.stringify({
+          document_ids: documentIds,
+          ...(qaPairDocumentId ? { qa_pair_document_id: qaPairDocumentId } : {}),
+        }),
       });
       if (!res.ok) throw new Error(await errorMessage(res, "Proposal request failed"));
       return res.json();

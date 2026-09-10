@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
-import type { PrelabelBatch } from "@/types/seed-bootstrap";
+import type { BatchKind, PrelabelBatch } from "@/types/seed-bootstrap";
 
 async function errorMessage(res: Response, fallback: string): Promise<string> {
   const body = await res.json().catch(() => null);
@@ -18,17 +18,59 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
  * the loop had no backpressure, no resumability, and lost its progress if the user navigated
  * away, none of which is survivable at 200 documents.
  */
+export interface CreateBatchPayload {
+  documentIds: string[];
+  /** `initial` (≤5 docs, Tenant-Admin reviewed) or `large` (main batch, Annotator reviewed). */
+  batchKind: BatchKind;
+}
+
 export function useCreatePrelabelBatch() {
   const queryClient = useQueryClient();
 
-  return useMutation<{ batch_id: string; document_count: number }, Error, string[]>({
-    mutationFn: async (documentIds) => {
+  return useMutation<
+    { batch_id: string; document_count: number; batch_kind: BatchKind; guidance_applied: boolean },
+    Error,
+    CreateBatchPayload
+  >({
+    mutationFn: async ({ documentIds, batchKind }) => {
       const res = await authFetch("/api/v1/prelabel-batches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ document_ids: documentIds }),
+        body: JSON.stringify({ document_ids: documentIds, batch_kind: batchKind }),
       });
       if (!res.ok) throw new Error(await errorMessage(res, "Batch request failed"));
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prelabel-batch"] });
+    },
+  });
+}
+
+export interface RecordGuidancePayload {
+  batchId: string;
+  documentId: string;
+  correctedSpans?: { text: string; entity_type: string }[];
+  note?: string;
+}
+
+/** Persist a Tenant Admin's corrections/note from reviewing one document of an `initial`
+ * batch; folded into the prompt when the subsequent `large` batch runs. */
+export function useRecordBatchGuidance() {
+  const queryClient = useQueryClient();
+
+  return useMutation<unknown, Error, RecordGuidancePayload>({
+    mutationFn: async ({ batchId, documentId, correctedSpans, note }) => {
+      const res = await authFetch(`/api/v1/prelabel-batches/${batchId}/guidance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          document_id: documentId,
+          corrected_spans: correctedSpans ?? [],
+          ...(note ? { note } : {}),
+        }),
+      });
+      if (!res.ok) throw new Error(await errorMessage(res, "Could not save guidance"));
       return res.json();
     },
     onSuccess: () => {
@@ -42,8 +84,10 @@ export function usePrelabelBatch(batchId: string | null) {
     queryKey: ["prelabel-batch", batchId],
     enabled: !!batchId,
     refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === "completed" || status === "failed" ? false : 3000;
+      const state = query.state.data?.state;
+      return state === "completed" || state === "partially_completed" || state === "failed"
+        ? false
+        : 3000;
     },
     queryFn: async () => {
       const res = await authFetch(`/api/v1/prelabel-batches/${batchId}`);

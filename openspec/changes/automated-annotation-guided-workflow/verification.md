@@ -192,10 +192,35 @@ tests/test_automated_workflow_guided.py    18 passed   (11 slice-1 + 7 slice-2: 
 tests/test_seed_bootstrap_*.py + test_llm_prelabel_*   73 passed   (no regression)
 ```
 
-### Not yet implemented
+### Slice 3 — Portal (executed)
 
-- Portal (tasks 8.x).
-- Migration `042`/`043` guard tests (task 2.3); explicit `partially_completed` status test.
+- `SchemaProposalPage`: Q&A-pair selector; `useRequestSchemaProposal({documentIds, qaPairDocumentId})`.
+- `BatchAcceptancePage`: `batch_kind` radio + 5-doc guard; `BATCH_STATE_LABEL` + progress + kind
+  on the status strip; `large` batch → "with an Annotator Admin"; `initial` → Tenant-Admin review.
+- `useCreatePrelabelBatch({documentIds, batchKind})`, `useRecordBatchGuidance`, `usePrelabelBatch`
+  polls on `state`.
+- New `/annotate/review-batch/[id]` route (annotator + tenant_admin, `reviewOnly`);
+  `NotificationBell` routes an annotator's `automated_batch_approved` notification there.
+- `DocumentPurpose` gains `'qa_pair'`; `PrelabelBatch` gains `state`/`batch_kind`/`progress`/
+  `annotator_review_status`.
+
+```
+src/portal/src/hooks/use-prelabel-batch.test.tsx     2 passed  (batch_kind, guidance payload)
+src/portal/src/hooks/use-schema-proposal.test.tsx    2 passed  (qa_pair_document_id)
+src/portal src/lib + src/components/app-shell        23 passed (no regression)
+```
+
+`tsc --noEmit` — no new errors in any changed portal file. A broad `vitest run src/components
+src/lib src/hooks` shows 9 pre-existing failures (AnnotationPage, AssignTaskForm,
+StatusFilterTabs, EntityTypesPage, AnnotationImportPreview) — confirmed present on clean HEAD,
+not caused by this change.
+
+### Partial / deferred
+
+- 8.3 full "Training: Eligible → Request training" retrain block → `training-eligibility-overview`.
+- 8.5 stepper state from a batch list → needs a "list batches" endpoint; `training-eligibility-overview`.
+- Migration `042`/`043` guard tests; explicit `partially_completed` status test.
+- Q&A file drag-and-drop upload (currently: select an already-uploaded `purpose='qa_pair'` doc).
 
 ---
 

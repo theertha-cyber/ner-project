@@ -183,6 +183,7 @@ export function SchemaProposalPage() {
   const { toast } = useToast();
   const { data: documentsData, isLoading: documentsLoading } = useDocuments(1, 100, "processed");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [qaPairId, setQaPairId] = useState<string>("");
   const [proposalId, setProposalId] = useState<string | null>(null);
 
   const requestProposal = useRequestSchemaProposal();
@@ -192,7 +193,12 @@ export function SchemaProposalPage() {
   const edit = useEditCandidate();
 
   const documents = useMemo(
-    () => (documentsData?.documents ?? []).filter((doc) => doc.purpose !== "query"),
+    () => (documentsData?.documents ?? []).filter((doc) => doc.purpose !== "query" && doc.purpose !== "qa_pair"),
+    [documentsData],
+  );
+
+  const qaPairDocuments = useMemo(
+    () => (documentsData?.documents ?? []).filter((doc) => doc.purpose === "qa_pair"),
     [documentsData],
   );
 
@@ -209,10 +215,13 @@ export function SchemaProposalPage() {
   }
 
   function handleRequest() {
-    requestProposal.mutate([...selected], {
-      onSuccess: (data) => setProposalId(data.proposal_id),
-      onError: (err) => toast(err.message, "bad"),
-    });
+    requestProposal.mutate(
+      { documentIds: [...selected], qaPairDocumentId: qaPairId || null },
+      {
+        onSuccess: (data) => setProposalId(data.proposal_id),
+        onError: (err) => toast(err.message, "bad"),
+      },
+    );
   }
 
   function handleApprove(candidate: SchemaProposalCandidate) {
@@ -286,6 +295,30 @@ export function SchemaProposalPage() {
               ))}
             </div>
           )}
+          <div className="flex flex-col gap-1">
+            <label className="font-body text-xs" style={{ color: "var(--ink-3)" }}>
+              Q&amp;A pair (optional) — guides which entity types are proposed
+            </label>
+            <select
+              aria-label="Q&A pair document"
+              value={qaPairId}
+              onChange={(e) => setQaPairId(e.target.value)}
+              className="rounded-lg border border-border px-2 py-1.5 font-body text-sm"
+              style={{ color: "var(--ink-2)", background: "var(--surface-1)" }}
+            >
+              <option value="">None</option>
+              {qaPairDocuments.map((doc) => (
+                <option key={doc.id} value={doc.id}>
+                  {doc.filename}
+                </option>
+              ))}
+            </select>
+            {qaPairDocuments.length === 0 && (
+              <span className="font-body text-xs" style={{ color: "var(--ink-3)" }}>
+                Upload a PDF/DOC/DOCX/TXT with purpose &ldquo;Q&amp;A pair&rdquo; from Uploaded Documents to use one.
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-3">
             <button
               type="button"

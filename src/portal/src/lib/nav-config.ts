@@ -204,6 +204,7 @@ export const SCREEN_TITLES: Record<string, [title: string, path: string]> = {
   "annotate-automated-prelabel": ["Batch Pre-labeling", "/annotate/automated/prelabel"],
   "annotate-automated-retrain": ["Retraining", "/annotate/automated/retrain"],
   "annotate-import": ["Import Annotations", "/annotate/import"],
+  "annotate-review-batch": ["Batch Review", "/annotate/review-batch"],
   annotation: ["Annotation Workspace", "/annotation"],
   tenants: ["Tenants", "/admin/tenants"],
   "training-jobs": ["Models & Training", "/training-jobs"],

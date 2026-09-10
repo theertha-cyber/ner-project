@@ -23,11 +23,25 @@ export interface SchemaProposal {
   proposal_id: string;
   status: "queued" | "running" | "completed" | "failed";
   seed_document_ids: string[];
+  /** The optional Q&A-pair document that guided which entity types were proposed. */
+  qa_pair_document_id: string | null;
   error_message: string | null;
   created_at: string;
   completed_at: string | null;
   candidates: SchemaProposalCandidate[];
 }
+
+/** Whether a batch is the 1–5 validation batch a Tenant Admin reviews, or the main batch
+ * an Annotator Admin reviews as the final annotation gate. */
+export type BatchKind = "initial" | "large";
+
+/** The named lifecycle the UI renders, derived from per-document outcomes. */
+export type BatchState =
+  | "queued"
+  | "processing"
+  | "completed"
+  | "partially_completed"
+  | "failed";
 
 export interface PrelabelBatchDocument {
   document_id: string;
@@ -46,16 +60,30 @@ export interface PrelabelBatchDocument {
 export interface PrelabelBatch {
   batch_id: string;
   status: "queued" | "running" | "completed" | "failed";
+  state: BatchState;
+  batch_kind: BatchKind;
   error_message: string | null;
   created_at: string;
   completed_at: string | null;
   document_count: number;
+  progress?: { settled: number; total: number };
   succeeded: number;
   failed: number;
   pending: number;
   ungrounded: number;
+  /** Set to "approved" once an Annotator Admin accepts a `large` batch. */
+  annotator_review_status?: string | null;
+  training_eligible_at?: string | null;
   documents: PrelabelBatchDocument[];
 }
+
+export const BATCH_STATE_LABEL: Record<BatchState, string> = {
+  queued: "QUEUED",
+  processing: "PROCESSING",
+  completed: "COMPLETED",
+  partially_completed: "PARTIALLY COMPLETED",
+  failed: "FAILED",
+};
 
 /**
  * What a reviewer can say about one suggested span. Only `agree` — same entity type, same

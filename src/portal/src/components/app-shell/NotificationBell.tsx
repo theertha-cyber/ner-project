@@ -4,16 +4,22 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { useNotifications, useMarkNotificationRead, AppNotification } from "@/hooks/use-notifications";
+import { useAuth } from "@/lib/auth";
 
-function hrefFor(n: AppNotification): string | null {
+function hrefFor(n: AppNotification, role: string | undefined): string | null {
+  if (n.resource_type === "prelabel_batch") {
+    // An annotator is sent to the review; a tenant admin to the retrain step.
+    if (role === "annotator" && n.resource_id) return `/annotate/review-batch/${n.resource_id}`;
+    return "/annotate/automated/retrain";
+  }
   if (n.resource_type === "annotation_task") return "/annotate/automated/retrain";
-  if (n.resource_type === "prelabel_batch") return "/annotate/automated/retrain";
   if (n.resource_type === "import_file") return "/imported-documents";
   return null;
 }
 
 export function NotificationBell() {
   const router = useRouter();
+  const { user } = useAuth();
   const { data } = useNotifications();
   const markRead = useMarkNotificationRead();
   const [open, setOpen] = useState(false);
@@ -110,7 +116,7 @@ export function NotificationBell() {
               </div>
             )}
             {items.map((n) => {
-              const target = hrefFor(n);
+              const target = hrefFor(n, user?.role);
               return (
                 <button
                   key={n.id}

@@ -11,7 +11,10 @@ import {
   useStartAcceptanceReview,
   useSubmitAcceptanceReview,
 } from "@/hooks/use-batch-acceptance";
-import type { SuggestionDisposition } from "@/types/seed-bootstrap";
+import type { BatchKind, SuggestionDisposition } from "@/types/seed-bootstrap";
+import { BATCH_STATE_LABEL } from "@/types/seed-bootstrap";
+
+const INITIAL_BATCH_MAX = 5;
 
 const DISPOSITION_OPTIONS: { value: SuggestionDisposition; label: string; hint: string }[] = [
   { value: "agree", label: "Correct", hint: "Right type, right boundaries" },
@@ -25,11 +28,19 @@ function percent(rate: number | null | undefined): string {
   return `${Math.round(rate * 1000) / 10}%`;
 }
 
-export function BatchAcceptancePage() {
+interface BatchAcceptancePageProps {
+  /** When set, the page opens straight on this batch's acceptance review and hides the
+   * document picker — the Annotator Admin's entry point for a `large` batch. */
+  initialBatchId?: string;
+  reviewOnly?: boolean;
+}
+
+export function BatchAcceptancePage({ initialBatchId, reviewOnly }: BatchAcceptancePageProps = {}) {
   const { toast } = useToast();
   const { data: documentsData, isLoading: documentsLoading } = useDocuments(1, 200, "processed");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [batchId, setBatchId] = useState<string | null>(null);
+  const [batchKind, setBatchKind] = useState<BatchKind>("large");
+  const [batchId, setBatchId] = useState<string | null>(initialBatchId ?? null);
   const [dispositions, setDispositions] = useState<Record<string, SuggestionDisposition>>({});
 
   const createBatch = useCreatePrelabelBatch();
@@ -61,11 +72,16 @@ export function BatchAcceptancePage() {
     });
   }
 
+  const tooManyForInitial = batchKind === "initial" && selected.size > INITIAL_BATCH_MAX;
+
   function handleCreateBatch() {
-    createBatch.mutate([...selected], {
-      onSuccess: (data) => setBatchId(data.batch_id),
-      onError: (err) => toast(err.message, "bad"),
-    });
+    createBatch.mutate(
+      { documentIds: [...selected], batchKind },
+      {
+        onSuccess: (data) => setBatchId(data.batch_id),
+        onError: (err) => toast(err.message, "bad"),
+      },
+    );
   }
 
   function handleStartReview() {
@@ -112,11 +128,39 @@ export function BatchAcceptancePage() {
         </p>
       </div>
 
-      {!batchId && (
+      {!batchId && !reviewOnly && (
         <section className="flex flex-col gap-3">
           <h2 className="font-display text-base font-semibold" style={{ color: "var(--ink)" }}>
             Documents to pre-label
           </h2>
+          <div
+            className="flex flex-wrap gap-3 rounded-lg p-3 font-body text-sm"
+            style={{ background: "var(--surface-3)", border: "1px solid var(--line)", color: "var(--ink-2)" }}
+          >
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="batch-kind"
+                checked={batchKind === "initial"}
+                onChange={() => setBatchKind("initial")}
+              />
+              Initial validation batch (≤{INITIAL_BATCH_MAX} docs — you review it)
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="batch-kind"
+                checked={batchKind === "large"}
+                onChange={() => setBatchKind("large")}
+              />
+              Large batch (an annotator reviews it)
+            </label>
+          </div>
+          {tooManyForInitial && (
+            <p className="font-body text-xs" style={{ color: "var(--bad)" }}>
+              An initial validation batch covers at most {INITIAL_BATCH_MAX} documents.
+            </p>
+          )}
           {documentsLoading ? (
             <Spinner size="sm" />
           ) : (
@@ -140,7 +184,7 @@ export function BatchAcceptancePage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              disabled={selected.size === 0 || createBatch.isPending}
+              disabled={selected.size === 0 || createBatch.isPending || tooManyForInitial}
               onClick={handleCreateBatch}
               className="rounded-lg bg-brand-primary px-4 py-2 font-body text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -159,16 +203,39 @@ export function BatchAcceptancePage() {
             className="rounded-lg p-3 font-body text-sm flex flex-wrap gap-x-6 gap-y-1"
             style={{ background: "var(--surface-3)", border: "1px solid var(--line)", color: "var(--ink-2)" }}
           >
-            <span>Status: {batch.status}</span>
-            <span>{batch.document_count} documents</span>
+            <span
+              className="rounded px-2 py-0.5 font-mono text-xs"
+              style={{ background: "var(--surface-1)", border: "1px solid var(--line)", color: "var(--ink)" }}
+            >
+              {BATCH_STATE_LABEL[batch.state] ?? batch.state}
+            </span>
+            <span>{batch.batch_kind === "initial" ? "Initial validation batch" : "Large batch"}</span>
+            <span>
+              {batch.progress
+                ? `${batch.progress.settled} / ${batch.progress.total}`
+                : batch.document_count}{" "}
+              documents
+            </span>
             <span>{batch.succeeded} succeeded</span>
             <span>{batch.failed} failed</span>
             {/* Dropped because the model could not quote them from the document. A rising
                 number here is the earliest sign the model has started paraphrasing. */}
             <span>{batch.ungrounded} suggestions dropped as ungrounded</span>
+            {batch.annotator_review_status === "approved" && (
+              <span style={{ color: "var(--good)" }}>Approved — training eligible</span>
+            )}
           </div>
 
-          {batch.status === "completed" && !acceptance && (
+          {!reviewOnly && batch.batch_kind === "large" && batch.state !== "queued" && batch.state !== "processing" && !acceptance && (
+            <p className="font-body text-sm" style={{ color: "var(--ink-3)" }}>
+              This batch is now with an Annotator Admin for the final review. You&apos;ll be
+              notified when it is approved and training-eligible.
+            </p>
+          )}
+
+          {(batch.batch_kind === "initial" || reviewOnly) &&
+            (batch.state === "completed" || batch.state === "partially_completed") &&
+            !acceptance && (
             <button
               type="button"
               disabled={startReview.isPending}
