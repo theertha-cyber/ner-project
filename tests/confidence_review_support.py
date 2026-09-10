@@ -177,10 +177,32 @@ def tenant_tables_sql(schema: str) -> list[str]:
             CREATE TABLE IF NOT EXISTS {schema}.prelabel_batches (
                 id VARCHAR PRIMARY KEY,
                 status VARCHAR(16) NOT NULL DEFAULT 'queued',
+                annotator_review_status VARCHAR(32),
+                training_eligible_at TIMESTAMPTZ,
                 requested_by VARCHAR,
                 error_message TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 completed_at TIMESTAMPTZ
+            )
+        """,
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.annotation_tasks (
+                id VARCHAR PRIMARY KEY,
+                document_id VARCHAR,
+                annotator_user_id VARCHAR,
+                status VARCHAR(20) DEFAULT 'unannotated',
+                training_eligible_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ
+            )
+        """,
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.annotation_imports (
+                source_file VARCHAR PRIMARY KEY,
+                row_count INTEGER NOT NULL DEFAULT 0,
+                type_map JSONB,
+                training_eligible_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """,
         f"""

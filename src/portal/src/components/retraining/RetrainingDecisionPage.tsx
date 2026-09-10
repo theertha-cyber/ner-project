@@ -120,6 +120,13 @@ function AccumulationBreakdown() {
             </table>
           )}
 
+          {data.spans_accumulated > 0 && (
+            <p className="mt-2 text-xs text-[var(--text-tertiary)]">
+              By source: {data.by_source.manual} manual · {data.by_source.automated} from
+              accepted automated batches
+            </p>
+          )}
+
           {data.spans_from_base_model > 0 && (
             <p className="mt-3 text-xs text-[var(--text-tertiary)]">
               A further {data.spans_from_base_model} came from base-model predictions and are not
@@ -144,6 +151,29 @@ function AccumulationBreakdown() {
           {data.in_flight_detail}
         </p>
       )}
+
+      {(() => {
+        const o = data.eligible_overview;
+        const total = o.manual.count + o.automated.count + o.import.count;
+        return (
+          <div className="mt-4 border-t border-[var(--border)] pt-4">
+            <p className="text-xs uppercase text-[var(--text-tertiary)]">
+              Training-eligible and waiting
+            </p>
+            {total === 0 ? (
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                Nothing new since the last training run.
+              </p>
+            ) : (
+              <ul className="mt-1 text-sm text-[var(--text-primary)]">
+                <li>{o.manual.count} completed manual annotation task{o.manual.count === 1 ? "" : "s"}</li>
+                <li>{o.automated.count} annotator-approved automated batch{o.automated.count === 1 ? "" : "es"}</li>
+                <li>{o.import.count} mapped import file{o.import.count === 1 ? "" : "s"}</li>
+              </ul>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="mt-4 flex items-center gap-3 border-t border-[var(--border)] pt-4">
         <button

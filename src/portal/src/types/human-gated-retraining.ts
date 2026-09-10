@@ -19,6 +19,17 @@
  * backend produces none. The decision belongs to a person.
  */
 
+export interface EligibleSource {
+  count: number;
+  latest_at: string | null;
+}
+
+export interface EligibleOverview {
+  manual: EligibleSource;
+  automated: EligibleSource;
+  import: EligibleSource;
+}
+
 export interface RetrainingDecisionBase {
   kind: "accumulation_since_training";
   training_run_in_flight: boolean;
@@ -27,6 +38,8 @@ export interface RetrainingDecisionBase {
   /** Recorded distinctly and never added into the accumulation figure (ADR-008). */
   spans_from_base_model: number;
   note: string;
+  /** Training-eligible-and-unconsumed units per source. A report, never a gate. */
+  eligible_overview: EligibleOverview;
 }
 
 export interface RetrainingDecisionTrained extends RetrainingDecisionBase {
@@ -35,6 +48,8 @@ export interface RetrainingDecisionTrained extends RetrainingDecisionBase {
   spans_accumulated: number;
   /** Entity type to accumulated span count, largest first. */
   by_entity_type: Record<string, number>;
+  /** Span source to accumulated count; `manual + automated === spans_accumulated`. */
+  by_source: { manual: number; automated: number };
 }
 
 export interface RetrainingDecisionUntrained extends RetrainingDecisionBase {

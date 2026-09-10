@@ -32,6 +32,12 @@ const NOTE =
   "Spans created by production review since this model version was trained. This is not a " +
   "dataset readiness measure and is not comparable to the per-entity-type readiness threshold.";
 
+const EMPTY_OVERVIEW = {
+  manual: { count: 0, latest_at: null },
+  automated: { count: 0, latest_at: null },
+  import: { count: 0, latest_at: null },
+};
+
 function trained(overrides: Partial<RetrainingDecision> = {}): RetrainingDecision {
   return {
     kind: "accumulation_since_training",
@@ -39,6 +45,8 @@ function trained(overrides: Partial<RetrainingDecision> = {}): RetrainingDecisio
     serving_model_version: "3",
     spans_accumulated: 134,
     by_entity_type: { organization: 120, person_name: 14 },
+    by_source: { manual: 104, automated: 30 },
+    eligible_overview: EMPTY_OVERVIEW,
     training_run_in_flight: false,
     spans_from_base_model: 0,
     note: NOTE,
@@ -58,6 +66,7 @@ function untrained(): RetrainingDecision {
     training_run_in_flight: false,
     spans_from_base_model: 4,
     note: NOTE,
+    eligible_overview: EMPTY_OVERVIEW,
   };
 }
 
@@ -150,6 +159,23 @@ describe("the retraining decision surface", () => {
       screen.getByText(/confirmed spans from production review since version 3 was trained/),
     ).toBeInTheDocument();
     expect(screen.getByText("Model version 3")).toBeInTheDocument();
+  });
+
+  it("shows the eligible-and-waiting overview per source", async () => {
+    respondWith({
+      decision: trained({
+        eligible_overview: {
+          manual: { count: 2, latest_at: "2026-09-10T00:00:00Z" },
+          automated: { count: 1, latest_at: "2026-09-10T00:00:00Z" },
+          import: { count: 3, latest_at: null },
+        },
+      } as Partial<RetrainingDecision>),
+    });
+    renderPage();
+
+    expect(await screen.findByText(/2 completed manual annotation tasks/)).toBeInTheDocument();
+    expect(screen.getByText(/1 annotator-approved automated batch/)).toBeInTheDocument();
+    expect(screen.getByText(/3 mapped import files/)).toBeInTheDocument();
   });
 
   it("breaks the figure down per entity type", async () => {

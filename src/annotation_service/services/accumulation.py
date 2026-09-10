@@ -68,6 +68,57 @@ async def current_model_version(session, schema: str) -> str:
     return "0"
 
 
+async def eligible_overview(session, schema: str) -> dict:
+    """Per source, the number of training-eligible units not yet consumed by a completed
+    training run, plus the most recent eligibility timestamp for that source.
+
+    A unit is a completed annotation task (`annotation_tasks.training_eligible_at`), an
+    annotator-approved automated `large` batch (`prelabel_batches.annotator_review_status =
+    'approved'`), or an import file with every type mapped (`annotation_imports`). "Not yet
+    consumed" is `training_eligible_at` later than the most recent completed training run's
+    `completed_at` (or there is no completed run) — coarse, but it never under-reports
+    waiting work.
+
+    A report only: nothing here enqueues, approves, or promotes.
+    """
+    last_run = await session.execute(
+        text(
+            f"SELECT MAX(completed_at) FROM {schema}.training_jobs WHERE status = 'completed'"
+        )
+    )
+    cutoff = last_run.scalar()
+
+    def _clause(col: str) -> str:
+        return f"{col} IS NOT NULL" + ("" if cutoff is None else f" AND {col} > :cutoff")
+
+    params = {} if cutoff is None else {"cutoff": cutoff}
+
+    async def _count(table: str, col: str, extra: str = "") -> tuple[int, str | None]:
+        res = await session.execute(
+            text(
+                f"SELECT COUNT(*), MAX({col}) FROM {schema}.{table} "
+                f"WHERE {_clause(col)}{extra}"
+            ),
+            params,
+        )
+        row = res.fetchone()
+        return int(row[0] or 0), (row[1].isoformat() if row[1] else None)
+
+    manual_count, manual_at = await _count("annotation_tasks", "training_eligible_at")
+    auto_count, auto_at = await _count(
+        "prelabel_batches",
+        "training_eligible_at",
+        " AND annotator_review_status = 'approved'",
+    )
+    import_count, import_at = await _count("annotation_imports", "training_eligible_at")
+
+    return {
+        "manual": {"count": manual_count, "latest_at": manual_at},
+        "automated": {"count": auto_count, "latest_at": auto_at},
+        "import": {"count": import_count, "latest_at": import_at},
+    }
+
+
 async def accumulation_report(session, schema: str) -> dict:
     """Spans accumulated from production review against the serving model version.
 
@@ -81,20 +132,26 @@ async def accumulation_report(session, schema: str) -> dict:
 
     result = await session.execute(
         text(
-            f"SELECT p.model_version, p.served_by_base_model, s.entity_type, COUNT(*) "
+            f"SELECT p.model_version, p.served_by_base_model, s.entity_type, "
+            f"       (bp.span_id IS NOT NULL) AS from_batch, COUNT(*) "
             f"FROM {schema}.span_review_provenance p "
             f"JOIN {schema}.spans s ON s.id = p.span_id "
             f"LEFT JOIN {schema}.span_training_consumption c ON c.span_id = p.span_id "
+            f"LEFT JOIN {schema}.span_batch_provenance bp ON bp.span_id = p.span_id "
             # Already trained on: not accumulation any more, by definition. Written by change
             # 6's `training_service.services.consumed_spans` when a run completes.
             "WHERE c.span_id IS NULL "
-            "GROUP BY p.model_version, p.served_by_base_model, s.entity_type"
+            "GROUP BY p.model_version, p.served_by_base_model, s.entity_type, from_batch"
         )
     )
     rows = result.fetchall()
 
     accumulated = 0
     from_base_model = 0
+    # A span promoted from an accepted automated batch has a `span_batch_provenance` row;
+    # every other confirmed span is a manual (workspace / review-queue) span. The split is
+    # over the same set the figure counts, so the two sum to it.
+    by_source = {"manual": 0, "automated": 0}
     # Grouped by entity type as well as by version because a total says nothing about whether
     # the new evidence is concentrated in one type or spread across all of them, and that
     # distinction changes the retrain answer (proposal Open Questions, tasks.md 1.5). Only the
@@ -102,12 +159,13 @@ async def accumulation_report(session, schema: str) -> dict:
     # into a per-type figure would put material that cannot answer the question into the
     # breakdown that exists to answer it.
     by_entity_type: dict[str, int] = {}
-    for model_version, served_by_base_model, entity_type, count in rows:
+    for model_version, served_by_base_model, entity_type, from_batch, count in rows:
         if served_by_base_model:
             from_base_model += count
         elif str(model_version) == version:
             accumulated += count
             by_entity_type[entity_type] = by_entity_type.get(entity_type, 0) + count
+            by_source["automated" if from_batch else "manual"] += count
 
     return {
         # Ordered largest first: the type with the most new evidence is the one the decision
@@ -123,6 +181,9 @@ async def accumulation_report(session, schema: str) -> dict:
         # invite it being read as one.
         "model_version": None if base_model else version,
         "spans_accumulated": 0 if base_model else accumulated,
+        # manual + automated == spans_accumulated. Imports are not confirmed spans and are
+        # not represented here — see `eligible_overview` for the import count.
+        "by_source": {"manual": 0, "automated": 0} if base_model else by_source,
         # Recorded distinctly, never added in (ADR-008, design.md Decision 5).
         "spans_from_base_model": from_base_model,
         "note": (

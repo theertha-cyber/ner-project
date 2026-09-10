@@ -115,10 +115,36 @@
 
 ## 7. Agent Verification Record
 
-*(To be written by the implementing agent after `/opsx:apply`.)*
+Implemented: `accumulation.py` — `by_source` (`manual`/`automated`) via `LEFT JOIN
+span_batch_provenance`, summing to `spans_accumulated`; new `eligible_overview` counting
+training-eligible-and-unconsumed units per source (task / approved large batch / mapped
+import file) against the last completed run's `completed_at`. `retraining_decision.py`
+adds `by_source` + `eligible_overview` additively. Portal: types + a "By source" line and
+a "Training-eligible and waiting" panel on `RetrainingDecisionPage`.
+
+```
+tests/test_training_eligibility_overview.py    4 passed  (by_source sum, overview counts,
+                                                          consumed drop-off, report-only)
+tests/test_retraining_decision.py + accumulation + no_auto_retraining   27 passed (no regression)
+src/portal RetrainingDecisionPage.test.tsx    12 passed  (+1 overview test)
+```
+
+`py_compile` clean; `tsc --noEmit` no new errors. No migration — all source fields exist
+after the prior changes.
+
+**Spec revision during apply:** scenario 3 originally claimed imports contribute to
+`spans_accumulated`. Imported annotations are not confirmed spans, so the accumulation
+figure and its `by_source` split cover `manual` + `automated` only (summing to the figure);
+imports appear solely in `eligible_overview`. The spec's "Retraining Decision Surface"
+requirement and scenario 3 were updated to reflect this.
+
+### Not done
+- Stepper step-4 state from `eligible_overview` (task 5.3) — the layout does not fetch the
+  decision surface.
+- §4/§5 evidence tables; §6 sign-off.
 
 ---
 
 ## 8. Outstanding Items
 
-- Implementation not started.
+- Task 5.3; §4/§5 evidence; §6 sign-off.

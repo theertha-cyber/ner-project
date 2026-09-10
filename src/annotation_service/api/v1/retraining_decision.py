@@ -32,7 +32,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.annotation_service.api.v1.spans import get_session, get_tenant_id
-from src.annotation_service.services.accumulation import accumulation_report
+from src.annotation_service.services.accumulation import accumulation_report, eligible_overview
 
 router = APIRouter(tags=["retraining-decision"])
 
@@ -75,6 +75,7 @@ async def get_retraining_decision(
     schema = _schema(tenant_id)
 
     report = await accumulation_report(session, schema)
+    overview = await eligible_overview(session, schema)
     in_flight = await training_run_in_flight(session, schema)
     has_trained_model = report["model_version"] is not None
 
@@ -88,11 +89,15 @@ async def get_retraining_decision(
         "spans_from_base_model": report["spans_from_base_model"],
         "kind": report["kind"],
         "note": report["note"],
+        # Report only: counts of training-eligible units not yet consumed by a completed
+        # run, per source. Never compared against a threshold, never a gate.
+        "eligible_overview": overview,
     }
 
     if has_trained_model:
         response["spans_accumulated"] = report["spans_accumulated"]
         response["by_entity_type"] = report["by_entity_type"]
+        response["by_source"] = report["by_source"]
     else:
         # Said in words as well as in the flag, because the flag alone is easy to render as a
         # zero by a caller that was not expecting this branch.

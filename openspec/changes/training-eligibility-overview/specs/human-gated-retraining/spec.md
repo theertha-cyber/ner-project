@@ -3,10 +3,14 @@
 ### Requirement: Retraining Decision Surface
 
 The system SHALL present the accumulation figure for the tenant's currently serving model
-version, broken down per entity type AND per source (`manual`, `automated`, `import`),
-together with the serving model version identifier. For a tenant with no trained model, the
-system SHALL present that state distinctly rather than reporting an accumulation figure of
-zero. The system SHALL present accumulation distinctly from dataset readiness.
+version, broken down per entity type AND per span source (`manual` — a confirmed span from
+the annotation workspace / review queue; `automated` — a span promoted from an accepted
+automated batch). The two source counts SHALL sum to the accumulation figure. Imported
+annotations are not confirmed spans and so do not appear in this figure or its source split
+— they are surfaced only in the eligibility overview below. The system SHALL present the
+serving model version identifier. For a tenant with no trained model, the system SHALL
+present that state distinctly rather than reporting an accumulation figure of zero. The
+system SHALL present accumulation distinctly from dataset readiness.
 
 The system SHALL additionally present a training-eligibility overview: for each source, the
 number of training-eligible units that have not yet been consumed by a completed training
@@ -28,11 +32,12 @@ SHALL NOT create, enqueue, approve, or promote anything.
 - **WHEN** the retraining decision surface is requested
 - **THEN** the response SHALL report 120 for `organization` and 14 for `person_name`
 
-#### Scenario: Accumulation is broken down per source
+#### Scenario: Accumulation is broken down per span source
 
-- **GIVEN** a tenant whose 134 accumulated spans comprise 90 from manual annotation, 30 from an accepted automated batch, and 14 from an imported file
+- **GIVEN** a tenant whose 120 accumulated spans comprise 90 confirmed in the workspace and 30 promoted from an accepted automated batch
 - **WHEN** the retraining decision surface is requested
-- **THEN** the response SHALL report `manual: 90`, `automated: 30`, `import: 14`
+- **THEN** the response SHALL report `by_source` of `manual: 90` and `automated: 30`
+- **AND** `manual + automated` SHALL equal `spans_accumulated`
 
 #### Scenario: A tenant with no trained model is shown distinctly
 
