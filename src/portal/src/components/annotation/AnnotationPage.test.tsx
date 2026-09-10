@@ -24,7 +24,12 @@ vi.mock("@/hooks/use-entity-types", () => ({
   useEntityTypes: () => ({ data: { entity_types: [{ name: "PER" }, { name: "ORG" }, { name: "LOC" }] } }),
 }));
 
-vi.mock("@/lib/token-map", () => ({ buildTokenMap: () => [] }));
+vi.mock("@/lib/token-map", () => ({
+  buildTokenMap: (text: string) => text.split(/\s+/).map((token, index, tokens) => {
+    const charStart = tokens.slice(0, index).reduce((offset, value) => offset + value.length + 1, 0);
+    return { token, charStart, charEnd: charStart + token.length };
+  }),
+}));
 
 vi.mock("./TaskQueue", () => ({
   TaskQueue: ({
@@ -47,11 +52,24 @@ vi.mock("./TaskQueue", () => ({
 }));
 
 vi.mock("./DocumentViewer", () => ({
-  DocumentViewer: () => <div data-testid="mock-document-viewer" />,
+  DocumentViewer: ({ tokenMap, onTokenClick, onTokenMouseDown, onTokenMouseEnter }: {
+    tokenMap: Array<{ token: string }>;
+    onTokenClick: (index: number) => void;
+    onTokenMouseDown: (index: number) => void;
+    onTokenMouseEnter: (index: number) => void;
+  }) => (
+    <div data-testid="mock-document-viewer">
+      {tokenMap.map((entry, index) => (
+        <button key={`${entry.token}-${index}`} data-testid={`token-${index}`} onClick={() => onTokenClick(index)} onMouseDown={() => onTokenMouseDown(index)} onMouseEnter={() => onTokenMouseEnter(index)}>{entry.token}</button>
+      ))}
+    </div>
+  ),
 }));
 
 vi.mock("./EntityPalette", () => ({
-  EntityPalette: () => <div data-testid="mock-entity-palette" />,
+  EntityPalette: ({ onArm }: { onArm: (name: string) => void }) => (
+    <div data-testid="mock-entity-palette"><button data-testid="arm-org" onClick={() => onArm("ORG")}>ORG</button></div>
+  ),
 }));
 
 vi.mock("./SpanInspector", () => ({
@@ -543,5 +561,67 @@ describe("Scenario 11 — Re-completing an already completed task saves further 
       );
     });
     expect(screen.getByTestId("status-badge")).toHaveTextContent("completed");
+  });
+});
+
+describe("CAP-5 — manual annotation gestures issue one create request", () => {
+  function queueAnnotationPage() {
+    queueAuthFetchTasksList([mockTask]);
+    queueAuthFetchDocLoad();
+    mockAuthFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        id: "confirmed-1",
+        entity_type: "ORG",
+        char_start: 0,
+        char_end: 4,
+        text: "Acme",
+        confidence: 1,
+      }),
+    });
+  }
+
+  it("saves a same-token click exactly once across click and document mouseup", async () => {
+    queueAnnotationPage();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId(`task-row-${mockTask.id}`)).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId(`task-row-${mockTask.id}`));
+    await waitFor(() => expect(screen.getByTestId("token-0")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("arm-org"));
+
+    fireEvent.mouseDown(screen.getByTestId("token-0"));
+    fireEvent.mouseUp(document);
+    fireEvent.click(screen.getByTestId("token-0"));
+
+    await waitFor(() => {
+      const spanPosts = mockAuthFetch.mock.calls.filter(
+        (call) => call[0] === `/api/v1/documents/${mockTask.document_id}/spans` && call[1]?.method === "POST",
+      );
+      expect(spanPosts).toHaveLength(1);
+    });
+  });
+
+  it("saves a multi-token drag exactly once and keeps the inclusive range", async () => {
+    queueAnnotationPage();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId(`task-row-${mockTask.id}`)).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId(`task-row-${mockTask.id}`));
+    await waitFor(() => expect(screen.getByTestId("token-1")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("arm-org"));
+
+    fireEvent.mouseDown(screen.getByTestId("token-0"));
+    fireEvent.mouseEnter(screen.getByTestId("token-1"));
+    fireEvent.mouseUp(document);
+    fireEvent.click(screen.getByTestId("token-1"));
+
+    await waitFor(() => {
+      const spanPosts = mockAuthFetch.mock.calls.filter(
+        (call) => call[0] === `/api/v1/documents/${mockTask.document_id}/spans` && call[1]?.method === "POST",
+      );
+      expect(spanPosts).toHaveLength(1);
+      expect(JSON.parse(spanPosts[0][1].body)).toMatchObject({ char_start: 0, char_end: 11, text: "hello world" });
+    });
   });
 });

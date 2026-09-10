@@ -1,11 +1,5 @@
-# Drag Annotation
+## MODIFIED Requirements
 
-## Purpose
-
-TBD — support click-and-drag multi-token span creation in the annotation workspace, with live drag-preview highlighting and direction-agnostic range selection.
-
----
-## Requirements
 ### Requirement: Multi-Token Drag Span Creation
 
 The annotation workspace SHALL support click-and-drag span creation across multiple tokens. When an entity type is armed, pressing the mouse button down on a token and releasing it on a different token SHALL create a span covering all tokens in the range (inclusive). The span's `char_start` SHALL be the `charStart` of the first token in the range and `char_end` SHALL be the `charEnd` of the last token. During the drag, all tokens in the current drag range SHALL show a live preview highlight using the armed entity type's color. A single mousedown-and-mouseup on the same token SHALL continue to behave as a single-token click, and the combined click/mouseup browser sequence SHALL emit exactly one create-span request.
@@ -51,4 +45,3 @@ The annotation workspace SHALL support click-and-drag span creation across multi
 - **WHEN** the user presses down on token index 5 and releases on token index 2
 - **THEN** the span SHALL cover tokens 2 through 5 (min-to-max, not start-to-end)
 - **AND** `char_start` SHALL be the charStart of token 2 and `char_end` SHALL be the charEnd of token 5
-
