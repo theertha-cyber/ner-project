@@ -126,10 +126,41 @@
 
 ## 7. Agent Verification Record
 
-*(To be written by the implementing agent after `/opsx:apply`.)*
+### Backend (executed)
+
+Implemented: migration `045` (`imported_annotations.pending_mapping` + header backfill);
+`import_.py` — `require_tenant_admin`, store-all-rows / hold-unmapped, `unmapped_types` +
+`pending_count` response, `annotation_imports` header upsert, `_refresh_import_header`
+eligibility; new `POST /api/v1/annotation-imports/{source_file}/type-map` (map-to-existing
+rewrites tags; map-to-new goes through `EntityService.create_entity_type` with
+`provenance='imported'`); `export.py` — LEFT JOIN the header, include only
+`pending_mapping = FALSE` rows of eligible (or headerless-legacy) files, tag lines
+`"source": "import"`.
+
+Run in the `annotation_service` container against `ner_test`:
+
+```
+tests/test_annotation_import.py                                  34 passed
+  (6 new: RBAC, eligibility, type-map to-existing / create-new / RBAC, export-exclusion)
+tests/test_annotation_export_offsets.py + _windowing + workspace  74 passed  (no regression)
+tests/test_bio_tags.py + test_imported_annotations_list           green
+```
+
+`py_compile` clean. Migration `045` needs `alembic upgrade head` in the deployment DB.
+
+**Pre-existing, not caused by this change:** `test_review_queue.py::TestLLMReviewRoute` (4)
+and `test_imported_annotations_update.py` (2) fail when certain other test files run before
+them in an ad-hoc multi-file invocation — a cross-file DB-isolation issue reproducible on
+clean HEAD with `test_seed_bootstrap_proposal.py` first. Each file passes standalone
+(`test_review_queue.py` 20/20, `test_annotation_import.py` 34/34).
+
+### Not yet implemented
+- `test_retrain_request.py::test_request_training_from_import` (task 6.1).
+- Portal (tasks 7.x).
+- Migration `045` guard test.
 
 ---
 
 ## 8. Outstanding Items
 
-- Implementation not started.
+- Tasks 6.1, 7.x, 2.3; §4/§5 evidence; §6 sign-off.

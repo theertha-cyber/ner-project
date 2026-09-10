@@ -120,9 +120,19 @@ def _create_tables_sql(schema: str) -> list:
                 source_file VARCHAR NOT NULL,
                 row_index INTEGER NOT NULL,
                 reviewed BOOLEAN NOT NULL DEFAULT FALSE,
+                pending_mapping BOOLEAN NOT NULL DEFAULT FALSE,
                 reviewed_at TIMESTAMPTZ,
                 reviewed_by VARCHAR,
                 created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """,
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.annotation_imports (
+                source_file VARCHAR PRIMARY KEY,
+                row_count INTEGER NOT NULL DEFAULT 0,
+                type_map JSONB,
+                training_eligible_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """,
     ]

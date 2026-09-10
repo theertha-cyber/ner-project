@@ -31,12 +31,14 @@ async def cleanup(engine):
     yield
     await drop_test_schemas(engine)
     async with engine.connect() as conn:
-        try:
-            await conn.execute(
-                text("DELETE FROM public.entity_definitions WHERE name LIKE 'prov\\_%'")
-            )
-        except Exception:  # noqa: BLE001 - table may not exist between test files
-            pass
+        for stmt in (
+            "DELETE FROM public.entity_definitions WHERE name LIKE 'prov\\_%'",
+            "DELETE FROM public.tenants WHERE slug LIKE 'seed-bootstrap-%'",
+        ):
+            try:
+                await conn.execute(text(stmt))
+            except Exception:  # noqa: BLE001 - table may not exist between test files
+                pass
 
 
 async def _session():

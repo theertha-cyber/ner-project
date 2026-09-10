@@ -183,8 +183,20 @@ async def export_annotations(
                     "tags": tags[win_start:win_end],
                 }))
 
+    # Imported rows join the training set only from files that are training-eligible
+    # (every row imported, no unmapped type) and only for rows not still pending a type
+    # mapping. Tagged with a source marker so a consumer can tell them from span-derived
+    # rows (import-annotation-training-eligibility change).
     imported_result = await session.execute(
-        text(f"SELECT tokens, tags FROM {schema}.imported_annotations ORDER BY source_file, row_index"),
+        text(
+            f"SELECT ia.tokens, ia.tags FROM {schema}.imported_annotations ia "
+            f"LEFT JOIN {schema}.annotation_imports ai ON ai.source_file = ia.source_file "
+            "WHERE ia.pending_mapping = FALSE "
+            # A file with a header contributes only once it is training-eligible; rows with
+            # no header at all are legacy imports (predating the header table) and stay in.
+            "AND (ai.source_file IS NULL OR ai.training_eligible_at IS NOT NULL) "
+            "ORDER BY ia.source_file, ia.row_index"
+        ),
     )
     for ir in imported_result.fetchall():
         tokens = list(ir[0])
@@ -194,6 +206,6 @@ async def export_annotations(
                 t if t == "O" or (t.startswith("B-") or t.startswith("I-")) and t[2:] in type_filter_set else "O"
                 for t in tags
             ]
-        lines.append(json.dumps({"tokens": tokens, "tags": tags}))
+        lines.append(json.dumps({"tokens": tokens, "tags": tags, "source": "import"}))
 
     return PlainTextResponse("\n".join(lines) + "\n", media_type="application/jsonl")
