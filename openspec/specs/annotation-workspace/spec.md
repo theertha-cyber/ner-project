@@ -5,12 +5,10 @@
 Annotator-facing workspace for creating and managing entity spans on documents, pre-labeling via base label mapping, annotation task management, and dataset export.
 
 ---
-
 ## Requirements
-
 ### Requirement: Span CRUD
 
-The system SHALL expose endpoints to create, read, update, and delete entity spans on a document's text. Each span SHALL reference an entity type from the tenant's configured entity types, specify start and end character offsets into the document text, and carry a confidence score. Spans SHALL be stored in the tenant's isolated schema. Only confirmed (non-suggested) spans are returned by these endpoints; suggested spans from pre-labeling are managed separately.
+The system SHALL expose endpoints to create, read, update, and delete entity spans on a document's text. Each span SHALL reference an entity type from the tenant's configured entity types, specify start and end character offsets into the document text, and carry a confidence score. Spans SHALL be stored in the tenant's isolated schema. Only confirmed (non-suggested) spans are returned by these endpoints; suggested spans from pre-labeling are managed separately. The portal SHALL issue at most one create-span request for each single-token click or multi-token drag annotation gesture.
 
 #### Scenario: Create a span on a processed document
 
@@ -46,6 +44,19 @@ The system SHALL expose endpoints to create, read, update, and delete entity spa
 - **WHEN** an annotator POSTs to `/api/v1/documents/{doc_id}/spans` with `{entity_type: "INVALID", char_start: 0, char_end: 5, text: "hello"}`
 - **THEN** the response SHALL have status 422
 - **AND** the error SHALL indicate the entity type is not valid
+
+#### Scenario: Single-token annotation is saved once
+
+- **GIVEN** an entity type is armed and an unannotated token is clicked once
+- **WHEN** the browser dispatches the token click and document mouseup events for that gesture
+- **THEN** exactly one create-span request SHALL be issued
+- **AND** exactly one optimistic span SHALL be confirmed from its response
+
+#### Scenario: Multi-token drag annotation is saved once
+
+- **GIVEN** an entity type is armed and the annotator drags from one token to another
+- **WHEN** the drag gesture completes
+- **THEN** exactly one create-span request SHALL be issued for the inclusive calculated range
 
 ### Requirement: Pre-labeling
 
@@ -275,3 +286,4 @@ works at Acme Corp"` and a confirmed span for `"Acme Corp"` of type `organizatio
 - **WHEN** the export is generated
 - **THEN** exactly 3 lines SHALL be emitted for the imported rows
 - **AND** the oversized imported row SHALL be emitted with its tokens and tags unchanged
+
