@@ -168,6 +168,59 @@ PUBLIC_TABLES = [
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
     """,
+    # CAP-2 control plane (alembic 040). Test-only mirror: the suite runs DDL, not
+    # alembic, so the tables the migration creates are restated here. Non-secret
+    # metadata, secret references, and finite safe evidence only.
+    """
+    CREATE TABLE IF NOT EXISTS public.tenant_data_source_connections (
+        id UUID PRIMARY KEY,
+        tenant_id VARCHAR(64) NOT NULL,
+        provider VARCHAR(32) NOT NULL
+            CHECK (provider IN ('azure_blob', 'azure_postgresql')),
+        configuration JSONB NOT NULL DEFAULT '{}'::jsonb,
+        secret_references JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status VARCHAR(32) NOT NULL DEFAULT 'draft'
+            CHECK (status IN ('draft', 'validated', 'active', 'paused', 'error', 'retired')),
+        last_test_outcome VARCHAR(32) NOT NULL DEFAULT 'not_run',
+        last_test_reason VARCHAR(64) NOT NULL DEFAULT 'none',
+        last_test_at TIMESTAMPTZ,
+        test_config_digest VARCHAR(64),
+        activation_outcome VARCHAR(32) NOT NULL DEFAULT 'inactive',
+        activation_reason VARCHAR(64) NOT NULL DEFAULT 'none',
+        activated_at TIMESTAMPTZ,
+        activation_evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+        replaces_connection_id UUID
+            REFERENCES public.tenant_data_source_connections (id)
+            ON DELETE SET NULL,
+        replaced_by_connection_id UUID
+            REFERENCES public.tenant_data_source_connections (id)
+            ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_data_source_active_provider
+        ON public.tenant_data_source_connections (tenant_id, provider)
+        WHERE status = 'active'
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_data_source_connections_tenant
+        ON public.tenant_data_source_connections (tenant_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS public.tenant_data_source_idempotency (
+        tenant_id VARCHAR(64) NOT NULL,
+        method VARCHAR(16) NOT NULL,
+        path TEXT NOT NULL,
+        idempotency_key VARCHAR(128) NOT NULL,
+        body_digest VARCHAR(64) NOT NULL,
+        response_status INTEGER NOT NULL,
+        response_body JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (tenant_id, method, path, idempotency_key)
+    )
+    """,
 ]
 
 
