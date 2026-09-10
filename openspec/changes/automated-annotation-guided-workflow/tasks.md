@@ -8,9 +8,9 @@
 
 ## 2. Database
 
-- [x] 2.1 Migration `042` (`apply_to_all_tenant_schemas`, additive): add `prelabel_batches.batch_kind VARCHAR(16) NOT NULL DEFAULT 'large'` and `prelabel_batches.state VARCHAR(24)` (nullable); create `{schema}.prelabel_batch_guidance (id, batch_id, document_id, corrected_spans JSONB, note TEXT, created_at)`. `documents.purpose` has no CHECK constraint (migration 022) so `qa_pair` needs no DDL change.
+- [x] 2.1 Migration `042` (per-tenant-schema loop — the guidance table names `{schema}` 3×, additive): add `prelabel_batches.batch_kind VARCHAR(16) NOT NULL DEFAULT 'large'` and `prelabel_batches.state VARCHAR(24)` (nullable); create `{schema}.prelabel_batch_guidance (id, batch_id FK, document_id FK, corrected_spans JSONB, note TEXT, created_at, UNIQUE(batch_id, document_id))`. `documents.purpose` has no CHECK constraint (migration 022) so `qa_pair` needs no DDL change.
 - [x] 2.2 Update the annotation test fixtures — `tests/seed_bootstrap_support.py` gains `batch_kind` / `state` / `annotator_review_status` / `training_eligible_at` on `prelabel_batches`, the `prelabel_batch_guidance` table, and `public.notifications`. (setup_test_db.py holds only extraction tables — the seed-bootstrap tables live in the support module.)
-- [ ] 2.3 Add `tests/test_migration_042_*.py` guard asserting the columns/table exist after upgrade and are absent after downgrade.
+- [x] 2.3 `tests/test_migration_042_045_guards.py::TestMigration042` + `TestMigration043` — run the real `upgrade()` / `downgrade()` for `tenant_template` and a tenant schema. The guard caught a real bug: `prelabel_batch_guidance` names `{schema}` 3 times (table + 2 FKs), which `apply_to_all_tenant_schemas`' single `format()` placeholder cannot express — migration 042 rewritten to a hand-rolled per-schema loop like migration 039.
 
 ## 3. Q&A-Pair Proposal Input
 

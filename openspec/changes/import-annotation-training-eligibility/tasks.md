@@ -6,9 +6,9 @@
 
 ## 2. Database
 
-- [x] 2.1 Migration `045` (`apply_to_all_tenant_schemas`, additive): `imported_annotations.pending_mapping BOOLEAN NOT NULL DEFAULT FALSE`; backfill one `annotation_imports` header per distinct existing `source_file` with `training_eligible_at = NOW()` (those rows only ever held known types).
+- [x] 2.1 Migration `045` (per-tenant-schema loop, additive): `imported_annotations.pending_mapping BOOLEAN NOT NULL DEFAULT FALSE`; backfill one `annotation_imports` header per distinct existing `source_file` with `training_eligible_at = NOW()` (those rows only ever held known types).
 - [x] 2.2 Fixtures: `pending_mapping` + `annotation_imports` added to `tests/test_annotation_import.py` and `tests/test_annotation_workspace.py` `_create_tables_sql`; the latter's `entity_definitions` DDL already carries the provenance columns.
-- [ ] 2.3 Migration `045` guard test.
+- [x] 2.3 `tests/test_migration_042_045_guards.py::TestMigration045` — upgrade adds `pending_mapping` and backfills an `annotation_imports` header (eligible) per legacy `source_file`; downgrade drops the column. The guard caught a bug: the backfill INSERT names `{schema}` twice — migration 045 rewritten to a per-schema loop.
 
 ## 3. Import endpoint
 

@@ -6,7 +6,7 @@
 
 - [x] 2.1 Migration `044`: `ALTER TABLE public.entity_definitions ADD COLUMN provenance VARCHAR(16) NOT NULL DEFAULT 'manual', ADD COLUMN provenance_ref VARCHAR(255)`. Additive; existing rows take the default.
 - [x] 2.2 Added the two columns to the `entity_definitions` DDL in `scripts/setup_test_db.py` (and its RECONCILE `ALTER ... ADD COLUMN IF NOT EXISTS`), `tests/seed_bootstrap_support.py`, and `tests/test_annotation_workspace.py`.
-- [ ] 2.3 Migration guard `tests/test_migration_044_*.py`.
+- [x] 2.3 `tests/test_migration_042_045_guards.py::TestMigration044` — upgrade adds `provenance` (`server_default 'manual'`) + `provenance_ref`, a pre-existing row backfills to `manual`, downgrade drops both.
 
 ## 3. Model + service
 
