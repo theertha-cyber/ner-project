@@ -5,6 +5,7 @@ import {
   BrainCircuit,
   ScrollText,
   File,
+  Database,
   PenLine,
   FileDown,
   Tags,
@@ -37,6 +38,7 @@ export function navFor(role: AuthUser["role"]): NavItem[] {
       return [
         { id: "dashboard", icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", roles: ["tenant_admin"] },
         { id: "documents", icon: File, label: "Uploaded Documents", href: "/documents", roles: ["tenant_admin"] },
+        { id: "data-sources", icon: Database, label: "Data Sources", href: "/settings/data-sources", roles: ["tenant_admin"] },
         { id: "entity-types", icon: Tags, label: "Entity Types", href: "/entity-types", roles: ["tenant_admin"] },
         { id: "annotation", icon: PenLine, label: "Annotation", href: "/annotation", roles: ["tenant_admin"] },
         { id: "imported-documents", icon: FileDown, label: "Import Annotations", href: "/imported-documents", roles: ["tenant_admin"] },
@@ -68,6 +70,7 @@ export const SCREEN_TITLES: Record<string, [title: string, path: string]> = {
   "training-jobs": ["Models & Training", "/training-jobs"],
   models: ["Models & Training", "/training-jobs"],
   documents: ["Uploaded Documents", "/documents"],
+  "data-sources": ["Data Sources", "/settings/data-sources"],
   "imported-documents": ["Import Pre-Annotated Files", "/imported-documents"],
   "entity-types": ["Entity Types", "/entity-types"],
   users: ["Users", "/users"],

@@ -8,10 +8,13 @@ describe("navFor", () => {
     expect(items.find((i) => i.id === "settings")).toBeUndefined();
   });
 
-  it("tenant_admin returns 9 items including no Settings", () => {
+  it("tenant_admin returns 10 items including Data Sources", () => {
     const items = navFor("tenant_admin");
-    expect(items).toHaveLength(9);
+    expect(items).toHaveLength(10);
     expect(items.find((i) => i.id === "settings")).toBeUndefined();
+    const entry = items.find((i) => i.id === "data-sources");
+    expect(entry).toMatchObject({ label: "Data Sources", href: "/settings/data-sources" });
+    expect(entry?.roles).toEqual(["tenant_admin"]);
   });
 
   it("annotator returns 3 items including no Settings", () => {
