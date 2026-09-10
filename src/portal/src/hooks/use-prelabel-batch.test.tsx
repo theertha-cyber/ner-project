@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useCreatePrelabelBatch, useRecordBatchGuidance } from "./use-prelabel-batch";
+import {
+  useCreatePrelabelBatch,
+  usePrelabelBatches,
+  useRecordBatchGuidance,
+} from "./use-prelabel-batch";
 
 const mockFetch = vi.fn();
 globalThis.fetch = mockFetch;
@@ -50,5 +54,26 @@ describe("useRecordBatchGuidance", () => {
     const body = JSON.parse(opts.body);
     expect(body.corrected_spans).toEqual([{ text: "Acme", entity_type: "org" }]);
     expect(body.note).toBe("codenames are PROJECT");
+  });
+});
+
+describe("usePrelabelBatches", () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  it("loads the batch list", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          batches: [
+            { batch_id: "b1", status: "completed", state: "completed", batch_kind: "large", annotator_review_status: "approved", training_eligible_at: "x", created_at: "y", acceptance_decision: "accepted" },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const { result } = renderHook(() => usePrelabelBatches(true), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(String(mockFetch.mock.calls[0][0])).toContain("/api/v1/prelabel-batches");
+    expect(result.current.data?.batches[0].annotator_review_status).toBe("approved");
   });
 });

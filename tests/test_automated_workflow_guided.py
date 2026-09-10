@@ -471,3 +471,26 @@ async def test_large_batch_without_guidance_runs(client, engine):
     trigger = await _trigger(client, tenant, [doc], kind="large")
     assert trigger.status_code == 202
     assert trigger.json()["guidance_applied"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_prelabel_batches(client, engine):
+    tenant = await make_tenant(engine)
+    i = await _trigger(client, tenant, [await add_document(engine, tenant)], kind="initial")
+    l = await _trigger(client, tenant, [await add_document(engine, tenant)], kind="large")
+    resp = await client.get("/api/v1/prelabel-batches", headers=auth_header(tenant["tid"]))
+    assert resp.status_code == 200
+    kinds = {b["batch_id"]: b["batch_kind"] for b in resp.json()["batches"]}
+    assert kinds[i.json()["batch_id"]] == "initial"
+    assert kinds[l.json()["batch_id"]] == "large"
+
+
+@pytest.mark.asyncio
+async def test_list_prelabel_batches_reports_approved_large(client, engine):
+    tenant = await make_tenant(engine)
+    batch_id, accept = await _drive_to_accept(client, engine, tenant, "large", "annotator")
+    assert accept.status_code == 200
+    resp = await client.get("/api/v1/prelabel-batches", headers=auth_header(tenant["tid"]))
+    row = next(b for b in resp.json()["batches"] if b["batch_id"] == batch_id)
+    assert row["annotator_review_status"] == "approved"
+    assert row["training_eligible_at"] is not None

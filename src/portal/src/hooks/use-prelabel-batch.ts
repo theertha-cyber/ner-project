@@ -79,6 +79,30 @@ export function useRecordBatchGuidance() {
   });
 }
 
+export interface PrelabelBatchSummary {
+  batch_id: string;
+  status: string;
+  state: import("@/types/seed-bootstrap").BatchState | null;
+  batch_kind: BatchKind;
+  annotator_review_status: string | null;
+  training_eligible_at: string | null;
+  created_at: string | null;
+  acceptance_decision: "in_review" | "accepted" | "rejected" | null;
+}
+
+/** Every batch for the tenant, newest first — drives the automated stepper's step states. */
+export function usePrelabelBatches(enabled = true) {
+  return useQuery<{ batches: PrelabelBatchSummary[] }>({
+    queryKey: ["prelabel-batches"],
+    enabled,
+    queryFn: async () => {
+      const res = await authFetch("/api/v1/prelabel-batches");
+      if (!res.ok) throw new Error(`Failed to load batches: ${res.status}`);
+      return res.json();
+    },
+  });
+}
+
 export function usePrelabelBatch(batchId: string | null) {
   return useQuery<PrelabelBatch>({
     queryKey: ["prelabel-batch", batchId],

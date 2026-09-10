@@ -587,6 +587,44 @@ async def create_prelabel_batch(
     }
 
 
+@router.get("/api/v1/prelabel-batches")
+async def list_prelabel_batches(
+    request: Request = None,
+    session: AsyncSession = Depends(get_session),
+):
+    """Every batch for the tenant, newest first — the automated stepper reads this to
+    decide which steps are done / ready / blocked. One row per batch, no per-document
+    detail."""
+    require_roles(request, TENANT_ADMIN, ANNOTATOR)
+    tenant_id = get_tenant_id(request)
+    schema = _schema(tenant_id)
+
+    result = await session.execute(
+        text(
+            f"SELECT b.id, b.status, b.state, b.batch_kind, b.annotator_review_status, "
+            f"  b.training_eligible_at, b.created_at, "
+            f"  (SELECT decision FROM {schema}.batch_acceptance_records r "
+            f"   WHERE r.batch_id = b.id ORDER BY r.created_at DESC LIMIT 1) AS acceptance_decision "
+            f"FROM {schema}.prelabel_batches b ORDER BY b.created_at DESC"
+        )
+    )
+    return {
+        "batches": [
+            {
+                "batch_id": r[0],
+                "status": r[1],
+                "state": r[2],
+                "batch_kind": r[3],
+                "annotator_review_status": r[4],
+                "training_eligible_at": r[5].isoformat() if r[5] else None,
+                "created_at": r[6].isoformat() if r[6] else None,
+                "acceptance_decision": r[7],
+            }
+            for r in result.fetchall()
+        ]
+    }
+
+
 @router.get("/api/v1/prelabel-batches/{batch_id}")
 async def get_prelabel_batch(
     batch_id: str,
