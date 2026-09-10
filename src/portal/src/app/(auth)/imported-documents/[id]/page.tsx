@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { RequireAuth } from "@/components/require-auth";
-import { ImportedDocumentReview } from "../page";
+import { ImportedDocumentReview } from "@/components/imported-documents/ImportedDocuments";
 
 /**
  * A single imported row, reviewed against the schema it claims to follow. Reached by a
