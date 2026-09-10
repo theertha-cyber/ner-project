@@ -9,10 +9,7 @@ dispatch that carries no content, and the prohibition on source-specific behavio
 downstream of ingestion.
 
 ---
-
 ## Requirements
-
-
 ### Requirement: Single application-owned ingestion entry point
 
 The system SHALL provide one application-owned document ingestion operation that accepts a normalized document and SHALL make it the only code path permitted to create a row in `tenant_{tid}.documents`. The operation SHALL own platform document-id generation, file-type and size validation, checksum computation, duplicate identification, resolution of the retention mode and content resolution, the metadata row write, and processing dispatch. The operation SHALL NOT reference HTTP request objects, multipart types, object-storage clients, provider APIs, or credentials.
@@ -185,3 +182,22 @@ The system SHALL keep OCR, chunking, embedding, extraction, retrieval, and chatb
 - **WHEN** both are processed
 - **THEN** their text spans SHALL be equivalent
 - **AND** their chunk counts SHALL be equal
+
+### Requirement: Azure Blob sync submits through the common ingestion boundary
+
+The Azure Blob synchronization runtime SHALL act as a configured pull source that submits each eligible object as a `NormalizedDocument` with a `SourceReference` identifying the Azure Blob source, `REOPENABLE` acquisition while its temporary working bytes exist, and `source_system` actor kind. The ingestion operation SHALL treat such documents exactly like any other pull-source document: retention is resolved from the tenant's profile, the checksum is computed over the bytes read, duplicates are identified but never rejected, and no source conditional SHALL exist downstream of ingestion.
+
+#### Scenario: Sync document enters through the common boundary
+
+- **GIVEN** a Blob object acquired by the sync runtime for an authenticated tenant
+- **WHEN** it is submitted as a `NormalizedDocument` to `DocumentIngestionService.ingest()`
+- **THEN** a document row SHALL be created with the Azure Blob source identity recorded
+- **AND** no Azure-specific branch SHALL execute in OCR, NER, chunking, extraction, or retrieval.
+
+#### Scenario: Sync documents cannot assert tenant identity
+
+- **GIVEN** a `NormalizedDocument` submitted by the sync runtime
+- **WHEN** the ingestion operation resolves the tenant
+- **THEN** it SHALL use only the authenticated tenant on the document
+- **AND** any tenant identifier in source metadata SHALL have no effect.
+

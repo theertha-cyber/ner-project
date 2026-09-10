@@ -882,6 +882,32 @@ DATA_SOURCE_TESTS = _declare(Family(
 ))
 
 
+# --- Durable Azure Blob sync (CAP-3, ADR-012) ------------------------------------------
+#
+# The value sets mirror `src.document_service.blob_sync.sync` exactly; a drift
+# test in `tests/test_azure_blob_source_sync.py` fails the build if they
+# diverge. Literals rather than imports: `blob_sync.sync` imports this module's
+# recorder, so importing the sync constants here would close a package import
+# cycle. No family here carries `tenant_id` — per-run attribution joins the
+# trace, where the tenant already lives.
+BLOB_SYNC_TRIGGERS = frozenset({"manual", "scheduled", "retry", "catchup", OTHER})
+
+BLOB_SYNC_OUTCOMES = frozenset(
+    {"succeeded", "failed", "blocked", "lease_held", OTHER}
+)
+
+BLOB_SYNC = _declare(Family(
+    "ner_blob_sync_total",
+    "counter",
+    "Durable Azure Blob synchronizations by trigger class and finite terminal "
+    "outcome. No content, endpoint, credential, or provider diagnostic is a label.",
+    labels=(
+        Label("trigger", BLOB_SYNC_TRIGGERS),
+        Label("outcome", BLOB_SYNC_OUTCOMES),
+    ),
+))
+
+
 # --------------------------------------------------------------------------------------
 # The tenant-label allowlist
 # --------------------------------------------------------------------------------------
@@ -1428,3 +1454,8 @@ def record_data_source_lifecycle(provider: str, action: str, outcome: str) -> No
 def record_data_source_test(provider: str, outcome: str, reason: str) -> None:
     """Record one secure connection-test execution. Finite classes only, coerced."""
     _record(DATA_SOURCE_TESTS, 1, provider=provider, outcome=outcome, reason=reason)
+
+
+def record_blob_sync(trigger: str, outcome: str) -> None:
+    """Record one terminal Blob sync run. Finite classes only, coerced."""
+    _record(BLOB_SYNC, 1, trigger=trigger, outcome=outcome)

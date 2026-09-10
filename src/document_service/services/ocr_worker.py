@@ -1,5 +1,5 @@
 import asyncio
-import traceback
+import logging
 import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -11,6 +11,88 @@ from src.shared.document_retention import (
     RETENTION_PLATFORM_BLOB,
     RETENTION_SOURCE_ONLY,
 )
+
+logger = logging.getLogger(__name__)
+
+
+# --- Safe structured processing-error classes (CAP-3) ----------------------------------
+#
+# Failure records (log lines, document error fields, metrics, traces) carry only
+# these finite classes plus correlation metadata. No stack-trace printing, no
+# interpolated exception message, no exception object: a driver error quotes the
+# offending literal back, so the message itself is untrusted content.
+
+PROCESSING_ERROR_CONTENT_UNRESOLVABLE = "content_unresolvable"
+PROCESSING_ERROR_UNSUPPORTED_MEDIA = "unsupported_media"
+PROCESSING_ERROR_CHUNKING_FAILED = "chunking_failed"
+PROCESSING_ERROR_PROCESSING_FAILED = "processing_failed"
+
+PROCESSING_ERROR_CLASSES = frozenset({
+    PROCESSING_ERROR_CONTENT_UNRESOLVABLE,
+    PROCESSING_ERROR_UNSUPPORTED_MEDIA,
+    PROCESSING_ERROR_CHUNKING_FAILED,
+    PROCESSING_ERROR_PROCESSING_FAILED,
+})
+
+
+class UnsupportedMediaType(ValueError):
+    """The resolved media type has no extraction path. A ValueError subclass so
+    existing handlers keep working; classified to a finite class at the edge."""
+
+
+def classify_processing_error(exc: BaseException) -> str:
+    if isinstance(exc, ContentUnresolvable):
+        return PROCESSING_ERROR_CONTENT_UNRESOLVABLE
+    if isinstance(exc, UnsupportedMediaType):
+        return PROCESSING_ERROR_UNSUPPORTED_MEDIA
+    return PROCESSING_ERROR_PROCESSING_FAILED
+
+
+# --- Source-content reopeners (CAP-3) ---------------------------------------------------
+#
+# `source_only` retention stores no bytes, so processing re-acquires them through
+# a registered per-source-type reopener. The registry (not imports) connects the
+# worker to source runtimes: `blob_sync.reopen` registers the Azure Blob
+# reopener, and with none registered the worker raises exactly as before.
+
+_SOURCE_REOPENERS: dict = {}
+
+
+def register_source_reopener(source_type: str, reopen) -> None:
+    _SOURCE_REOPENERS[source_type] = reopen
+
+
+async def _reopen_source_content(document, tenant_id: str):
+    source_type = getattr(document, "source_type", None)
+    reopen = _SOURCE_REOPENERS.get(source_type)
+    if reopen is None:
+        return None
+    try:
+        return await reopen(
+            tenant_id,
+            getattr(document, "source_id", None),
+            getattr(document, "external_id", None),
+        )
+    except Exception as exc:
+        logger.info(
+            "source_reopen_failed",
+            extra={"error_class": classify_processing_error(exc)},
+        )
+        return None
+
+
+async def _resolve_content_for_processing(document, tenant_id: str):
+    """Resolve bytes, re-acquiring source-only content through its reopener.
+
+    Anything unresolvable raises `ContentUnresolvable`, exactly as
+    `resolve_content` does when no reopener can supply the bytes.
+    """
+    retention_mode = getattr(document, "retention_mode", None) or RETENTION_PLATFORM_BLOB
+    if retention_mode == RETENTION_SOURCE_ONLY:
+        reopened = await _reopen_source_content(document, tenant_id)
+        if reopened is not None:
+            return reopened
+    return resolve_content(document)
 
 
 async def _embed_chunks(texts: list[str]) -> list[list[float]]:
@@ -336,7 +418,10 @@ def resolve_content(document) -> bytes | None:
 
 # --- Processing ------------------------------------------------------------------------
 
-_DOCUMENT_COLUMNS = "id, purpose, status, content_type, filename, blob_path, retention_mode"
+_DOCUMENT_COLUMNS = (
+    "id, purpose, status, content_type, filename, blob_path, retention_mode, "
+    "source_type, source_id, external_id"
+)
 
 
 async def _load_document(session, schema: str, document_id: str):
@@ -356,10 +441,13 @@ async def _release_working_copy(session_factory, schema: str, document) -> None:
     if reference:
         try:
             _store_for(RETENTION_EPHEMERAL).delete(reference)
-        except Exception:
+        except Exception as exc:
             # The working store's own expiry is the backstop. A failed delete must not
             # turn a processed document into a failed one.
-            traceback.print_exc()
+            logger.info(
+                "working_copy_delete_failed",
+                extra={"error_class": classify_processing_error(exc)},
+            )
     async with session_factory() as session:
         await session.execute(
             text(f"UPDATE {schema}.documents SET blob_path = NULL WHERE id = :id"),
@@ -427,7 +515,7 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
     # whenever the bytes turn out to be gone, converting a recoverable state into
     # permanent loss.
     try:
-        file_data = resolve_content(document)
+        file_data = await _resolve_content_for_processing(document, tenant_id)
     except ContentUnresolvable:
         if reprocess:
             raise
@@ -444,7 +532,7 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
         async with session_factory() as session:
             await session.execute(
                 text(f"UPDATE {schema}.documents SET status = 'failed', error_message = :msg WHERE id = :id"),
-                {"id": document_id, "msg": "File not found in storage"},
+                {"id": document_id, "msg": PROCESSING_ERROR_CONTENT_UNRESOLVABLE},
             )
             await session.commit()
         await _release_working_copy(session_factory, schema, document)
@@ -472,7 +560,7 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
         elif media_type == MEDIA_TYPE_DOC:
             spans = await asyncio.to_thread(extract_text_doc, file_data)
         else:
-            raise ValueError(f"Unsupported media type: {media_type or 'unresolved'}")
+            raise UnsupportedMediaType(f"Unsupported media type: {media_type or 'unresolved'}")
 
         async with session_factory() as session:
             for span in spans:
@@ -525,18 +613,23 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
                 texts = [c.chunk_text for c in chunks]
                 embeddings = await _embed_chunks(texts)
                 await _store_chunks(document_id, tenant_id, chunks, embeddings, purpose)
-        except Exception as chunk_err:
-            traceback.print_exc()
+        except Exception:
+            logger.info(
+                "document_chunking_failed",
+                extra={"error_class": PROCESSING_ERROR_CHUNKING_FAILED},
+            )
 
         await _release_working_copy(session_factory, schema, document)
 
     except Exception as exc:
-        error_msg = f"{type(exc).__name__}: {str(exc)}"
-        traceback.print_exc()
+        error_class = classify_processing_error(exc)
+        logger.info(
+            "document_processing_failed", extra={"error_class": error_class}
+        )
         async with session_factory() as session:
             await session.execute(
                 text(f"UPDATE {schema}.documents SET status = 'failed', error_message = :msg WHERE id = :id"),
-                {"id": document_id, "msg": error_msg},
+                {"id": document_id, "msg": error_class},
             )
             await session.commit()
         await _release_working_copy(session_factory, schema, document)
