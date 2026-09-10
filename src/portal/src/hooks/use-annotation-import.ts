@@ -1,11 +1,21 @@
 import { useState } from "react";
 import { authFetch } from "@/lib/auth-fetch";
 
+export interface UnmappedType {
+  type: string;
+  row_count: number;
+}
+
 export interface ImportResult {
   imported_count: number;
+  /** Rows held because a tag references a type not yet defined — resolved via type-map. */
+  pending_count?: number;
+  unmapped_types?: UnmappedType[];
   skipped_count: number;
   warnings: { row_index: number; message: string }[];
   entity_type_counts: Record<string, number>;
+  /** The uploaded file's name — the key for the type-map endpoint. */
+  source_file?: string;
 }
 
 export type ImportState =

@@ -38,11 +38,11 @@
 
 ## 7. Portal
 
-- [ ] 7.1 `/imported-documents` — "Unmapped Types" tab + "Map types" dialog.
+- [~] 7.1 `AnnotationImportResult` shows the `unmapped_types` list with a per-type "map to existing / create new" selector + a "Map types" action (new `use-import-type-map` hook). The standalone `/imported-documents` "Unmapped Types" tab is still to do.
 - [ ] 7.2 Per-file training-eligibility indicator + "Request training" action.
 - [ ] 7.3 `/imported-documents/[id]` single-row review route.
 - [ ] 7.4 `/annotate/import` landing wired to real counts.
-- [ ] 7.5 Portal tests.
+- [x] 7.5 `use-import-type-map.test.tsx` (2) + `AnnotationImportResult.test.tsx` mapping-form test; existing import-result tests updated to the held-not-dropped copy. 9 green.
 
 ## 8. Filter audit
 

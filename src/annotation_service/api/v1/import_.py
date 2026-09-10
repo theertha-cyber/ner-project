@@ -270,6 +270,7 @@ async def import_annotations(
     entity_type_counts = compute_entity_type_counts(usable_rows)
 
     return {
+        "source_file": filename,
         # Rows stored and immediately usable (no unmapped type).
         "imported_count": len(usable_rows),
         "pending_count": pending_count,

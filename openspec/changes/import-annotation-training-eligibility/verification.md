@@ -154,9 +154,22 @@ them in an ad-hoc multi-file invocation — a cross-file DB-isolation issue repr
 clean HEAD with `test_seed_bootstrap_proposal.py` first. Each file passes standalone
 (`test_review_queue.py` 20/20, `test_annotation_import.py` 34/34).
 
+### Portal (partial, executed)
+
+- `use-annotation-import` `ImportResult` gains `pending_count` / `unmapped_types` / `source_file`.
+- New `use-import-type-map` hook → `POST /api/v1/annotation-imports/{file}/type-map`.
+- `AnnotationImportResult` renders the unmapped-type list with a per-type
+  "map to existing / create new" selector and a "Map types" action.
+
+```
+src/portal use-import-type-map.test.tsx        2 passed
+src/portal AnnotationImportResult.test.tsx     7 passed (mapping form + updated held-not-dropped copy)
+```
+
 ### Not yet implemented
 - `test_retrain_request.py::test_request_training_from_import` (task 6.1).
-- Portal (tasks 7.x).
+- `/imported-documents` "Unmapped Types" tab, per-file eligibility + "Request training"
+  action, `/imported-documents/[id]` review route (tasks 7.2–7.4).
 - Migration `045` guard test.
 
 ---

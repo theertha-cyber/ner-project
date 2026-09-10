@@ -8,6 +8,22 @@ vi.mock("@/components/ui", () => ({
   Spinner: () => <div data-testid="spinner" />,
 }));
 
+vi.mock("@/hooks/use-entity-types", () => ({
+  useEntityTypes: () => ({ data: { entity_types: [{ name: "job_title" }] } }),
+}));
+
+const typeMapMutate = vi.fn();
+vi.mock("@/hooks/use-import-type-map", () => ({
+  useImportTypeMap: () => ({
+    mutate: typeMapMutate,
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    data: undefined,
+    error: null,
+  }),
+}));
+
 describe("AnnotationImportResult", () => {
   it("shows uploading spinner", () => {
     render(
@@ -42,26 +58,27 @@ describe("AnnotationImportResult", () => {
     expect(screen.getByText("ORG: 100")).toBeInTheDocument();
   });
 
-  it("shows success with skips and warnings", () => {
+  it("shows success with rows held for type mapping", () => {
     render(
       <AnnotationImportResult
         open={true}
         state={{
           status: "success",
           result: {
+            source_file: "g.jsonl",
             imported_count: 195,
+            pending_count: 5,
+            unmapped_types: [{ type: "PRODUCT", row_count: 5 }],
             skipped_count: 5,
-            warnings: [
-              { row_index: 10, message: "Unknown entity type(s): PRODUCT" },
-            ],
+            warnings: [],
             entity_type_counts: { PER: 195 },
           },
         }}
         onDone={vi.fn()}
       />,
     );
-    expect(screen.getByText(/195 rows imported, 5 rows skipped/)).toBeInTheDocument();
-    expect(screen.getByText(/Row 10/)).toBeInTheDocument();
+    expect(screen.getByText(/195 rows imported, 5 held for type mapping/)).toBeInTheDocument();
+    expect(screen.getByText("PRODUCT")).toBeInTheDocument();
   });
 
   it("shows error state", () => {
@@ -105,5 +122,34 @@ describe("AnnotationImportResult", () => {
       />,
     );
     expect(screen.queryByText("Done")).not.toBeInTheDocument();
+  });
+
+  it("shows the unmapped-type mapping form and submits a mapping", () => {
+    typeMapMutate.mockClear();
+    render(
+      <AnnotationImportResult
+        open={true}
+        state={{
+          status: "success",
+          result: {
+            source_file: "gold.jsonl",
+            imported_count: 8,
+            pending_count: 2,
+            unmapped_types: [{ type: "JOB_TITLE", row_count: 2 }],
+            skipped_count: 2,
+            warnings: [],
+            entity_type_counts: {},
+          },
+        }}
+        onDone={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("1 entity type not defined yet")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Map JOB_TITLE"), { target: { value: "job_title" } });
+    fireEvent.click(screen.getByText("Map types"));
+    expect(typeMapMutate).toHaveBeenCalledWith({
+      sourceFile: "gold.jsonl",
+      mapping: { JOB_TITLE: { to: "job_title" } },
+    });
   });
 });
