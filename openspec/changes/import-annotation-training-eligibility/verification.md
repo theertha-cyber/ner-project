@@ -166,11 +166,27 @@ src/portal use-import-type-map.test.tsx        2 passed
 src/portal AnnotationImportResult.test.tsx     7 passed (mapping form + updated held-not-dropped copy)
 ```
 
+### Portal completion (executed)
+
+- `GET /api/v1/annotation-imports` (new, `require_tenant_admin`) — one row per file with
+  `training_eligible`, `pending_count`, `type_map`; `use-import-files` hook.
+- `/imported-documents`: an **Imported files** panel — per file, "N rows need a type
+  mapping" or "Training: Eligible" + a "Request training" button (`useRequestRetrain`).
+  The import button is now `tenant_admin`-only.
+- `/imported-documents/[id]` route (annotator + tenant_admin) renders the exported
+  `ImportedDocumentReview`.
+- `/annotate/import` landing stats read `use-import-files`.
+
+```
+tests/test_annotation_import.py                     36 passed  (+2 list-endpoint tests)
+src/portal use-import-files / use-import-type-map / AnnotationImportResult /
+           AnnotationImportFlow                     25 passed
+```
+
 ### Not yet implemented
-- `test_retrain_request.py::test_request_training_from_import` (task 6.1).
-- `/imported-documents` "Unmapped Types" tab, per-file eligibility + "Request training"
-  action, `/imported-documents/[id]` review route (tasks 7.2–7.4).
 - Migration `045` guard test.
+- A dedicated `/imported-documents` "Unmapped Types" tab (the mapping form is on the
+  import-result slide-over; the file panel shows the pending count).
 
 ---
 

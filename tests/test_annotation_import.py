@@ -715,3 +715,33 @@ async def test_export_excludes_pending_file(seeded_entity_types, client):
     )
     export_resp = await client.get("/api/v1/annotation-export", headers=auth_header(make_token(tid)))
     assert export_resp.text.strip() == ""
+
+
+@pytest.mark.asyncio
+async def test_list_import_files(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("known.jsonl", '{"tokens": ["a"], "tags": ["B-PER"]}\n', "application/jsonl")},
+        headers=auth_header(make_token(tid)),
+    )
+    await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("pending.jsonl", '{"tokens": ["a"], "tags": ["B-XX"]}\n', "application/jsonl")},
+        headers=auth_header(make_token(tid)),
+    )
+    resp = await client.get("/api/v1/annotation-imports", headers=auth_header(make_token(tid)))
+    assert resp.status_code == 200
+    by_name = {f["source_file"]: f for f in resp.json()["files"]}
+    assert by_name["known.jsonl"]["training_eligible"] is True
+    assert by_name["pending.jsonl"]["training_eligible"] is False
+    assert by_name["pending.jsonl"]["pending_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_list_import_files_requires_tenant_admin(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    resp = await client.get(
+        "/api/v1/annotation-imports", headers=auth_header(make_token(tid, "annotator"))
+    )
+    assert resp.status_code == 403

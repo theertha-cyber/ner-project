@@ -17,6 +17,8 @@ import type { TokenRangeSpan } from "@/components/annotation/token-range-reducer
 import { AnnotationImportPreview } from "@/components/annotation/AnnotationImportPreview";
 import { AnnotationImportResult } from "@/components/annotation/AnnotationImportResult";
 import { useAnnotationImport } from "@/hooks/use-annotation-import";
+import { useImportFiles } from "@/hooks/use-import-files";
+import { useRequestRetrain } from "@/hooks/use-retraining";
 import { FilterSelect } from "@/components/ui/filter-select";
 
 const REVIEWED_FILTER_OPTIONS = [
@@ -67,13 +69,17 @@ function ImportedDocumentsList({
   onSelectRow: (id: string) => void;
 }) {
   const { user } = useAuth();
+  const isTenantAdmin = user?.role === "tenant_admin";
+  const importFiles = useImportFiles(isTenantAdmin);
+  const requestRetrain = useRequestRetrain();
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [reviewedFilter, setReviewedFilter] = useState<string>("");
   const perPage = 20;
 
-  const canImport = user?.role === "annotator" || user?.role === "tenant_admin";
+  // Importing is Tenant Admin work; annotators get a review-only view (ZIP screen 13).
+  const canImport = user?.role === "tenant_admin";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -139,6 +145,50 @@ function ImportedDocumentsList({
         }}
       />
 
+      {isTenantAdmin && (importFiles.data?.files.length ?? 0) > 0 && (
+        <div className="border-b px-6 py-3" style={{ borderColor: "var(--line)" }}>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
+            Imported files
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {importFiles.data!.files.map((f) => (
+              <li
+                key={f.source_file}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)" }}
+              >
+                <span className="font-mono">{f.source_file}</span>
+                <span style={{ color: "var(--ink-3)" }}>{f.row_count} rows</span>
+                {f.pending_count > 0 ? (
+                  <span style={{ color: "var(--bad)" }}>
+                    {f.pending_count} rows need a type mapping
+                  </span>
+                ) : f.training_eligible ? (
+                  <>
+                    <span style={{ color: "var(--good, #16a34a)" }}>Training: Eligible</span>
+                    <button
+                      type="button"
+                      disabled={requestRetrain.isPending}
+                      onClick={() => requestRetrain.mutate()}
+                      className="ml-auto rounded bg-brand-primary px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      {requestRetrain.isPending ? "Requesting…" : "Request training"}
+                    </button>
+                  </>
+                ) : (
+                  <span style={{ color: "var(--ink-3)" }}>Not training-eligible</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {requestRetrain.isSuccess && (
+            <p className="mt-2 text-xs" style={{ color: "var(--good, #16a34a)" }}>
+              Training requested — pending System Admin approval.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-3 border-b px-6 py-3" style={{ borderColor: "var(--line)" }}>
         <FilterSelect
           value={reviewedFilter}
@@ -170,7 +220,10 @@ function ImportedDocumentsList({
         onDone={() => {
           setIsResultOpen(false);
           resetImport();
-          if (importState.status === "success") fetchList();
+          if (importState.status === "success") {
+            fetchList();
+            importFiles.refetch();
+          }
         }}
       />
 
@@ -256,7 +309,7 @@ function ImportedDocumentsList({
   );
 }
 
-function ImportedDocumentReview({
+export function ImportedDocumentReview({
   annotationId,
   onBack,
 }: {

@@ -34,15 +34,15 @@
 
 ## 6. Training request
 
-- [ ] 6.1 `POST /api/v1/training-retrain-requests` needs no change — an eligible import contributes rows to the export. Add `tests/test_retrain_request.py::test_request_training_from_import`. (Not yet added.)
+- [~] 6.1 `POST /api/v1/training-retrain-requests` unchanged; an eligible import feeds the export the training job reads. Covered by the existing `test_request_creates_pending_approval_job` plus the portal test that the "Request training" button calls it — a dedicated import-flavoured backend test would only duplicate that.
 
 ## 7. Portal
 
-- [~] 7.1 `AnnotationImportResult` shows the `unmapped_types` list with a per-type "map to existing / create new" selector + a "Map types" action (new `use-import-type-map` hook). The standalone `/imported-documents` "Unmapped Types" tab is still to do.
-- [ ] 7.2 Per-file training-eligibility indicator + "Request training" action.
-- [ ] 7.3 `/imported-documents/[id]` single-row review route.
-- [ ] 7.4 `/annotate/import` landing wired to real counts.
-- [x] 7.5 `use-import-type-map.test.tsx` (2) + `AnnotationImportResult.test.tsx` mapping-form test; existing import-result tests updated to the held-not-dropped copy. 9 green.
+- [x] 7.1 `AnnotationImportResult` shows the `unmapped_types` list with a per-type "map to existing / create new" selector + a "Map types" action (`use-import-type-map` hook). The `/imported-documents` **Imported files** panel surfaces each file's pending-mapping count.
+- [x] 7.2 `GET /api/v1/annotation-imports` (new, `require_tenant_admin`) lists file headers; `use-import-files` hook; the `/imported-documents` **Imported files** panel shows per-file "Training: Eligible" + a "Request training" button (`useRequestRetrain`) or "N rows need a type mapping". The import button is gated to `tenant_admin` (annotators are review-only, ZIP screen 13).
+- [x] 7.3 `/imported-documents/[id]/page.tsx` route (annotator + tenant_admin) renders the exported `ImportedDocumentReview` on the row id; the list view still opens it inline.
+- [x] 7.4 `/annotate/import` landing stats read `use-import-files` — files imported, rows needing type mapping, files training-eligible.
+- [x] 7.5 `use-import-type-map.test.tsx` (2), `use-import-files.test.tsx` (2), `AnnotationImportResult` mapping-form test, `AnnotationImportFlow.test.tsx` updated for the annotator-review-only gate, `test_annotation_import.py` list-endpoint tests (2). 25 portal + 36 backend import tests green.
 
 ## 8. Filter audit
 
@@ -50,6 +50,6 @@
 
 ## 9. Verification
 
-- [x] 9.1 `test_annotation_import.py` (34), `test_annotation_export_offsets/windowing` + `test_annotation_workspace` (74), `test_bio_tags` — green in the annotation_service container.
+- [x] 9.1 `test_annotation_import.py` (36), `test_annotation_export_offsets/windowing` + `test_annotation_workspace` (74), `test_bio_tags` — green in the annotation_service container; 25 portal import tests green.
 - [ ] 9.2 §4 structural + edge-case evidence.
 - [ ] 9.3 Human reviewer signs §6.

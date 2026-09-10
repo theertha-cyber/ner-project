@@ -285,6 +285,46 @@ async def import_annotations(
     }
 
 
+@router.get("/api/v1/annotation-imports")
+async def list_import_files(
+    request: Request = None,
+    session: AsyncSession = Depends(get_session),
+):
+    """One row per imported file: its size, how many rows still need a type mapping,
+    whether it is training-eligible, and the resolved type map."""
+    require_tenant_admin(request)
+    tenant_id = get_tenant_id(request)
+    schema = _schema(tenant_id)
+
+    rows = await session.execute(
+        text(
+            f"SELECT ai.source_file, ai.row_count, ai.type_map, ai.training_eligible_at, "
+            f"  (SELECT COUNT(*) FROM {schema}.imported_annotations x "
+            f"   WHERE x.source_file = ai.source_file AND x.pending_mapping = TRUE) AS pending, "
+            f"  (SELECT COUNT(*) FROM {schema}.imported_annotations x "
+            f"   WHERE x.source_file = ai.source_file AND x.reviewed = TRUE) AS reviewed "
+            f"FROM {schema}.annotation_imports ai ORDER BY ai.created_at DESC"
+        )
+    )
+    files = []
+    for r in rows.fetchall():
+        type_map = r[2]
+        if isinstance(type_map, str):
+            type_map = json.loads(type_map)
+        files.append(
+            {
+                "source_file": r[0],
+                "row_count": r[1],
+                "type_map": type_map or {},
+                "training_eligible": r[3] is not None,
+                "training_eligible_at": r[3].isoformat() if r[3] else None,
+                "pending_count": int(r[4] or 0),
+                "reviewed_count": int(r[5] or 0),
+            }
+        )
+    return {"files": files}
+
+
 @router.post("/api/v1/annotation-imports/{source_file}/type-map", status_code=201)
 async def map_import_types(
     source_file: str,

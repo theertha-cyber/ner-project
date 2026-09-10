@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useEntityTypes } from "@/hooks/use-entity-types";
-import { AnnotateLanding, WorkCard } from "@/components/annotate/AnnotateLanding";
+import { useImportFiles } from "@/hooks/use-import-files";
+import { AnnotateLanding, GlanceStat, WorkCard } from "@/components/annotate/AnnotateLanding";
 
 export default function ImportAnnotationLanding() {
   const router = useRouter();
@@ -11,13 +12,32 @@ export default function ImportAnnotationLanding() {
   const isAnnotator = user?.role === "annotator";
   const entityTypes = useEntityTypes();
   const entityCount = entityTypes.data?.entity_types.length ?? 0;
+  const files = useImportFiles(user?.role === "tenant_admin");
+
+  const fileList = files.data?.files ?? [];
+  const pendingRows = fileList.reduce((n, f) => n + f.pending_count, 0);
+  const eligibleFiles = fileList.filter((f) => f.training_eligible).length;
+
+  const stats: GlanceStat[] = isAnnotator
+    ? [{ label: "entity types defined", value: entityCount, href: "/entity-types" }]
+    : [
+        { label: "files imported", value: fileList.length, href: "/imported-documents" },
+        {
+          label: "rows need type mapping",
+          value: pendingRows,
+          tone: pendingRows > 0 ? "warn" : "default",
+          href: "/imported-documents",
+        },
+        { label: "files training-eligible", value: eligibleFiles, tone: "good", href: "/imported-documents" },
+      ];
 
   const workCards: WorkCard[] = [
     {
       title: "Imported files",
-      description: "Rows that arrived pre-labelled, with the count still needing a human pass.",
+      description: "Rows that arrived pre-labelled, with the count still needing a type mapping or a human pass.",
       cta: "Open imported files",
       href: "/imported-documents",
+      count: pendingRows || undefined,
     },
   ];
 
@@ -30,9 +50,7 @@ export default function ImportAnnotationLanding() {
           ? undefined
           : { label: "＋ Import file", onClick: () => router.push("/imported-documents?import=1") }
       }
-      stats={[
-        { label: "entity types defined", value: entityCount, note: "more defined means less mapping after import", href: "/entity-types" },
-      ]}
+      stats={stats}
       workCards={workCards}
     >
       <p style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 18, maxWidth: 620, lineHeight: 1.6 }}>
