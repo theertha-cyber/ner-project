@@ -820,6 +820,68 @@ TRAINING_FAILURES = _declare(Family(
 ))
 
 
+# --- Tenant data-source control plane (CAP-2, ADR-011) -------------------------------------
+
+# The value sets mirror `src.shared.data_sources.lifecycle` exactly; a drift test in
+# `tests/test_tenant_data_source_control_plane.py` fails the build if they diverge.
+# Literals rather than imports: `data_sources.service` imports this module's recorders,
+# so importing the lifecycle constants here would close a package import cycle.
+# No family here carries `tenant_id` — per-connection attribution joins the trace,
+# where the tenant already lives. Metric labels carry finite outcome classes only:
+# no endpoints, credentials, provider diagnostics, or tenant content.
+DATA_SOURCE_PROVIDERS = frozenset({"azure_blob", "azure_postgresql", OTHER})
+
+DATA_SOURCE_ACTIONS = frozenset({
+    "create",
+    "update",
+    "test",
+    "activate",
+    "pause",
+    "replace",
+    "retire",
+    OTHER,
+})
+
+DATA_SOURCE_ACTION_OUTCOMES = frozenset({"success", "rejected", "error", OTHER})
+
+DATA_SOURCE_TEST_OUTCOMES = frozenset({"passed", "failed", "not_run", OTHER})
+
+DATA_SOURCE_TEST_REASONS = frozenset({
+    "none",
+    "validation_failed",
+    "secret_unavailable",
+    "connection_failed",
+    "tls_validation_failed",
+    "authorization_failed",
+    "prerequisite_missing",
+    OTHER,
+})
+
+DATA_SOURCE_LIFECYCLE = _declare(Family(
+    "ner_data_source_lifecycle_total",
+    "counter",
+    "Tenant data-source connection lifecycle actions by provider, action, and "
+    "finite outcome. Per-connection detail joins the trace by connection id.",
+    labels=(
+        Label("provider", DATA_SOURCE_PROVIDERS),
+        Label("action", DATA_SOURCE_ACTIONS),
+        Label("outcome", DATA_SOURCE_ACTION_OUTCOMES),
+    ),
+))
+
+DATA_SOURCE_TESTS = _declare(Family(
+    "ner_data_source_tests_total",
+    "counter",
+    "Secure connection-test executions by provider, finite outcome, and finite "
+    "reason class. No endpoint, credential, or provider diagnostic is a label.",
+    labels=(
+        Label("provider", DATA_SOURCE_PROVIDERS),
+        Label("outcome", DATA_SOURCE_TEST_OUTCOMES),
+        Label("reason", DATA_SOURCE_TEST_REASONS),
+    ),
+))
+
+
 # --------------------------------------------------------------------------------------
 # The tenant-label allowlist
 # --------------------------------------------------------------------------------------
@@ -1346,7 +1408,7 @@ def record_document_ingestion(
     """Record which adapters served one ingestion.
 
     All three values are coerced against their declared sets, so a value from outside them
-    lands under `other` rather than widening cardinality — and a tenant's configuration
+    lands under `other` rather than widening cardinality ?" and a tenant's configuration
     cannot reach a metric label even by mistake.
     """
     _record(
@@ -1356,3 +1418,13 @@ def record_document_ingestion(
         content_store_kind=content_store_kind,
         retention_mode=retention_mode,
     )
+
+
+def record_data_source_lifecycle(provider: str, action: str, outcome: str) -> None:
+    """Record one control-plane lifecycle action. Finite classes only, coerced."""
+    _record(DATA_SOURCE_LIFECYCLE, 1, provider=provider, action=action, outcome=outcome)
+
+
+def record_data_source_test(provider: str, outcome: str, reason: str) -> None:
+    """Record one secure connection-test execution. Finite classes only, coerced."""
+    _record(DATA_SOURCE_TESTS, 1, provider=provider, outcome=outcome, reason=reason)
