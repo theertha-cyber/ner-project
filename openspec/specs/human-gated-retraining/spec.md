@@ -73,7 +73,22 @@ The system SHALL record the set of confirmed spans consumed by a training run, a
 
 ### Requirement: Retraining Decision Surface
 
-The system SHALL present the accumulation figure for the tenant's currently serving model version, broken down per entity type, together with the serving model version identifier. For a tenant with no trained model, the system SHALL present that state distinctly rather than reporting an accumulation figure of zero. The system SHALL present accumulation distinctly from dataset readiness.
+The system SHALL present the accumulation figure for the tenant's currently serving model
+version, broken down per entity type AND per span source (`manual` — a confirmed span from
+the annotation workspace / review queue; `automated` — a span promoted from an accepted
+automated batch). The two source counts SHALL sum to the accumulation figure. Imported
+annotations are not confirmed spans and so do not appear in this figure or its source split
+— they are surfaced only in the eligibility overview below. The system SHALL present the
+serving model version identifier. For a tenant with no trained model, the system SHALL
+present that state distinctly rather than reporting an accumulation figure of zero. The
+system SHALL present accumulation distinctly from dataset readiness.
+
+The system SHALL additionally present a training-eligibility overview: for each source, the
+number of training-eligible units that have not yet been consumed by a completed training
+run, and the most recent eligibility timestamp for that source. A training-eligible unit is
+a completed annotation task, an annotator-approved automated `large` batch, or an import
+file with every entity type mapped. The overview SHALL remain a report — requesting it
+SHALL NOT create, enqueue, approve, or promote anything.
 
 #### Scenario: Decision surface shows accumulation against the serving version
 
@@ -88,6 +103,13 @@ The system SHALL present the accumulation figure for the tenant's currently serv
 - **WHEN** the retraining decision surface is requested
 - **THEN** the response SHALL report 120 for `organization` and 14 for `person_name`
 
+#### Scenario: Accumulation is broken down per span source
+
+- **GIVEN** a tenant whose 120 accumulated spans comprise 90 confirmed in the workspace and 30 promoted from an accepted automated batch
+- **WHEN** the retraining decision surface is requested
+- **THEN** the response SHALL report `by_source` of `manual: 90` and `automated: 30`
+- **AND** `manual + automated` SHALL equal `spans_accumulated`
+
 #### Scenario: A tenant with no trained model is shown distinctly
 
 - **GIVEN** a tenant with no trained model, served by the base model
@@ -101,6 +123,27 @@ The system SHALL present the accumulation figure for the tenant's currently serv
 - **WHEN** the surface is inspected
 - **THEN** the accumulation figure SHALL be labelled distinctly from dataset readiness
 - **AND** the accumulation figure SHALL NOT be compared against the per-entity-type dataset readiness threshold
+
+#### Scenario: Overview counts training-eligible units per source
+
+- **GIVEN** a tenant with 2 completed annotation tasks, 1 annotator-approved automated `large` batch, and 3 fully-mapped import files, none yet consumed by a training run
+- **WHEN** the retraining decision surface is requested
+- **THEN** the overview SHALL report `manual: 2`, `automated: 1`, `import: 3`
+- **AND** each SHALL carry the most recent eligibility timestamp for that source
+
+#### Scenario: Consumed units drop off the overview
+
+- **GIVEN** a tenant whose 2 completed annotation tasks were consumed by a training run that has since completed
+- **WHEN** the retraining decision surface is requested
+- **THEN** the overview SHALL report `manual: 0`
+
+#### Scenario: The overview is a report only
+
+- **GIVEN** a tenant with training-eligible units in every source
+- **WHEN** the retraining decision surface is requested repeatedly
+- **THEN** no training job SHALL be created
+- **AND** no Celery task SHALL be enqueued
+- **AND** the serving model version SHALL be unchanged
 
 ### Requirement: Manual Retrain Request
 

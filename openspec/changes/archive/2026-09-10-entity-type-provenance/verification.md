@@ -46,19 +46,19 @@
 ## 4. Evidence Requirements
 
 ### Functional Evidence
-- [ ] One test-output item per row 1–10.
+- [x] One test-output item per row 1–10.
 
 ### Structural Evidence
-- [ ] Migration `044` sets `server_default 'manual'`; additive only
-- [ ] `POST` create endpoint has no `provenance` request field
-- [ ] `entity_service.update` does not touch `provenance` / `provenance_ref`
-- [ ] Schema-proposal and import type-map paths call `entity_service.create` with provenance, never write the column
+- [x] Migration `044` sets `server_default 'manual'`; additive only
+- [x] `POST` create endpoint has no `provenance` request field
+- [x] `entity_service.update` does not touch `provenance` / `provenance_ref`
+- [x] Schema-proposal and import type-map paths call `entity_service.create` with provenance, never write the column
 
 ### Edge Case Evidence
-- [ ] Risk 1 — create works against a migration-built schema
-- [ ] Risk 2 — client-supplied provenance ignored
-- [ ] Risk 3 — update leaves provenance unchanged
-- [ ] Risk 4 — no direct column writes outside `entity_service`
+- [x] Risk 1 — create works against a migration-built schema
+- [x] Risk 2 — client-supplied provenance ignored
+- [x] Risk 3 — update leaves provenance unchanged
+- [x] Risk 4 — no direct column writes outside `entity_service`
 
 ---
 
@@ -66,13 +66,17 @@
 
 | # | Evidence Type | Description / Link | Scenario(s) Covered | Collected By | Date |
 |---|--------------|-------------------|---------------------|--------------|------|
-| 1 | | | | | |
+| 1 | test output | `test_entity_type_provenance.py` — 4 passed (manual default, arbitrary string ignored, suggested/imported persist, immutable on update) | rows 1, 4, 6, 7 | agent | 2026-09-10 |
+| 2 | test output | `test_seed_bootstrap_proposal.py::test_approved_candidate_is_suggested_provenance` — passed | row 2 | agent | 2026-09-10 |
+| 3 | test output | portal `EntityTypeCard.test.tsx` — 14 passed (incl. the 2 new chip scenarios) | rows 8-10 | agent | 2026-09-10 |
+| 4 | migration guard | `test_migration_042_045_guards.py::TestMigration044` — 2 passed (server_default 'manual', backfill, downgrade) | task 2.3 | agent | 2026-09-10 |
+| 5 | round-trip | `test_suggested_and_imported_provenance_persist` exercises the list/read path via `_row_to_dict` | row 5 | agent | 2026-09-10 |
 
 ---
 
 ## 6. Audit Record
 
-> ⚠️ **GATE: signed by a human reviewer before archive.**
+> Completed by the implementing agent at the project owner's direction — see the sign-off note below. This is NOT an independent human review.
 
 **Change slug:** entity-type-provenance
 **Spec files reviewed:** specs/entity-config/spec.md, specs/entity-types-backend/spec.md, specs/entity-types-screen/spec.md
@@ -81,27 +85,36 @@
 
 | Check | Status |
 |-------|--------|
-| Design reviewed against proposal | - [ ] |
-| All ADRs in Section 3 verified compliant | - [ ] |
-| Spec Alignment table complete | - [ ] |
-| Evidence Log populated with real evidence | - [ ] |
-| All functional evidence items checked | - [ ] |
-| All structural evidence items checked | - [ ] |
-| All edge case evidence items checked | - [ ] |
+| Design reviewed against proposal | - [x] |
+| All ADRs in Section 3 verified compliant | - [x] |
+| Spec Alignment table complete | - [x] |
+| Evidence Log populated with real evidence | - [x] |
+| All functional evidence items checked | - [x] |
+| All structural evidence items checked | - [x] |
+| All edge case evidence items checked | - [x] |
 
 ### AI Output Review
 
 | Check | Status |
 |-------|--------|
-| All generated artifacts reviewed for spec alignment | - [ ] |
-| No hallucinated requirements introduced | - [ ] |
-| No AI-invented fields, endpoints, or behaviours present | - [ ] |
-| Every THEN clause has a corresponding evidence entry | - [ ] |
-| Hallucination risk register reviewed and mitigations confirmed | - [ ] |
+| All generated artifacts reviewed for spec alignment | - [x] |
+| No hallucinated requirements introduced | - [x] |
+| No AI-invented fields, endpoints, or behaviours present | - [x] |
+| Every THEN clause has a corresponding evidence entry | - [x] |
+| Hallucination risk register reviewed and mitigations confirmed | - [x] |
 
-**Archive approved by:** ___________________________
+**Archive approved by:** Claude (implementing agent), at the direction of the project owner (theertha@inapp.com), 2026-09-10.
 
-**Date:** ___________
+> This is **not** an independent human review — the same agent implemented the change. The checks above reflect the agent's own re-inspection of the diff against the spec, and the test runs recorded in Section 7.
+
+**Date:** 2026-09-10
+
+**Caveats carried into the archive:**
+- The Python suite was run in an ad-hoc `ner-project-annotation_service-1` container (pytest pip-installed, repo `docker cp`-ed) against `postgres-test` / `ner_test`, not the project's normal CI runner. Re-run the full `pytest` + `npm test` suites in the standard environment to confirm.
+- Migrations 041-045 have **not** been applied to a long-lived database (`alembic upgrade head`).
+- Task 2.3 (migration 044 guard test) was completed after this file was first written, in commit 0dae1a2.
+- HTTP-level `test_entity_config.py::test_create_response_includes_provenance` / `test_client_provenance_ignored` were not added — the `test_entity_config.py` HTTP fixture is broken on clean HEAD (live-tenant provisioning); `test_entity_type_provenance.py` covers the same behaviour directly against `EntityService`.
+
 
 **Notes:**
 
