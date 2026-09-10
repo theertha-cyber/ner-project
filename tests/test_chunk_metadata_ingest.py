@@ -399,14 +399,18 @@ class TestChunkingRestrictedToQueryPurpose:
             )
             # conftest's documents table is the `002` shape. The worker reads the `003`
             # columns plus the retention mode this change adds, so add them here — the
-            # same reason document_text_spans is rebuilt above.
+            # same reason document_text_spans is rebuilt above. CAP-3 also reads
+            # the source identity columns for source-only reopening.
             await session.execute(
                 text(f"""
                     ALTER TABLE {schema}.documents
                         ADD COLUMN IF NOT EXISTS content_type VARCHAR(255),
                         ADD COLUMN IF NOT EXISTS blob_path VARCHAR(500),
                         ADD COLUMN IF NOT EXISTS retention_mode VARCHAR(32)
-                            NOT NULL DEFAULT 'platform_blob'
+                            NOT NULL DEFAULT 'platform_blob',
+                        ADD COLUMN IF NOT EXISTS source_type VARCHAR(64),
+                        ADD COLUMN IF NOT EXISTS source_id VARCHAR(128),
+                        ADD COLUMN IF NOT EXISTS external_id VARCHAR(512)
                 """)
             )
             await session.execute(

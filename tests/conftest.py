@@ -213,6 +213,15 @@ CREATE TABLE IF NOT EXISTS {schema}.chat_message_feedback (
     rating TEXT NOT NULL CHECK (rating IN ('up', 'down')),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- CAP-3 (alembic 041) retrieval-hiding list. The retrievers' exclusion
+-- predicate plans against this table unconditionally, so every tenant schema
+-- the suite creates must carry it, mirroring production post-migration.
+CREATE TABLE IF NOT EXISTS {schema}.azure_blob_hidden_documents (
+    document_id VARCHAR PRIMARY KEY,
+    connection_id VARCHAR NOT NULL,
+    cause VARCHAR(32) NOT NULL,
+    hidden_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 """
 
 

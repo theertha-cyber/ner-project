@@ -315,9 +315,11 @@ async def test_row_1_upload_creates_the_row_through_the_ingestion_operation(
 # write it — a literal, an f-string placeholder, or an interpolated call such as
 # `{_schema(tenant_id)}.documents`. Matching on the table name itself rather than on the
 # text before the first parenthesis is what makes the last of those detectable.
-# The trailing word boundary keeps document_chunks and document_entities out.
+# The trailing word boundary keeps document_chunks and document_entities out, and the
+# leading lookbehind keeps longer table names ending in the same word —
+# `azure_blob_hidden_documents` (CAP-3 sync ledger state, never a document row) — out.
 _DOCUMENTS_INSERT_RE = re.compile(
-    r"insert\s+into\s+[^\s(]*(?:\([^)]*\))?[^\s(]*\.?documents\b", re.IGNORECASE
+    r"insert\s+into\s+[^\s(]*(?:\([^)]*\))?[^\s(]*(?<![\w])documents\b", re.IGNORECASE
 )
 
 

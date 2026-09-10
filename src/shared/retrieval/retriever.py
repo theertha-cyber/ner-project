@@ -40,6 +40,22 @@ def _metadata_filter_clause(metadata_filter: dict | None) -> tuple[str, dict]:
     return "", {}
 
 
+def _hidden_documents_clause(schema: str) -> str:
+    """Exclude chunks of superseded or confirmed-missing sync source documents.
+
+    The predicate is unconditional and caller-invisible, like the purpose
+    restriction. It plans against the CAP-3 hidden table, which migration 041
+    creates in every tenant schema: a schema without it is a broken deploy,
+    and the query fails closed rather than serving hidden content. The schema
+    name is server-derived tenant context, same as the table reference it
+    guards — never caller input.
+    """
+    return (
+        f" AND NOT EXISTS (SELECT 1 FROM {schema}.azure_blob_hidden_documents h"
+        f" WHERE h.document_id = document_chunks.document_id)"
+    )
+
+
 class DenseRetriever:
     def __init__(self, embedding_service=None, config: RetrievalConfig | None = None):
         if embedding_service is None:
@@ -58,6 +74,7 @@ class DenseRetriever:
     ) -> list[RetrievalResult]:
         top_k = resolve_top_k(top_k, self.config, settings)
         filter_clause, filter_params = _metadata_filter_clause(metadata_filter)
+        hidden_clause = _hidden_documents_clause(schema)
 
         query_embedding = await self.embedding_service.embed(query)
         embedding_str = "[" + ",".join(str(v) for v in query_embedding) + "]"
@@ -65,9 +82,9 @@ class DenseRetriever:
         result = await session.execute(
             text(f"""
                 SELECT id, document_id, chunk_index, chunk_text, page_number, char_start, char_end,
-                       1 - (embedding <=> :query_emb) AS similarity_score
+                        1 - (embedding <=> :query_emb) AS similarity_score
                 FROM {schema}.document_chunks
-                WHERE embedding IS NOT NULL AND purpose = 'query'{filter_clause}
+                WHERE embedding IS NOT NULL AND purpose = 'query'{filter_clause}{hidden_clause}
                 ORDER BY embedding <=> :query_emb
                 LIMIT :top_k
             """),
@@ -102,13 +119,14 @@ class SparseRetriever:
     ) -> list[RetrievalResult]:
         top_k = resolve_top_k(top_k, self.config, settings)
         filter_clause, filter_params = _metadata_filter_clause(metadata_filter)
+        hidden_clause = _hidden_documents_clause(schema)
 
         result = await session.execute(
             text(f"""
                 SELECT id, document_id, chunk_index, chunk_text, page_number, char_start, char_end,
-                       ts_rank(chunk_tsv, plainto_tsquery('english', :query)) AS rank_score
+                        ts_rank(chunk_tsv, plainto_tsquery('english', :query)) AS rank_score
                 FROM {schema}.document_chunks
-                WHERE chunk_tsv @@ plainto_tsquery('english', :query) AND purpose = 'query'{filter_clause}
+                WHERE chunk_tsv @@ plainto_tsquery('english', :query) AND purpose = 'query'{filter_clause}{hidden_clause}
                 ORDER BY rank_score DESC
                 LIMIT :top_k
             """),

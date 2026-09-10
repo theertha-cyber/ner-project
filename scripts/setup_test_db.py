@@ -78,6 +78,54 @@ TABLES = [
         document_id VARCHAR
     )
     """,
+    # CAP-3 durable Blob sync ledger (alembic 041). Test-only mirror: the suite
+    # runs DDL, not alembic, so the tables the migration creates are restated
+    # here. Opaque source identity, version tokens, finite outcome classes, and
+    # document linkage only.
+    """
+    CREATE TABLE IF NOT EXISTS "{schema}".azure_blob_sync_runs (
+        id VARCHAR PRIMARY KEY,
+        tenant_id VARCHAR(64) NOT NULL,
+        connection_id VARCHAR NOT NULL,
+        trigger VARCHAR(32) NOT NULL,
+        outcome VARCHAR(32) NOT NULL DEFAULT 'started',
+        reason VARCHAR(64) NOT NULL DEFAULT 'none',
+        objects_seen INTEGER NOT NULL DEFAULT 0,
+        objects_ingested INTEGER NOT NULL DEFAULT 0,
+        objects_skipped INTEGER NOT NULL DEFAULT 0,
+        objects_failed INTEGER NOT NULL DEFAULT 0,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS "{schema}".azure_blob_source_objects (
+        connection_id VARCHAR NOT NULL,
+        object_identity VARCHAR(1024) NOT NULL,
+        source_version VARCHAR(256),
+        document_id VARCHAR,
+        missing_sightings INTEGER NOT NULL DEFAULT 0,
+        confirmed_missing BOOLEAN NOT NULL DEFAULT FALSE,
+        last_seen_at TIMESTAMPTZ,
+        PRIMARY KEY (connection_id, object_identity)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS "{schema}".azure_blob_sync_leases (
+        connection_id VARCHAR PRIMARY KEY,
+        run_id VARCHAR NOT NULL,
+        acquired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS "{schema}".azure_blob_hidden_documents (
+        document_id VARCHAR PRIMARY KEY,
+        connection_id VARCHAR NOT NULL,
+        cause VARCHAR(32) NOT NULL,
+        hidden_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
 ]
 
 PUBLIC_TABLES = [
