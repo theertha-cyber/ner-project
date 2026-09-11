@@ -1,0 +1,99 @@
+{
+    "version":  1,
+    "run":  {
+                "id":  "run_20260911T094030Z",
+                "status":  "completed",
+                "startedAt":  "2026-09-11T09:40:30Z",
+                "updatedAt":  "2026-09-11T09:56:44Z",
+                "integrationBranch":  "annotation-automation",
+                "openspecVersion":  "1.6.0",
+                "track":  "direct",
+                "selectedItems":  [
+                                      "CAP-6"
+                                  ],
+                "resolvedPaths":  {
+                                      "decomposition":  [
+                                                            "docs/decomposition/03-verify-docker-annotation-fix.md"
+                                                        ],
+                                      "baselineSpecs":  [
+                                                            "openspec/specs/annotation-workspace/spec.md",
+                                                            "openspec/specs/drag-annotation/spec.md",
+                                                            "openspec/specs/portal-annotation/spec.md"
+                                                        ],
+                                      "unresolvedAdrs":  [
+
+                                                         ]
+                                  },
+                "commands":  {
+                                 "build":  "docker compose build",
+                                 "test":  "npm test --workspace=src/portal",
+                                 "start":  "docker compose up -d --force-recreate"
+                             },
+                "provisioning":  [
+                                     {
+                                         "need":  "docker-compose",
+                                         "kind":  "service",
+                                         "reason":  "CAP-6 verifies the portal, gateway, annotation service, and database in the local Docker Compose deployment",
+                                         "decision":  "container",
+                                         "detail":  "docker compose"
+                                     }
+                                 ]
+            },
+    "items":  [
+                  {
+                      "id":  "CAP-6",
+                      "slug":  "cap-6-docker-verification-of-single-request-annotation-gestures",
+                      "title":  "Docker Verification of Single-Request Annotation Gestures",
+                      "sourceIncrement":  "docs/decomposition/03-verify-docker-annotation-fix.md",
+                      "dependsOn":  [
+
+                                    ],
+                      "governingAdrs":  [
+
+                                        ],
+                      "candidateAdrs":  [
+
+                                        ],
+                      "satisfies":  [
+
+                                    ],
+                      "phase":  "blocked",
+                      "satisfiedByBaseline":  false,
+                      "branch":  null,
+                      "commit":  "541f4a4",
+                      "startedAt":  "2026-09-11T09:49:06Z",
+                      "endedAt":  "2026-09-11T09:54:42Z",
+                      "attempts":  [
+                                       {
+                                           "n":  1,
+                                           "startedAt":  "2026-09-11T09:49:06Z",
+                                           "endedAt":  "2026-09-11T09:54:42Z",
+                                           "filesChanged":  [
+                                                                "docs/deploy/verify-docker-annotation-fix-20260910-dev.md",
+                                                                "qa/verify-docker-annotation-fix/health-check.md",
+                                                                "qa/verify-docker-annotation-fix/sanity.md",
+                                                                "qa/verify-docker-annotation-fix/integration.md",
+                                                                "qa/verify-docker-annotation-fix/summary.md"
+                                                            ],
+                                           "fingerprint":  "environment-live-authentication-unavailable",
+                                           "tests":  {
+                                                         "ran":  true,
+                                                         "total":  21,
+                                                         "passed":  18,
+                                                         "failed":  3,
+                                                         "failing":  [
+                                                                         "Scenario 1 â€” Default layout renders three columns",
+                                                                         "Scenario 2 \u0026 3 â€” Clicking Focus does not call requestFullscreen â€” focus",
+                                                                         "Scenario 2 \u0026 3 â€” Clicking Focus does not call requestFullscreen â€” restore"
+                                                                     ]
+                                                     }
+                                       }
+                                   ],
+                      "specRewrites":  [
+
+                                       ],
+                      "blockedReason":  "Required live authenticated verification is unavailable: no authenticated annotator session/credentials or supported browser automation evidence was available to capture deployed same-token click and multi-token drag request traces and confirmed-span counts. Docker Compose build/recreate and health checks passed; focused CAP-5 source tests passed 2/2, while 3 unrelated layout-control tests failed. Per CAP-6 disposition rules, deployed behavior is not claimed passed or failed.",
+                      "skippedBecause":  null
+                  }
+              ]
+}
