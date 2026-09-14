@@ -134,6 +134,7 @@ def _create_tables_sql(schema: str) -> list:
                 document_id VARCHAR NOT NULL,
                 chunk_index INTEGER NOT NULL,
                 chunk_text TEXT NOT NULL,
+                embedding vector(1536),
                 page_number INTEGER,
                 char_start INTEGER,
                 char_end INTEGER,
@@ -182,6 +183,7 @@ async def seeded_tenant():
     slug = f"doc-test-{_coll_counter}"
 
     async with engine.connect() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS public"))
         await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {tenant_schema}"))
     async with engine.begin() as conn:
@@ -282,6 +284,7 @@ async def test_7_2_unsupported_file_type_returns_422(seeded_tenant, client):
 
     assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
     assert "not supported" in resp.text.lower()
+    assert ".csv" in resp.text.lower(), "rejection message must list .csv among allowed types"
 
 
 @pytest.mark.asyncio
@@ -1018,6 +1021,140 @@ async def test_8_7_ephemeral_retention_stores_no_durable_original(
     # The working copy is gone and the row no longer names it.
     assert working.deletes, "the working copy was never deleted"
     assert row.blob_path is None
+
+
+# =========================================================================================
+# CSV ingestion branch — verification.md rows for CAP-4 (FR-002, ADR-012).
+# =========================================================================================
+
+
+CSV_CONTENT = "name,role,notes\nAlice,user,\"planning, vaguely\"\nBob,admin\n".encode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_csv_upload_returns_201(seeded_tenant, client):
+    """Spec scenario: Upload a CSV document."""
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+
+    with patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls, \
+         patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_ocr:
+        mock_storage = mock_storage_cls.return_value
+        mock_ocr.return_value = None
+
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("data.csv", io.BytesIO(CSV_CONTENT), "text/csv")},
+            headers=auth_header(token),
+        )
+
+    assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
+    data = resp.json()
+    assert "id" in data
+    assert data["filename"] == "data.csv"
+    assert data["content_type"] == "text/csv"
+    assert data["status"] == "pending"
+    assert data["file_size"] == len(CSV_CONTENT)
+    assert mock_storage.put.called
+
+
+@pytest.mark.asyncio
+async def test_csv_processing_writes_spans_and_chunks(seeded_tenant, client, monkeypatch):
+    """Spec scenario: CSV processing writes spans and chunks.
+
+    Exercise the full worker path for a `.csv` upload: media-type resolution,
+    row-to-span extraction, and the shared chunk/embedding path. The CSV content
+    intentionally mixes quoted delimiters with a ragged row so the same test
+    covers the parser edge-case scenario end to end.
+    """
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+
+    durable, working = _RecordingStore(), _RecordingStore()
+    service = DocumentIngestionService(
+        dispatcher=RecordingDispatcher(), durable_store=durable, working_store=working
+    )
+
+    async def fake_embed(texts):
+        return [[0.0] * 1536 for _ in texts]
+
+    monkeypatch.setattr(ocr_worker, "_embed_chunks", fake_embed)
+    monkeypatch.setattr(
+        ocr_worker,
+        "_store_for",
+        lambda mode: working if mode == RETENTION_EPHEMERAL else durable,
+    )
+
+    with patch.object(documents_route, "ingestion_service", service):
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("data.csv", io.BytesIO(CSV_CONTENT), "text/csv")},
+            headers=auth_header(token),
+        )
+    assert resp.status_code == 201, resp.text
+    doc_id = resp.json()["id"]
+
+    await ocr_worker.process_document(doc_id, tid)
+
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(f"SELECT status FROM tenant_{tid}.documents WHERE id = :id"),
+                {"id": doc_id},
+            )
+        ).fetchone()
+        spans = (
+            await conn.execute(
+                text(
+                    f"SELECT text FROM tenant_{tid}.document_text_spans "
+                    f"WHERE document_id = :id ORDER BY span_index"
+                ),
+                {"id": doc_id},
+            )
+        ).fetchall()
+        chunk_count = (
+            await conn.execute(
+                text(
+                    f"SELECT COUNT(*) FROM tenant_{tid}.document_chunks "
+                    f"WHERE document_id = :id"
+                ),
+                {"id": doc_id},
+            )
+        ).scalar()
+    await engine.dispose()
+
+    assert row.status == "processed", "CSV document must reach processed, not failed"
+    assert len(spans) == 3, "one span per data row"
+    assert "planning, vaguely" in spans[1][0], "quoted delimiter content must survive"
+    assert spans[2][0] == "Bob admin", "ragged row joins its cells"
+    assert chunk_count > 0, "chunks must flow through the shared pipeline"
+
+
+def test_csv_extractor_normalizes_quoted_and_ragged_rows():
+    """Parser edge cases: quoted delimiters, uneven column counts, offsets."""
+    from src.document_service.services.ocr_worker import extract_text_csv
+
+    spans = extract_text_csv(CSV_CONTENT)
+
+    assert len(spans) == 3
+    assert spans[0]["text"] == "name role notes"
+    assert spans[1]["text"] == "Alice user planning, vaguely"
+    assert spans[2]["text"] == "Bob admin"
+    assert spans[1]["char_start"] < spans[2]["char_start"]
+    assert spans[1]["char_end"] <= spans[1]["char_start"] + len(spans[1]["text"]) + 1
+    assert all(s["page_number"] == 0 for s in spans)
+    assert [s["span_index"] for s in spans] == [0, 1, 2]
+
+
+def test_csv_extension_is_supported_and_message_lists_it():
+    from src.document_service.services.ocr_worker import is_allowed_file, resolve_media_type
+
+    assert is_allowed_file("data.csv")
+    assert not is_allowed_file("data.exe")
+    # Declaration- and extension-driven resolution both recognise CSV.
+    assert resolve_media_type("text/csv", "data.csv", None) == "text/csv"
+    assert resolve_media_type(None, "data.csv", b"\x00blob") == "text/csv"
 
 
 def test_docx_extractor_returns_paragraph_text():
