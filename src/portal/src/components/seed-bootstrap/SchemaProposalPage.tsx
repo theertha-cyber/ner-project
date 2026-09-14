@@ -96,17 +96,23 @@ function CandidateCard({
         <div className="font-body text-xs mb-1" style={{ color: "var(--ink-3)" }}>
           Found in your documents
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {candidate.examples.map((example) => (
-            <span
-              key={example}
-              className="rounded px-2 py-0.5 font-mono text-xs"
-              style={{ background: "var(--surface-3)", color: "var(--ink-2)" }}
-            >
-              {example}
-            </span>
-          ))}
-        </div>
+        {candidate.examples.length === 0 ? (
+          <div className="font-body text-xs italic" style={{ color: "var(--ink-3)" }}>
+            No value found in the selected documents — proposed from your Q&amp;A pair.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {candidate.examples.map((example) => (
+              <span
+                key={example}
+                className="rounded px-2 py-0.5 font-mono text-xs"
+                style={{ background: "var(--surface-3)", color: "var(--ink-2)" }}
+              >
+                {example}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {candidate.created_entity_type && (
@@ -315,7 +321,7 @@ export function SchemaProposalPage() {
             </select>
             {qaPairDocuments.length === 0 && (
               <span className="font-body text-xs" style={{ color: "var(--ink-3)" }}>
-                Upload a PDF/DOC/DOCX/TXT with purpose &ldquo;Q&amp;A pair&rdquo; from Uploaded Documents to use one.
+                Upload a PDF/DOCX/TXT with purpose &ldquo;Q&amp;A pair&rdquo; from the Documents page to use one.
               </span>
             )}
           </div>

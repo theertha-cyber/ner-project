@@ -12,7 +12,10 @@ function hrefFor(n: AppNotification, role: string | undefined): string | null {
     if (role === "annotator" && n.resource_id) return `/annotate/review-batch/${n.resource_id}`;
     return "/annotate/automated/retrain";
   }
-  if (n.resource_type === "annotation_task") return "/annotate/automated/retrain";
+  // A manual annotation task completing is the Manual workflow's own signal that data is
+  // ready to train on — send the Tenant Admin straight to Models & Training scoped to Manual,
+  // the same place the Manual landing page's own "Train model" button goes.
+  if (n.resource_type === "annotation_task") return "/training-jobs?source=manual";
   if (n.resource_type === "import_file") return "/imported-documents";
   return null;
 }

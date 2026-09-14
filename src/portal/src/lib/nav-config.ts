@@ -62,10 +62,7 @@ function section(id: string, label: string, items: NavLeaf[]): NavSection {
 
 function manualLeaf(): NavLeaf {
   return link("annotate-manual", PenLine, "Manual", "/annotate/manual", {
-    children: [
-      link("annotation", PenLine, "Workspace", "/annotation"),
-      link("review-queue", FileDown, "Review Queue", "/review-queue"),
-    ],
+    children: [link("annotation", PenLine, "Workspace", "/annotation")],
   });
 }
 
@@ -75,7 +72,7 @@ function automatedLeaf(): NavLeaf {
       link("auto-schema", Sparkles, "1 · Suggest Entity Types", "/annotate/automated/schema"),
       link("auto-prelabel", BrainCircuit, "2 · Batch Pre-labeling", "/annotate/automated/prelabel"),
       link("auto-review", FileDown, "3 · Review Sample", "/annotate/automated/prelabel?tab=review"),
-      link("auto-retrain", BrainCircuit, "4 · Retraining", "/annotate/automated/retrain"),
+      link("auto-retrain", BrainCircuit, "Retraining", "/annotate/automated/retrain"),
     ],
   });
 }
@@ -117,7 +114,11 @@ export function navFor(role: Role): NavItem[] {
     case "annotator":
       return [
         link("dashboard", LayoutDashboard, "Dashboard", "/dashboard"),
-        section("annotate", "Annotate", [manualLeaf(), importLeaf()]),
+        section("annotate", "Annotate", [
+          manualLeaf(),
+          importLeaf(),
+          link("annotate-review-batch", FileDown, "Batch Review", "/annotate/review-batch"),
+        ]),
       ];
 
     case "business_user":
@@ -211,7 +212,6 @@ export const SCREEN_TITLES: Record<string, [title: string, path: string]> = {
   models: ["Models & Training", "/training-jobs"],
   documents: ["Uploaded Documents", "/documents"],
   "imported-documents": ["Imported Files", "/imported-documents"],
-  "review-queue": ["Review Queue", "/review-queue"],
   // Legacy routes — kept so their titles resolve while redirects are in flight.
   "schema-proposals": ["Suggest Entity Types", "/schema-proposals"],
   "prelabel-batches": ["Batch Pre-labeling", "/prelabel-batches"],

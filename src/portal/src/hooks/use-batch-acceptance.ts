@@ -39,10 +39,10 @@ export function useStartAcceptanceReview() {
   });
 }
 
-export function useBatchAcceptance(batchId: string | null) {
+export function useBatchAcceptance(batchId: string | null, enabled = true) {
   return useQuery<BatchAcceptance>({
     queryKey: ["batch-acceptance", batchId],
-    enabled: !!batchId,
+    enabled: !!batchId && enabled,
     retry: false,
     queryFn: async () => {
       const res = await authFetch(`/api/v1/prelabel-batches/${batchId}/acceptance`);

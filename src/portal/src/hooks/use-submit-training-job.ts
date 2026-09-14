@@ -6,11 +6,13 @@ export function useSubmitTrainingJob() {
   const queryClient = useQueryClient();
 
   return useMutation<TrainingJob, Error, SubmitJobPayload>({
-    mutationFn: async () => {
+    mutationFn: async (payload) => {
       const res = await authFetch("/api/v1/training-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(
+          payload?.sourceScope ? { source_scope: payload.sourceScope } : {},
+        ),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);

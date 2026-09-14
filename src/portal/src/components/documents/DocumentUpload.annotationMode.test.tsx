@@ -121,8 +121,10 @@ function dropFiles(files: File[]) {
   fireEvent.drop(zone, { dataTransfer: { files } });
 }
 
-function renderUpload(purpose: "training" | "query" = "training") {
-  return render(<DocumentUpload purpose={purpose} />, { wrapper: createWrapper() });
+function renderUpload(purpose: "training" | "query" = "training", defaultAnnotationMode?: "manual" | "automated") {
+  return render(<DocumentUpload purpose={purpose} defaultAnnotationMode={defaultAnnotationMode} />, {
+    wrapper: createWrapper(),
+  });
 }
 
 describe("DocumentUpload — annotation mode", () => {
@@ -153,6 +155,22 @@ describe("DocumentUpload — annotation mode", () => {
     expect(screen.queryByText(/Annotation mode/i)).toBeNull();
   });
 
+  it("seeds the initial selection from defaultAnnotationMode", () => {
+    renderUpload("training", "automated");
+    expect(modeRadio("Automated").checked).toBe(true);
+    expect(modeRadio("Manual").checked).toBe(false);
+  });
+
+  it("resets to Manual after a batch even when seeded as Automated", async () => {
+    renderUpload("training", "automated");
+    expect(modeRadio("Automated").checked).toBe(true);
+
+    dropFiles([createFile("a.pdf")]);
+
+    await waitFor(() => expect(screen.getByText(/uploaded successfully|Upload successful/)).toBeDefined());
+    await waitFor(() => expect(modeRadio("Manual").checked).toBe(true));
+  });
+
   // Row 3
   it("resets_to_manual_after_batch", async () => {
     renderUpload("training");
@@ -166,13 +184,22 @@ describe("DocumentUpload — annotation mode", () => {
     expect(modeRadio("Automated").checked).toBe(false);
   });
 
-  // Row 4
-  it("disables_automated_without_entity_types", () => {
+  // Row 4 — Automated stays selectable with zero active entity types: forcing Manual here
+  // used to push tenant admins into creating a throwaway "sample" type just to unlock the
+  // radio, which then polluted the Suggest Entity Types prompt as an "already configured"
+  // type, suppressing the real suggestion. Upload always succeeds regardless; only the
+  // per-document pre-label trigger has nothing to extract against, and that failure is
+  // reported per file (see manual_issues_no_prelabel_requests-style handling), never blocks
+  // the batch.
+  it("automated_stays_enabled_without_entity_types", () => {
     entityTypes = [];
     renderUpload("training");
-    expect(modeRadio("Automated").disabled).toBe(true);
+    expect(modeRadio("Automated").disabled).toBe(false);
     expect(modeRadio("Manual").disabled).toBe(false);
-    expect(screen.getByText(/at least one active entity type/i)).toBeDefined();
+    expect(screen.queryByText(/at least one active entity type/i)).toBeNull();
+
+    fireEvent.click(modeRadio("Automated"));
+    expect(screen.getByText(/won.t find anything to extract/i)).toBeDefined();
   });
 
   // Row 5 — QA pairs are an enhancement, never a precondition (design.md Decision 5).

@@ -135,9 +135,9 @@ export function AnnotationPage() {
     // CSS-only focus mode — no fullscreen API
   }, []);
 
-  // Task 3.4 — prepend new task from assignment form and close it
-  const handleTaskAssigned = useCallback((newTask: AnnotationTask) => {
-    setLocallyPrependedTasks((prev) => [newTask, ...prev]);
+  // Task 3.4 — prepend newly-assigned tasks (one or many) from the assignment form and close it
+  const handleTaskAssigned = useCallback((newTasks: AnnotationTask[]) => {
+    setLocallyPrependedTasks((prev) => [...newTasks, ...prev]);
     setIsAssignFormOpen(false);
     queryClient.invalidateQueries({ queryKey: ["annotation-tasks"] });
   }, [queryClient]);

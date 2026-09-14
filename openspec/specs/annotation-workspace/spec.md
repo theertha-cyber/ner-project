@@ -5,7 +5,9 @@
 Annotator-facing workspace for creating and managing entity spans on documents, pre-labeling via base label mapping, annotation task management, and dataset export.
 
 ---
+
 ## Requirements
+
 ### Requirement: Span CRUD
 
 The system SHALL expose endpoints to create, read, update, and delete entity spans on a document's text. Each span SHALL reference an entity type from the tenant's configured entity types, specify start and end character offsets into the document text, and carry a confidence score. Spans SHALL be stored in the tenant's isolated schema. Only confirmed (non-suggested) spans are returned by these endpoints; suggested spans from pre-labeling are managed separately. The portal SHALL issue at most one create-span request for each single-token click or multi-token drag annotation gesture.
@@ -215,6 +217,8 @@ The system SHALL derive BIO tags from each span's `char_start` and `char_end` va
 
 The system SHALL emit `imported_annotations` rows unchanged, without windowing or re-tokenisation.
 
+The endpoint SHALL accept an optional `source` query parameter of `manual`, `automated`, or `import`, restricting the export to that one workflow's data — Manual, Automated, and Import are independent workflows, and a training run scoped to one SHALL NOT include another's data. A span carrying a `span_batch_provenance` row was promoted from an accepted automated batch; every other confirmed span is manual (workspace annotation or the production review queue). `source=manual` SHALL include only spans with no `span_batch_provenance` row. `source=automated` SHALL include only spans that have one. `source=import` SHALL include only `imported_annotations` rows and SHALL NOT query `spans` at all. Omitting `source` SHALL combine every source, matching the endpoint's behavior before this parameter existed. A `source` value outside this vocabulary SHALL be rejected with `422`.
+
 #### Scenario: Export annotation dataset
 
 - **GIVEN** a tenant with 2 annotated documents and 1 unannotated document, each within the window budget
@@ -287,3 +291,35 @@ works at Acme Corp"` and a confirmed span for `"Acme Corp"` of type `organizatio
 - **THEN** exactly 3 lines SHALL be emitted for the imported rows
 - **AND** the oversized imported row SHALL be emitted with its tokens and tags unchanged
 
+#### Scenario: Manual source excludes automated-promoted spans
+
+- **GIVEN** a document with one manually-confirmed span and one span promoted from an accepted automated batch
+- **WHEN** a Tenant Admin GETs `/api/v1/annotation-export?source=manual`
+- **THEN** the manually-confirmed span's tokens SHALL carry their entity tag
+- **AND** the automated-promoted span's tokens SHALL be tagged `O`
+
+#### Scenario: Automated source includes only promoted spans
+
+- **GIVEN** the same document as the previous scenario
+- **WHEN** a Tenant Admin GETs `/api/v1/annotation-export?source=automated`
+- **THEN** the automated-promoted span's tokens SHALL carry their entity tag
+- **AND** the manually-confirmed span's tokens SHALL be tagged `O`
+
+#### Scenario: Import source returns only imported rows and skips spans entirely
+
+- **GIVEN** a tenant with confirmed spans on documents and separate rows in `imported_annotations`
+- **WHEN** a Tenant Admin GETs `/api/v1/annotation-export?source=import`
+- **THEN** the response SHALL contain exactly the `imported_annotations` rows
+- **AND** SHALL NOT contain any record derived from `spans`
+
+#### Scenario: Omitting source combines every source
+
+- **GIVEN** a tenant with manual spans, automated-promoted spans, and imported rows
+- **WHEN** a Tenant Admin GETs `/api/v1/annotation-export` with no `source` parameter
+- **THEN** the response SHALL contain records derived from every source
+
+#### Scenario: An invalid source value is rejected
+
+- **GIVEN** any tenant
+- **WHEN** a Tenant Admin GETs `/api/v1/annotation-export?source=bogus`
+- **THEN** the response SHALL have status 422

@@ -4,10 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/hooks";
 
 const mockReplace = vi.fn();
+const mockPush = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useSearchParams: vi.fn(() => new URLSearchParams()),
-  useRouter: vi.fn(() => ({ replace: mockReplace })),
+  useRouter: vi.fn(() => ({ replace: mockReplace, push: mockPush })),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -38,6 +39,7 @@ describe("TrainingJobsPage", () => {
   beforeEach(() => {
     mockFetch.mockReset();
     mockReplace.mockReset();
+    mockPush.mockReset();
     mockFetch.mockResolvedValue(
       new Response(JSON.stringify({ items: [], total: 0, page: 1, per_page: 50 }), {
         status: 200,
@@ -50,6 +52,7 @@ describe("TrainingJobsPage", () => {
     expect(screen.getByText("Training Jobs")).toBeDefined();
     expect(screen.getByText("Model Versions")).toBeDefined();
     expect(screen.getByText("+ Submit job")).toBeDefined();
+    expect(screen.queryByText("Retraining & promotion evidence →")).toBeNull();
   });
 
   it("renders submit job button", async () => {
@@ -212,6 +215,33 @@ describe("TrainingJobsPage", () => {
 
       expect(await screen.findAllByText("v2")).toHaveLength(2); // list card + detail header
       expect(await screen.findByText("Promote")).toBeDefined();
+    });
+
+    it("shows a link to the retraining/promotion evidence page, not the jobs view's submit button", async () => {
+      vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams("view=models") as any);
+      vi.mocked(useAuth).mockReturnValue({
+        user: { role: "tenant_admin", tenantId: "t1", userId: "u1", email: "a@b.com", tenantSlug: null },
+      } as any);
+
+      render(<TrainingJobsPage />, { wrapper: createWrapper() });
+
+      const cta = await screen.findByText("Retraining & promotion evidence →");
+      expect(screen.queryByText("+ Submit job")).toBeNull();
+
+      fireEvent.click(cta);
+      expect(mockPush).toHaveBeenCalledWith("/annotate/automated/retrain");
+    });
+
+    it("does not show the retraining/promotion evidence link to a system_admin", async () => {
+      vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams("view=models") as any);
+      vi.mocked(useAuth).mockReturnValue({
+        user: { role: "system_admin", tenantId: null, userId: "u1", email: "a@b.com", tenantSlug: null },
+      } as any);
+
+      render(<TrainingJobsPage />, { wrapper: createWrapper() });
+
+      await screen.findByText("Model Versions");
+      expect(screen.queryByText("Retraining & promotion evidence →")).toBeNull();
     });
   });
 });

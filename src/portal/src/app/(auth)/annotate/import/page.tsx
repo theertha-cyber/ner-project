@@ -31,15 +31,32 @@ export default function ImportAnnotationLanding() {
         { label: "files training-eligible", value: eligibleFiles, tone: "good", href: "/imported-documents" },
       ];
 
-  const workCards: WorkCard[] = [
-    {
-      title: "Imported files",
-      description: "Rows that arrived pre-labelled, with the count still needing a type mapping or a human pass.",
-      cta: "Open imported files",
-      href: "/imported-documents",
-      count: pendingRows || undefined,
-    },
-  ];
+  // Imported labels skip labeling entirely, so the workflow is just get the file in, then
+  // train on it — no review step in between. An annotator never imports or trains, only
+  // reviews, so they keep the single existing card instead of this two-step workflow.
+  const workCards: WorkCard[] = isAnnotator
+    ? [
+        {
+          title: "Imported files",
+          description: "Review rows that arrived pre-labelled.",
+          cta: "Open imported files",
+          href: "/imported-documents",
+        },
+      ]
+    : [
+        {
+          title: "1. Import annotations",
+          description: "Bring in a vendor export, gold set, or previous project's labels.",
+          cta: "Import annotations",
+          href: "/imported-documents?import=1",
+        },
+        {
+          title: "2. Train model",
+          description: "Use the imported annotations to train — no review required first.",
+          cta: "Train model",
+          href: "/training-jobs?source=import",
+        },
+      ];
 
   return (
     <AnnotateLanding
@@ -52,6 +69,7 @@ export default function ImportAnnotationLanding() {
       }
       stats={stats}
       workCards={workCards}
+      workCardsLabel={isAnnotator ? "Where the work is" : "Your workflow"}
     >
       <p style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 18, maxWidth: 620, lineHeight: 1.6 }}>
         Supported formats: <code>.txt</code>, <code>.json</code>, <code>.jsonl</code> (token/tag rows).

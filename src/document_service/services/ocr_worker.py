@@ -45,6 +45,13 @@ async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], e
 
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
+# Q&A-pair documents are guidance text, not scanned pages, so they additionally accept the
+# text-bearing office formats a team is likely to have written one in. `.doc` (the legacy
+# binary format) is deliberately excluded: it cannot be parsed without a heavyweight
+# dependency, and asking for a re-save as .docx/.pdf/.txt is the honest failure.
+QA_PAIR_EXTRA_EXTENSIONS = {".txt", ".docx"}
+QA_PAIR_ALLOWED_EXTENSIONS = ALLOWED_EXTENSIONS | QA_PAIR_EXTRA_EXTENSIONS
+
 
 def get_extension(filename: str) -> str:
     dot = filename.rfind(".")
@@ -53,26 +60,35 @@ def get_extension(filename: str) -> str:
     return filename[dot:].lower()
 
 
-def is_allowed_file(filename: str) -> bool:
-    return get_extension(filename) in ALLOWED_EXTENSIONS
+def is_allowed_file(filename: str, purpose: str | None = None) -> bool:
+    allowed = QA_PAIR_ALLOWED_EXTENSIONS if purpose == "qa_pair" else ALLOWED_EXTENSIONS
+    return get_extension(filename) in allowed
 
 
 def extract_text_pdf(file_bytes: bytes) -> list[dict]:
-    import fitz
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    """Rasterise every page and OCR it with Tesseract — one span per page.
+
+    PyMuPDF's text-layer extraction is deliberately not used: its default reader inserts
+    layout-driven whitespace and keeps line-break hyphenation, which breaks the exact-match
+    grounding the automated-annotation and schema-proposal paths rely on. OCR of a clean
+    300-DPI render gives text closer to what a reader sees.
+    """
+    from pdf2image import convert_from_bytes
+    import pytesseract
+
+    images = convert_from_bytes(file_bytes, dpi=300)
     spans = []
     char_offset = 0
-    for page_num, page in enumerate(doc):
-        text = page.get_text()
+    for page_num, image in enumerate(images):
+        page_text = pytesseract.image_to_string(image)
         spans.append({
             "span_index": page_num,
-            "text": text,
+            "text": page_text,
             "char_start": char_offset,
-            "char_end": char_offset + len(text),
+            "char_end": char_offset + len(page_text),
             "page_number": page_num,
         })
-        char_offset += len(text) + 1
-    doc.close()
+        char_offset += len(page_text) + 1
     return spans
 
 
@@ -91,23 +107,49 @@ def extract_text_image(file_bytes: bytes) -> list[dict]:
     }]
 
 
-def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
-    from pdf2image import convert_from_bytes
-    import pytesseract
-    images = convert_from_bytes(file_bytes)
-    spans = []
-    char_offset = 0
-    for page_num, image in enumerate(images):
-        text = pytesseract.image_to_string(image)
-        spans.append({
-            "span_index": page_num,
-            "text": text,
-            "char_start": char_offset,
-            "char_end": char_offset + len(text),
-            "page_number": page_num,
-        })
-        char_offset += len(text) + 1
-    return spans
+def _single_span(text_value: str) -> list[dict]:
+    return [{
+        "span_index": 0,
+        "text": text_value,
+        "char_start": 0,
+        "char_end": len(text_value),
+        "page_number": 0,
+    }]
+
+
+def extract_text_plain(file_bytes: bytes) -> list[dict]:
+    """A .txt Q&A-pair document. UTF-8 with a lenient fallback so a stray byte does not
+    fail the whole upload."""
+    try:
+        text_value = file_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        text_value = file_bytes.decode("utf-8", errors="replace")
+    return _single_span(text_value)
+
+
+def extract_text_docx(file_bytes: bytes) -> list[dict]:
+    """A .docx Q&A-pair document. A .docx is a zip whose `word/document.xml` holds the body;
+    the paragraph text lives in <w:t> runs with <w:p> as the paragraph break. Parsed with the
+    standard library so no new dependency is pulled in for a guidance-only input."""
+    import io
+    import zipfile
+    import xml.etree.ElementTree as ET
+
+    with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+        xml_bytes = archive.read("word/document.xml")
+
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    root = ET.fromstring(xml_bytes)
+    paragraphs = []
+    for para in root.iter(f"{ns}p"):
+        runs = [node.text for node in para.iter(f"{ns}t") if node.text]
+        paragraphs.append("".join(runs))
+    return _single_span("\n".join(paragraphs))
+
+
+# Kept as a name other code/tests may import. PDF extraction is OCR-only now, so this is
+# the same routine as `extract_text_pdf`.
+extract_text_pdf_as_image = extract_text_pdf
 
 
 def _schema(tid: str) -> str:
@@ -154,10 +196,12 @@ async def process_document(document_id: str, tenant_id: str, blob_path: str, con
         ext = blob_path.split(".")[-1].lower() if "." in blob_path else ""
         if ext == "pdf":
             spans = extract_text_pdf(file_data)
-            if not spans or all(not s["text"].strip() for s in spans):
-                spans = extract_text_pdf_as_image(file_data)
         elif ext in ("jpg", "jpeg", "png", "tif", "tiff"):
             spans = extract_text_image(file_data)
+        elif ext == "txt":
+            spans = extract_text_plain(file_data)
+        elif ext == "docx":
+            spans = extract_text_docx(file_data)
         else:
             raise ValueError(f"Unsupported file extension: {ext}")
 

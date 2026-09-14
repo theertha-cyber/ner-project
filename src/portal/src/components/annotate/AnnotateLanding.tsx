@@ -23,8 +23,16 @@ interface AnnotateLandingProps {
   heading: string;
   intro: string;
   primaryAction?: { label: string; onClick: () => void; disabled?: boolean; disabledReason?: string };
+  /**
+   * Where the primary action renders. Defaults to "top", beside the heading. Use
+   * "belowWorkCards" when the action is the last of several ordered steps (e.g. Automated's
+   * "Start with step 1") — putting it at the top beside prerequisite work cards reads as the
+   * thing to click first, which is backwards.
+   */
+  primaryActionPosition?: "top" | "belowWorkCards";
   stats?: GlanceStat[];
   workCards?: WorkCard[];
+  workCardsLabel?: string;
   children?: ReactNode;
 }
 
@@ -38,11 +46,40 @@ export function AnnotateLanding({
   heading,
   intro,
   primaryAction,
+  primaryActionPosition = "top",
   stats,
   workCards,
+  workCardsLabel = "Where the work is",
   children,
 }: AnnotateLandingProps) {
   const router = useRouter();
+
+  const primaryActionButton = primaryAction && (
+    <div style={primaryActionPosition === "top" ? { textAlign: "right" } : { marginTop: 20 }}>
+      <button
+        onClick={primaryAction.onClick}
+        disabled={primaryAction.disabled}
+        style={{
+          padding: "9px 16px",
+          borderRadius: 9,
+          border: "none",
+          background: primaryAction.disabled ? "var(--surface-3)" : "var(--primary)",
+          color: primaryAction.disabled ? "var(--ink-3)" : "#fff",
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: primaryAction.disabled ? "not-allowed" : "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {primaryAction.label}
+      </button>
+      {primaryAction.disabled && primaryAction.disabledReason && (
+        <div style={{ fontSize: 11, color: "var(--bad)", marginTop: 4 }}>
+          {primaryAction.disabledReason}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="animate-fade-up" style={{ maxWidth: 960 }}>
@@ -53,32 +90,7 @@ export function AnnotateLanding({
             {intro}
           </p>
         </div>
-        {primaryAction && (
-          <div style={{ textAlign: "right" }}>
-            <button
-              onClick={primaryAction.onClick}
-              disabled={primaryAction.disabled}
-              style={{
-                padding: "9px 16px",
-                borderRadius: 9,
-                border: "none",
-                background: primaryAction.disabled ? "var(--surface-3)" : "var(--primary)",
-                color: primaryAction.disabled ? "var(--ink-3)" : "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: primaryAction.disabled ? "not-allowed" : "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {primaryAction.label}
-            </button>
-            {primaryAction.disabled && primaryAction.disabledReason && (
-              <div style={{ fontSize: 11, color: "var(--bad)", marginTop: 4 }}>
-                {primaryAction.disabledReason}
-              </div>
-            )}
-          </div>
-        )}
+        {primaryActionPosition === "top" && primaryActionButton}
       </div>
 
       {stats && stats.length > 0 && (
@@ -129,7 +141,7 @@ export function AnnotateLanding({
               marginBottom: 10,
             }}
           >
-            Where the work is
+            {workCardsLabel}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
             {workCards.map((c) => (
@@ -186,6 +198,8 @@ export function AnnotateLanding({
           </div>
         </>
       )}
+
+      {primaryActionPosition === "belowWorkCards" && primaryActionButton}
 
       {children}
     </div>

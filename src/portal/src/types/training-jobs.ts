@@ -14,10 +14,15 @@ export interface Hyperparams {
   max_seq_length: number;
 }
 
+/** Manual, Automated, and Import are independent workflows — a job trains on exactly one of
+ * them, or `null` for every source combined (jobs submitted before this scoping existed). */
+export type SourceScope = "manual" | "automated" | "import";
+
 export interface TrainingJob {
   id: string;
   tenant_id: string;
   status: JobStatus;
+  source_scope: SourceScope | null;
   hyperparams: Hyperparams | null;
   current_epoch: number | null;
   current_loss: number | null;
@@ -41,7 +46,9 @@ export interface TrainingJobListResponse {
   per_page: number;
 }
 
-export type SubmitJobPayload = Record<string, never> | undefined;
+export interface SubmitJobPayload {
+  sourceScope?: SourceScope;
+}
 
 export interface ApproveJobPayload {
   learning_rate: number;

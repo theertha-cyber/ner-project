@@ -37,16 +37,16 @@ from src.annotation_service.services.batch_acceptance import (
     agreement_rate,
     draw_sample,
 )
-from src.annotation_service.services.notify import notify
 from src.shared.config import settings
 from src.shared.entity_config_version import load_active_entity_config
 from src.shared.exceptions import NotFoundError
 
 router = APIRouter(tags=["seed-bootstrap"])
 
-# `initial` batches validate the model on a handful of documents and are reviewed by the
-# Tenant Admin; `large` batches are the main run and are reviewed by an Annotator Admin,
-# whose acceptance is the final annotation gate (design.md Decision 2).
+# `initial` batches validate the model on a handful of documents and are reviewed by an
+# Annotator Admin — no Tenant Admin approval is required. `large` batches are the main run
+# and are reviewed by no one: the moment pre-labeling finishes, every suggestion is promoted
+# straight to confirmed spans (annotation-workflow-review-simplification design.md Decision 1).
 BATCH_KIND_INITIAL = "initial"
 BATCH_KIND_LARGE = "large"
 INITIAL_BATCH_MAX_DOCS = 5
@@ -198,7 +198,7 @@ async def request_schema_proposal(
                     "code": "INVALID_QA_PAIR_DOCUMENT",
                     "message": (
                         "qa_pair_document_id must reference a document uploaded with "
-                        "purpose 'qa_pair' (supported types: PDF, DOC, DOCX, TXT)"
+                        "purpose 'qa_pair' (supported types: PDF, DOCX, TXT)"
                     ),
                 },
             )
@@ -529,6 +529,29 @@ async def create_prelabel_batch(
             },
         )
 
+    # The large batch is the tenant's main, unreviewed run — it only makes sense once an
+    # Annotator Admin has validated the model on the initial batch (annotation-workflow-review-
+    # simplification design.md Decision 2). This is enforced here, not only hidden in the
+    # portal's stepper, because the portal is not the only caller this endpoint has to trust.
+    if batch_kind == BATCH_KIND_LARGE:
+        approved_initial = await session.execute(
+            text(
+                f"SELECT 1 FROM {schema}.prelabel_batches "
+                "WHERE batch_kind = 'initial' AND annotator_review_status = 'approved' LIMIT 1"
+            )
+        )
+        if approved_initial.fetchone() is None:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "INITIAL_BATCH_NOT_APPROVED",
+                    "message": (
+                        "An Annotator Admin must approve an initial validation batch before a "
+                        "large batch can be started"
+                    ),
+                },
+            )
+
     entity_types = await load_active_entity_config(session, tenant_id)
     if not entity_types:
         raise HTTPException(
@@ -715,11 +738,11 @@ async def record_initial_batch_guidance(
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
-    """A Tenant Admin's corrections and note from reviewing one document of an `initial`
+    """An Annotator Admin's corrections and note from reviewing one document of an `initial`
     batch. Stored per (batch, document) and folded into the prompt when the subsequent
     `large` batch runs (design.md Decision 5). Repeated calls for the same document
     replace the previous guidance."""
-    require_tenant_admin(request)
+    require_roles(request, ANNOTATOR)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
     batch = await _load_batch(session, schema, batch_id)
@@ -792,12 +815,24 @@ async def _load_batch(session: AsyncSession, schema: str, batch_id: str):
 
 
 def _gate_acceptance_reviewer(request: Request, batch_kind: str) -> None:
-    """An `initial` batch is validated by the Tenant Admin; a `large` batch's acceptance
-    review is the Annotator Admin's final annotation gate (design.md Decision 2)."""
-    if batch_kind == BATCH_KIND_INITIAL:
-        require_roles(request, TENANT_ADMIN)
-    else:
-        require_roles(request, ANNOTATOR)
+    """An `initial` batch is validated by an Annotator Admin — no Tenant Admin approval.
+
+    A `large` batch has no acceptance review at all: it is promoted automatically when
+    pre-labeling finishes (`worker._auto_promote_large_batch`), so every acceptance-gate
+    endpoint refuses it outright rather than silently accepting a call that can no longer do
+    anything (annotation-workflow-review-simplification design.md Decision 1)."""
+    if batch_kind == BATCH_KIND_LARGE:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "LARGE_BATCH_NOT_REVIEWED",
+                "message": (
+                    "A large batch is not manually reviewed — its spans are promoted "
+                    "automatically once pre-labeling completes"
+                ),
+            },
+        )
+    require_roles(request, ANNOTATOR)
 
 
 async def _latest_initial_guidance(session: AsyncSession, schema: str) -> list[dict]:
@@ -1281,34 +1316,21 @@ async def accept_batch(
         },
     )
 
-    # A `large` batch an Annotator Admin accepts is the final annotation gate: the batch
-    # becomes training-eligible and the Tenant Admin is notified — no second Tenant Admin
-    # review (design.md Decisions 2 and 6). The conditional UPDATE + guarded notify make
-    # the transition fire exactly once even if `accept` is retried (ADR-011).
+    # Reaching this point means `batch_kind` is `initial` — `_gate_acceptance_reviewer` above
+    # refuses a `large` batch outright, since those are never manually reviewed (worker's
+    # `_auto_promote_large_batch` is the only path that promotes and marks one training-eligible).
+    # An Annotator Admin's approval of an `initial` batch records that it happened, but this is
+    # explicitly not the training-eligibility gate: an initial batch's only purpose is producing
+    # guidance for the subsequent large batch (design.md Decision 3 supersedes the prior
+    # tenant-admin-reviewed version of this rule).
+    await session.execute(
+        text(
+            f"UPDATE {schema}.prelabel_batches "
+            "SET annotator_review_status = 'approved' WHERE id = :id"
+        ),
+        {"id": batch_id},
+    )
     training_eligible = False
-    if batch_kind == BATCH_KIND_LARGE:
-        eligible_result = await session.execute(
-            text(
-                f"UPDATE {schema}.prelabel_batches "
-                "SET training_eligible_at = NOW(), annotator_review_status = 'approved' "
-                "WHERE id = :id AND training_eligible_at IS NULL"
-            ),
-            {"id": batch_id},
-        )
-        if eligible_result.rowcount:
-            training_eligible = True
-            await notify(
-                session,
-                tenant_id=tenant_id,
-                kind="automated_batch_approved",
-                title="Automated batch approved",
-                body=(
-                    f"An annotator has reviewed and approved automated batch {batch_id}. "
-                    f"The {promoted} confirmed spans are now eligible for model training."
-                ),
-                resource_type="prelabel_batch",
-                resource_id=batch_id,
-            )
 
     await session.commit()
 

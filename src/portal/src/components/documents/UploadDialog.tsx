@@ -6,10 +6,11 @@ import { DocumentUpload } from "./DocumentUpload";
 interface UploadDialogProps {
   open: boolean;
   onClose: () => void;
-  purpose?: "query" | "training";
+  purpose?: "query" | "training" | "qa_pair";
+  defaultAnnotationMode?: "manual" | "automated";
 }
 
-export function UploadDialog({ open, onClose, purpose = "query" }: UploadDialogProps) {
+export function UploadDialog({ open, onClose, purpose = "query", defaultAnnotationMode }: UploadDialogProps) {
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -32,7 +33,9 @@ export function UploadDialog({ open, onClose, purpose = "query" }: UploadDialogP
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold" style={{ color: "var(--ink)" }}>Upload Documents</h2>
+          <h2 className="text-base font-semibold" style={{ color: "var(--ink)" }}>
+            {purpose === "qa_pair" ? "Upload Q&A Pair" : "Upload Documents"}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -45,7 +48,7 @@ export function UploadDialog({ open, onClose, purpose = "query" }: UploadDialogP
             </svg>
           </button>
         </div>
-        <DocumentUpload purpose={purpose} />
+        <DocumentUpload purpose={purpose} defaultAnnotationMode={defaultAnnotationMode} />
       </div>
     </div>
   );

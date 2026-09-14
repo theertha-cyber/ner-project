@@ -54,10 +54,30 @@ describe("navFor", () => {
     }
   });
 
+  it("Automated's Retraining child carries no step-number prefix, unlike its siblings", () => {
+    const items = navFor("tenant_admin");
+    const annotate = items.find((i) => i.kind === "section" && i.label === "Annotate");
+    const automated =
+      annotate && annotate.kind === "section" && annotate.items.find((l) => l.href === "/annotate/automated");
+    const children = automated?.children ?? [];
+    const retrain = children.find((c) => c.href === "/annotate/automated/retrain");
+
+    expect(retrain?.label).toBe("Retraining");
+    const stepLabels = children.filter((c) => c.href !== "/annotate/automated/retrain").map((c) => c.label);
+    expect(stepLabels.every((label) => /^\d ·/.test(label))).toBe(true);
+  });
+
   it("business_user keeps its flat 4-item list", () => {
     const items = navFor("business_user");
     expect(items).toHaveLength(4);
     expect(flattenNav(items).map((l) => l.href)).not.toContain("/annotate/manual");
+  });
+
+  it("Manual carries only the Workspace child — no Review Queue", () => {
+    for (const role of ["tenant_admin", "annotator"] as const) {
+      const manual = flattenNav(navFor(role)).find((l) => l.id === "annotate-manual");
+      expect(manual?.children?.map((c) => c.href)).toEqual(["/annotation"]);
+    }
   });
 });
 

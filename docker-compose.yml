@@ -210,8 +210,16 @@ services:
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      # Without these, .env's `redis://localhost` is used inside the container, so
+      # `celery_app.send_task` in the schema-proposal / prelabel endpoints hangs
+      # trying to reach a Redis that isn't there and the browser sees "Failed to fetch".
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     depends_on:
       postgres-test:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       db-init:
         condition: service_completed_successfully

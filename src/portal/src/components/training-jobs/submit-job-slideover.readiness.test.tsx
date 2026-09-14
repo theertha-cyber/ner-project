@@ -57,7 +57,7 @@ describe("SubmitJobSlideover — readiness report", () => {
       blocks_submission: false,
     };
 
-    render(<SubmitJobSlideover open={true} onClose={vi.fn()} />, { wrapper: createWrapper() });
+    render(<SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="automated" />, { wrapper: createWrapper() });
 
     await waitFor(() => {
       expect(screen.getByText("person_name")).toBeDefined();
@@ -83,7 +83,7 @@ describe("SubmitJobSlideover — readiness report", () => {
       blocks_submission: false,
     };
 
-    render(<SubmitJobSlideover open={true} onClose={vi.fn()} />, { wrapper: createWrapper() });
+    render(<SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="automated" />, { wrapper: createWrapper() });
 
     await waitFor(() => {
       expect(screen.getByText("person_name")).toBeDefined();
@@ -104,7 +104,7 @@ describe("SubmitJobSlideover — readiness report", () => {
       blocks_submission: false,
     };
 
-    render(<SubmitJobSlideover open={true} onClose={vi.fn()} />, { wrapper: createWrapper() });
+    render(<SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="automated" />, { wrapper: createWrapper() });
 
     await waitFor(() => {
       expect(screen.getByText(/every entity type meets the threshold/i)).toBeDefined();
@@ -114,7 +114,7 @@ describe("SubmitJobSlideover — readiness report", () => {
   it("keeps submission enabled when the readiness report cannot be loaded", async () => {
     readiness = undefined;
 
-    render(<SubmitJobSlideover open={true} onClose={vi.fn()} />, { wrapper: createWrapper() });
+    render(<SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="automated" />, { wrapper: createWrapper() });
 
     await waitFor(() => {
       expect(screen.getByText(/unable to check per-type readiness/i)).toBeDefined();

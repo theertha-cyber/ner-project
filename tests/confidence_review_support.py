@@ -128,6 +128,7 @@ def tenant_tables_sql(schema: str) -> list[str]:
                 id VARCHAR PRIMARY KEY,
                 tenant_id VARCHAR NOT NULL,
                 status VARCHAR(30) NOT NULL DEFAULT 'pending_approval',
+                source_scope VARCHAR(16),
                 hyperparams JSONB,
                 celery_task_id VARCHAR,
                 current_epoch INTEGER,

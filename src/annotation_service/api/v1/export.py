@@ -1,6 +1,6 @@
 import json
 import re
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from src.shared.database import get_engine
@@ -8,6 +8,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from fastapi.responses import PlainTextResponse
 
 router = APIRouter(tags=["export"])
+
+# Manual, Automated, and Import are independent workflows (manual-training-data-source-
+# scoping) — a training job scoped to one of these trains only on that workflow's data.
+SOURCE_MANUAL = "manual"
+SOURCE_AUTOMATED = "automated"
+SOURCE_IMPORT = "import"
+VALID_SOURCES = (SOURCE_MANUAL, SOURCE_AUTOMATED, SOURCE_IMPORT)
 
 
 def _schema(tenant_id: str) -> str:
@@ -115,11 +122,28 @@ def _bio_tags_from_offsets(
 async def export_annotations(
     entity_types: str | None = Query(None, alias="entity_types"),
     document_ids: str | None = Query(None, alias="document_ids"),
+    source: str | None = Query(
+        None,
+        description=(
+            "Restrict the export to one workflow's data: 'manual' (spans with no "
+            "span_batch_provenance row), 'automated' (spans promoted from a batch), or "
+            "'import' (imported_annotations rows only). Omit for every source combined."
+        ),
+    ),
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
+
+    if source is not None and source not in VALID_SOURCES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_SOURCE",
+                "message": f"source must be one of {list(VALID_SOURCES)}",
+            },
+        )
 
     type_filter_set: set[str] | None = None
     if entity_types:
@@ -149,9 +173,32 @@ async def export_annotations(
 
     lines: list[str] = []
 
-    if doc_ids:
+    # Import lives in a wholly separate table (`imported_annotations`) and never becomes a
+    # `spans` row, so scoping to 'import' skips the spans query entirely rather than filtering
+    # it to zero rows.
+    if doc_ids and source != SOURCE_IMPORT:
+        # A span with a `span_batch_provenance` row was promoted from an accepted automated
+        # batch; every other confirmed span is manual (workspace / review-queue). Same
+        # distinction `accumulation.py`'s `by_source` breakdown already uses.
+        if source == SOURCE_AUTOMATED:
+            provenance_join = f"JOIN {schema}.span_batch_provenance bp ON bp.span_id = sp.id"
+        elif source == SOURCE_MANUAL:
+            provenance_join = (
+                f"LEFT JOIN {schema}.span_batch_provenance bp ON bp.span_id = sp.id"
+            )
+        else:
+            provenance_join = ""
+        source_clause = ""
+        if source == SOURCE_MANUAL:
+            source_clause = " AND bp.span_id IS NULL"
+
         spans_result = await session.execute(
-            text(f"SELECT document_id, entity_type, char_start, char_end FROM {schema}.spans WHERE document_id = ANY(:ids) ORDER BY document_id, char_start"),
+            text(
+                f"SELECT sp.document_id, sp.entity_type, sp.char_start, sp.char_end "
+                f"FROM {schema}.spans sp {provenance_join} "
+                f"WHERE sp.document_id = ANY(:ids){source_clause} "
+                "ORDER BY sp.document_id, sp.char_start"
+            ),
             {"ids": doc_ids},
         )
         spans_rows = spans_result.fetchall()
@@ -186,26 +233,28 @@ async def export_annotations(
     # Imported rows join the training set only from files that are training-eligible
     # (every row imported, no unmapped type) and only for rows not still pending a type
     # mapping. Tagged with a source marker so a consumer can tell them from span-derived
-    # rows (import-annotation-training-eligibility change).
-    imported_result = await session.execute(
-        text(
-            f"SELECT ia.tokens, ia.tags FROM {schema}.imported_annotations ia "
-            f"LEFT JOIN {schema}.annotation_imports ai ON ai.source_file = ia.source_file "
-            "WHERE ia.pending_mapping = FALSE "
-            # A file with a header contributes only once it is training-eligible; rows with
-            # no header at all are legacy imports (predating the header table) and stay in.
-            "AND (ai.source_file IS NULL OR ai.training_eligible_at IS NOT NULL) "
-            "ORDER BY ia.source_file, ia.row_index"
-        ),
-    )
-    for ir in imported_result.fetchall():
-        tokens = list(ir[0])
-        tags = list(ir[1])
-        if type_filter_set:
-            tags = [
-                t if t == "O" or (t.startswith("B-") or t.startswith("I-")) and t[2:] in type_filter_set else "O"
-                for t in tags
-            ]
-        lines.append(json.dumps({"tokens": tokens, "tags": tags, "source": "import"}))
+    # rows (import-annotation-training-eligibility change). Skipped entirely when scoped to
+    # 'manual' or 'automated' — imports are a third, independent workflow, not a fallback.
+    if source in (None, SOURCE_IMPORT):
+        imported_result = await session.execute(
+            text(
+                f"SELECT ia.tokens, ia.tags FROM {schema}.imported_annotations ia "
+                f"LEFT JOIN {schema}.annotation_imports ai ON ai.source_file = ia.source_file "
+                "WHERE ia.pending_mapping = FALSE "
+                # A file with a header contributes only once it is training-eligible; rows with
+                # no header at all are legacy imports (predating the header table) and stay in.
+                "AND (ai.source_file IS NULL OR ai.training_eligible_at IS NOT NULL) "
+                "ORDER BY ia.source_file, ia.row_index"
+            ),
+        )
+        for ir in imported_result.fetchall():
+            tokens = list(ir[0])
+            tags = list(ir[1])
+            if type_filter_set:
+                tags = [
+                    t if t == "O" or (t.startswith("B-") or t.startswith("I-")) and t[2:] in type_filter_set else "O"
+                    for t in tags
+                ]
+            lines.append(json.dumps({"tokens": tokens, "tags": tags, "source": "import"}))
 
     return PlainTextResponse("\n".join(lines) + "\n", media_type="application/jsonl")

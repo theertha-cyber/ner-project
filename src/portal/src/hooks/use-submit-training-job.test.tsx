@@ -20,16 +20,31 @@ describe("useSubmitTrainingJob", () => {
     mockFetch.mockReset();
   });
 
-  it("posts payload and returns created job", async () => {
-    const created = { id: "job-new", status: "pending_approval" };
+  it("posts the chosen source scope and returns the created job", async () => {
+    const created = { id: "job-new", status: "pending_approval", source_scope: "automated" };
     mockFetch.mockResolvedValue(new Response(JSON.stringify(created), { status: 201 }));
 
     const { result } = renderHook(() => useSubmitTrainingJob(), { wrapper: createWrapper() });
 
-    result.current.mutate(undefined);
+    result.current.mutate({ sourceScope: "automated" });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(created);
+
+    const [, init] = mockFetch.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({ source_scope: "automated" });
+  });
+
+  it("omits source_scope from the body when none is given", async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ id: "job-new" }), { status: 201 }));
+
+    const { result } = renderHook(() => useSubmitTrainingJob(), { wrapper: createWrapper() });
+
+    result.current.mutate({});
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const [, init] = mockFetch.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({});
   });
 
   it("throws on error response", async () => {
@@ -37,7 +52,7 @@ describe("useSubmitTrainingJob", () => {
 
     const { result } = renderHook(() => useSubmitTrainingJob(), { wrapper: createWrapper() });
 
-    result.current.mutate(undefined);
+    result.current.mutate({ sourceScope: "manual" });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error?.message).toBe("Bad request");

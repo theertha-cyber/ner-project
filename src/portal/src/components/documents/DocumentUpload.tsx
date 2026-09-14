@@ -6,6 +6,16 @@ import { usePrelabelTrigger } from "@/hooks/use-prelabel-trigger";
 import { useEntityTypes } from "@/hooks/use-entity-types";
 
 const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/tiff"];
+// Q&A-pair guidance documents are text, not scanned pages, so they accept the office text
+// formats a team is likely to have written one in. The browser reports .txt as text/plain
+// and .docx as this vendor type (or, on some systems, an empty string — the extension check
+// below is the backstop).
+const QA_PAIR_ACCEPTED_TYPES = [
+  "application/pdf",
+  "text/plain",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+const QA_PAIR_ACCEPTED_EXTENSIONS = [".pdf", ".txt", ".docx"];
 const MAX_SIZE = 50 * 1024 * 1024;
 const MAX_BATCH = 20;
 
@@ -34,18 +44,28 @@ interface TriggerFailure {
 
 interface DocumentUploadProps {
   /**
-   * Fixed upload purpose. Chosen by the caller from the signed-in role, not by the
-   * uploader: tenant admins upload for annotation only, business users for query only.
+   * Fixed upload purpose. Chosen by the caller from the signed-in role and the chosen
+   * action, not typed by the uploader: tenant admins upload for annotation or as a
+   * Q&A pair, business users for query only.
    */
-  purpose?: "query" | "training";
+  purpose?: "query" | "training" | "qa_pair";
+  /**
+   * Seeds the initial radio selection only — e.g. the Automated flow's own "Upload
+   * documents" hand-off lands here with Automated already selected, so the tenant admin
+   * doesn't have to remember to flip it. The per-batch reset to Manual (annotationMode
+   * persisting would silently send a later, unrelated batch through Automated by accident)
+   * is unaffected: it always resets to Manual, never back to this default.
+   */
+  defaultAnnotationMode?: AnnotationMode;
 }
 
-export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
+export function DocumentUpload({ purpose = "query", defaultAnnotationMode = "manual" }: DocumentUploadProps) {
+  const isQaPair = purpose === "qa_pair";
   const [dragOver, setDragOver] = useState(false);
   const [batch, setBatch] = useState<BatchItem[]>([]);
   const [batchIndex, setBatchIndex] = useState<number | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
-  const [annotationMode, setAnnotationMode] = useState<AnnotationMode>("manual");
+  const [annotationMode, setAnnotationMode] = useState<AnnotationMode>(defaultAnnotationMode);
   // The batch reports against the mode it actually ran under, not the live selector, which
   // resets to Manual the moment the batch finishes.
   const [batchMode, setBatchMode] = useState<AnnotationMode>("manual");
@@ -59,22 +79,35 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
   const { trigger } = usePrelabelTrigger();
   const { data: entityTypesData } = useEntityTypes();
 
-  // Gate on *active entity type count only*. Change 1 extracts entity types that have no
-  // `qa_examples` too, so QA pairs are an enhancement and must never be a precondition here.
+  // Informational only — Automated mode stays selectable with zero active entity types.
+  // Forcing Manual here used to push tenant admins into creating a throwaway "sample" entity
+  // type just to unlock the radio, and that placeholder then shows up in the Suggest Entity
+  // Types prompt as "already configured, do not propose again" (schema_proposal.py
+  // `build_existing_config_block`), quietly suppressing the real type the LLM would otherwise
+  // have proposed. The per-document trigger already degrades gracefully when there is nothing
+  // to extract against — see `usePrelabelTrigger`'s per-file failure handling below — so upload
+  // itself was never actually blocked; only the toggle was.
   const activeEntityTypeCount = (entityTypesData?.entity_types ?? []).filter(
     (et) => et.is_active,
   ).length;
-  const automatedDisabled = activeEntityTypeCount === 0;
+  const automatedHasNoActiveTypes = activeEntityTypeCount === 0;
 
   const validate = useCallback((file: File): string | null => {
-    if (!ACCEPTED_TYPES.includes(file.type)) {
+    if (isQaPair) {
+      const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+      const okType = QA_PAIR_ACCEPTED_TYPES.includes(file.type);
+      const okExt = QA_PAIR_ACCEPTED_EXTENSIONS.includes(ext);
+      if (!okType && !okExt) {
+        return `File type "${file.type || ext || "unknown"}" is not supported. Accepted: PDF, TXT, DOCX.`;
+      }
+    } else if (!ACCEPTED_TYPES.includes(file.type)) {
       return `File type "${file.type}" is not supported. Accepted: PDF, JPEG, PNG, TIFF.`;
     }
     if (file.size > MAX_SIZE) {
       return `File exceeds the 50MB limit (${(file.size / (1024 * 1024)).toFixed(1)}MB).`;
     }
     return null;
-  }, []);
+  }, [isQaPair]);
 
   const handleFiles = useCallback(
     async (files: File[]) => {
@@ -90,7 +123,7 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
       reset();
       cancelRequested.current = false;
 
-      const modeForBatch: AnnotationMode = automatedDisabled ? "manual" : annotationMode;
+      const modeForBatch: AnnotationMode = annotationMode;
       setBatchMode(modeForBatch);
       setTriggerIndex(null);
       setTriggerTotal(0);
@@ -195,7 +228,7 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
       // batches to an external LLM.
       setAnnotationMode("manual");
     },
-    [upload, validate, reset, purpose, annotationMode, automatedDisabled, trigger],
+    [upload, validate, reset, purpose, annotationMode, trigger],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -253,7 +286,9 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm" style={{ color: "var(--ink-2)" }}>
-        {purpose === "training"
+        {isQaPair
+          ? "This question/answer document guides which entity types are proposed during schema suggestion. It is not annotated or chat-searchable."
+          : purpose === "training"
           ? "These documents are uploaded for annotation."
           : "These documents are uploaded for querying (chat-searchable)."}
       </p>
@@ -282,16 +317,15 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
                 name="annotation-mode"
                 value="automated"
                 checked={annotationMode === "automated"}
-                disabled={automatedDisabled}
                 onChange={() => setAnnotationMode("automated")}
               />
               Automated
             </label>
           </div>
-          {automatedDisabled && (
+          {annotationMode === "automated" && automatedHasNoActiveTypes && (
             <p className="text-xs" style={{ color: "var(--ink-3)" }}>
-              Automated pre-labeling needs at least one active entity type. Configure entity
-              types first.
+              No entity types are active yet, so pre-labeling won&apos;t find anything to extract
+              until you approve some — the upload itself will still go through.
             </p>
           )}
         </fieldset>
@@ -322,7 +356,7 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif"
+          accept={isQaPair ? ".pdf,.txt,.docx" : ".pdf,.jpg,.jpeg,.png,.tiff,.tif"}
           multiple
           className="hidden"
           onChange={handleInputChange}
@@ -411,7 +445,9 @@ export function DocumentUpload({ purpose = "query" }: DocumentUploadProps) {
               <span className="font-medium text-brand-primary">Click to upload</span> or drag and drop
             </p>
             <p className="mt-1 text-xs" style={{ color: "var(--ink-3)" }}>
-              PDF, JPEG, PNG, or TIFF (max 50MB, up to {MAX_BATCH} files)
+              {isQaPair
+                ? `PDF, TXT, or DOCX (max 50MB, up to ${MAX_BATCH} files)`
+                : `PDF, JPEG, PNG, or TIFF (max 50MB, up to ${MAX_BATCH} files)`}
             </p>
           </>
         )}

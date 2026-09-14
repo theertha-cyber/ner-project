@@ -18,7 +18,7 @@ export function useUpload() {
   const { getAccessToken } = useAuth();
 
   const upload = useCallback(
-    async (file: File, purpose: "query" | "training" = "query") => {
+    async (file: File, purpose: "query" | "training" | "qa_pair" = "query") => {
       setProgress(0);
       setError(null);
       setIsUploading(true);

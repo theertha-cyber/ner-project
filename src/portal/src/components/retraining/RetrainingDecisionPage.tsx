@@ -80,7 +80,7 @@ function AccumulationBreakdown() {
     <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
       <header className="flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-          Reviewed material since this model was trained
+          Production-review evidence
         </h2>
         {data.has_trained_model ? (
           <Chip>Model version {data.serving_model_version}</Chip>
@@ -88,6 +88,11 @@ function AccumulationBreakdown() {
           <Chip>Base model</Chip>
         )}
       </header>
+      <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+        Counts only spans confirmed through production review — someone checking a live
+        prediction and confirming or correcting it. It does not include manual annotation,
+        automated batches, or imports; those are counted separately below.
+      </p>
 
       {data.has_trained_model ? (
         <>
@@ -159,6 +164,10 @@ function AccumulationBreakdown() {
           <div className="mt-4 border-t border-[var(--border)] pt-4">
             <p className="text-xs uppercase text-[var(--text-tertiary)]">
               Training-eligible and waiting
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+              A separate count: new material from any workflow that no training run has
+              consumed yet, regardless of the production-review number above.
             </p>
             {total === 0 ? (
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
@@ -304,7 +313,9 @@ export function RetrainingDecisionPage() {
         <p className="mt-1 text-sm text-[var(--text-secondary)]">
           What has been reviewed since the serving model was trained, and how a finished run
           compares with the one currently serving. Both are evidence for a decision a person
-          makes — nothing here trains or promotes on its own.
+          makes — nothing here trains or promotes on its own. There is no schedule and no
+          required order: come back whenever you want to check, and retrain only when you decide
+          it is worth it.
         </p>
       </header>
 

@@ -151,11 +151,13 @@ def _assert_dataset_splittable(row_count: int, test_size: float = EVAL_SPLIT_FRA
         )
 
 
-def _load_annotated_dataset(tenant_id: str) -> list[dict]:
+def _load_annotated_dataset(tenant_id: str, source_scope: str | None = None) -> list[dict]:
     token = _make_service_token(tenant_id)
+    params = {"source": source_scope} if source_scope else {}
     resp = requests.get(
         f"{ANNOTATION_SERVICE_URL}/api/v1/annotation-export",
         headers={"Authorization": f"Bearer {token}"},
+        params=params,
         timeout=30,
     )
     resp.raise_for_status()
@@ -244,13 +246,15 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
 
     engine = _get_sync_engine()
     schema = _schema(tenant_id)
+    source_scope: str | None = None
     with engine.connect() as conn:
         row = conn.execute(
-            text(f"SELECT status FROM {schema}.training_jobs WHERE id = :id"),
+            text(f"SELECT status, source_scope FROM {schema}.training_jobs WHERE id = :id"),
             {"id": job_id},
         ).fetchone()
         if row is not None:
             status = row[0]
+            source_scope = row[1]
             if status in ("completed", "failed", "cancelled"):
                 import logging
                 logger = logging.getLogger(__name__)
@@ -277,7 +281,7 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
             started_at=datetime.now(timezone.utc),
         )
 
-        records = _load_annotated_dataset(tenant_id)
+        records = _load_annotated_dataset(tenant_id, source_scope=source_scope)
 
         # Captured here, alongside the export it describes, and held until completion. The
         # spans this run trains on are the ones that existed when the export was taken; a

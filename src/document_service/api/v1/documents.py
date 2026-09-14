@@ -18,13 +18,14 @@ from src.shared.entity_views import (
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-VALID_PURPOSES = {"query", "training"}
+VALID_PURPOSES = {"query", "training", "qa_pair"}
 
 # Upload purpose is a role capability, not an uploader choice: tenant admins upload
-# documents for annotation, business users upload documents for querying. Roles absent
-# from this map (system_admin, annotator) keep both purposes.
+# documents for annotation (and optional Q&A-pair guidance for schema proposal), business
+# users upload documents for querying. Roles absent from this map (system_admin, annotator)
+# keep every purpose.
 ROLE_ALLOWED_PURPOSES = {
-    "tenant_admin": {"training"},
+    "tenant_admin": {"training", "qa_pair"},
     "business_user": {"query"},
 }
 
@@ -64,7 +65,7 @@ async def upload_document(
     if purpose not in VALID_PURPOSES:
         raise HTTPException(
             status_code=422,
-            detail={"code": "VALIDATION_ERROR", "message": "purpose must be 'query' or 'training'"},
+            detail={"code": "VALIDATION_ERROR", "message": "purpose must be 'query', 'training', or 'qa_pair'"},
         )
 
     role = getattr(request.state, "role", None) if request is not None else None
@@ -78,10 +79,14 @@ async def upload_document(
             },
         )
 
-    if not is_allowed_file(file.filename or ""):
+    if not is_allowed_file(file.filename or "", purpose):
+        allowed_msg = (
+            ".pdf, .txt, .docx" if purpose == "qa_pair"
+            else ".pdf, .jpg, .jpeg, .png, .tif, .tiff"
+        )
         raise HTTPException(
             status_code=422,
-            detail={"code": "VALIDATION_ERROR", "message": f"File type '{get_extension(file.filename or '')}' is not supported. Allowed: .pdf, .jpg, .jpeg, .png, .tif, .tiff"},
+            detail={"code": "VALIDATION_ERROR", "message": f"File type '{get_extension(file.filename or '')}' is not supported. Allowed: {allowed_msg}"},
         )
 
     file_data = await file.read()
@@ -155,7 +160,9 @@ async def list_documents(
     purpose: str | None = Query(None),
     search: str | None = Query(None),
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
+    # Ceiling is high because the annotation console's batch and schema-proposal document
+    # pickers pull the whole processed set in one page rather than paginating a checkbox list.
+    per_page: int = Query(20, ge=1, le=1000),
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):

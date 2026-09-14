@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useReducer, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useEntityTypes } from "@/hooks/use-entity-types";
 import { authFetch } from "@/lib/auth-fetch";
@@ -69,6 +70,7 @@ export function ImportedDocumentsList({
   onSelectRow: (id: string) => void;
 }) {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const isTenantAdmin = user?.role === "tenant_admin";
   const importFiles = useImportFiles(isTenantAdmin);
   const requestRetrain = useRequestRetrain();
@@ -106,6 +108,15 @@ export function ImportedDocumentsList({
   useEffect(() => {
     fetchList();
   }, [fetchList]);
+
+  // The Import landing page's "Import file" workflow step links here with `?import=1` so the
+  // step actually opens the file picker, not just the list.
+  useEffect(() => {
+    if (canImport && searchParams.get("import") === "1") {
+      fileInputRef.current?.click();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const totalPages = data ? Math.ceil(data.total / perPage) : 0;
 

@@ -1,3 +1,4 @@
+import io
 import subprocess
 import uuid
 from pathlib import Path
@@ -463,3 +464,52 @@ class TestChunkingRestrictedToQueryPurpose:
         assert len(embed_calls) == 1
         assert span_count == 1
         assert status == "processed"
+
+
+class TestQaPairTextExtraction:
+    """The .txt and .docx paths a Q&A-pair document takes through the OCR worker. Pure
+    functions — no DB, no storage."""
+
+    def test_plain_text_is_decoded_to_one_span(self):
+        from src.document_service.services import ocr_worker
+
+        spans = ocr_worker.extract_text_plain(b"Q: What is the name?\nA: Aakash R P")
+        assert len(spans) == 1
+        assert spans[0]["text"] == "Q: What is the name?\nA: Aakash R P"
+        assert spans[0]["char_start"] == 0
+        assert spans[0]["char_end"] == len(spans[0]["text"])
+
+    def test_plain_text_tolerates_bad_bytes(self):
+        from src.document_service.services import ocr_worker
+
+        spans = ocr_worker.extract_text_plain(b"caf\xe9 resume")
+        assert "caf" in spans[0]["text"]
+
+    def test_docx_paragraphs_are_joined_with_newlines(self):
+        import zipfile
+        from src.document_service.services import ocr_worker
+
+        doc_xml = (
+            b'<?xml version="1.0"?>'
+            b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            b"<w:body>"
+            b"<w:p><w:r><w:t>Q: What is the candidate name?</w:t></w:r></w:p>"
+            b"<w:p><w:r><w:t>A: Aakash</w:t></w:r><w:r><w:t> R P</w:t></w:r></w:p>"
+            b"</w:body></w:document>"
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as archive:
+            archive.writestr("word/document.xml", doc_xml)
+
+        spans = ocr_worker.extract_text_docx(buf.getvalue())
+        assert spans[0]["text"] == "Q: What is the candidate name?\nA: Aakash R P"
+
+    def test_extension_gate_is_purpose_aware(self):
+        from src.document_service.services import ocr_worker
+
+        assert ocr_worker.is_allowed_file("qa.txt", "qa_pair") is True
+        assert ocr_worker.is_allowed_file("qa.docx", "qa_pair") is True
+        assert ocr_worker.is_allowed_file("qa.pdf", "qa_pair") is True
+        assert ocr_worker.is_allowed_file("qa.txt", "training") is False
+        assert ocr_worker.is_allowed_file("qa.doc", "qa_pair") is False
+        assert ocr_worker.is_allowed_file("scan.png", "training") is True

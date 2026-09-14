@@ -41,7 +41,7 @@ describe("SubmitJobSlideover", () => {
 
   it("shows preflight check with span count", async () => {
     render(
-      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      <SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="automated" />,
       { wrapper: createWrapper() },
     );
 
@@ -56,7 +56,7 @@ describe("SubmitJobSlideover", () => {
     );
 
     render(
-      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      <SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="automated" />,
       { wrapper: createWrapper() },
     );
 
@@ -73,7 +73,7 @@ describe("SubmitJobSlideover", () => {
     );
 
     render(
-      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      <SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="automated" />,
       { wrapper: createWrapper() },
     );
 
@@ -87,7 +87,7 @@ describe("SubmitJobSlideover", () => {
     mockFetch.mockResolvedValue(new Response("", { status: 500 }));
 
     render(
-      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      <SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="automated" />,
       { wrapper: createWrapper() },
     );
 
@@ -108,7 +108,7 @@ describe("SubmitJobSlideover", () => {
       );
 
     render(
-      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      <SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="automated" />,
       { wrapper: createWrapper() },
     );
 
@@ -134,7 +134,7 @@ describe("SubmitJobSlideover", () => {
     const onClose = vi.fn();
 
     render(
-      <SubmitJobSlideover open={true} onClose={onClose} />,
+      <SubmitJobSlideover open={true} onClose={onClose} sourceScope="automated" />,
       { wrapper: createWrapper() },
     );
 
@@ -158,7 +158,7 @@ describe("SubmitJobSlideover", () => {
       );
 
     const { container } = render(
-      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      <SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="automated" />,
       { wrapper: createWrapper() },
     );
 
@@ -175,8 +175,58 @@ describe("SubmitJobSlideover", () => {
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
         "/api/v1/training-jobs",
-        expect.objectContaining({ method: "POST", body: JSON.stringify({}) }),
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ source_scope: "automated" }),
+        }),
       );
     });
+  });
+
+  it("shows a locked source label with no picker when sourceScope is given", async () => {
+    render(
+      <SubmitJobSlideover open={true} onClose={vi.fn()} sourceScope="manual" />,
+      { wrapper: createWrapper() },
+    );
+
+    expect(screen.getByText("Training source:")).toBeDefined();
+    expect(screen.getByText("Manual annotation")).toBeDefined();
+    expect(screen.queryByRole("radio")).toBeNull();
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 confirmed spans/)).toBeDefined();
+    });
+  });
+
+  it("requires a source choice before submitting when none is given", async () => {
+    render(
+      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      { wrapper: createWrapper() },
+    );
+
+    expect(screen.getByText("Which workflow is this training run for?")).toBeDefined();
+    expect(screen.getByText(/choose a workflow above to check its confirmed spans/i)).toBeDefined();
+
+    const submitBtn = screen.getByRole("button", { name: /submit training job/i });
+    expect(submitBtn).toBeDisabled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("unlocks submit and the span preflight once a workflow is picked", async () => {
+    render(
+      <SubmitJobSlideover open={true} onClose={vi.fn()} />,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Automated batches" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 confirmed spans/)).toBeDefined();
+    });
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/annotation-export?source=automated"),
+      expect.anything(),
+    );
+    expect(screen.getByRole("button", { name: /submit training job/i })).not.toBeDisabled();
   });
 });

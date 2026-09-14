@@ -96,16 +96,51 @@ class FailingOnNthClient:
         return self.response
 
 
-async def _batch_of(client, engine, tenant, count, document_text=None):
+async def _batch_of(client, engine, tenant, count, document_text=None, batch_kind="initial"):
     kwargs = {} if document_text is None else {"document_text": document_text}
     doc_ids = [await add_document(engine, tenant, **kwargs) for _ in range(count)]
     resp = await client.post(
         "/api/v1/prelabel-batches",
-        json={"document_ids": doc_ids},
+        json={"document_ids": doc_ids, "batch_kind": batch_kind},
         headers=auth_header(tenant["tid"]),
     )
     assert resp.status_code == 202, resp.text
     return doc_ids, resp.json()["batch_id"]
+
+
+async def _approve_initial_batch(client, engine, tenant):
+    """Clear the gate a `large` batch now needs: one Annotator-Admin-approved `initial` batch.
+
+    Pre-labeling itself is exercised by `TestBatchExecution` — this only exists to satisfy
+    `INITIAL_BATCH_NOT_APPROVED` for the trigger test below, which is about the `large` kind's
+    lack of a document cap and has nothing to do with the initial-batch gate.
+    """
+    doc_ids, batch_id = await _batch_of(client, engine, tenant, 1, batch_kind="initial")
+    run_prelabel_batch_sync(tenant["tid"], batch_id, llm_client=StubLLMClient(DEFAULT_RESPONSE))
+    await client.post(
+        f"/api/v1/prelabel-batches/{batch_id}/acceptance",
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    suggestions = (
+        await client.get(
+            f"/api/v1/prelabel-batches/{batch_id}/acceptance",
+            headers=auth_header(tenant["tid"], "annotator"),
+        )
+    ).json()["suggestions"]
+    await client.post(
+        f"/api/v1/prelabel-batches/{batch_id}/acceptance/review",
+        json={
+            "dispositions": [
+                {"suggestion_id": s["id"], "disposition": "agree"} for s in suggestions
+            ]
+        },
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    accept = await client.post(
+        f"/api/v1/prelabel-batches/{batch_id}/acceptance/accept",
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    assert accept.status_code == 200, accept.text
 
 
 class TestBatchTrigger:
@@ -113,11 +148,13 @@ class TestBatchTrigger:
 
     async def test_enqueue_batch_returns_batch_id(self, client, engine, fake_send_task):
         tenant = await make_tenant(engine)
+        await _approve_initial_batch(client, engine, tenant)
+        fake_send_task.clear()  # only the large batch's enqueue is under test below
         doc_ids = [await add_document(engine, tenant) for _ in range(120)]
 
         resp = await client.post(
             "/api/v1/prelabel-batches",
-            json={"document_ids": doc_ids},
+            json={"document_ids": doc_ids, "batch_kind": "large"},
             headers=auth_header(tenant["tid"]),
         )
 
@@ -139,8 +176,11 @@ class TestBatchExecution:
     """verification.md rows 10-12."""
 
     async def test_single_document_failure_does_not_abort_batch(self, client, engine):
+        # 5 documents, not 10: an `initial` batch is capped at 5 (this test is about
+        # per-document failure isolation, not batch size, so it moved to the smaller kind
+        # rather than needing an approved-initial-batch gate just to use `large`).
         tenant = await make_tenant(engine)
-        doc_ids, batch_id = await _batch_of(client, engine, tenant, 10)
+        doc_ids, batch_id = await _batch_of(client, engine, tenant, 5)
 
         run_prelabel_batch_sync(
             tenant["tid"],
@@ -152,7 +192,7 @@ class TestBatchExecution:
             f"/api/v1/prelabel-batches/{batch_id}", headers=auth_header(tenant["tid"])
         )
         body = resp.json()
-        assert body["succeeded"] == 9
+        assert body["succeeded"] == 4
         assert body["failed"] == 1
         assert body["status"] == "completed"
 
@@ -169,7 +209,7 @@ class TestBatchExecution:
                     )
                 )
             ).scalar()
-        assert with_spans == 9
+        assert with_spans == 4
 
     async def test_batch_honours_entity_type_constraint(self, client, engine):
         tenant = await make_tenant(engine, entity_types=("institute", "person_name"))

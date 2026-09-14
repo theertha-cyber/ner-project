@@ -353,3 +353,134 @@ class TestCandidateDisposition:
                 )
             ).scalar()
         assert count == 1
+
+
+class TestQaDrivenProposal:
+    """A Q&A-pair document turns the proposal into schema transcription: one entity type per
+    Q&A pair, kept even when the seed documents contain no value for it."""
+
+    async def _seed_qa_proposal(self, client, engine, tenant, response):
+        doc_ids = [await add_document(engine, tenant) for _ in range(3)]
+        qa_id = await add_document(
+            engine,
+            tenant,
+            document_text=(
+                "What is the candidate's full name?\n"
+                "What is the candidate's notice period?\n"
+            ),
+            purpose="qa_pair",
+        )
+        resp = await client.post(
+            "/api/v1/schema-proposals",
+            json={"document_ids": doc_ids, "qa_pair_document_id": qa_id},
+            headers=auth_header(tenant["tid"]),
+        )
+        assert resp.status_code == 202, resp.text
+        proposal_id = resp.json()["proposal_id"]
+        run_schema_proposal_sync(
+            tenant["tid"], proposal_id, llm_client=StubLLMClient(response)
+        )
+        return proposal_id
+
+    async def test_ungrounded_candidate_survives_with_qa_answer_fallback(self, client, engine):
+        tenant = await make_tenant(engine)
+        proposal_id = await self._seed_qa_proposal(
+            client,
+            engine,
+            tenant,
+            _candidates(
+                # grounded in DOCUMENT_TEXT
+                ("full_name", "The candidate's name", ["John Doe", "Jane Roe"]),
+                # nowhere in the documents — the model falls back to the Q&A answer
+                ("notice_period", "How soon the candidate can start", ["2 months"]),
+            ),
+        )
+        resp = await client.get(
+            f"/api/v1/schema-proposals/{proposal_id}", headers=auth_header(tenant["tid"])
+        )
+        names = {c["name"]: c for c in resp.json()["candidates"]}
+        assert set(names) == {"full_name", "notice_period"}
+        # Kept as the model's fallback value, not dropped.
+        assert names["notice_period"]["examples"] == ["2 months"]
+        assert names["full_name"]["examples"] == ["John Doe", "Jane Roe"]
+
+    async def test_lenient_matching_ignores_spacing_and_punctuation(self):
+        from src.annotation_service.services.schema_proposal import validate_candidate_examples
+
+        docs = [{"text": "Current CGPA: 8.09/10.0 at Vellore  Institute of Technology"}]
+        candidates = [
+            {"name": "gpa", "description": "d", "examples": ["8.09 / 10.0"]},
+            {"name": "institute", "description": "d", "examples": ["Vellore Institute of Technology"]},
+            {"name": "phone", "description": "d", "examples": ["+91 99999 00000"]},  # absent
+        ]
+        out = {c["name"]: c["examples"] for c in validate_candidate_examples(
+            candidates, docs, require_grounding=False, lenient=True
+        )}
+        assert out["gpa"] == ["8.09 / 10.0"]
+        assert out["institute"] == ["Vellore Institute of Technology"]
+        # Absent from the doc, but no non-value phrase, so kept as the model's fallback value.
+        assert out["phone"] == ["+91 99999 00000"]
+
+    async def test_non_value_answer_is_not_kept_as_an_example(self, client, engine):
+        tenant = await make_tenant(engine)
+        proposal_id = await self._seed_qa_proposal(
+            client,
+            engine,
+            tenant,
+            _candidates(
+                ("notice_period", "How soon", ["Not specified in the document"]),
+            ),
+        )
+        candidate = await _candidate_named(client, tenant, proposal_id, "notice_period")
+        assert candidate["examples"] == []
+
+    async def test_candidate_cap_follows_qa_pair_count(self):
+        from src.annotation_service.services.schema_proposal import (
+            MAX_CANDIDATES,
+            count_qa_pairs,
+            resolve_max_candidates,
+        )
+
+        twenty = "\n".join(f"Q: question {i}?\nA: answer {i}" for i in range(20))
+        assert count_qa_pairs(twenty) == 20
+        assert resolve_max_candidates(twenty) == 25  # 20 + headroom
+
+        fifty = "\n".join(f"{i}. Field {i}?" for i in range(1, 51))
+        assert resolve_max_candidates(fifty) == 55
+
+        assert resolve_max_candidates(None) == MAX_CANDIDATES
+        assert resolve_max_candidates("   ") == MAX_CANDIDATES
+
+    async def test_hallucinated_example_is_still_stripped_when_grounded_ones_exist(
+        self, client, engine
+    ):
+        tenant = await make_tenant(engine)
+        proposal_id = await self._seed_qa_proposal(
+            client,
+            engine,
+            tenant,
+            _candidates(
+                ("full_name", "The candidate's name", ["John Doe", "Fabricated Person"]),
+            ),
+        )
+        candidate = await _candidate_named(client, tenant, proposal_id, "full_name")
+        assert candidate["examples"] == ["John Doe"]
+
+    async def test_discovery_mode_unchanged_without_qa_pair(self, client, engine):
+        """No Q&A pair: an ungroundable candidate is still dropped."""
+        tenant = await make_tenant(engine)
+        proposal_id = await _seed_proposal(
+            client,
+            engine,
+            tenant,
+            _candidates(
+                ("institute", "A school", ["Vellore Institute of Technology"]),
+                ("degree", "A qualification", ["Bachelor of Technology"]),
+            ),
+        )
+        resp = await client.get(
+            f"/api/v1/schema-proposals/{proposal_id}", headers=auth_header(tenant["tid"])
+        )
+        names = {c["name"] for c in resp.json()["candidates"]}
+        assert "institute" in names
+        assert "degree" not in names

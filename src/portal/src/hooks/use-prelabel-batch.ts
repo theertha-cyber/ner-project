@@ -20,7 +20,8 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
  */
 export interface CreateBatchPayload {
   documentIds: string[];
-  /** `initial` (≤5 docs, Tenant-Admin reviewed) or `large` (main batch, Annotator reviewed). */
+  /** `initial` (≤5 docs, Annotator-reviewed) or `large` (main batch, auto-promoted — needs an
+   * already-approved `initial` batch). */
   batchKind: BatchKind;
 }
 
@@ -43,6 +44,10 @@ export function useCreatePrelabelBatch() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prelabel-batch"] });
+      // The list (plural) is a different query key, not a prefix of the singular one above —
+      // without this the tenant's two-stage page keeps showing its stale "no batch yet" state
+      // until the list's own poll happens to run.
+      queryClient.invalidateQueries({ queryKey: ["prelabel-batches"] });
     },
   });
 }
@@ -54,7 +59,7 @@ export interface RecordGuidancePayload {
   note?: string;
 }
 
-/** Persist a Tenant Admin's corrections/note from reviewing one document of an `initial`
+/** Persist an Annotator Admin's corrections/note from reviewing one document of an `initial`
  * batch; folded into the prompt when the subsequent `large` batch runs. */
 export function useRecordBatchGuidance() {
   const queryClient = useQueryClient();

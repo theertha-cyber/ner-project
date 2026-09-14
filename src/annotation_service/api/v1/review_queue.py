@@ -99,9 +99,16 @@ async def list_review_queue(
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
 
+    # Deletion here is a status flag, not a row removal (`delete_document` never drops the
+    # `documents` row), so an un-filtered join still matches a prediction whose document is
+    # gone. Left in, that prediction is unreviewable — its text spans were cleared with the
+    # document, so every offset reads as empty — and unreviewable work should never enter a
+    # review queue in the first place.
     total_result = await session.execute(
         text(
-            f"SELECT COUNT(*) FROM {schema}.routed_predictions WHERE disposition = :disposition"
+            f"SELECT COUNT(*) FROM {schema}.routed_predictions p "
+            f"JOIN {schema}.documents d ON d.id = p.document_id "
+            "WHERE p.disposition = :disposition AND d.status != 'deleted'"
         ),
         {"disposition": DISPOSITION_QUEUED},
     )
@@ -114,7 +121,7 @@ async def list_review_queue(
             f"       p.below_business_threshold, p.created_at "
             f"FROM {schema}.routed_predictions p "
             f"JOIN {schema}.documents d ON d.id = p.document_id "
-            "WHERE p.disposition = :disposition "
+            "WHERE p.disposition = :disposition AND d.status != 'deleted' "
             "ORDER BY p.created_at ASC, p.id ASC "
             "LIMIT :limit OFFSET :offset"
         ),

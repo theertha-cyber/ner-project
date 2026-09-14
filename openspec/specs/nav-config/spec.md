@@ -30,10 +30,11 @@ The role → nav mapping SHALL be:
 | `annotator` | Dashboard `/dashboard`; section **Annotate**: Manual `/annotate/manual`, Import `/annotate/import` |
 | `business_user` | flat: Dashboard `/dashboard`, Documents `/documents`, Extractions `/extractions`, Chat `/chat` |
 
-`Manual` SHALL carry children `Workspace /annotation` and `Review Queue /review-queue`.
-`Automated` SHALL carry children for the four step routes
-`/annotate/automated/schema`, `/annotate/automated/prelabel`,
-`/annotate/automated/prelabel?tab=review`, `/annotate/automated/retrain`.
+`Manual` SHALL carry child `Workspace /annotation`. `Automated` SHALL carry children for four
+routes: the three numbered pipeline steps `/annotate/automated/schema`,
+`/annotate/automated/prelabel`, `/annotate/automated/prelabel?tab=review`, and a fourth,
+un-numbered `Retraining` route `/annotate/automated/retrain` that is not part of that pipeline —
+its label carries no step-number prefix, unlike the three pipeline steps' labels.
 `Import` SHALL carry child `Imported Files /imported-documents`.
 
 Settings is not a nav item for any role.
@@ -73,6 +74,19 @@ Settings is not a nav item for any role.
 - **GIVEN** a role whose `Setup` and `Admin` sections have zero permitted links
 - **WHEN** its nav tree is rendered
 - **THEN** no `Setup` or `Admin` header SHALL appear
+
+#### Scenario: Manual no longer carries a Review Queue child
+
+- **GIVEN** the authenticated user has role `tenant_admin` or `annotator`
+- **WHEN** `navFor(role)` is called and the `Manual` leaf is inspected
+- **THEN** its `children` SHALL be exactly `[Workspace /annotation]`
+
+#### Scenario: Automated's Retraining child carries no step-number prefix
+
+- **GIVEN** the authenticated user has role `tenant_admin`
+- **WHEN** `navFor("tenant_admin")` is called and the `Automated` leaf's children are inspected
+- **THEN** the child whose `href` is `/annotate/automated/retrain` SHALL have label `Retraining`
+- **AND** its label SHALL NOT begin with a step number, unlike its three sibling children
 
 ### Requirement: Screen Title Map
 

@@ -31,8 +31,9 @@ export interface SchemaProposal {
   candidates: SchemaProposalCandidate[];
 }
 
-/** Whether a batch is the 1–5 validation batch a Tenant Admin reviews, or the main batch
- * an Annotator Admin reviews as the final annotation gate. */
+/** Whether a batch is the 1-5 validation batch an Annotator Admin reviews (no Tenant Admin
+ * approval), or the main batch — no upper document cap, and reviewed by no one: its
+ * suggestions are promoted to confirmed spans automatically once pre-labeling finishes. */
 export type BatchKind = "initial" | "large";
 
 /** The named lifecycle the UI renders, derived from per-document outcomes. */
@@ -71,7 +72,9 @@ export interface PrelabelBatch {
   failed: number;
   pending: number;
   ungrounded: number;
-  /** Set to "approved" once an Annotator Admin accepts a `large` batch. */
+  /** Set to "approved" once an Annotator Admin accepts an `initial` batch, or automatically
+   * once a `large` batch finishes pre-labeling. Only the `large` case sets
+   * `training_eligible_at` alongside it — an approved `initial` batch stays training-ineligible. */
   annotator_review_status?: string | null;
   training_eligible_at?: string | null;
   documents: PrelabelBatchDocument[];

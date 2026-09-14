@@ -161,6 +161,28 @@ describe("the retraining decision surface", () => {
     expect(screen.getByText("Model version 3")).toBeInTheDocument();
   });
 
+  it("states there is no schedule or required order", async () => {
+    respondWith();
+    renderPage();
+
+    expect(await screen.findByText("134")).toBeInTheDocument();
+    expect(screen.getByText(/no schedule and no required order/i)).toBeInTheDocument();
+  });
+
+  it("explains what the production-review figure counts, distinctly from the eligible overview", async () => {
+    respondWith();
+    renderPage();
+
+    expect(await screen.findByText("134")).toBeInTheDocument();
+    expect(screen.getByText("Production-review evidence")).toBeInTheDocument();
+    expect(
+      screen.getByText(/counts only spans confirmed through production review/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/separate count.*from any workflow that no training run has consumed/i),
+    ).toBeInTheDocument();
+  });
+
   it("shows the eligible-and-waiting overview per source", async () => {
     respondWith({
       decision: trained({

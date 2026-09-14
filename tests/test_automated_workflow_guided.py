@@ -122,6 +122,40 @@ async def _notifications(engine, tenant):
         return rows.fetchall()
 
 
+async def _approve_new_initial(client, engine, tenant):
+    """Clear the sequencing gate a `large` batch now needs: an Annotator-Admin-approved
+    `initial` batch, over its own throwaway document (no guidance recorded on it).
+
+    annotation-workflow-review-simplification made this a precondition for creating any
+    `large` batch, so every test below that triggers one needs this first.
+    """
+    doc = await add_document(engine, tenant)
+    batch_id = (await _trigger(client, tenant, [doc], kind="initial")).json()["batch_id"]
+    await _run(tenant, batch_id)
+    await client.post(
+        f"/api/v1/prelabel-batches/{batch_id}/acceptance",
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    sample = await client.get(
+        f"/api/v1/prelabel-batches/{batch_id}/acceptance",
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    dispositions = [
+        {"suggestion_id": s["id"], "disposition": "agree"} for s in sample.json()["suggestions"]
+    ]
+    await client.post(
+        f"/api/v1/prelabel-batches/{batch_id}/acceptance/review",
+        json={"dispositions": dispositions},
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    accept = await client.post(
+        f"/api/v1/prelabel-batches/{batch_id}/acceptance/accept",
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    assert accept.status_code == 200, accept.text
+    return batch_id
+
+
 # ── Batch kind (rows 5-7) ───────────────────────────────────────────────────
 
 
@@ -137,6 +171,7 @@ async def test_initial_batch_capped_at_five(client, engine):
 @pytest.mark.asyncio
 async def test_large_batch_no_cap_and_kind_recorded(client, engine):
     tenant = await make_tenant(engine)
+    await _approve_new_initial(client, engine, tenant)
     doc_ids = [await add_document(engine, tenant) for _ in range(7)]
     resp = await _trigger(client, tenant, doc_ids, kind="large")
     assert resp.status_code == 202
@@ -146,6 +181,7 @@ async def test_large_batch_no_cap_and_kind_recorded(client, engine):
 @pytest.mark.asyncio
 async def test_batch_status_reports_kind(client, engine):
     tenant = await make_tenant(engine)
+    await _approve_new_initial(client, engine, tenant)
     a = await _trigger(client, tenant, [await add_document(engine, tenant)], kind="initial")
     b = await _trigger(client, tenant, [await add_document(engine, tenant)], kind="large")
     for resp, kind in ((a, "initial"), (b, "large")):
@@ -161,9 +197,11 @@ async def test_batch_status_reports_kind(client, engine):
 
 @pytest.mark.asyncio
 async def test_state_completed(client, engine):
+    # `initial`, not `large`: state derivation doesn't depend on batch_kind, and `initial`
+    # needs no approved-batch setup to create.
     tenant = await make_tenant(engine)
     doc_ids = [await add_document(engine, tenant) for _ in range(3)]
-    batch_id = (await _trigger(client, tenant, doc_ids, kind="large")).json()["batch_id"]
+    batch_id = (await _trigger(client, tenant, doc_ids, kind="initial")).json()["batch_id"]
     await _run(tenant, batch_id)
     got = await client.get(
         f"/api/v1/prelabel-batches/{batch_id}", headers=auth_header(tenant["tid"])
@@ -175,7 +213,7 @@ async def test_state_completed(client, engine):
 async def test_state_failed_no_spans(client, engine, monkeypatch):
     tenant = await make_tenant(engine)
     doc_ids = [await add_document(engine, tenant) for _ in range(3)]
-    batch_id = (await _trigger(client, tenant, doc_ids, kind="large")).json()["batch_id"]
+    batch_id = (await _trigger(client, tenant, doc_ids, kind="initial")).json()["batch_id"]
 
     from src.annotation_service import worker as worker_module
 
@@ -200,7 +238,7 @@ async def test_state_failed_no_spans(client, engine, monkeypatch):
 async def test_state_queued_before_run(client, engine):
     tenant = await make_tenant(engine)
     batch_id = (
-        await _trigger(client, tenant, [await add_document(engine, tenant)], kind="large")
+        await _trigger(client, tenant, [await add_document(engine, tenant)], kind="initial")
     ).json()["batch_id"]
     got = await client.get(
         f"/api/v1/prelabel-batches/{batch_id}", headers=auth_header(tenant["tid"])
@@ -208,12 +246,16 @@ async def test_state_queued_before_run(client, engine):
     assert got.json()["state"] == "queued"
 
 
-# ── Reviewer role gates + side effects (rows 20-23) ─────────────────────────
+# ── Reviewer role gates + side effects ──────────────────────────────────────
+#
+# Rewritten for annotation-workflow-review-simplification: the `initial` batch is now
+# reviewed by an `annotator` (not `tenant_admin`), and a `large` batch has no manual review
+# path at all — every acceptance-gate endpoint refuses it outright, for every role.
 
 
-async def _drive_to_accept(client, engine, tenant, kind, reviewer_role):
+async def _drive_initial_to_accept(client, engine, tenant, reviewer_role):
     doc_ids = [await add_document(engine, tenant) for _ in range(3)]
-    batch_id = (await _trigger(client, tenant, doc_ids, kind=kind)).json()["batch_id"]
+    batch_id = (await _trigger(client, tenant, doc_ids, kind="initial")).json()["batch_id"]
     await _run(tenant, batch_id)
     start = await client.post(
         f"/api/v1/prelabel-batches/{batch_id}/acceptance",
@@ -242,25 +284,47 @@ async def _drive_to_accept(client, engine, tenant, kind, reviewer_role):
 
 
 @pytest.mark.asyncio
-async def test_tenant_admin_cannot_accept_large_batch(client, engine):
+async def test_tenant_admin_cannot_review_or_accept_initial_batch(client, engine):
     tenant = await make_tenant(engine)
-    _, resp = await _drive_to_accept(client, engine, tenant, "large", "tenant_admin")
-    assert resp.status_code == 403
+    _, start_resp = await _drive_initial_to_accept(client, engine, tenant, "tenant_admin")
+    assert start_resp.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_annotator_cannot_review_initial_batch(client, engine):
+async def test_annotator_reviews_initial_batch_successfully(client, engine):
     tenant = await make_tenant(engine)
-    _, resp = await _drive_to_accept(client, engine, tenant, "initial", "annotator")
-    assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_annotator_accept_large_batch_eligible_and_notifies(client, engine):
-    tenant = await make_tenant(engine)
-    batch_id, accept = await _drive_to_accept(client, engine, tenant, "large", "annotator")
+    _, accept = await _drive_initial_to_accept(client, engine, tenant, "annotator")
     assert accept.status_code == 200, accept.text
-    assert accept.json()["training_eligible"] is True
+    assert accept.json()["training_eligible"] is False
+
+
+@pytest.mark.asyncio
+async def test_large_batch_refuses_acceptance_endpoints_for_any_role(client, engine):
+    tenant = await make_tenant(engine)
+    await _approve_new_initial(client, engine, tenant)
+    doc_ids = [await add_document(engine, tenant) for _ in range(3)]
+    batch_id = (await _trigger(client, tenant, doc_ids, kind="large")).json()["batch_id"]
+    await _run(tenant, batch_id)
+
+    for role in ("tenant_admin", "annotator"):
+        resp = await client.post(
+            f"/api/v1/prelabel-batches/{batch_id}/acceptance/accept",
+            headers=auth_header(tenant["tid"], role),
+        )
+        assert resp.status_code == 422, resp.text
+        assert resp.json()["detail"]["code"] == "LARGE_BATCH_NOT_REVIEWED"
+
+
+@pytest.mark.asyncio
+async def test_large_batch_auto_promotes_eligible_and_notifies(client, engine):
+    """The replacement for the old manual-accept flow: running the batch is the only step —
+    no acceptance call of any kind — and it ends up training-eligible and notified regardless.
+    """
+    tenant = await make_tenant(engine)
+    await _approve_new_initial(client, engine, tenant)
+    doc_ids = [await add_document(engine, tenant) for _ in range(3)]
+    batch_id = (await _trigger(client, tenant, doc_ids, kind="large")).json()["batch_id"]
+    await _run(tenant, batch_id)
 
     async with engine.connect() as conn:
         row = (
@@ -276,18 +340,19 @@ async def test_annotator_accept_large_batch_eligible_and_notifies(client, engine
     assert row[1] is not None
 
     notes = await _notifications(engine, tenant)
-    assert len(notes) == 1
-    assert notes[0][0] == "automated_batch_approved"
-    assert notes[0][1] == "tenant_admin"
-    assert notes[0][2] == batch_id
+    # One notification for the setup's own approved initial batch's... no — accepting an
+    # `initial` batch does not notify (unchanged). So the only notification here is this
+    # large batch's automatic one.
+    matching = [n for n in notes if n[2] == batch_id]
+    assert len(matching) == 1
+    assert matching[0][0] == "automated_batch_approved"
+    assert matching[0][1] == "tenant_admin"
 
 
 @pytest.mark.asyncio
 async def test_initial_batch_accept_no_side_effects(client, engine):
     tenant = await make_tenant(engine)
-    batch_id, accept = await _drive_to_accept(
-        client, engine, tenant, "initial", "tenant_admin"
-    )
+    batch_id, accept = await _drive_initial_to_accept(client, engine, tenant, "annotator")
     assert accept.status_code == 200, accept.text
     assert accept.json()["training_eligible"] is False
 
@@ -306,24 +371,28 @@ async def test_initial_batch_accept_no_side_effects(client, engine):
 
 
 @pytest.mark.asyncio
-async def test_large_batch_accept_is_idempotent(client, engine):
+async def test_large_batch_promotion_is_idempotent_against_a_retried_task(client, engine):
+    """Replaces the old manual-accept idempotency test: there is no accept call to retry
+    anymore, so this simulates the real retry surface instead — `run_prelabel_batch_sync`
+    (and therefore `_auto_promote_large_batch`) running twice for the same batch, which is
+    exactly what a retried Celery task would do.
+    """
     tenant = await make_tenant(engine)
-    batch_id, first = await _drive_to_accept(client, engine, tenant, "large", "annotator")
-    assert first.status_code == 200
-
-    second = await client.post(
-        f"/api/v1/prelabel-batches/{batch_id}/acceptance/accept",
-        headers=auth_header(tenant["tid"], "annotator"),
-    )
-    assert second.status_code == 422  # BATCH_ALREADY_DECIDED
+    await _approve_new_initial(client, engine, tenant)
+    doc_ids = [await add_document(engine, tenant) for _ in range(3)]
+    batch_id = (await _trigger(client, tenant, doc_ids, kind="large")).json()["batch_id"]
+    await _run(tenant, batch_id)
+    await _run(tenant, batch_id)  # simulated retry of the same completed batch
 
     async with engine.connect() as conn:
         span_count = (
             await conn.execute(text(f"SELECT COUNT(*) FROM {tenant['schema']}.spans"))
         ).scalar()
-    notes = await _notifications(engine, tenant)
+    notes = [n for n in await _notifications(engine, tenant) if n[2] == batch_id]
     assert len(notes) == 1  # exactly one notification, not two
-    assert span_count > 0
+    # 2 from the setup's own approved initial batch (1 doc) + 6 from this large batch
+    # (3 docs x 2 entities) — not double-counted despite the batch having "run" twice.
+    assert span_count == 8
 
 
 # ── Q&A-pair proposal input (rows 1-4) ─────────────────────────────────────
@@ -408,6 +477,7 @@ async def test_qa_pair_creates_no_entity_types(client, engine):
 
 @pytest.mark.asyncio
 async def test_initial_guidance_persisted(client, engine):
+    # Recorded by an `annotator` now — the initial batch's reviewer — not `tenant_admin`.
     tenant = await make_tenant(engine)
     doc = await add_document(engine, tenant)
     batch_id = (await _trigger(client, tenant, [doc], kind="initial")).json()["batch_id"]
@@ -418,7 +488,7 @@ async def test_initial_guidance_persisted(client, engine):
             "corrected_spans": [{"text": "Acme", "entity_type": "org"}],
             "note": "treat internal project codenames as PROJECT",
         },
-        headers=auth_header(tenant["tid"]),
+        headers=auth_header(tenant["tid"], "annotator"),
     )
     assert resp.status_code == 201
     async with engine.connect() as conn:
@@ -435,6 +505,19 @@ async def test_initial_guidance_persisted(client, engine):
 
 
 @pytest.mark.asyncio
+async def test_tenant_admin_cannot_record_initial_batch_guidance(client, engine):
+    tenant = await make_tenant(engine)
+    doc = await add_document(engine, tenant)
+    batch_id = (await _trigger(client, tenant, [doc], kind="initial")).json()["batch_id"]
+    resp = await client.post(
+        f"/api/v1/prelabel-batches/{batch_id}/guidance",
+        json={"document_id": doc, "note": "irrelevant"},
+        headers=auth_header(tenant["tid"], "tenant_admin"),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_large_batch_prompt_includes_guidance(client, engine):
     tenant = await make_tenant(engine)
     initial_doc = await add_document(engine, tenant)
@@ -444,8 +527,32 @@ async def test_large_batch_prompt_includes_guidance(client, engine):
     await client.post(
         f"/api/v1/prelabel-batches/{initial_id}/guidance",
         json={"document_id": initial_doc, "note": "treat internal project codenames as PROJECT"},
-        headers=auth_header(tenant["tid"]),
+        headers=auth_header(tenant["tid"], "annotator"),
     )
+    await _run(tenant, initial_id)
+    await client.post(
+        f"/api/v1/prelabel-batches/{initial_id}/acceptance",
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    sample = await client.get(
+        f"/api/v1/prelabel-batches/{initial_id}/acceptance",
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    await client.post(
+        f"/api/v1/prelabel-batches/{initial_id}/acceptance/review",
+        json={
+            "dispositions": [
+                {"suggestion_id": s["id"], "disposition": "agree"}
+                for s in sample.json()["suggestions"]
+            ]
+        },
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    approve = await client.post(
+        f"/api/v1/prelabel-batches/{initial_id}/acceptance/accept",
+        headers=auth_header(tenant["tid"], "annotator"),
+    )
+    assert approve.status_code == 200, approve.text  # clears the gate for the large batch below
 
     large_doc = await add_document(engine, tenant)
     trigger = await _trigger(client, tenant, [large_doc], kind="large")
@@ -467,6 +574,10 @@ async def test_large_batch_prompt_includes_guidance(client, engine):
 @pytest.mark.asyncio
 async def test_large_batch_without_guidance_runs(client, engine):
     tenant = await make_tenant(engine)
+    # The approving initial batch has no guidance recorded on it, so the large batch below
+    # still triggers with guidance_applied=False despite the sequencing gate now requiring an
+    # approved initial batch to exist.
+    await _approve_new_initial(client, engine, tenant)
     doc = await add_document(engine, tenant)
     trigger = await _trigger(client, tenant, [doc], kind="large")
     assert trigger.status_code == 202
@@ -476,6 +587,7 @@ async def test_large_batch_without_guidance_runs(client, engine):
 @pytest.mark.asyncio
 async def test_list_prelabel_batches(client, engine):
     tenant = await make_tenant(engine)
+    await _approve_new_initial(client, engine, tenant)
     i = await _trigger(client, tenant, [await add_document(engine, tenant)], kind="initial")
     l = await _trigger(client, tenant, [await add_document(engine, tenant)], kind="large")
     resp = await client.get("/api/v1/prelabel-batches", headers=auth_header(tenant["tid"]))
@@ -488,8 +600,11 @@ async def test_list_prelabel_batches(client, engine):
 @pytest.mark.asyncio
 async def test_list_prelabel_batches_reports_approved_large(client, engine):
     tenant = await make_tenant(engine)
-    batch_id, accept = await _drive_to_accept(client, engine, tenant, "large", "annotator")
-    assert accept.status_code == 200
+    await _approve_new_initial(client, engine, tenant)
+    doc_ids = [await add_document(engine, tenant) for _ in range(3)]
+    batch_id = (await _trigger(client, tenant, doc_ids, kind="large")).json()["batch_id"]
+    await _run(tenant, batch_id)  # auto-promotes; no accept call
+
     resp = await client.get("/api/v1/prelabel-batches", headers=auth_header(tenant["tid"]))
     row = next(b for b in resp.json()["batches"] if b["batch_id"] == batch_id)
     assert row["annotator_review_status"] == "approved"

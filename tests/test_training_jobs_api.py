@@ -33,6 +33,7 @@ def _create_tables_sql(schema: str) -> list:
                 id VARCHAR PRIMARY KEY,
                 tenant_id VARCHAR NOT NULL,
                 status VARCHAR(20) DEFAULT 'pending_approval',
+                source_scope VARCHAR(16),
                 hyperparams JSONB,
                 run_number INTEGER,
                 current_epoch INTEGER,
@@ -60,6 +61,18 @@ def _create_tables_sql(schema: str) -> list:
                 id VARCHAR PRIMARY KEY,
                 document_id VARCHAR NOT NULL,
                 entity_type VARCHAR(255)
+            )
+        """,
+        # A row here means a span was promoted from an accepted automated batch (manual-
+        # training-data-source-scoping); its absence is every manually-confirmed span. No
+        # FKs to `prelabel_batches`/`batch_acceptance_records` — this fixture only needs the
+        # join target to exist, not the tables those columns would reference.
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.span_batch_provenance (
+                span_id VARCHAR PRIMARY KEY,
+                batch_id VARCHAR,
+                acceptance_id VARCHAR,
+                promoted_at TIMESTAMPTZ DEFAULT NOW()
             )
         """,
     ]
@@ -245,6 +258,115 @@ async def test_both_gates_apply_independently(client, engine, setup_schema, monk
     assert resp.status_code == 422
     assert "per type" in resp.json()["detail"]
     assert "STARVED" in resp.json()["detail"]
+
+
+async def _seed_span(engine, schema: str, entity_type: str, *, promoted: bool) -> str:
+    """One span, optionally with a `span_batch_provenance` row marking it as promoted
+    from an accepted automated batch."""
+    span_id = str(uuid.uuid4())
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"INSERT INTO {schema}.documents (id, tenant_id) VALUES ('src-scope-doc', 'x') ON CONFLICT (id) DO NOTHING"),
+        )
+        await conn.execute(
+            text(f"INSERT INTO {schema}.spans (id, document_id, entity_type) VALUES (:id, 'src-scope-doc', :et)"),
+            {"id": span_id, "et": entity_type},
+        )
+        if promoted:
+            await conn.execute(
+                text(f"INSERT INTO {schema}.span_batch_provenance (span_id, batch_id, acceptance_id) VALUES (:id, 'b1', 'a1')"),
+                {"id": span_id},
+            )
+    return span_id
+
+
+@pytest.mark.asyncio
+async def test_created_job_stores_and_returns_source_scope(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    tid, schema = setup_schema
+    resp = await client.post(
+        "/api/v1/training-jobs", json={"source_scope": "automated"}, headers=auth_header(make_token(tid))
+    )
+    assert resp.status_code == 201
+    assert resp.json()["source_scope"] == "automated"
+
+    fetched = await client.get(f"/api/v1/training-jobs/{resp.json()['id']}", headers=auth_header(make_token(tid)))
+    assert fetched.json()["source_scope"] == "automated"
+
+
+@pytest.mark.asyncio
+async def test_created_job_source_scope_defaults_to_null(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    tid, schema = setup_schema
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(make_token(tid)))
+    assert resp.status_code == 201
+    assert resp.json()["source_scope"] is None
+
+
+@pytest.mark.asyncio
+async def test_automated_scope_gate_counts_only_promoted_spans(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "2")
+    tid, schema = setup_schema
+    # One promoted (automated) span and one manual span: an 'automated'-scoped submission
+    # must count only the promoted one and stay below the minimum of 2.
+    await _seed_span(engine, schema, "SKILL", promoted=True)
+    await _seed_span(engine, schema, "SKILL", promoted=False)
+
+    resp = await client.post(
+        "/api/v1/training-jobs", json={"source_scope": "automated"}, headers=auth_header(make_token(tid))
+    )
+    assert resp.status_code == 422
+    assert "Insufficient annotated entities: 1." in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_manual_scope_gate_excludes_promoted_spans(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "2")
+    tid, schema = setup_schema
+    await _seed_span(engine, schema, "SKILL", promoted=True)
+    await _seed_span(engine, schema, "SKILL", promoted=False)
+
+    resp = await client.post(
+        "/api/v1/training-jobs", json={"source_scope": "manual"}, headers=auth_header(make_token(tid))
+    )
+    assert resp.status_code == 422
+    assert "Insufficient annotated entities: 1." in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_unscoped_submission_counts_every_span(client, engine, setup_schema, monkeypatch):
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "0")
+    tid, schema = setup_schema
+    await _seed_span(engine, schema, "SKILL", promoted=True)
+    await _seed_span(engine, schema, "SKILL", promoted=False)
+
+    resp = await client.post("/api/v1/training-jobs", json={}, headers=auth_header(make_token(tid)))
+    assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_import_scope_skips_span_gates_entirely(client, engine, setup_schema, monkeypatch):
+    """An 'import'-scoped submission trains on `imported_annotations`, a table these
+    span-count gates never look at — so a tenant with zero spans and a minimum well above
+    zero must still be allowed to submit."""
+    monkeypatch.setenv("NER_MIN_TRAINING_ENTITIES", "500")
+    monkeypatch.setenv("NER_MIN_ENTITIES_PER_TYPE", "200")
+    tid, schema = setup_schema
+
+    resp = await client.post(
+        "/api/v1/training-jobs", json={"source_scope": "import"}, headers=auth_header(make_token(tid))
+    )
+    assert resp.status_code == 201
+    assert resp.json()["source_scope"] == "import"
+
+
+@pytest.mark.asyncio
+async def test_invalid_source_scope_rejected(client, engine, setup_schema):
+    tid, schema = setup_schema
+    resp = await client.post(
+        "/api/v1/training-jobs", json={"source_scope": "bogus"}, headers=auth_header(make_token(tid))
+    )
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio

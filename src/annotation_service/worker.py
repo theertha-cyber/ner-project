@@ -32,9 +32,10 @@ from src.annotation_service.services.llm_prelabel import (
     parse_llm_response,
 )
 from src.annotation_service.services.schema_proposal import (
-    SYSTEM_PROMPT as SCHEMA_PROPOSAL_SYSTEM_PROMPT,
     build_user_payload as build_proposal_payload,
     propose_candidates,
+    resolve_max_candidates as resolve_proposal_max_candidates,
+    system_prompt_for as schema_proposal_system_prompt_for,
 )
 from src.shared.auth import create_access_token
 from src.shared.config import settings
@@ -288,17 +289,33 @@ def run_schema_proposal_sync(tenant_id: str, proposal_id: str, llm_client=None) 
             qa_docs = _load_seed_documents(connection, schema, [qa_pair_id])
             qa_pair_text = qa_docs[0]["text"] if qa_docs else None
 
+    # A Q&A-pair document turns the proposal from schema discovery into schema transcription:
+    # one entity type per Q&A pair, kept even when no seed document contains a value for it.
+    # The candidate cap then follows how many pairs the tenant actually wrote (20 pairs -> ~25,
+    # 50 pairs -> ~55), rather than a fixed number.
+    qa_driven = bool((qa_pair_text or "").strip())
+    # In discovery mode this returns the fixed default; in Q&A-driven mode it follows the pair
+    # count (20 pairs -> ~25, 50 -> ~55).
+    max_candidates = resolve_proposal_max_candidates(qa_pair_text if qa_driven else None)
+
     try:
         response = client.complete_json(
-            SCHEMA_PROPOSAL_SYSTEM_PROMPT,
-            build_proposal_payload(seed_documents, entity_types, qa_pair_text=qa_pair_text),
+            schema_proposal_system_prompt_for(qa_pair_text, max_candidates),
+            build_proposal_payload(
+                seed_documents, entity_types, qa_pair_text=qa_pair_text, qa_driven=qa_driven
+            ),
         )
     except LLMUnavailable as exc:
         with engine.begin() as connection:
             _mark_proposal_failed(connection, schema, proposal_id, str(exc))
         raise
 
-    result = propose_candidates(response, seed_documents)
+    result = propose_candidates(
+        response,
+        seed_documents,
+        require_grounding=not qa_driven,
+        max_candidates=max_candidates,
+    )
 
     with engine.begin() as connection:
         for candidate in result.candidates:
@@ -359,6 +376,122 @@ def _mark_batch_document(
     )
 
 
+def _auto_promote_large_batch(connection, schema: str, tenant_id: str, batch_id: str) -> int:
+    """Promote every suggestion from a finished `large` batch straight to confirmed spans.
+
+    A `large` batch is never reviewed by anyone (annotation-workflow-review-simplification
+    design.md Decision 1) — the moment the pre-labeling job finishes, its output *is* the
+    training data. This is the one place that happens, so it must be idempotent against a
+    retried task: the `training_eligible_at IS NULL` guard below makes a second call a no-op.
+
+    `span_batch_provenance.acceptance_id` is `NOT NULL` (migration 039), so an auto-promoted
+    span still needs an acceptance record to point at — there was never a human review, so this
+    writes one with `reviewer = NULL` and `sampled = false`, which is what distinguishes an
+    auto-promoted batch's provenance from a reviewed one on inspection, without a schema change.
+    """
+    from src.shared.config import settings as _settings
+
+    claimed = connection.execute(
+        text(
+            f"UPDATE {schema}.prelabel_batches "
+            "SET training_eligible_at = NOW(), annotator_review_status = 'approved' "
+            "WHERE id = :id AND training_eligible_at IS NULL "
+            "RETURNING id"
+        ),
+        {"id": batch_id},
+    ).fetchone()
+    if claimed is None:
+        return 0
+
+    acceptance_id = str(uuid.uuid4())
+    connection.execute(
+        text(
+            f"INSERT INTO {schema}.batch_acceptance_records "
+            "(id, batch_id, sampled_document_ids, sample_size, sampled, "
+            " agreement_threshold, decision, reviewer, decided_at) "
+            "VALUES (:id, :batch_id, '[]'::jsonb, 0, false, :threshold, 'accepted', NULL, NOW())"
+        ),
+        {
+            "id": acceptance_id,
+            "batch_id": batch_id,
+            "threshold": _settings.seed_bootstrap_agreement_threshold,
+        },
+    )
+
+    doc_ids = [
+        row[0]
+        for row in connection.execute(
+            text(
+                f"SELECT document_id FROM {schema}.prelabel_batch_documents "
+                "WHERE batch_id = :batch_id"
+            ),
+            {"batch_id": batch_id},
+        ).fetchall()
+    ]
+    suggestions = connection.execute(
+        text(
+            f"SELECT id, document_id, entity_type, char_start, char_end, text_content, "
+            f"       confidence FROM {schema}.suggested_spans "
+            "WHERE document_id = ANY(:doc_ids)"
+        ),
+        {"doc_ids": doc_ids},
+    ).fetchall()
+
+    promoted = 0
+    for suggestion in suggestions:
+        span_id = str(uuid.uuid4())
+        connection.execute(
+            text(
+                f"INSERT INTO {schema}.spans "
+                "(id, document_id, entity_type, char_start, char_end, text_content, confidence) "
+                "VALUES (:id, :doc_id, :entity_type, :char_start, :char_end, :text_val, "
+                "        :confidence)"
+            ),
+            {
+                "id": span_id,
+                "doc_id": suggestion[1],
+                "entity_type": suggestion[2],
+                "char_start": suggestion[3],
+                "char_end": suggestion[4],
+                "text_val": suggestion[5],
+                "confidence": float(suggestion[6]),
+            },
+        )
+        connection.execute(
+            text(
+                f"INSERT INTO {schema}.span_batch_provenance "
+                "(span_id, batch_id, acceptance_id) VALUES (:span_id, :batch_id, :acceptance_id)"
+            ),
+            {"span_id": span_id, "batch_id": batch_id, "acceptance_id": acceptance_id},
+        )
+        connection.execute(
+            text(f"DELETE FROM {schema}.suggested_spans WHERE id = :id"),
+            {"id": suggestion[0]},
+        )
+        promoted += 1
+
+    connection.execute(
+        text(
+            "INSERT INTO public.notifications "
+            "(id, tenant_id, recipient_role, recipient_user_id, kind, title, body, "
+            " resource_type, resource_id) "
+            "VALUES (:id, :tenant_id, 'tenant_admin', NULL, 'automated_batch_approved', "
+            "        'Automated batch approved', :body, 'prelabel_batch', :batch_id)"
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "tenant_id": tenant_id,
+            "body": (
+                f"Automated batch {batch_id} finished pre-labeling and its {promoted} spans "
+                "were promoted directly to training data — no review was required."
+            ),
+            "batch_id": batch_id,
+        },
+    )
+
+    return promoted
+
+
 def run_prelabel_batch_sync(
     tenant_id: str, batch_id: str, llm_client=None, guidance_text: str = ""
 ) -> dict:
@@ -392,6 +525,10 @@ def run_prelabel_batch_sync(
             ),
             {"id": batch_id},
         )
+        batch_kind = connection.execute(
+            text(f"SELECT batch_kind FROM {schema}.prelabel_batches WHERE id = :id"),
+            {"id": batch_id},
+        ).scalar()
         doc_ids = [
             row[0]
             for row in connection.execute(
@@ -434,6 +571,7 @@ def run_prelabel_batch_sync(
     else:
         state = "completed"
 
+    promoted = 0
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -442,12 +580,18 @@ def run_prelabel_batch_sync(
             ),
             {"id": batch_id, "state": state, "now": _now()},
         )
+        # `large` batches are never reviewed by anyone — the moment pre-labeling finishes, its
+        # output *is* the training data (annotation-workflow-review-simplification design.md
+        # Decision 1). `initial` batches still go to an Annotator Admin's acceptance review.
+        if batch_kind == "large" and succeeded:
+            promoted = _auto_promote_large_batch(connection, schema, tenant_id, batch_id)
 
     return {
         "documents": len(doc_ids),
         "succeeded": succeeded,
         "failed": failed,
         "state": state,
+        "promoted": promoted,
     }
 
 

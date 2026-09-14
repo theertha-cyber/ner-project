@@ -14,6 +14,7 @@ Decision 1).
 """
 
 import json
+import re
 
 from src.annotation_service.services.llm_prelabel import ground_quote
 
@@ -25,11 +26,46 @@ from src.annotation_service.services.llm_prelabel import ground_quote
 # everything. Entity types recur throughout a document, so the opening section is where a
 # schema is visible; this is not the same trade-off as pre-labeling, which must see all of a
 # document because it must find every occurrence.
-SEED_DOCUMENT_CHAR_BUDGET = 6000
+SEED_DOCUMENT_CHAR_BUDGET = 15000
 
-# How many candidates the model is asked for. An upper bound, not a target: a tenant whose
-# documents genuinely contain four entity types should get four.
-MAX_CANDIDATES = 15
+# How many candidates the model is asked for in discovery mode (no Q&A pair). An upper bound,
+# not a target: a tenant whose documents genuinely contain four entity types should get four.
+MAX_CANDIDATES = 40
+
+# Absolute ceiling for the Q&A-driven path, where the limit is derived from how many Q&A pairs
+# the tenant actually wrote. A guard against a pathological Q&A document, not a normal limit.
+HARD_MAX_CANDIDATES = 80
+
+# Headroom added to the counted Q&A-pair total: the documents occasionally surface a field the
+# tenant did not think to ask about, and one or two extra candidates a reviewer can reject is
+# cheaper than a missing one.
+QA_CANDIDATE_HEADROOM = 5
+
+
+def count_qa_pairs(qa_pair_text: str | None) -> int:
+    """How many question/answer pairs the tenant's Q&A document contains.
+
+    Tenants write these documents freely, so this counts the two shapes seen in practice and
+    takes the larger: lines that open with a question marker (``Q:``, ``Q.``, ``1)``,
+    ``Question 3 -``) and, failing that, question marks. Zero means "could not tell" and the
+    caller falls back to the discovery-mode cap."""
+    text_value = qa_pair_text or ""
+    if not text_value.strip():
+        return 0
+
+    marker = re.compile(r"^\s*(?:Q\s*[:.)-]|Question\b|\d+\s*[.)])", re.IGNORECASE | re.MULTILINE)
+    by_marker = len(marker.findall(text_value))
+    by_question_mark = text_value.count("?")
+    return max(by_marker, by_question_mark)
+
+
+def resolve_max_candidates(qa_pair_text: str | None) -> int:
+    """The candidate cap for this run: derived from the Q&A pair count when there is one,
+    the discovery-mode default otherwise."""
+    pairs = count_qa_pairs(qa_pair_text)
+    if pairs <= 0:
+        return MAX_CANDIDATES
+    return max(1, min(pairs + QA_CANDIDATE_HEADROOM, HARD_MAX_CANDIDATES))
 
 SYSTEM_PROMPT = """You are helping a team work out which entity types their documents contain,
 so they can configure a named-entity recognition system.
@@ -57,6 +93,60 @@ Respond with JSON only, in exactly this shape:
 Return {"candidates": []} if the documents contain no extractable entities.""" % {
     "max_candidates": MAX_CANDIDATES
 }
+
+
+# Used instead of SYSTEM_PROMPT whenever a Q&A-pair document is attached. There the team has
+# already written down exactly what they want extracted, one field per Q&A pair, so the model's
+# job is not to discover a schema but to transcribe that list into entity types and attach a
+# real example value to each. Where a document contains the value it is quoted from there;
+# where none does, the answer the tenant wrote in the Q&A pair is used instead, so a reviewer
+# always sees a concrete value.
+QA_DRIVEN_SYSTEM_PROMPT_TEMPLATE = """You are configuring a named-entity recognition system
+from a question/answer specification a team has written.
+
+The Q&A document lists EXACTLY what the team wants to extract — one field per Q&A pair. Turn
+that list into entity types.
+
+Rules you must follow exactly:
+1. Produce exactly one entity type for every Q&A pair, in the same order. Do not merge two
+   pairs, drop a pair, or invent a pair that is not there. Produce at most %(max_candidates)d
+   entity types.
+2. Name each entity type with a short lowercase snake_case name derived from the question
+   ("What is the candidate's email address?" -> "email_address").
+3. Give each a one-sentence description of what a value of that type is.
+4. For each entity type, give example values this way, in order of preference:
+   a. Quote the value as it literally appears in a document — the shortest exact span that
+      captures it, copied character for character. If more than one document contains a
+      value, give one example from each (three documents -> three examples).
+   b. If NO document shown contains the value, fall back to the answer text given for that
+      pair in the Q&A specification and use it as the single example.
+   Never paraphrase, translate, reformat, or compute a value.
+5. Only return "examples": [] when a document has no value AND the Q&A pair gives no usable
+   answer (for instance the answer says the value is not present). Still produce the entity
+   type.
+6. Do not return character positions, offsets, or indices of any kind.
+
+Respond with JSON only, in exactly this shape:
+{"candidates": [{"name": "<snake_case_name>", "description": "<one sentence>",
+                 "examples": ["<value>", "<value>"]}]}"""
+
+
+def qa_driven_system_prompt(max_candidates: int) -> str:
+    return QA_DRIVEN_SYSTEM_PROMPT_TEMPLATE % {"max_candidates": max_candidates}
+
+
+# Back-compat alias for callers/tests that imported the constant name.
+QA_DRIVEN_SYSTEM_PROMPT = qa_driven_system_prompt(HARD_MAX_CANDIDATES)
+
+
+def system_prompt_for(qa_pair_text: str | None, max_candidates: int | None = None) -> str:
+    """The Q&A-driven prompt when a Q&A-pair document is attached, the discovery prompt
+    otherwise. `max_candidates` defaults to the value derived from the Q&A pair."""
+    if not (qa_pair_text or "").strip():
+        return SYSTEM_PROMPT
+    if max_candidates is None:
+        max_candidates = resolve_max_candidates(qa_pair_text)
+    return qa_driven_system_prompt(max_candidates)
 
 
 def build_seed_block(seed_documents: list[dict]) -> str:
@@ -95,13 +185,25 @@ def build_existing_config_block(entity_types: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def build_qa_pair_block(qa_pair_text: str | None) -> str:
-    """A Tenant Admin's question/answer document, verbatim, as guidance about which entity
-    types matter. It is context, not a grounding source: example values still have to be
-    quoted from the seed documents."""
+def build_qa_pair_block(qa_pair_text: str | None, qa_driven: bool = False) -> str:
+    """A Tenant Admin's question/answer document, verbatim.
+
+    In discovery mode it is guidance — context about which entity types matter, not a
+    grounding source. In Q&A-driven mode it is the specification itself: one entity type per
+    pair, in order."""
     text_value = (qa_pair_text or "").strip()
     if not text_value:
         return ""
+    if qa_driven:
+        return (
+            "This is the specification. Produce exactly one entity type per Q&A pair below, "
+            "in this order. For each, prefer an example value quoted from the documents that "
+            "follow; if no document contains the value, use the answer text from that Q&A "
+            "pair as the example instead.\n"
+            "--- Q&A specification ---\n"
+            f"{text_value}\n"
+            "--- end Q&A specification ---\n\n"
+        )
     return (
         "The team also supplied this question/answer document describing what they want to "
         "extract. Use it to decide WHICH entity types to propose. It is NOT a grounding "
@@ -116,6 +218,7 @@ def build_user_payload(
     seed_documents: list[dict],
     entity_types: list[dict],
     qa_pair_text: str | None = None,
+    qa_driven: bool = False,
 ) -> str:
     """The whole per-request half of the prompt."""
     existing = build_existing_config_block(entity_types)
@@ -130,11 +233,30 @@ def build_user_payload(
         preamble = "This team has not configured any entity types yet.\n\n"
 
     return "{}{}Documents:\n\n{}".format(
-        preamble, build_qa_pair_block(qa_pair_text), build_seed_block(seed_documents)
+        preamble,
+        build_qa_pair_block(qa_pair_text, qa_driven=qa_driven),
+        build_seed_block(seed_documents),
     )
 
 
-def parse_proposal_response(response) -> list[dict]:
+def _normalize_for_match(value: str) -> str:
+    """Lowercased, with every run of non-alphanumeric characters collapsed to a single space.
+
+    Used only for validating a schema-proposal *example* — a display string, never an offset —
+    so "8.09 / 10.0" and "8.09/10.0", or "Kerala, India" and "Kerala India", are treated as the
+    same value. Pre-labeling's `ground_quote` stays strict because it produces character
+    offsets; nothing here does."""
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def _lenient_contains(haystack: str, needle: str) -> bool:
+    normalized_needle = _normalize_for_match(needle)
+    if not normalized_needle:
+        return False
+    return normalized_needle in _normalize_for_match(haystack)
+
+
+def parse_proposal_response(response, max_candidates: int = MAX_CANDIDATES) -> list[dict]:
     """The model's output reduced to `{name, description, examples}` candidates.
 
     Only those three fields are read; anything else the model sends is dropped by construction,
@@ -155,7 +277,7 @@ def parse_proposal_response(response) -> list[dict]:
         return []
 
     parsed = []
-    for element in candidates[:MAX_CANDIDATES]:
+    for element in candidates[:max_candidates]:
         if not isinstance(element, dict):
             continue
         name = element.get("name")
@@ -177,45 +299,104 @@ def parse_proposal_response(response) -> list[dict]:
     return parsed
 
 
-def validate_candidate_examples(candidates: list[dict], seed_documents: list[dict]) -> list[dict]:
-    """Drop every example that is not verbatim in some seed document, and every candidate left
-    without one.
+MAX_EXAMPLES_PER_CANDIDATE = 5
 
-    `ground_quote` is imported rather than reimplemented, and that is the point: an example is
-    validated by exactly the test a pre-labeled span is grounded by, so "verbatim" cannot come
-    to mean one thing on this path and another on that one (task 2.3). The claimed-ranges
-    argument is empty because nothing here is claiming territory in the document — two
-    candidates may legitimately quote the same words, and only the presence of the text matters.
+# An entity type's stored examples are read back into every future pre-labeling prompt as "a
+# value of this type looks like X" (llm_prelabel.build_entity_type_block) — a short illustrative
+# span, not the field's full content. A Q&A answer, unlike a grounded quote, can be an entire
+# paragraph (a tenant is free to write "current_role_responsibilities: <five sentences>"), and
+# storing that verbatim quietly turns every later prompt into "here is a complete essay-length
+# answer for this type," which measurably suppresses extraction on any document that doesn't
+# resemble the one the paragraph came from (confirmed: capping examples at this length flipped
+# one all-zero document to 8 correct extractions with no other prompt change).
+MAX_EXAMPLE_VALUE_CHARS = 120
+
+
+def _cap_example_length(example: str) -> str:
+    if len(example) <= MAX_EXAMPLE_VALUE_CHARS:
+        return example
+    return example[:MAX_EXAMPLE_VALUE_CHARS].rstrip() + "…"
+
+
+# Phrases a Q&A answer uses to say "this document has no value" — not example values. Matched
+# against the whole normalised example, so "not specified in the document" is caught but a real
+# value that merely contains one of these words is not.
+_NON_VALUE_ANSWERS = {
+    "not specified", "not specified in the document", "not mentioned", "not mentioned in the document",
+    "not available", "not provided", "not present", "none", "n a", "na", "unknown", "not applicable",
+}
+
+
+def _is_non_value(example: str) -> bool:
+    return _normalize_for_match(example) in _NON_VALUE_ANSWERS
+
+
+def validate_candidate_examples(
+    candidates: list[dict],
+    seed_documents: list[dict],
+    require_grounding: bool = True,
+    lenient: bool = False,
+) -> list[dict]:
+    """Filter each candidate's examples to the ones actually present in a seed document.
+
+    Discovery mode (`require_grounding=True`, `lenient=False`): an example must be a verbatim
+    substring of a seed excerpt — exactly `ground_quote`'s test, so "verbatim" cannot mean one
+    thing here and another in pre-labeling. A candidate left with no grounded example is
+    dropped: a type the model cannot point at is the failure the verbatim rule exists to catch.
+
+    Q&A-driven mode (`require_grounding=False`, `lenient=True`): the tenant named every field,
+    so no candidate is dropped. Examples are matched leniently — whitespace and punctuation
+    differences ignored — because they are display strings, not offsets, and OCR'd documents
+    rarely reproduce a value's spacing exactly. A candidate that still ends up with nothing
+    grounded keeps the model's own example values (which, per the prompt, fall back to the
+    tenant's Q&A answer), so a reviewer always sees a concrete value to check.
 
     The excerpt, not the whole document, is what the model was shown, so the excerpt is what an
-    example is checked against. Checking against the full text would pass a quote the model
-    could not have read and must therefore have invented.
-
-    A candidate whose every example is discarded is itself discarded. An entity type the model
-    cannot point at in the documents is the exact failure the verbatim rule exists to catch,
-    and forwarding it to a human as a nameless plausible-sounding suggestion wastes their
-    attention on the model's least reliable output."""
+    example is checked against."""
     excerpts = [
         (document.get("text") or "")[:SEED_DOCUMENT_CHAR_BUDGET] for document in seed_documents
     ]
 
+    def is_present(example: str) -> bool:
+        if lenient:
+            return any(_lenient_contains(excerpt, example) for excerpt in excerpts)
+        return any(ground_quote(excerpt, example, []) is not None for excerpt in excerpts)
+
     validated = []
     for candidate in candidates:
-        grounded_examples = [
-            example
-            for example in candidate["examples"]
-            if any(ground_quote(excerpt, example, []) is not None for excerpt in excerpts)
-        ]
-        if not grounded_examples:
+        grounded_examples = [ex for ex in candidate["examples"] if is_present(ex)]
+
+        if require_grounding and not grounded_examples:
             continue
+
+        # Q&A-driven: keep the model's values (Q&A-answer fallbacks included) when nothing in
+        # the documents matched, so the field is never shown with a blank value list unless the
+        # model itself returned none — but drop "not specified in the document" style answers,
+        # which are statements of absence, not values.
+        fallback = [ex for ex in candidate["examples"] if not _is_non_value(ex)]
+        examples = grounded_examples or (fallback if not require_grounding else [])
+
         validated.append(
             {
                 "name": candidate["name"],
                 "description": candidate["description"],
-                "examples": grounded_examples,
+                "examples": [
+                    _cap_example_length(ex) for ex in _dedupe(examples)[:MAX_EXAMPLES_PER_CANDIDATE]
+                ],
             }
         )
     return validated
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen = set()
+    out = []
+    for value in values:
+        key = _normalize_for_match(value)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(value)
+    return out
 
 
 class ProposalResult:
@@ -243,11 +424,25 @@ class ProposalResult:
         }
 
 
-def propose_candidates(response, seed_documents: list[dict]) -> ProposalResult:
-    """Parse and validate in one step — what the task stores."""
-    parsed = parse_proposal_response(response)
+def propose_candidates(
+    response,
+    seed_documents: list[dict],
+    require_grounding: bool = True,
+    max_candidates: int = MAX_CANDIDATES,
+) -> ProposalResult:
+    """Parse and validate in one step — what the task stores.
+
+    On the Q&A-driven path `require_grounding` is False (every named field becomes a candidate),
+    example matching is lenient, and `max_candidates` is derived from the Q&A pair count."""
+    lenient = not require_grounding
+    parsed = parse_proposal_response(response, max_candidates=max_candidates)
     return ProposalResult(
-        candidates=validate_candidate_examples(parsed, seed_documents),
+        candidates=validate_candidate_examples(
+            parsed,
+            seed_documents,
+            require_grounding=require_grounding,
+            lenient=lenient,
+        ),
         returned=len(parsed),
         examples_returned=sum(len(candidate["examples"]) for candidate in parsed),
     )

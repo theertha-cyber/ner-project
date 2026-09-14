@@ -122,14 +122,14 @@ class TestAnnotationServiceURL:
 
 class TestFineTuneRetryGuard:
 
-    def make_mock_engine(self, status: str | None):
+    def make_mock_engine(self, status: str | None, source_scope: str | None = None):
         """Return a mock sync engine whose connection returns a row with given status."""
         import json
         from unittest.mock import MagicMock, patch
 
         mock_row = MagicMock()
         if status is not None:
-            mock_row.fetchone.return_value = (status,)
+            mock_row.fetchone.return_value = (status, source_scope)
         else:
             mock_row.fetchone.return_value = None
 
@@ -363,7 +363,7 @@ class TestLabelListPersistedInMetrics:
         import src.training_service.worker as worker_module
 
         status_row = MagicMock()
-        status_row.fetchone.return_value = ("approved",)
+        status_row.fetchone.return_value = ("approved", None)
 
         version_row = MagicMock()
         version_row.fetchone.return_value = (1,)
@@ -379,7 +379,7 @@ class TestLabelListPersistedInMetrics:
 
             def execute(self, stmt, params=None):
                 sql = str(stmt)
-                if "SELECT status FROM" in sql and "training_jobs" in sql:
+                if "SELECT status, source_scope FROM" in sql and "training_jobs" in sql:
                     return status_row
                 if "COALESCE(MAX(version_number)" in sql:
                     return version_row
@@ -409,7 +409,7 @@ class TestLabelListPersistedInMetrics:
             {"tokens": ["another", "sentence"], "tags": ["O", "O"]},
             {"tokens": ["Gamma", "Corp"], "tags": ["B-company", "I-company"]},
         ]
-        monkeypatch.setattr(worker_module, "_load_annotated_dataset", lambda tenant_id: records)
+        monkeypatch.setattr(worker_module, "_load_annotated_dataset", lambda tenant_id, source_scope=None: records)
 
         # Uses the real local MLflow tracking server (settings.mlflow_tracking_uri
         # defaults to http://localhost:5000, matching the dev docker-compose stack).
@@ -605,7 +605,7 @@ class TestDatasetSplitGuard:
         import src.training_service.worker as worker
 
         mock_row = MagicMock()
-        mock_row.fetchone.return_value = ("approved",)
+        mock_row.fetchone.return_value = ("approved", None)
         mock_conn = MagicMock()
         mock_conn.execute.return_value = mock_row
         mock_conn.__enter__.return_value = mock_conn
@@ -615,7 +615,7 @@ class TestDatasetSplitGuard:
         mock_engine.begin.return_value = mock_conn
         monkeypatch.setattr(worker, "_get_sync_engine", lambda: mock_engine)
 
-        monkeypatch.setattr(worker, "_load_annotated_dataset", lambda tid: [
+        monkeypatch.setattr(worker, "_load_annotated_dataset", lambda tid, source_scope=None: [
             {"tokens": ["John", "Doe"], "tags": ["B-PER", "I-PER"]},
         ])
 
