@@ -15,10 +15,10 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Runtime binaries the OCR path shells out to: tesseract for recognition, poppler's
-# pdftoppm (via pdf2image) for page rasterisation.
+# Runtime binaries the OCR path shells out to: tesseract (with the English language pack)
+# for recognition, poppler's pdftoppm (via pdf2image) for page rasterisation.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        tesseract-ocr poppler-utils \
+        tesseract-ocr tesseract-ocr-eng poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local /usr/local

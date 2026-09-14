@@ -9,7 +9,7 @@ import hashlib
 import io
 import os
 import uuid
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from httpx import AsyncClient, ASGITransport
@@ -30,6 +30,35 @@ PDF_CONTENT = b"%PDF-1.4 duplicate detection fixture content " * 10
 OTHER_PDF_CONTENT = b"%PDF-1.4 a completely different document body " * 10
 
 _tenant_counter = 0
+
+
+class _FakeContentStore:
+    """Stands in for the platform content store.
+
+    Same three operations, real reference values, no MinIO. Wrapped in a `MagicMock` at
+    each patch site so `.put.called` still reads as it did when the route held a storage
+    client directly.
+    """
+
+    kind = "platform_minio"
+
+    def __init__(self):
+        self.objects = {}
+
+    def put(self, tenant_id, document_id, data, filename=None):
+        reference = f"tenants/{tenant_id}/documents/{document_id}"
+        self.objects[reference] = data
+        return reference
+
+    def open(self, reference):
+        return self.objects.get(reference)
+
+    def delete(self, reference):
+        self.objects.pop(reference, None)
+
+
+def _fake_store():
+    return MagicMock(wraps=_FakeContentStore())
 
 
 def auth_header(token: str) -> dict:
@@ -53,6 +82,17 @@ _DOCUMENTS_DDL = """
         blob_path VARCHAR(500),
         purpose VARCHAR(20) NOT NULL DEFAULT 'query',
         uploaded_by VARCHAR,
+        origin VARCHAR(32) NOT NULL DEFAULT 'push',
+        source_type VARCHAR(64) NOT NULL DEFAULT 'platform_upload',
+        source_id VARCHAR(128) NOT NULL DEFAULT 'platform-upload',
+        external_id VARCHAR(512),
+        source_version VARCHAR(256),
+        source_created_at TIMESTAMPTZ,
+        source_modified_at TIMESTAMPTZ,
+        origin_metadata JSONB,
+        retention_mode VARCHAR(32) NOT NULL DEFAULT 'platform_blob'
+            CHECK (retention_mode IN ('platform_blob', 'ephemeral', 'source_only')),
+        ingested_by_kind VARCHAR(32) NOT NULL DEFAULT 'human',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
     )
@@ -122,8 +162,8 @@ async def client():
 
 
 async def _upload(client, tid, filename, content):
-    with patch("src.document_service.api.v1.documents.MinioStorageClient"), \
-         patch("src.document_service.api.v1.documents.trigger_ocr"):
+    with patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()), \
+         patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch"):
         return await client.post(
             "/api/v1/documents",
             files={"file": (filename, io.BytesIO(content), "application/pdf")},

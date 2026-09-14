@@ -1,31 +1,36 @@
-import uuid
 import hashlib
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import text
 from src.shared.auth import decode_token
 from src.shared.exceptions import AuthError
+from src.shared.observability import get_request_id, hash_user_id, set_tenant_id, set_user_hash
 from src.shared.database import get_engine
+from src.shared.observability.domain_metrics import record_auth_failure
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-PUBLIC_PATHS = {"/health", "/health/live", "/docs", "/redoc", "/openapi.json"}
+PUBLIC_PATHS = {"/health", "/health/live", "/docs", "/redoc", "/openapi.json", "/metrics"}
 WIDGET_PATHS = {"/api/v1/public/widget.js", "/api/v1/public/chat"}
 
 
 class TenantContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-        request.state.request_id = request_id
+        # Generated once, by the shared observability middleware that ran before this
+        # one. Read here only so the error bodies below can quote it.
+        request_id = get_request_id() or ""
 
         path = request.url.path
 
         if path in PUBLIC_PATHS:
-            response = await call_next(request)
-            response.headers["X-Request-ID"] = request_id
-            return response
+            return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
+            # Counted here rather than in `decode_token`, which never sees this case: a
+            # request with no bearer header is turned away before a token exists to
+            # validate. The reason is the whole record — the header's actual contents are
+            # never read, let alone labelled.
+            record_auth_failure("missing_header")
             from starlette.responses import JSONResponse
             return JSONResponse(
                 status_code=401,
@@ -56,6 +61,8 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
         request.state.role = payload.get("role")
         request.state.tenant_id = tenant_id
         request.state.auth_method = "jwt"
+        set_tenant_id(tenant_id)
+        set_user_hash(hash_user_id(payload.get("user_id")))
 
         if not tenant_id:
             from starlette.responses import JSONResponse
@@ -83,9 +90,7 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
                     content={"error": {"code": "TENANT_INACTIVE", "message": "Tenant is deactivated", "request_id": request_id}},
                 )
 
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
+        return await call_next(request)
 
     async def _authenticate_widget(self, request: Request, call_next, token: str, request_id: str):
         key_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -122,7 +127,10 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
         request.state.user_id = None
         request.state.role = "widget"
         request.state.auth_method = "widget_key"
+        # A widget session has a tenant but no user. `hash_user_id(None)` is None
+        # rather than a hash of the empty string, which would give every anonymous
+        # widget visitor one shared identity that looks like a real user.
+        set_tenant_id(tenant_id)
+        set_user_hash(None)
 
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
+        return await call_next(request)

@@ -3,10 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text, create_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
-
-
-def _schema(tenant_id: str) -> str:
-    return f"tenant_{tenant_id.replace('-', '_')}"
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 
 def _get_sync_engine():

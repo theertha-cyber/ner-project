@@ -29,6 +29,15 @@ from src.chat_api.graph.state import ChatState
 from src.chat_api.services import conversation_entity_state as conv_state
 from src.chat_api.services import entity_resolver
 from src.chat_api.services.context_assembler import ContextAssembler
+from src.chat_api.services.guardrails import FALLBACK_REPLY, INCOMPLETE_RETRIEVAL_REPLY
+from src.shared.observability import get_tenant_id
+from src.shared.observability.domain_metrics import (
+    measure_llm_call,
+    record_answer,
+    record_chat_stage,
+)
+from src.shared.observability.langsmith_link import langsmith_extra
+from src.shared.observability.spans import stage_span
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +53,64 @@ DECLINE_MESSAGES = {
 }
 
 
+def _node_outcome(name: str, result: dict) -> str:
+    """What this node decided, as a category — never what it decided *about*.
+
+    Every value returned here is derived from a field the node already sets, so a node
+    that grows a new branch reports `completed` rather than a wrong answer. The question,
+    the reply, the resolved entity and the sources are all in `result` and none of them
+    reaches a span.
+    """
+    if not isinstance(result, dict):
+        return "completed"
+    if name == "guardrail":
+        return "blocked" if result.get("blocked_reason") else "admitted"
+    if name == "orchestrator":
+        if result.get("orchestration_degraded"):
+            return "degraded"
+        return "planned"
+    if name == "entity_resolution":
+        if result.get("pending_clarification") is not None:
+            return "clarification"
+        return result.get("entity_resolution_outcome") or "none"
+    if name == "source_assembly":
+        return "sourced" if result.get("sources") else "empty"
+    if name == "generation":
+        reply = result.get("reply")
+        if reply in (FALLBACK_REPLY, INCOMPLETE_RETRIEVAL_REPLY):
+            return "hedged"
+        return "answered"
+    return "completed"
+
+
 def _traced(name: str, count_key: str | None = None):
+    """Log, span and time one graph node.
+
+    The span lives here rather than in a second wrapper because this decorator already
+    brackets every node and already measures the elapsed time; a separate wrapper would
+    time the same call twice and produce two numbers that drift.
+
+    Deliberately thin, per design Decision 3. The node layer sees inputs and outputs; it
+    cannot see the attempt loop, the fallback branch or the classifier exception, which is
+    exactly what is missing today — those are measured inside the service functions. What
+    the node layer *is* the right place for is the stage-per-request requirement: which
+    stages this request executed, in what order, and how long each took.
+    """
     def decorator(fn):
         @wraps(fn)
         async def wrapper(state: ChatState) -> dict:
             start = time.monotonic()
-            result = await fn(state)
+            with stage_span(f"chat.{name}") as span:
+                try:
+                    result = await fn(state)
+                except Exception as exc:
+                    span.set("outcome", "error")
+                    span.record_error(exc)
+                    record_chat_stage(name, time.monotonic() - start)
+                    raise
+                span.set("outcome", _node_outcome(name, result))
             elapsed_ms = (time.monotonic() - start) * 1000
+            record_chat_stage(name, elapsed_ms / 1000)
             count = None
             if count_key is not None:
                 value = result.get(count_key)
@@ -157,7 +217,10 @@ def build_nodes(orchestrator) -> dict:
         try:
             plan = await plan_retrieval(message, conversation_context, orchestrator.llm_client, orchestrator.llm_model, registry)
         except Exception as e:
-            logger.warning("orchestrator: planning call failed, using degraded fallback plan: %s", e)
+            logger.warning(
+                "orchestrator_planning_failed",
+                extra={"outcome": "degraded_fallback_plan", "error_class": type(e).__name__},
+            )
             return {
                 "retrieval_plan": build_fallback_plan(message, registry),
                 "orchestration_degraded": True,
@@ -429,36 +492,55 @@ def build_nodes(orchestrator) -> dict:
         token_sink: asyncio.Queue | None = state.get("token_sink")
 
         if token_sink is not None and sources:
-            stream = await orchestrator.llm_client.chat.completions.create(
-                model=orchestrator.llm_model,
-                messages=llm_messages,
-                temperature=0.3,
-                max_tokens=1000,
-                stream=True,
-            )
-            deltas = []
-            async for chunk in stream:
+            # The measured span covers the whole stream, not just the call that opens it:
+            # a streamed answer's latency is the time until the last delta, which is what
+            # the user actually waits for. No usage block arrives on a stream unless it is
+            # explicitly requested, so this records latency and outcome and no tokens
+            # rather than guessing at a count.
+            async with measure_llm_call("answer_generation", get_tenant_id()):
+                stream = await orchestrator.llm_client.chat.completions.create(
+                    model=orchestrator.llm_model,
+                    messages=llm_messages,
+                    temperature=0.3,
+                    max_tokens=1000,
+                    stream=True,
+                    langsmith_extra=langsmith_extra(),
+                )
+                deltas = []
+                async for chunk in stream:
                 # Some chunks carry no choices at all — e.g. Azure OpenAI's
                 # trailing content-filter/usage chunk — rather than a choice with
                 # an empty delta. Guard the index, not just the delta content.
-                if not chunk.choices:
-                    continue
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    deltas.append(delta)
-                    await token_sink.put(delta)
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        deltas.append(delta)
+                        await token_sink.put(delta)
             reply = "".join(deltas)
         else:
-            response = await orchestrator.llm_client.chat.completions.create(
-                model=orchestrator.llm_model,
-                messages=llm_messages,
-                temperature=0.3,
-                max_tokens=1000,
-            )
+            async with measure_llm_call("answer_generation", get_tenant_id()) as call:
+                response = await orchestrator.llm_client.chat.completions.create(
+                    model=orchestrator.llm_model,
+                    messages=llm_messages,
+                    temperature=0.3,
+                    max_tokens=1000,
+                    langsmith_extra=langsmith_extra(),
+                )
+                call.usage(response)
             reply = response.choices[0].message.content
 
         reply, sources = orchestrator.guardrails.enforce_sources(
             reply, sources, state.get("retrieval_status"),
+        )
+        # Composition, measured after the guardrail has had its say: the citation count
+        # that matters is the one on the answer the user receives, not the one the model
+        # proposed. A hedged reply is one the guardrail replaced with a fallback, which is
+        # a different product outcome from an answer that happened to be short.
+        record_answer(
+            confidence=state.get("confidence"),
+            citations=len(sources),
+            hedged=reply in (FALLBACK_REPLY, INCOMPLETE_RETRIEVAL_REPLY),
         )
         return {"reply": reply, "sources": sources}
 

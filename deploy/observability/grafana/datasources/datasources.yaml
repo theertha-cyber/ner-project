@@ -1,0 +1,33 @@
+# The three datasources, provisioned so `docker compose up` gives a usable Grafana with
+# no click-through setup. Dashboards and alert rules are deliberately out of scope here —
+# they belong to story 5.1.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      # Turns the `trace_id` on a log record into a link to the trace. That link is the
+      # whole point of putting `trace_id` on every record in the first place.
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"trace_id":\s*"([a-f0-9]+)"'
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200

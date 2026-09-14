@@ -105,7 +105,7 @@ describe("DocumentUpload", () => {
   it("renders upload zone with instructions", () => {
     render(<DocumentUpload />, { wrapper: createWrapper() });
     expect(screen.getByText(/Click to upload/)).toBeDefined();
-    expect(screen.getByText(/PDF, JPEG, PNG, or TIFF/)).toBeDefined();
+    expect(screen.getByText(/PDF, DOC, DOCX, JPEG, PNG, or TIFF/)).toBeDefined();
   });
 
   it("offers no purpose choice — the caller fixes it from the role", () => {

@@ -1,0 +1,12 @@
+
+FAIL: 3 finding(s).
+  [logs] seeded entity value: Priyadarshini Raghunathan
+      in: {"code_file_path": "/app/src/gateway/main.py", "code_function_name": "<module>", "code_line_number": "101", "detected_level": "warn", "event": "extraction", "observed_timestamp": "1788411936478755708", "scope_name": "leak_probe", "service": "gateway", "service_instance_id": "2c89ebe2-703c-4147-9c70-966d6cd212c1", "service_name": "gateway", "severity_number": "13", "severity_text": "WARN", "telemet
+  [logs] seeded entity value: Priyadarshini_Raghunathan_Resume.pdf
+      in: {"code_file_path": "/app/src/gateway/main.py", "code_function_name": "<module>", "code_line_number": "101", "detected_level": "warn", "event": "extraction", "observed_timestamp": "1788411936478755708", "scope_name": "leak_probe", "service": "gateway", "service_instance_id": "2c89ebe2-703c-4147-9c70-966d6cd212c1", "service_name": "gateway", "severity_number": "13", "severity_text": "WARN", "telemet
+  [logs] seeded entity value: SCAN-SENTINEL-9F2A4C
+      in: {"code_file_path": "/app/src/gateway/main.py", "code_function_name": "<module>", "code_line_number": "101", "detected_level": "warn", "event": "extraction", "observed_timestamp": "1788411936478755708", "scope_name": "leak_probe", "service": "gateway", "service_instance_id": "2c89ebe2-703c-4147-9c70-966d6cd212c1", "service_name": "gateway", "severity_number": "13", "severity_text": "WARN", "telemet
+Capturing telemetry…
+  logs: 176 records
+  spans: 206 records
+  metrics: 11 records

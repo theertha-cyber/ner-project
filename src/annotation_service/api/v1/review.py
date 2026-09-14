@@ -5,14 +5,11 @@ from sqlalchemy import text
 from src.shared.database import get_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.annotation_service.api.v1.import_ import get_known_entity_types_lower, strip_bio_prefix
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 router = APIRouter(tags=["annotation-review"])
 
 ALLOWED_ROLES = {"annotator", "tenant_admin"}
-
-
-def _schema(tenant_id: str) -> str:
-    return f"tenant_{tenant_id.replace('-', '_')}"
 
 
 def get_tenant_id(request: Request) -> str:

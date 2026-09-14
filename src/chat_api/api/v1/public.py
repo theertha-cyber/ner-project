@@ -11,16 +11,13 @@ from src.chat_api.api.v1.schemas import WidgetChatRequest, WidgetChatResponse, S
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator
 from src.chat_api.services.guardrails import GuardrailService
 from src.chat_api.services.rate_limiter import rate_limiter, WIDGET_RATE_LIMIT, WIDGET_WINDOW
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/public", tags=["public"])
 orchestrator = RAGOrchestrator()
 guardrails = GuardrailService()
-
-
-def _schema(tenant_id: str) -> str:
-    return f"tenant_{tenant_id.replace('-', '_')}"
 
 
 async def get_session() -> AsyncSession:

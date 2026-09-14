@@ -5,7 +5,7 @@ import { useUpload } from "@/hooks/use-upload";
 import { usePrelabelTrigger } from "@/hooks/use-prelabel-trigger";
 import { useEntityTypes } from "@/hooks/use-entity-types";
 
-const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/tiff"];
+const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/tiff", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"];
 // Q&A-pair guidance documents are text, not scanned pages, so they accept the office text
 // formats a team is likely to have written one in. The browser reports .txt as text/plain
 // and .docx as this vendor type (or, on some systems, an empty string — the extension check
@@ -101,7 +101,7 @@ export function DocumentUpload({ purpose = "query", defaultAnnotationMode = "man
         return `File type "${file.type || ext || "unknown"}" is not supported. Accepted: PDF, TXT, DOCX.`;
       }
     } else if (!ACCEPTED_TYPES.includes(file.type)) {
-      return `File type "${file.type}" is not supported. Accepted: PDF, JPEG, PNG, TIFF.`;
+      return `File type "${file.type}" is not supported. Accepted: PDF, DOC, DOCX, JPEG, PNG, TIFF.`;
     }
     if (file.size > MAX_SIZE) {
       return `File exceeds the 50MB limit (${(file.size / (1024 * 1024)).toFixed(1)}MB).`;
@@ -356,7 +356,7 @@ export function DocumentUpload({ purpose = "query", defaultAnnotationMode = "man
         <input
           ref={inputRef}
           type="file"
-          accept={isQaPair ? ".pdf,.txt,.docx" : ".pdf,.jpg,.jpeg,.png,.tiff,.tif"}
+          accept={isQaPair ? ".pdf,.txt,.docx" : ".pdf,.jpg,.jpeg,.png,.tiff,.tif,.doc,.docx"}
           multiple
           className="hidden"
           onChange={handleInputChange}
@@ -447,7 +447,7 @@ export function DocumentUpload({ purpose = "query", defaultAnnotationMode = "man
             <p className="mt-1 text-xs" style={{ color: "var(--ink-3)" }}>
               {isQaPair
                 ? `PDF, TXT, or DOCX (max 50MB, up to ${MAX_BATCH} files)`
-                : `PDF, JPEG, PNG, or TIFF (max 50MB, up to ${MAX_BATCH} files)`}
+                : `PDF, DOC, DOCX, JPEG, PNG, or TIFF (max 50MB, up to ${MAX_BATCH} files)`}
             </p>
           </>
         )}

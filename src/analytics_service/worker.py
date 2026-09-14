@@ -1,6 +1,7 @@
 from celery import Celery
 from sqlalchemy import create_engine, text
 from src.shared.config import settings
+from src.shared.observability.domain_metrics import assert_tenant_schema
 
 celery_app = Celery(
     "analytics_service",
@@ -33,6 +34,7 @@ def refresh_analytics_materialized_views(self, tenant_id: str):
     ]
 
     with engine.begin() as conn:
+        assert_tenant_schema(schema, "analytics_service.worker.session")
         conn.execute(text(f"SET search_path TO {schema}"))
         for mv in mv_views:
             conn.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv}"))

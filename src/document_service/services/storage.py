@@ -6,7 +6,7 @@ from src.shared.config import settings
 
 
 class MinioStorageClient:
-    def __init__(self):
+    def __init__(self, bucket: str | None = None):
         self.client = boto3.client(
             "s3",
             endpoint_url=f"http://{settings.minio_endpoint}",
@@ -14,7 +14,9 @@ class MinioStorageClient:
             aws_secret_access_key=settings.minio_secret_key,
             config=boto3.session.Config(signature_version="s3v4"),
         )
-        self.bucket = settings.minio_bucket
+        # Defaults to the durable bucket. The working store passes its own so that the
+        # two instances can carry different object-lifetime policies.
+        self.bucket = bucket or settings.minio_bucket
         self._ensure_bucket()
 
     @retry(
@@ -44,6 +46,32 @@ class MinioStorageClient:
     def delete_file(self, object_key: str) -> bool:
         try:
             self.client.delete_object(Bucket=self.bucket, Key=object_key)
+            return True
+        except ClientError:
+            return False
+
+    def set_expiry_days(self, days: int) -> bool:
+        """Apply a bucket-level object-expiry rule.
+
+        This is what makes the working store's guarantee independent of the application:
+        an abandoned working copy is removed by the object store on its own schedule even
+        if the process that wrote it never reaches a terminal state. Returns False when
+        the backend refuses the rule so a deployment can see it rather than assume it.
+        """
+        try:
+            self.client.put_bucket_lifecycle_configuration(
+                Bucket=self.bucket,
+                LifecycleConfiguration={
+                    "Rules": [
+                        {
+                            "ID": "expire-working-copies",
+                            "Status": "Enabled",
+                            "Filter": {"Prefix": ""},
+                            "Expiration": {"Days": days},
+                        }
+                    ]
+                },
+            )
             return True
         except ClientError:
             return False

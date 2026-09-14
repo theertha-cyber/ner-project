@@ -398,20 +398,44 @@ class TestChunkingRestrictedToQueryPurpose:
                     )
                 """)
             )
+            # conftest's documents table is the `002` shape. The worker reads the `003`
+            # columns plus the retention mode this change adds, so add them here — the
+            # same reason document_text_spans is rebuilt above.
             await session.execute(
                 text(f"""
-                    INSERT INTO {schema}.documents (id, tenant_id, filename, status, purpose)
-                    VALUES (:id, :tid, :fn, 'uploaded', :purpose)
+                    ALTER TABLE {schema}.documents
+                        ADD COLUMN IF NOT EXISTS content_type VARCHAR(255),
+                        ADD COLUMN IF NOT EXISTS blob_path VARCHAR(500),
+                        ADD COLUMN IF NOT EXISTS retention_mode VARCHAR(32)
+                            NOT NULL DEFAULT 'platform_blob'
+                """)
+            )
+            await session.execute(
+                text(f"""
+                    INSERT INTO {schema}.documents
+                        (id, tenant_id, filename, status, purpose, content_type, blob_path)
+                    VALUES (:id, :tid, :fn, 'pending', :purpose, 'application/pdf', :blob)
                 """),
-                {"id": doc_id, "tid": tenant_id, "fn": f"{purpose}-doc.pdf", "purpose": purpose},
+                {
+                    "id": doc_id,
+                    "tid": tenant_id,
+                    "fn": f"{purpose}-doc.pdf",
+                    "purpose": purpose,
+                    "blob": f"tenants/{tenant_id}/documents/{doc_id}.pdf",
+                },
             )
             await session.commit()
 
         page_text = "Alpha section content about page zero. " * 5
 
-        class FakeStorage:
-            def get_file(self, blob_path):
+        class FakeStore:
+            """The content store the worker resolves bytes through."""
+
+            def open(self, reference):
                 return b"%PDF-1.4 fake"
+
+            def delete(self, reference):
+                pass
 
         embed_calls = []
 
@@ -419,7 +443,7 @@ class TestChunkingRestrictedToQueryPurpose:
             embed_calls.append(list(texts))
             return [_fake_vector([0.1, 0.2, 0.3]) for _ in texts]
 
-        monkeypatch.setattr(ocr_worker, "MinioStorageClient", FakeStorage)
+        monkeypatch.setattr(ocr_worker, "_store_for", lambda mode: FakeStore())
         monkeypatch.setattr(ocr_worker, "_embed_chunks", fake_embed)
         monkeypatch.setattr(
             ocr_worker, "extract_text_pdf",
@@ -427,7 +451,7 @@ class TestChunkingRestrictedToQueryPurpose:
                            "char_end": len(page_text), "page_number": 0}],
         )
 
-        await ocr_worker.process_document(doc_id, tenant_id, "blob/path.pdf", "application/pdf")
+        await ocr_worker.process_document(doc_id, tenant_id)
 
         async with session_factory() as session:
             chunk_count = (await session.execute(
@@ -486,20 +510,14 @@ class TestQaPairTextExtraction:
         assert "caf" in spans[0]["text"]
 
     def test_docx_paragraphs_are_joined_with_newlines(self):
-        import zipfile
+        from docx import Document
         from src.document_service.services import ocr_worker
 
-        doc_xml = (
-            b'<?xml version="1.0"?>'
-            b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-            b"<w:body>"
-            b"<w:p><w:r><w:t>Q: What is the candidate name?</w:t></w:r></w:p>"
-            b"<w:p><w:r><w:t>A: Aakash</w:t></w:r><w:r><w:t> R P</w:t></w:r></w:p>"
-            b"</w:body></w:document>"
-        )
+        document = Document()
+        document.add_paragraph("Q: What is the candidate name?")
+        document.add_paragraph("A: Aakash R P")
         buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as archive:
-            archive.writestr("word/document.xml", doc_xml)
+        document.save(buf)
 
         spans = ocr_worker.extract_text_docx(buf.getvalue())
         assert spans[0]["text"] == "Q: What is the candidate name?\nA: Aakash R P"

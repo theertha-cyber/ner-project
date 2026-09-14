@@ -6,6 +6,7 @@ from sqlalchemy import text
 from src.shared.database import get_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from fastapi.responses import PlainTextResponse
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 router = APIRouter(tags=["export"])
 
@@ -15,10 +16,6 @@ SOURCE_MANUAL = "manual"
 SOURCE_AUTOMATED = "automated"
 SOURCE_IMPORT = "import"
 VALID_SOURCES = (SOURCE_MANUAL, SOURCE_AUTOMATED, SOURCE_IMPORT)
-
-
-def _schema(tenant_id: str) -> str:
-    return f"tenant_{tenant_id.replace('-', '_')}"
 
 
 def get_tenant_id(request: Request) -> str:

@@ -8,6 +8,17 @@ logger = logging.getLogger(__name__)
 
 PII_PATTERN = re.compile(r"(ssn|social security|credit card|passport|driver.?s license)\s+(number|info|details)", re.IGNORECASE)
 
+# The rules this service can decide under. Named constants rather than string literals at
+# the return sites, because they are also the enumerated label values on
+# `ner_guardrail_decisions_total` — a rename here must break the observability module's
+# import rather than leave a stale label that no dashboard matches.
+RULE_CROSS_TENANT = "cross_tenant"
+RULE_PII = "pii"
+RULE_DOMAIN = "domain"
+RULE_SOURCES = "sources"
+
+GUARDRAIL_RULES = frozenset({RULE_CROSS_TENANT, RULE_PII, RULE_DOMAIN, RULE_SOURCES})
+
 FALLBACK_REPLY = "I couldn't find relevant information to answer that question."
 
 # Six distinct upstream conditions used to collapse into FALLBACK_REPLY, so a broken
@@ -71,6 +82,18 @@ within our documents," never "ranked in the real world."
 """
 
 
+def _metrics():
+    """The domain-metric recorders, resolved on first use.
+
+    `domain_metrics` imports `GUARDRAIL_RULES` from this module so that renaming a rule is
+    an ImportError there rather than a label value no dashboard matches. Importing it back
+    at module scope would close that cycle.
+    """
+    from src.shared.observability import domain_metrics
+
+    return domain_metrics
+
+
 class GuardrailService:
     def check_blocked_question_type(self, message: str, tenant_id: str) -> str | None:
         """Deterministic short-circuits that decline without an LLM call: a reference to
@@ -79,10 +102,12 @@ class GuardrailService:
         cross_tenant = re.search(rf"(?!\b{re.escape(tenant_id)}\b)\btenant_\w+\b", message, re.IGNORECASE) if tenant_id else False
         if cross_tenant:
             logger.info("Cross-tenant query detected")
-            return "cross_tenant"
+            _metrics().record_guardrail_decision(RULE_CROSS_TENANT, "blocked")
+            return RULE_CROSS_TENANT
         if PII_PATTERN.search(message):
             logger.info("PII query detected")
-            return "pii"
+            _metrics().record_guardrail_decision(RULE_PII, "blocked")
+            return RULE_PII
         return None
 
     async def _classify_once(self, message: str, history: list[dict], llm_client, llm_model: str) -> bool:
@@ -94,13 +119,24 @@ class GuardrailService:
         messages.append({"role": "user", "content": message})
 
         try:
-            response = await llm_client.chat.completions.create(
-                model=llm_model, messages=messages, temperature=0, max_tokens=5,
-            )
+            async with _metrics().measure_llm_call("domain_classification") as call:
+                response = await llm_client.chat.completions.create(
+                    model=llm_model, messages=messages, temperature=0, max_tokens=5,
+                )
+                call.usage(response)
             verdict = (response.choices[0].message.content or "").strip().lower()
             return "out_of_domain" not in verdict
         except Exception as e:
-            logger.warning("Domain classifier failed, failing open (admitting query): %s", e)
+            logger.warning(
+                "domain_classifier_failed",
+                extra={"outcome": "fail_open_admitted", "error_class": type(e).__name__},
+            )
+            # A dedicated counter, deliberately not the admit counter. A fail-open that
+            # increments `decisions{rule="domain",decision="admitted"}` is a security
+            # control degrading invisibly inside a normal-looking series. Behaviour is
+            # unchanged here — whether this should keep failing open is flagged in
+            # design.md's Open Questions and belongs to its own change.
+            _metrics().record_guardrail_fail_open(e)
             return True
 
     async def classify_domain(self, message: str, conversation_context: list[dict] | None, llm_client, llm_model: str) -> bool:
@@ -123,7 +159,11 @@ class GuardrailService:
         resolves to admit. Only unanimous out-of-domain declines."""
         history = recent_messages(conversation_context)
         if not history:
-            return await self._classify_once(message, [], llm_client, llm_model)
+            in_domain = await self._classify_once(message, [], llm_client, llm_model)
+            _metrics().record_guardrail_decision(
+                RULE_DOMAIN, "admitted" if in_domain else "blocked"
+            )
+            return in_domain
 
         with_history, without_history = await asyncio.gather(
             self._classify_once(message, history, llm_client, llm_model),
@@ -134,7 +174,17 @@ class GuardrailService:
                 "Domain classifier split (with_history=%s bare=%s), admitting query",
                 with_history, without_history,
             )
-        return with_history or without_history
+            # The split is its own outcome, not an ordinary admission. Both views are
+            # untrustworthy alone and disagreement always resolves to admit, so a rising
+            # split rate is the signal that the classifier is drifting — invisible if it
+            # were folded into the admit count.
+            _metrics().record_guardrail_classifier_split()
+
+        in_domain = with_history or without_history
+        _metrics().record_guardrail_decision(
+            RULE_DOMAIN, "admitted" if in_domain else "blocked"
+        )
+        return in_domain
 
     def enforce_sources(
         self,
@@ -154,6 +204,7 @@ class GuardrailService:
         and asserting absence would be a false statement about the tenant's data. The
         distinction comes from `retrieval_status`, never from inspecting the reply."""
         if sources:
+            _metrics().record_guardrail_decision(RULE_SOURCES, "admitted")
             return reply, sources
 
         if retrieval_status is not None and retrieval_status.has_failure_or_skip():
@@ -163,9 +214,11 @@ class GuardrailService:
                 "Guardrail: empty sources after retrieval failure failed=%s skipped=%s",
                 failed or None, skipped or None,
             )
+            _metrics().record_guardrail_decision(RULE_SOURCES, "fallback")
             return INCOMPLETE_RETRIEVAL_REPLY, []
 
         logger.warning("Guardrail: empty sources detected, returning fallback reply")
+        _metrics().record_guardrail_decision(RULE_SOURCES, "fallback")
         return FALLBACK_REPLY, []
 
     def inject_disclaimer(self) -> str:

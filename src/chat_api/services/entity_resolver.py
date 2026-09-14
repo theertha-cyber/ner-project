@@ -269,10 +269,44 @@ def _accept_matching_mentions(
     return accepted
 
 
+def _metrics():
+    """The domain-metric recorders, resolved on first use.
+
+    `domain_metrics` imports `UNRESOLVED`/`UNIQUE`/`AMBIGUOUS`/`OVER_CAP` from this module
+    so that renaming one is an ImportError there rather than a stale label value. Importing
+    it back at module scope would close that cycle.
+    """
+    from src.shared.observability import domain_metrics
+
+    return domain_metrics
+
+
 async def resolve_entity(message: str, session: AsyncSession, schema: str, tenant_id: str) -> ResolutionResult:
     """Resolves person-entity references in `message` against `document_entities`.
     Tenant-scoped by `schema` (caller-supplied, never derived from `message`).
-    Issues no LLM call."""
+    Issues no LLM call.
+
+    Instrumented as a wrapper rather than at each of the five return points: the outcome
+    constant and `mentions_checked` are already on the result, so one exit records all of
+    them and a sixth return added later cannot be forgotten.
+
+    `ResolutionResult.mention`, `.resolved_entity_value` and `.candidates` are the
+    tenant's own extracted values — a candidate's name, verbatim. None of them is a span
+    attribute or a label. What is recorded is the outcome category and how many mentions
+    were examined.
+    """
+    from src.shared.observability.spans import stage_span
+
+    with stage_span("entity_resolution") as span:
+        result = await _resolve_entity(message, session, schema, tenant_id)
+        span.set("outcome", result.outcome)
+        span.set("mentions_checked", result.mentions_checked)
+        span.set("resolved_documents", len(result.resolved_document_ids or []))
+        _metrics().record_entity_resolution(result.outcome, result.mentions_checked)
+        return result
+
+
+async def _resolve_entity(message: str, session: AsyncSession, schema: str, tenant_id: str) -> ResolutionResult:
     mentions = _extract_mentions(message)
     if not mentions:
         logger.info("entity_resolution outcome=%s tenant_id=%s mentions_checked=0", UNRESOLVED, tenant_id)
@@ -432,12 +466,17 @@ async def interpret_selection(answer: str, candidates: list[Candidate], llm_clie
         {"role": "user", "content": f"Candidates:\n{_render_candidates_for_prompt(candidates)}\n\nUser's answer: {answer}"},
     ]
     try:
-        response = await llm_client.chat.completions.create(
-            model=llm_model, messages=messages, temperature=0, max_tokens=5,
-        )
+        async with _metrics().measure_llm_call("entity_selection") as call:
+            response = await llm_client.chat.completions.create(
+                model=llm_model, messages=messages, temperature=0, max_tokens=5,
+            )
+            call.usage(response)
         content = (response.choices[0].message.content or "").strip()
     except Exception as e:
-        logger.warning("entity_resolution selection call failed: %s", e)
+        logger.warning(
+            "entity_resolution_selection_failed",
+            extra={"error_class": type(e).__name__},
+        )
         return None
 
     match = re.search(r"\d+", content)

@@ -8,6 +8,8 @@ from src.shared.config import settings
 from src.shared.database import get_engine, wait_for_database
 from src.shared.readiness import check_database, check_http_dependency, build_readiness_body
 from src.extraction_service.middleware.tenant_context import TenantContextMiddleware
+from src.shared.observability import init_observability
+from src.shared.observability.propagation import register_queue_depth
 from src.extraction_service.api.v1 import extraction, entities
 
 
@@ -51,6 +53,17 @@ app.add_middleware(
     allow_headers=["*"],
     allow_private_network=settings.cors_allow_private_network,
 )
+
+# One call wires logging, tracing, RED metrics, `/metrics` and the shared correlation
+# middleware for this process. Mounted last so it is the outermost middleware: the
+# correlation identifier has to exist before the tenant middleware builds an error
+# body quoting it.
+init_observability("extraction_service", app)
+# Queue depth is registered here, on the producer side, and never in a worker:
+# depth is a property of the queue, so N workers reporting it would produce N
+# identical series that a dashboard could only pick between arbitrarily. See
+# design Decision 6. The queue is the queue this service enqueues extraction runs onto.
+register_queue_depth(settings.extraction_celery_queue)
 
 
 @app.exception_handler(AppError)

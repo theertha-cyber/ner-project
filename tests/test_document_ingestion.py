@@ -1,7 +1,7 @@
 import io
 import os
 import uuid
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from httpx import AsyncClient, ASGITransport
@@ -28,7 +28,50 @@ def make_token(tid, role="business_user"):
 PDF_CONTENT = b"%PDF-1.4 fake pdf content for testing purposes " * 10
 PNG_CONTENT = b"\x89PNG\r\n\x1a\nfake png content " * 10
 
+# Minimal valid DOCX content: a ZIP file containing the minimum OOXML structure
+import zipfile
+def _make_minimal_docx():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+        zf.writestr('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+        zf.writestr('word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>')
+        zf.writestr('word/document.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Hello DOCX World</w:t></w:r></w:p></w:body></w:document>')
+    return buf.getvalue()
+
+DOCX_CONTENT = _make_minimal_docx()
+
 _coll_counter = 0
+
+
+class _FakeContentStore:
+    """Stands in for the platform content store.
+
+    Same three operations, real reference values, no MinIO. Wrapped in a `MagicMock` at
+    each patch site so `.put.called` still reads as it did when the route held a storage
+    client directly.
+    """
+
+    kind = "platform_minio"
+
+    def __init__(self):
+        self.objects = {}
+
+    def put(self, tenant_id, document_id, data, filename=None):
+        reference = f"tenants/{tenant_id}/documents/{document_id}"
+        self.objects[reference] = data
+        return reference
+
+    def open(self, reference):
+        return self.objects.get(reference)
+
+    def delete(self, reference):
+        self.objects.pop(reference, None)
+
+
+def _fake_store():
+    return MagicMock(wraps=_FakeContentStore())
+
 
 
 @pytest.fixture(autouse=True)
@@ -58,6 +101,17 @@ def _create_tables_sql(schema: str) -> list:
                 blob_path VARCHAR(500),
                 purpose VARCHAR(20) NOT NULL DEFAULT 'query',
                 uploaded_by VARCHAR,
+                origin VARCHAR(32) NOT NULL DEFAULT 'push',
+                source_type VARCHAR(64) NOT NULL DEFAULT 'platform_upload',
+                source_id VARCHAR(128) NOT NULL DEFAULT 'platform-upload',
+                external_id VARCHAR(512),
+                source_version VARCHAR(256),
+                source_created_at TIMESTAMPTZ,
+                source_modified_at TIMESTAMPTZ,
+                origin_metadata JSONB,
+                retention_mode VARCHAR(32) NOT NULL DEFAULT 'platform_blob'
+                    CHECK (retention_mode IN ('platform_blob', 'ephemeral', 'source_only')),
+                ingested_by_kind VARCHAR(32) NOT NULL DEFAULT 'human',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -193,8 +247,8 @@ async def test_7_1_upload_pdf_returns_201(seeded_tenant, client):
     slug = seeded_tenant["slug"]
     token = make_token(tid)
 
-    with patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls, \
-         patch("src.document_service.api.v1.documents.trigger_ocr") as mock_ocr:
+    with patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls, \
+         patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_ocr:
         mock_storage = mock_storage_cls.return_value
         mock_ocr.return_value = None
 
@@ -211,7 +265,7 @@ async def test_7_1_upload_pdf_returns_201(seeded_tenant, client):
     assert data["content_type"] == "application/pdf"
     assert data["status"] == "pending"
     assert data["file_size"] == len(PDF_CONTENT)
-    assert mock_storage.upload_file.called
+    assert mock_storage.put.called
 
 
 @pytest.mark.asyncio
@@ -256,9 +310,9 @@ async def test_7_4_pdf_ocr_processing(seeded_tenant, client):
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
         mock_storage = mock_storage_cls.return_value
         mock_trigger.return_value = None
@@ -308,9 +362,9 @@ async def test_7_5_image_ocr_processing(seeded_tenant, client):
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
         mock_storage = mock_storage_cls.return_value
         mock_trigger.return_value = None
@@ -351,9 +405,9 @@ async def test_7_6_corrupt_pdf_fails(seeded_tenant, client):
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
         mock_storage = mock_storage_cls.return_value
         mock_trigger.return_value = None
@@ -581,9 +635,9 @@ async def test_8_1_upload_without_purpose_defaults_to_query(seeded_tenant, clien
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
         mock_storage_cls.return_value
         mock_trigger.return_value = None
@@ -613,9 +667,9 @@ async def test_8_2_upload_with_training_purpose(seeded_tenant, client):
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient") as mock_storage_cls,
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
         mock_storage_cls.return_value
         mock_trigger.return_value = None
@@ -696,10 +750,11 @@ async def test_8_2d_tenant_admin_can_upload_qa_pair_purpose(seeded_tenant, clien
     doc_id = str(uuid.uuid4())
 
     with (
-        patch("src.document_service.api.v1.documents.MinioStorageClient"),
-        patch("src.document_service.api.v1.documents.trigger_ocr") as mock_trigger,
-        patch("src.document_service.api.v1.documents.generate_uuid", return_value=doc_id),
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
     ):
+        mock_storage_cls.return_value
         mock_trigger.return_value = None
         resp = await client.post(
             "/api/v1/documents",
@@ -840,3 +895,217 @@ async def test_7_12_jwt_without_tenant_returns_401(client):
         headers=auth_header(bad_token),
     )
     assert resp.status_code == 401, f"Expected 401, got {resp.status_code}: {resp.text}"
+
+
+# =========================================================================================
+# Retention through the upload route — verification.md rows 70 and 71.
+#
+# Added by `tenant-pluggable-data-foundation`. The six scenarios above are unmodified
+# except for their mock patch targets and this fixture's DDL; these two are new.
+# =========================================================================================
+
+from src.document_service.api.v1 import documents as documents_route  # noqa: E402
+from src.document_service.ingestion import (  # noqa: E402
+    DocumentIngestionService,
+    RecordingDispatcher,
+)
+from src.document_service.services import ocr_worker  # noqa: E402
+from src.shared.document_retention import (  # noqa: E402
+    RETENTION_EPHEMERAL,
+    RETENTION_PLATFORM_BLOB,
+)
+from src.shared.integration_profile.store import PROFILE_TABLE  # noqa: E402
+
+
+class _RecordingStore:
+    """A content store that records what it was asked to do."""
+
+    kind = "platform_minio"
+
+    def __init__(self):
+        self.objects = {}
+        self.puts = []
+        self.deletes = []
+
+    def put(self, tenant_id, document_id, data, filename=None):
+        reference = f"tenants/{tenant_id}/documents/{document_id}"
+        self.objects[reference] = data
+        self.puts.append(reference)
+        return reference
+
+    def open(self, reference):
+        return self.objects.get(reference)
+
+    def delete(self, reference):
+        self.deletes.append(reference)
+        self.objects.pop(reference, None)
+
+
+async def _ensure_profile_table(engine):
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                f"""
+                CREATE TABLE IF NOT EXISTS {PROFILE_TABLE} (
+                    tenant_id VARCHAR(64) PRIMARY KEY,
+                    source_adapter VARCHAR(64) NOT NULL DEFAULT 'platform_upload',
+                    content_store_adapter VARCHAR(64) NOT NULL DEFAULT 'platform_minio',
+                    relational_adapter VARCHAR(64) NOT NULL DEFAULT 'platform_postgresql',
+                    index_adapter VARCHAR(64) NOT NULL DEFAULT 'platform_pgvector',
+                    retention_mode VARCHAR(32) NOT NULL DEFAULT 'platform_blob',
+                    configuration JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+                    secret_references JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+                    status VARCHAR(32) NOT NULL DEFAULT 'draft',
+                    status_reason TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        )
+
+
+async def _set_retention(engine, tenant_id, mode):
+    await _ensure_profile_table(engine)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                f"INSERT INTO {PROFILE_TABLE} (tenant_id, retention_mode, status) "
+                f"VALUES (:tid, :mode, 'active') "
+                f"ON CONFLICT (tenant_id) DO UPDATE SET retention_mode = :mode"
+            ),
+            {"tid": tenant_id, "mode": mode},
+        )
+
+
+@pytest.mark.asyncio
+async def test_8_6_platform_retention_stores_the_original_durably(seeded_tenant, client):
+    """Row 70."""
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    await _set_retention(engine, tid, RETENTION_PLATFORM_BLOB)
+
+    durable, working = _RecordingStore(), _RecordingStore()
+    service = DocumentIngestionService(
+        dispatcher=RecordingDispatcher(), durable_store=durable, working_store=working
+    )
+    with patch.object(documents_route, "ingestion_service", service):
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("retained.pdf", io.BytesIO(PDF_CONTENT), "application/pdf")},
+            headers=auth_header(token),
+        )
+    assert resp.status_code == 201, resp.text
+    doc_id = resp.json()["id"]
+
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    f"SELECT blob_path, retention_mode FROM tenant_{tid}.documents "
+                    f"WHERE id = :id"
+                ),
+                {"id": doc_id},
+            )
+        ).fetchone()
+    await engine.dispose()
+
+    assert durable.puts == [row.blob_path], "the persisted reference is not the store's"
+    assert working.puts == []
+    assert row.retention_mode == RETENTION_PLATFORM_BLOB
+
+
+@pytest.mark.asyncio
+async def test_8_7_ephemeral_retention_stores_no_durable_original(
+    seeded_tenant, client, monkeypatch
+):
+    """Row 71."""
+    tid = seeded_tenant["tid"]
+    token = make_token(tid)
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    await _set_retention(engine, tid, RETENTION_EPHEMERAL)
+
+    durable, working = _RecordingStore(), _RecordingStore()
+    service = DocumentIngestionService(
+        dispatcher=RecordingDispatcher(), durable_store=durable, working_store=working
+    )
+
+    page_text = "Ephemeral upload content."
+    monkeypatch.setattr(
+        ocr_worker,
+        "extract_text_pdf",
+        lambda data: [
+            {
+                "span_index": 0,
+                "text": page_text,
+                "char_start": 0,
+                "char_end": len(page_text),
+                "page_number": 0,
+            }
+        ],
+    )
+
+    async def fake_embed(texts):
+        return [[0.0] * 4 for _ in texts]
+
+    monkeypatch.setattr(ocr_worker, "_embed_chunks", fake_embed)
+    monkeypatch.setattr(
+        ocr_worker,
+        "_store_for",
+        lambda mode: working if mode == RETENTION_EPHEMERAL else durable,
+    )
+
+    with patch.object(documents_route, "ingestion_service", service):
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("transient.pdf", io.BytesIO(PDF_CONTENT), "application/pdf")},
+            headers=auth_header(token),
+        )
+    assert resp.status_code == 201, resp.text
+    doc_id = resp.json()["id"]
+
+    await ocr_worker.process_document(doc_id, tid)
+
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    f"SELECT blob_path, retention_mode, status FROM tenant_{tid}.documents "
+                    f"WHERE id = :id"
+                ),
+                {"id": doc_id},
+            )
+        ).fetchone()
+    await engine.dispose()
+
+    assert row.retention_mode == RETENTION_EPHEMERAL
+    assert durable.puts == [], "an ephemeral upload reached the durable store"
+    assert row.status == "processed"
+    # The working copy is gone and the row no longer names it.
+    assert working.deletes, "the working copy was never deleted"
+    assert row.blob_path is None
+
+
+def test_docx_extractor_returns_paragraph_text():
+    from src.document_service.services.ocr_worker import extract_text_docx
+
+    spans = extract_text_docx(DOCX_CONTENT)
+
+    assert spans[0]["text"] == "Hello DOCX World"
+    assert spans[0]["char_end"] == len("Hello DOCX World")
+
+
+def test_doc_and_docx_extensions_are_supported():
+    from src.document_service.services.ocr_worker import is_allowed_file
+
+    assert is_allowed_file("report.doc")
+    assert is_allowed_file("report.docx")
+
+
+def test_unsupported_type_is_rejected_by_the_ingestion_boundary():
+    from src.document_service.ingestion.errors import UnsupportedFileType
+    from src.document_service.services.ocr_worker import is_allowed_file
+
+    assert not is_allowed_file("malware.exe")
+    assert UnsupportedFileType(".exe").extension == ".exe"

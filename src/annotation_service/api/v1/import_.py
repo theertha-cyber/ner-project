@@ -5,14 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from src.shared.database import get_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 from src.annotation_service.api.v1._rbac import require_tenant_admin
 
 router = APIRouter(tags=["annotation-import"])
-
-
-def _schema(tenant_id: str) -> str:
-    return f"tenant_{tenant_id.replace('-', '_')}"
 
 
 def get_tenant_id(request: Request) -> str:

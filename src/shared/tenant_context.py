@@ -1,6 +1,7 @@
 from fastapi import Request, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.database import get_session as _get_session
+from src.shared.observability.domain_metrics import assert_tenant_schema
 
 
 async def get_tenant_id(request: Request) -> str:
@@ -31,9 +32,9 @@ async def get_session(
     try:
         tenant_id = getattr(request.state, "tenant_id", None)
         if tenant_id:
-            await db.execute(
-                text(f"SET search_path TO tenant_{tenant_id}")
-            )
+            schema = f"tenant_{tenant_id}"
+            assert_tenant_schema(schema, "shared.tenant_context.get_session")
+            await db.execute(text(f"SET search_path TO {schema}"))
         yield db
     finally:
         await db.close()

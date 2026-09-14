@@ -5,9 +5,7 @@
 Internal inference layer that loads ONNX models into an in-memory LRU cache and exposes a per-tenant inference endpoint (with tenant ID resolved from JWT) consumed by the extraction service.
 
 ---
-
 ## Requirements
-
 ### Requirement: Model cache
 
 The system SHALL maintain an in-memory cache of loaded ONNX models keyed by model version ID. Models SHALL be loaded on first request for a tenant. The cache SHALL support LRU eviction when memory exceeds a configurable threshold (default 2 GB). Models SHALL be evicted after a configurable inactivity TTL (default 30 minutes).
@@ -35,7 +33,7 @@ The system SHALL maintain an in-memory cache of loaded ONNX models keyed by mode
 
 ### Requirement: Internal inference endpoint
 
-The model-serving layer SHALL expose an internal inference endpoint consumed by the extraction service. The endpoint SHALL accept tokenized input and return per-token class logits and predicted labels. When the tenant has no promoted fine-tuned model, the endpoint SHALL fall back to the base `dslim/bert-base-NER` model (version 0) and return CoNLL-2003 label predictions. For fine-tuned models, the endpoint SHALL resolve the tenant's custom `label_list` from the model registry and use it to map ONNX output indices to label strings instead of using the base model's CoNLL labels.
+The model-serving layer SHALL expose an internal inference endpoint consumed by the extraction service. The endpoint SHALL accept tokenized input and return per-token class logits and predicted labels. Predictions SHALL be returned as an ordered sequence following source token order, with one entry per predicted token; predictions SHALL NOT be deduplicated or reordered by token text, since downstream BIO reconstruction depends on order and on repeated occurrences. This applies to both the fine-tuned ONNX path and the base-model fallback path. When the tenant has no promoted fine-tuned model, the endpoint SHALL fall back to the base `dslim/bert-base-NER` model (version 0) and return CoNLL-2003 label predictions. For fine-tuned models, the endpoint SHALL resolve the tenant's custom `label_list` from the model registry and use it to map ONNX output indices to label strings instead of using the base model's CoNLL labels.
 
 #### Scenario: Inference returns predictions from fine-tuned model with custom labels
 
@@ -45,6 +43,13 @@ The model-serving layer SHALL expose an internal inference endpoint consumed by 
 - **AND** the response SHALL contain `predictions` array with per-token label and confidence
 - **AND** labels SHALL use the tenant's custom entity types (e.g., "B-company"), NOT CoNLL labels
 - **AND** the response SHALL contain `model_version` set to the promoted version number
+
+#### Scenario: Base-model predictions preserve token order and repeats
+
+- **GIVEN** a tenant with no promoted model
+- **WHEN** POST to `/internal/v1/infer` with tokens whose text contains the same entity word twice
+- **THEN** the `predictions` array SHALL contain one entry per predicted token in source order
+- **AND** the repeated word SHALL appear once per occurrence, not collapsed into a single entry
 
 #### Scenario: Inference falls back to base model when no tenant model exists
 
@@ -215,3 +220,44 @@ The model-serving layer SHALL resolve the Model Registry (`training_service`) ba
 - **THEN** the response SHALL have `model_version` equal to the promoted version number, not `"0"`
 - **AND** the response SHALL NOT contain the `x-model-source: base` header
 - **AND** this SHALL hold regardless of whether the exported ONNX graph includes a `token_type_ids` input (regression guard for the bug where an ONNX input mismatch caused every fine-tuned model to silently fall back to the base model)
+
+### Requirement: Cross-encoder reranking endpoint
+
+The model-serving layer SHALL expose an internal reranking endpoint that accepts a query string and a list of candidate texts, scores each (query, candidate) pair with a cross-encoder model, and returns the candidates' original indices with relevance scores in descending score order. The reranker model SHALL be a single tenant-agnostic model shared across all tenants, loaded lazily as a process-level singleton rather than through the per-tenant model cache. The model name SHALL be configurable.
+
+#### Scenario: Rerank reorders candidates by relevance
+
+- **GIVEN** the reranking endpoint is available
+- **WHEN** POST to `/internal/v1/rerank` with a query and a list of candidate texts where a later-positioned candidate is more relevant to the query than earlier ones
+- **THEN** the response SHALL have status 200
+- **AND** the response SHALL contain a `results` array of objects each having `index` and `score`
+- **AND** the results SHALL be ordered by `score` descending
+- **AND** the more relevant candidate's original `index` SHALL appear before the less relevant ones
+
+#### Scenario: Rerank respects the requested top_k
+
+- **GIVEN** the reranking endpoint is available
+- **WHEN** POST to `/internal/v1/rerank` with 10 candidate texts and `top_k` of 3
+- **THEN** the response `results` array SHALL contain exactly 3 entries
+
+#### Scenario: Rerank with an empty candidate list
+
+- **GIVEN** the reranking endpoint is available
+- **WHEN** POST to `/internal/v1/rerank` with a query and an empty `documents` list
+- **THEN** the response SHALL have status 200
+- **AND** the response `results` array SHALL be empty
+- **AND** no model inference SHALL be performed
+
+#### Scenario: Reranker model is not held in the per-tenant model cache
+
+- **GIVEN** the reranker has been loaded by serving at least one rerank request
+- **WHEN** the per-tenant model cache contents are inspected
+- **THEN** the reranker model SHALL NOT be present as a cache entry
+- **AND** loading tenant models to the point of LRU eviction SHALL NOT evict the reranker
+
+#### Scenario: Rerank returns 401 when JWT is missing
+
+- **GIVEN** no JWT token
+- **WHEN** POST to `/internal/v1/rerank` with a valid body
+- **THEN** the response SHALL have status 401, matching the existing `TenantContextMiddleware` convention applied to every other `model_serving` endpoint
+

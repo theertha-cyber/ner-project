@@ -13,12 +13,9 @@ from src.annotation_service.api.v1._rbac import (
     ANNOTATOR,
 )
 from src.annotation_service.services.notify import notify
+from src.shared.tenant_schema import schema_for_tenant as _schema
 
 router = APIRouter(tags=["tasks"])
-
-
-def _schema(tenant_id: str) -> str:
-    return f"tenant_{tenant_id.replace('-', '_')}"
 
 
 def get_tenant_id(request: Request) -> str:
