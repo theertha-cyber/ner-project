@@ -6,6 +6,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/lib/auth";
 import { ToastProvider } from "@/hooks";
 import "./globals.css";
+// Theme entry point (docs/design/ui-contract.md): loads the installed design
+// tokens so every var(--...) reference across the portal resolves. CAP-3 moved
+// these tokens out of globals.css into design-system/chat-attachment-upload/
+// tokens.css; this is the load that makes that file live again.
+import "../../../../design-system/chat-attachment-upload/tokens.css";
 
 const hankenGrotesk = Hanken_Grotesk({
   subsets: ["latin"],

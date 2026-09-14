@@ -11,6 +11,14 @@ body {
   overflow-x: hidden;
 }
 
+/* Accessibility baseline: keyboard focus must always be visible. Ring comes
+   from the theme token so it tracks the resolved accent in both themes. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
 body {
   background: var(--color-surface-page);
   color: var(--color-text-primary);
