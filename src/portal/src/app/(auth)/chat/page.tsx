@@ -7,7 +7,7 @@ import { RequireAuth } from "@/components/require-auth";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { ConversationSwitcher } from "@/components/chat/ConversationSwitcher";
 import { MessageThread } from "@/components/chat/MessageThread";
-import { ChatInput } from "@/components/chat/ChatInput";
+import { ChatInput, type StagedFile } from "@/components/chat/ChatInput";
 import { authFetch } from "@/lib/auth-fetch";
 import { useAuth } from "@/lib/auth";
 import { readChatStream } from "@/lib/chat-stream";
@@ -46,6 +46,18 @@ interface Conversation {
 
 const CHAT_API_BASE = "/api/v1/chat";
 const CHAT_ROUTE = "/chat";
+const MAX_STAGED_FILES = 10;
+
+// The chat API carries attachment *metadata* in the same JSON body as the
+// message (src/chat_api/api/v1/schemas.py: AttachmentInput); file bytes are
+// uploaded through a separate path once the conversation is adopted.
+function toChatAttachment(file: StagedFile) {
+  return {
+    filename: file.name,
+    mime_type: file.type || null,
+    file_size_bytes: file.size,
+  };
+}
 
 function ChatPageInner() {
   const { user } = useAuth();
@@ -59,6 +71,7 @@ function ChatPageInner() {
   const [sending, setSending] = useState(false);
   const [creatingConversation, setCreatingConversation] = useState(false);
   const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appliedParamRef = useRef<string | null>(null);
 
@@ -124,6 +137,31 @@ function ChatPageInner() {
     setErrorToast(msg);
     if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
     errorTimerRef.current = setTimeout(() => setErrorToast(null), 5000);
+  }, []);
+
+  // Staging is client-side only: nothing is reserved or created until send
+  // (FR-006 / ADR-011). Dedupe by name+size; keep the queue to a sane bound.
+  const handleAttach = useCallback((files: File[]) => {
+    setStagedFiles((prev) => {
+      const next = [...prev];
+      for (const file of files) {
+        const alreadyStaged = next.some(
+          (s) => s.name === file.name && s.size === file.size
+        );
+        if (alreadyStaged) continue;
+        next.push({
+          id: "staged-" + next.length + "-" + Date.now(),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        });
+      }
+      return next.slice(0, MAX_STAGED_FILES);
+    });
+  }, []);
+
+  const handleRemoveFile = useCallback((id: string) => {
+    setStagedFiles((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
   const handleNewConversation = useCallback(async () => {
@@ -195,7 +233,7 @@ function ChatPageInner() {
     }
   }, [activeConvId, router]);
 
-  const handleSendMessageStreaming = useCallback(async (text: string, tempId: string, thinkingId: string, isFirstMessage: boolean) => {
+  const handleSendMessageStreaming = useCallback(async (text: string, attachments: StagedFile[], tempId: string, thinkingId: string, isFirstMessage: boolean) => {
     let accumulated = "";
     let outcome: "done" | "error" | null = null;
 
@@ -206,6 +244,9 @@ function ChatPageInner() {
         body: JSON.stringify({
           message: text,
           conversation_id: activeConvId,
+          ...(attachments.length > 0
+            ? { attachments: attachments.map(toChatAttachment) }
+            : {}),
         }),
       });
 
@@ -248,6 +289,10 @@ function ChatPageInner() {
           if (!activeConvId || isFirstMessage) {
             loadConversations();
           }
+          // The turn was adopted by the backend: the staged tray has served its
+          // purpose and is cleared (spec scenario "Send a message with staged
+          // attachments").
+          setStagedFiles([]);
         },
         onError: () => {
           outcome = "error";
@@ -267,7 +312,7 @@ function ChatPageInner() {
     }
   }, [activeConvId, loadConversations, showError]);
 
-  const handleSendMessageNonStreaming = useCallback(async (text: string, tempId: string, thinkingId: string, isFirstMessage: boolean) => {
+  const handleSendMessageNonStreaming = useCallback(async (text: string, attachments: StagedFile[], tempId: string, thinkingId: string, isFirstMessage: boolean) => {
     try {
       const resp = await authFetch(CHAT_API_BASE, {
         method: "POST",
@@ -275,6 +320,9 @@ function ChatPageInner() {
         body: JSON.stringify({
           message: text,
           conversation_id: activeConvId,
+          ...(attachments.length > 0
+            ? { attachments: attachments.map(toChatAttachment) }
+            : {}),
         }),
       });
 
@@ -301,6 +349,10 @@ function ChatPageInner() {
         if (!activeConvId || isFirstMessage) {
           loadConversations();
         }
+        // Success: the staged tray is cleared; on failure it is preserved so the
+        // user can retry without re-picking files (spec scenario "Failed send
+        // preserves staged attachments").
+        setStagedFiles([]);
       } else {
         setMessages((prev) => prev.filter((m) => m.id !== tempId && m.id !== thinkingId));
         showError("Failed to get a response. Please try again.");
@@ -317,6 +369,7 @@ function ChatPageInner() {
     if (!text.trim()) return;
 
     const isFirstMessage = messages.length === 0;
+    const attachments = stagedFiles;
     const tempId = "temp-" + Date.now();
     const thinkingId = "thinking-" + Date.now();
     const optimistic: Message = {
@@ -339,11 +392,11 @@ function ChatPageInner() {
     // kill switch can be exercised without a rebuild in tests.
     const streamingEnabled = process.env.NEXT_PUBLIC_CHAT_STREAMING_ENABLED !== "false";
     if (streamingEnabled) {
-      await handleSendMessageStreaming(text, tempId, thinkingId, isFirstMessage);
+      await handleSendMessageStreaming(text, attachments, tempId, thinkingId, isFirstMessage);
     } else {
-      await handleSendMessageNonStreaming(text, tempId, thinkingId, isFirstMessage);
+      await handleSendMessageNonStreaming(text, attachments, tempId, thinkingId, isFirstMessage);
     }
-  }, [messages, handleSendMessageStreaming, handleSendMessageNonStreaming]);
+  }, [messages, stagedFiles, handleSendMessageStreaming, handleSendMessageNonStreaming]);
 
   const handleRateMessage = useCallback(async (messageId: string, rating: "up" | "down") => {
     try {
@@ -471,7 +524,13 @@ function ChatPageInner() {
                 canRate={user?.role === "business_user"}
                 onRateMessage={handleRateMessage}
               />
-              <ChatInput onSend={handleSendMessage} disabled={sending} />
+              <ChatInput
+                onSend={handleSendMessage}
+                disabled={sending}
+                stagedFiles={stagedFiles}
+                onAttach={handleAttach}
+                onRemoveFile={handleRemoveFile}
+              />
             </div>
           </div>
         </div>

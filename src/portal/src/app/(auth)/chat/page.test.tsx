@@ -205,3 +205,168 @@ describe("Chat page — streaming kill switch", () => {
     });
   });
 });
+
+// Covers verification.md rows for chat-composer-attachments scenarios 4, 5 and
+// the ADR-011 no-reservation rule.
+describe("Chat page — staged attachments", () => {
+  async function stageFile(file: File) {
+    const view = render(<ChatPage />);
+    await screen.findByPlaceholderText("Type your question...");
+    const fileInput = view.container.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    return view;
+  }
+
+  it("sends attachment metadata with the message on the streaming path and clears the tray after success (Scenario 4)", async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/chat/stream")) {
+        return Promise.resolve(
+          sseResponse([
+            'event: token\ndata: {"delta": "ok"}\n\n',
+            'event: done\ndata: {"reply": "ok", "sources": [], "conversation_id": "conv-1", "message_id": "m1", "answer_kind": "answer"}\n\n',
+          ])
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations/conv-1")) {
+        return Promise.resolve(
+          jsonResponse({ id: "conv-1", title: "Test", created_at: "2026-01-01", messages: [] })
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations")) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    await stageFile(new File(["x"], "invoice.pdf", { type: "application/pdf" }));
+    const input = screen.getByPlaceholderText("Type your question...");
+    fireEvent.change(input, { target: { value: "Review this" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      const call = mockFetch.mock.calls.find(([u]) =>
+        String(u).includes("/api/v1/chat/stream")
+      );
+      expect(call).toBeDefined();
+    });
+
+    const streamCall = mockFetch.mock.calls.find(([u]) =>
+      String(u).includes("/api/v1/chat/stream")
+    )!;
+    const body = JSON.parse(String(streamCall[1].body));
+    expect(body.attachments).toEqual([
+      { filename: "invoice.pdf", mime_type: "application/pdf", file_size_bytes: 1 },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.queryByText("invoice.pdf")).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("region", { name: "Staged attachments" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("sends attachment metadata on the non-streaming path and clears the tray (Scenario 4)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_CHAT_STREAMING_ENABLED", "false");
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/chat")) {
+        return Promise.resolve(
+          jsonResponse({
+            reply: "ok",
+            sources: [],
+            conversation_id: "conv-1",
+            message_id: "m1",
+            answer_kind: "answer",
+          })
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations/conv-1")) {
+        return Promise.resolve(
+          jsonResponse({ id: "conv-1", title: "Test", created_at: "2026-01-01", messages: [] })
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations")) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    await stageFile(new File(["x"], "data.csv", { type: "text/csv" }));
+    const input = screen.getByPlaceholderText("Type your question...");
+    fireEvent.change(input, { target: { value: "Review this" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      const call = mockFetch.mock.calls.find(([u]) =>
+        String(u).endsWith("/api/v1/chat")
+      );
+      expect(call).toBeDefined();
+    });
+
+    const chatCall = mockFetch.mock.calls.find(([u]) =>
+      String(u).endsWith("/api/v1/chat")
+    )!;
+    const body = JSON.parse(String(chatCall[1].body));
+    expect(body.attachments).toEqual([
+      { filename: "data.csv", mime_type: "text/csv", file_size_bytes: 1 },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.queryByText("data.csv")).not.toBeInTheDocument();
+    });
+  });
+
+  it("preserves staged files and shows an error when the send fails (Scenario 5)", async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/chat/stream")) {
+        return Promise.resolve(
+          sseResponse(['event: error\ndata: {"code": "GENERATION_FAILED", "message": "boom"}\n\n'])
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations/conv-1")) {
+        return Promise.resolve(
+          jsonResponse({ id: "conv-1", title: "Test", created_at: "2026-01-01", messages: [] })
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations")) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    await stageFile(new File(["x"], "invoice.pdf", { type: "application/pdf" }));
+    const input = screen.getByPlaceholderText("Type your question...");
+    fireEvent.change(input, { target: { value: "Review" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to get a response/)).toBeInTheDocument();
+    });
+    expect(screen.getByText("invoice.pdf")).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Staged attachments" })
+    ).toBeInTheDocument();
+  });
+
+  it("fires no additional API call when files are staged (ADR-011 / FR-006)", async () => {
+    const view = render(<ChatPage />);
+    await screen.findByPlaceholderText("Type your question...");
+    const before = mockFetch.mock.calls.length;
+
+    const fileInput = view.container.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["x"], "invoice.pdf", { type: "application/pdf" })] },
+    });
+    await screen.findByText("invoice.pdf");
+
+    expect(mockFetch.mock.calls.length).toBe(before);
+  });
+});
