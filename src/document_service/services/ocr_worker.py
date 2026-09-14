@@ -48,7 +48,7 @@ async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], e
         await session.commit()
 
 
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".doc", ".docx"}
+ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".doc", ".docx", ".csv"}
 
 # Rasterisation resolution for scanned PDFs; 200 DPI is the accuracy/speed knee
 # for tesseract on typical document scans.
@@ -181,6 +181,35 @@ def extract_text_doc(file_bytes: bytes) -> list[dict]:
     }]
 
 
+def extract_text_csv(file_bytes: bytes) -> list[dict]:
+    """Parse CSV rows into normalized text spans, one span per row.
+
+    The stdlib `csv` reader handles quoted delimiters, embedded commas and
+    multi-line quoted fields; rows of differing column counts are tolerated by
+    joining whatever cells a row has. Blank rows produce no span, matching how
+    the DOCX extractor skips empty paragraphs.
+    """
+    import csv
+    import io
+
+    text = file_bytes.decode("utf-8-sig", errors="replace")
+    spans = []
+    char_offset = 0
+    for span_index, row in enumerate(csv.reader(io.StringIO(text))):
+        normalized = " ".join(cell.strip() for cell in row).strip()
+        if not normalized:
+            continue
+        spans.append({
+            "span_index": len(spans),
+            "text": normalized,
+            "char_start": char_offset,
+            "char_end": char_offset + len(normalized),
+            "page_number": 0,
+        })
+        char_offset += len(normalized) + 1
+    return spans
+
+
 def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
     """OCR a scanned PDF by rasterising pages with PyMuPDF (no poppler needed)."""
     import fitz
@@ -214,6 +243,7 @@ def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
 MEDIA_TYPE_PDF = "application/pdf"
 MEDIA_TYPE_DOC = "application/msword"
 MEDIA_TYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+MEDIA_TYPE_CSV = "text/csv"
 IMAGE_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/tiff"})
 
 # Types a client sends when it does not know or does not care. Treating one of these as
@@ -231,6 +261,7 @@ _EXTENSION_MEDIA_TYPES = {
     ".tiff": "image/tiff",
     ".doc": MEDIA_TYPE_DOC,
     ".docx": MEDIA_TYPE_DOCX,
+    ".csv": MEDIA_TYPE_CSV,
 }
 
 _MAGIC_PREFIXES = (
@@ -248,7 +279,7 @@ def _media_type_from_declaration(declared: str | None) -> str | None:
     value = declared.split(";")[0].strip().lower()
     if value in _UNINFORMATIVE_MEDIA_TYPES:
         return None
-    if value in {MEDIA_TYPE_PDF, MEDIA_TYPE_DOC, MEDIA_TYPE_DOCX} or value in IMAGE_MEDIA_TYPES:
+    if value in {MEDIA_TYPE_PDF, MEDIA_TYPE_DOC, MEDIA_TYPE_DOCX, MEDIA_TYPE_CSV} or value in IMAGE_MEDIA_TYPES:
         return value
     # Aliases real clients send.
     if value in ("image/jpg", "image/pjpeg"):
@@ -471,6 +502,8 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
             spans = await asyncio.to_thread(extract_text_docx, file_data)
         elif media_type == MEDIA_TYPE_DOC:
             spans = await asyncio.to_thread(extract_text_doc, file_data)
+        elif media_type == MEDIA_TYPE_CSV:
+            spans = await asyncio.to_thread(extract_text_csv, file_data)
         else:
             raise ValueError(f"Unsupported media type: {media_type or 'unresolved'}")
 
