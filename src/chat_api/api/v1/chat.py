@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
 from src.shared.exceptions import NotFoundError
-from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut, RetrievalStatusOut
+from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut, RetrievalStatusOut, AttachmentOut
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator, STREAM_DONE
 from src.chat_api.services.guardrails import GuardrailService
 from src.chat_api.services.rate_limiter import rate_limiter, INTERNAL_RATE_LIMIT, INTERNAL_WINDOW
@@ -110,6 +110,27 @@ async def _prepare_conversation(
     return conversation_id, conversation_context
 
 
+async def _persist_attachments(session: AsyncSession, schema: str, tenant_id: str, conversation_id: str, attachments: list | None) -> None:
+    if not attachments:
+        return
+    for attachment in attachments:
+        attachment_id = str(uuid.uuid4())
+        await session.execute(
+            text(
+                f"INSERT INTO {schema}.documents (id, tenant_id, filename, mime_type, file_size_bytes, conversation_id, created_at) "
+                "VALUES (:id, :tid, :filename, :mime_type, :file_size_bytes, :conversation_id, clock_timestamp())"
+            ),
+            {
+                "id": attachment_id,
+                "tid": tenant_id,
+                "filename": attachment.filename,
+                "mime_type": attachment.mime_type,
+                "file_size_bytes": attachment.file_size_bytes,
+                "conversation_id": conversation_id,
+            },
+        )
+
+
 async def _persist_turn_and_respond(
     session: AsyncSession, schema: str, conversation_id: str, user_message: str,
     reply: str, sources: list[Source | Citation], pending_clarification: dict | None,
@@ -161,6 +182,10 @@ async def _persist_turn_and_respond(
     )
 
 
+def _conversation_attachments_query(schema: str) -> str:
+    return f"SELECT id, filename, mime_type, file_size_bytes, conversation_id, created_at FROM {schema}.documents WHERE conversation_id = :cid ORDER BY created_at ASC"
+
+
 def _response_payload(response: ChatResponse) -> dict:
     # pending_clarification is additive: omit it entirely from the payload when
     # absent instead of serializing it as null, so existing clients see no change.
@@ -185,6 +210,7 @@ async def chat(
     schema = _schema(tenant_id)
 
     conversation_id, conversation_context = await _prepare_conversation(session, schema, tenant_id, user_id, body)
+    await _persist_attachments(session, schema, tenant_id, conversation_id, getattr(body, "attachments", None))
 
     auth_header = request.headers.get("Authorization", "")
     jwt_token = auth_header.removeprefix("Bearer ")
@@ -223,6 +249,7 @@ async def chat_stream(
     schema = _schema(tenant_id)
 
     conversation_id, conversation_context = await _prepare_conversation(session, schema, tenant_id, user_id, body)
+    await _persist_attachments(session, schema, tenant_id, conversation_id, getattr(body, "attachments", None))
 
     auth_header = request.headers.get("Authorization", "")
     jwt_token = auth_header.removeprefix("Bearer ")
@@ -385,7 +412,10 @@ async def get_conversation(
             feedback=feedback,
         ))
 
-    return ConversationDetail(id=conv.id, title=conv.title, created_at=str(conv.created_at), messages=messages)
+    att_result = await session.execute(text(_conversation_attachments_query(schema)), {"cid": conv_id})
+    attachments = [AttachmentOut(id=r.id, filename=r.filename, mime_type=r.mime_type, file_size_bytes=r.file_size_bytes, conversation_id=r.conversation_id, created_at=str(r.created_at)) for r in att_result.fetchall()]
+
+    return ConversationDetail(id=conv.id, title=conv.title, created_at=str(conv.created_at), messages=messages, attachments=attachments)
 
 
 @router.post("/messages/{message_id}/feedback", status_code=201)

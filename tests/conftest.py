@@ -58,6 +58,7 @@ async def tenant_schema(engine, setup_database):
             s = stmt.strip().format(schema=schema_name)
             if s:
                 await conn.execute(text(s + ";"))
+        await conn.execute(text(f"ALTER TABLE {schema_name}.documents ADD COLUMN IF NOT EXISTS conversation_id VARCHAR"))
         await conn.execute(
             text(f"ALTER TABLE {schema_name}.extraction_runs DROP CONSTRAINT IF EXISTS extraction_runs_document_id_fkey")
         )
@@ -81,6 +82,14 @@ BASELINE_TENANT_IDS = ["test-tenant", "tenant-b", "no-model", "no-model-tenant"]
 _BASELINE_PLACEHOLDERS = ", ".join(f":id_{i}" for i in range(len(BASELINE_TENANT_IDS)))
 
 _TENANT_TABLES_SQL = """
+CREATE TABLE IF NOT EXISTS {schema}.conversations (
+    id VARCHAR PRIMARY KEY,
+    tenant_id VARCHAR NOT NULL,
+    user_id VARCHAR NOT NULL,
+    title VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 CREATE TABLE IF NOT EXISTS {schema}.documents (
     id VARCHAR PRIMARY KEY,
     tenant_id VARCHAR NOT NULL,
@@ -89,6 +98,7 @@ CREATE TABLE IF NOT EXISTS {schema}.documents (
     file_size_bytes BIGINT,
     checksum VARCHAR(64),
     storage_uri VARCHAR(500),
+    conversation_id VARCHAR REFERENCES {schema}.conversations(id) ON DELETE CASCADE,
     status VARCHAR(20) DEFAULT 'uploaded',
     ocr_applied_flag BOOLEAN DEFAULT false,
     error_message TEXT,
@@ -186,14 +196,6 @@ CREATE TABLE IF NOT EXISTS {schema}.extracted_entities (
     correction_notes TEXT,
     document_id VARCHAR
 );
-CREATE TABLE IF NOT EXISTS {schema}.conversations (
-    id VARCHAR PRIMARY KEY,
-    tenant_id VARCHAR NOT NULL,
-    user_id VARCHAR NOT NULL,
-    title VARCHAR(255),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
 CREATE TABLE IF NOT EXISTS {schema}.chat_messages (
     id VARCHAR PRIMARY KEY,
     conversation_id VARCHAR NOT NULL REFERENCES {schema}.conversations(id) ON DELETE CASCADE,
@@ -227,6 +229,7 @@ async def setup_database(engine):
             s = stmt.strip().format(schema="tenant_template")
             if s:
                 await conn.execute(text(s + ";"))
+        await conn.execute(text("ALTER TABLE tenant_template.documents ADD COLUMN IF NOT EXISTS conversation_id VARCHAR"))
         await conn.execute(text("""
             INSERT INTO public.tenants (id, name, slug, status, max_users, max_documents, max_storage_gb, max_model_versions)
             VALUES

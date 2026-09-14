@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Documents library</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f1f3f7; --surface: #fff; --surface-2: #f8fafc; --surface-3: #eef1f6;
+      --ink: #0f172a; --ink-2: #475569; --ink-3: #94a3b8; --line: #e4e8ef;
+      --primary: #a60000; --primary-soft: rgba(166,0,0,.10); --bad: #b91c1c; --good: #15803d;
+      --shadow: 0 16px 40px rgba(15,23,42,.08); --radius: 16px; --skeleton-highlight: #f4f6fa;
+      --font-display: "Hanken Grotesk", Inter, system-ui, sans-serif; --font-body: Inter, system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--font-body); }
+    .page { min-height: 100vh; padding: 24px; }
+    .header, .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .header { padding: 16px 18px; display:flex; align-items:center; justify-content:space-between; gap: 12px; margin-bottom: 16px; }
+    h1, h2, h3 { margin: 0; font-family: var(--font-display); }
+    h1 { font-size: 26px; }
+    .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 11px; color: var(--ink-3); }
+    .muted { color: var(--ink-2); }
+    .btn, .tab, .pager {
+      border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 999px;
+      padding: 10px 14px; font: inherit; cursor: pointer;
+    }
+    .btn.primary { background: var(--primary); color: white; border-color: transparent; }
+    .tabs { display:flex; gap: 8px; flex-wrap:wrap; }
+    .tab.active { background: var(--primary-soft); border-color: rgba(166,0,0,.3); }
+    .toolbar { display:flex; align-items:center; justify-content:space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+    .search { position: relative; }
+    input {
+      width: 260px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink);
+      border-radius: 999px; padding: 10px 14px 10px 38px; font: inherit;
+    }
+    .icon { position:absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-3); }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      text-align:left; padding: 14px 16px; font-size: 12px; letter-spacing:.08em; text-transform:uppercase; color: var(--ink-3);
+      background: var(--surface-2); border-bottom: 1px solid var(--line);
+    }
+    tbody td { padding: 14px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    .status { border-radius: 999px; padding: 5px 10px; background: var(--surface-2); }
+    .row-actions { text-align: right; }
+    .table-wrap { overflow:auto; border: 1px solid var(--line); border-radius: 16px; }
+    .empty, .state { padding: 22px; border-radius: 16px; border: 1px dashed var(--line); background: var(--surface-2); }
+    .pager-row { display:flex; align-items:center; justify-content:space-between; gap: 10px; margin-top: 14px; color: var(--ink-2); }
+    .pager-set { display:flex; gap: 8px; }
+    .skeleton { height: 14px; border-radius: 999px; background: linear-gradient(90deg, var(--surface-3), var(--skeleton-highlight), var(--surface-3)); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+    .skeleton.wide { width: 78%; } .skeleton.mid { width: 54%; } .skeleton.short { width: 32%; }
+    @keyframes shimmer { from { background-position: 0 0; } to { background-position: 200% 0; } }
+    .layout { display:grid; gap: 16px; }
+    .states { display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .muted-box { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
+    @media (max-width: 1040px) { .states { grid-template-columns: 1fr; } input { width: 100%; } .toolbar { align-items: stretch; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div>
+        <div class="eyebrow">Documents</div>
+        <h1>Tenant-wide library</h1>
+        <div class="muted">Preserve the existing Documents tab behavior unchanged.</div>
+      </div>
+      <button class="btn primary">Upload documents</button>
+    </header>
+
+    <section class="layout" aria-label="Documents library">
+      <div class="toolbar">
+        <div class="tabs" role="tablist" aria-label="Document status filter">
+          <button class="tab active">All</button>
+          <button class="tab">Pending</button>
+          <button class="tab">Processing</button>
+          <button class="tab">Processed</button>
+          <button class="tab">Failed</button>
+        </div>
+        <label class="search">
+          <span class="icon">⌕</span>
+          <input type="search" value="chat attachment" aria-label="Search documents" />
+        </label>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Filename</th>
+              <th>Uploaded by</th>
+              <th>Purpose</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th class="row-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>invoice.pdf</td>
+              <td>business_user</td>
+              <td>query</td>
+              <td><span class="status">Processed</span></td>
+              <td>2026-09-10</td>
+              <td class="row-actions">Delete</td>
+            </tr>
+            <tr>
+              <td>csv-attached-data.csv</td>
+              <td>business_user</td>
+              <td>query</td>
+              <td><span class="status">Processing</span></td>
+              <td>2026-09-10</td>
+              <td class="row-actions">Delete</td>
+            </tr>
+            <tr>
+              <td>training-pack.docx</td>
+              <td>tenant_admin</td>
+              <td>training</td>
+              <td><span class="status">Pending</span></td>
+              <td>2026-09-09</td>
+              <td class="row-actions">Delete</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pager-row">
+        <div>Showing 1–25 of 312</div>
+        <div class="pager-set">
+          <button class="pager">Previous</button>
+          <button class="pager">Next</button>
+        </div>
+      </div>
+
+      <div class="states">
+        <div class="state">
+          <h3>Empty</h3>
+          <p class="muted">No documents yet — upload your first document.</p>
+        </div>
+        <div class="state">
+          <h3>Loading</h3>
+          <div class="skeleton wide"></div><div class="skeleton mid" style="margin-top:10px;"></div><div class="skeleton short" style="margin-top:10px;"></div>
+        </div>
+        <div class="state">
+          <h3>Error</h3>
+          <p class="muted">Failed to load documents. Please try again.</p>
+          <button class="btn" style="margin-top:10px;">Retry</button>
+        </div>
+      </div>
+
+      <div class="muted-box">Rows that belong to chat attachments are excluded from the tenant-wide library.</div>
+    </section>
+  </div>
+</body>
+</html>

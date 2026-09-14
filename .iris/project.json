@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "runs": [
+    {
+      "id": "add-doc-docx-upload-support-20260903",
+      "status": "running",
+      "sessions": [],
+      "complete": false
+    },
+    {
+      "id": "chat-attachment-upload-20260910",
+      "status": "running",
+      "sessions": [
+        "ses_f76659b02ffeBBOqD5Aj1v5GEf"
+      ],
+      "complete": true,
+      "track": "direct",
+      "stage": "build",
+      "lastAt": "2026-09-14T03:28:30.104Z"
+    },
+    {
+      "id": "csv-upload-support-20260909-2",
+      "status": "running",
+      "sessions": [],
+      "complete": false
+    },
+    {
+      "id": "deploy-platform-kubernetes-azure-20260908",
+      "status": "running",
+      "sessions": [],
+      "complete": false
+    }
+  ]
+}
