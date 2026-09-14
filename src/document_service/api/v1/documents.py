@@ -39,6 +39,35 @@ ROLE_ALLOWED_PURPOSES = {
 }
 
 
+async def has_column(session: AsyncSession, schema: str, table_name: str, column_name: str) -> bool:
+    column_check = await session.execute(
+        text("""
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = :table_name
+              AND column_name = :column_name
+            LIMIT 1
+        """),
+        {"schema": schema, "table_name": table_name, "column_name": column_name},
+    )
+    return bool(column_check.fetchone())
+
+
+async def has_table(session: AsyncSession, schema: str, table_name: str) -> bool:
+    table_check = await session.execute(
+        text("""
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = :schema
+              AND table_name = :table_name
+            LIMIT 1
+        """),
+        {"schema": schema, "table_name": table_name},
+    )
+    return bool(table_check.fetchone())
+
+
 def get_tenant_id(request: Request) -> str:
     tid = getattr(request.state, "tenant_id", None)
     if tid is None:
@@ -177,12 +206,13 @@ async def list_documents(
         conditions.append("{p}conversation_id IS NULL")
 
     if role != "tenant_admin":
-        # Ownership scoping applies only to documents a *person* ingested. A
-        # system-ingested document is visible tenant-wide, because retrieval filters on
-        # purpose alone (`retriever.py`) and would otherwise cite a document this listing
-        # denied existed.
-        conditions.append("({p}ingested_by_kind <> 'human' OR {p}uploaded_by = :uploaded_by)")
-        params["uploaded_by"] = user_id
+        if await has_column(session, _schema(tenant_id), "documents", "uploaded_by") and await has_column(session, _schema(tenant_id), "documents", "ingested_by_kind"):
+            # Ownership scoping applies only to documents a *person* ingested. A
+            # system-ingested document is visible tenant-wide, because retrieval filters on
+            # purpose alone (`retriever.py`) and would otherwise cite a document this listing
+            # denied existed.
+            conditions.append("({p}ingested_by_kind <> 'human' OR {p}uploaded_by = :uploaded_by)")
+            params["uploaded_by"] = user_id
 
     if status_filter:
         conditions.append("{p}status = :status")
@@ -199,16 +229,28 @@ async def list_documents(
     where = " AND ".join(c.format(p="") for c in conditions)
     offset = (page - 1) * per_page
 
+    schema = _schema(tenant_id)
+    use_content_type = await has_column(session, schema, "documents", "content_type")
+    use_file_size = await has_column(session, schema, "documents", "file_size")
+    use_uploaded_by = await has_column(session, schema, "documents", "uploaded_by")
+    use_updated_at = await has_column(session, schema, "documents", "updated_at")
+
+    content_type_col = "d.content_type" if use_content_type else "d.mime_type AS content_type"
+    file_size_col = "d.file_size" if use_file_size else "d.file_size_bytes AS file_size"
+    uploaded_by_col = "d.uploaded_by" if use_uploaded_by else "NULL AS uploaded_by"
+    uploaded_by_join = "d.uploaded_by" if use_uploaded_by else "NULL"
+    updated_at_col = "d.updated_at" if use_updated_at else "d.created_at AS updated_at"
+
     # LEFT JOIN so a document whose uploader was deleted (or that predates the
     # uploaded_by column) still lists, with a null email the client renders as unknown.
     document_where = " AND ".join(c.format(p="d.") for c in conditions)
     result = await session.execute(
         text(f"""
-            SELECT d.id, d.filename, d.content_type, d.file_size, d.status, d.error_message,
-                   d.purpose, d.uploaded_by, u.email AS uploaded_by_email,
-                   d.created_at, d.updated_at
-            FROM {_schema(tenant_id)}.documents d
-            LEFT JOIN public.tenant_users u ON u.id = d.uploaded_by
+            SELECT d.id, d.filename, {content_type_col}, {file_size_col}, d.status, d.error_message,
+                   d.purpose, {uploaded_by_col}, u.email AS uploaded_by_email,
+                   d.created_at, {updated_at_col}
+            FROM {schema}.documents d
+            LEFT JOIN public.tenant_users u ON u.id = {uploaded_by_join}
             WHERE {document_where}
             ORDER BY d.created_at DESC
             LIMIT :limit OFFSET :offset
@@ -250,8 +292,24 @@ async def get_document(
     session: AsyncSession = Depends(get_session),
 ):
     tenant_id = get_tenant_id(request)
+    schema = _schema(tenant_id)
+    
+    use_content_type = await has_column(session, schema, "documents", "content_type")
+    use_file_size = await has_column(session, schema, "documents", "file_size")
+    use_blob_path = await has_column(session, schema, "documents", "blob_path")
+    
+    use_updated_at = await has_column(session, schema, "documents", "updated_at")
+    
+    content_type_col = "content_type" if use_content_type else "mime_type AS content_type"
+    file_size_col = "file_size" if use_file_size else "file_size_bytes AS file_size"
+    blob_path_col = "blob_path" if use_blob_path else "storage_uri AS blob_path"
+    updated_at_col = "updated_at" if use_updated_at else "created_at AS updated_at"
+    
+    query = f"SELECT id, filename, {content_type_col}, {file_size_col}, checksum, status, error_message, {blob_path_col}, created_at, {updated_at_col} FROM {schema}.documents WHERE id = :id AND tenant_id = :tid"
+    if await has_column(session, schema, "documents", "conversation_id"):
+        query += " AND conversation_id IS NULL"
     result = await session.execute(
-        text(f"SELECT id, filename, content_type, file_size, checksum, status, error_message, blob_path, created_at, updated_at FROM {_schema(tenant_id)}.documents WHERE id = :id AND tenant_id = :tid"),
+        text(query),
         {"id": doc_id, "tid": tenant_id},
     )
     row = result.fetchone()
@@ -282,8 +340,34 @@ async def get_document_text(
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
 
+    query = f"SELECT id FROM {schema}.documents WHERE id = :id AND tenant_id = :tid"
+    if await has_column(session, schema, "documents", "conversation_id"):
+        query += " AND conversation_id IS NULL"
+    doc_result = await session.execute(
+        text(query),
+        {"id": doc_id, "tid": tenant_id},
+    )
+    doc_row = doc_result.fetchone()
+    if not doc_row:
+        raise NotFoundError("Document", doc_id)
+
+    spans_query = f"SELECT text FROM {schema}.document_text_spans WHERE document_id = :doc_id"
+    span_index_check = await session.execute(
+        text("""
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = 'document_text_spans'
+              AND column_name = 'span_index'
+            LIMIT 1
+        """),
+        {"schema": schema},
+    )
+    if span_index_check.fetchone():
+        spans_query += " ORDER BY span_index"
+
     result = await session.execute(
-        text(f"SELECT text FROM {schema}.document_text_spans WHERE document_id = :doc_id ORDER BY span_index"),
+        text(spans_query),
         {"doc_id": doc_id},
     )
     rows = result.fetchall()
@@ -301,30 +385,24 @@ async def delete_document(
     session: AsyncSession = Depends(get_session),
 ):
     tenant_id = get_tenant_id(request)
+    schema = _schema(tenant_id)
+    query = f"SELECT id, status FROM {schema}.documents WHERE id = :id AND tenant_id = :tid"
+    if await has_column(session, schema, "documents", "conversation_id"):
+        query += " AND conversation_id IS NULL"
     result = await session.execute(
-        text(f"SELECT id, status FROM {_schema(tenant_id)}.documents WHERE id = :id AND tenant_id = :tid"),
+        text(query),
         {"id": doc_id, "tid": tenant_id},
     )
     row = result.fetchone()
     if not row:
         raise NotFoundError("Document", doc_id)
 
-    await session.execute(
-        text(f"DELETE FROM {_schema(tenant_id)}.document_chunks WHERE document_id = :id"),
-        {"id": doc_id},
-    )
-    await session.execute(
-        text(f"DELETE FROM {_schema(tenant_id)}.document_text_spans WHERE document_id = :id"),
-        {"id": doc_id},
-    )
-    await session.execute(
-        text(f"DELETE FROM {_schema(tenant_id)}.extracted_entities WHERE document_id = :id"),
-        {"id": doc_id},
-    )
-    await session.execute(
-        text(f"DELETE FROM {_schema(tenant_id)}.document_entities WHERE document_id = :id"),
-        {"id": doc_id},
-    )
+    for table in ["document_chunks", "document_text_spans", "extracted_entities", "document_entities"]:
+        if await has_table(session, schema, table):
+            await session.execute(
+                text(f"DELETE FROM {schema}.{table} WHERE document_id = :id"),
+                {"id": doc_id},
+            )
     # The generated relational tables declare no foreign key to `documents`, so this
     # propagation is what maintains referential integrity — without it a deleted document
     # would keep answering generated SQL queries. The statements come from the same pure

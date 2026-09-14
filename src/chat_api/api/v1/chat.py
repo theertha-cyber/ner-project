@@ -520,6 +520,17 @@ async def delete_conversation(
     if not result.fetchone():
         raise NotFoundError("Conversation", conv_id)
 
+    # Select the conversation's attachment document ids
+    docs_result = await session.execute(
+        text(f"SELECT id FROM {schema}.documents WHERE conversation_id = :cid"),
+        {"cid": conv_id},
+    )
+    doc_ids = [row[0] for row in docs_result.fetchall()]
+
+    if doc_ids:
+        from src.document_service.services.hard_delete import hard_delete_documents
+        await hard_delete_documents(session, schema, tenant_id, doc_ids)
+
     await session.execute(
         text(f"DELETE FROM {schema}.chat_messages WHERE conversation_id = :cid"),
         {"cid": conv_id},
