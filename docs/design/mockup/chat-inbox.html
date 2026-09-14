@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat inbox</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f1f3f7;
+      --surface: #ffffff;
+      --surface-2: #f8fafc;
+      --surface-3: #eef1f6;
+      --ink: #0f172a;
+      --ink-2: #475569;
+      --ink-3: #94a3b8;
+      --line: #e4e8ef;
+      --primary: #a60000;
+      --primary-soft: rgba(166, 0, 0, 0.10);
+      --bad: #b91c1c;
+      --good: #15803d;
+      --shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+      --shadow-soft: rgba(15, 23, 42, 0.08);
+      --skeleton-highlight: #f4f6fa;
+      --focus-ring: rgba(166, 0, 0, 0.18);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --font-display: "Hanken Grotesk", Inter, system-ui, sans-serif;
+      --font-body: Inter, system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top left, color-mix(in srgb, var(--primary) 5%, transparent), transparent 35%), var(--bg);
+      color: var(--ink);
+      font: 14px/1.5 var(--font-body);
+    }
+    .page { min-height: 100vh; padding: 24px; }
+    .shell {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 16px;
+      min-height: calc(100vh - 48px);
+    }
+    .panel, .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .panel { padding: 18px; display: flex; flex-direction: column; min-height: 0; }
+    .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 11px; color: var(--ink-3); }
+    h1, h2, h3 { margin: 0; font-family: var(--font-display); }
+    h1 { font-size: 26px; letter-spacing: -.02em; }
+    .muted { color: var(--ink-2); }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 10px 14px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .btn.primary { background: var(--primary); color: white; border-color: transparent; }
+    .btn:focus-visible, .item:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+    .list { overflow: auto; padding-right: 2px; display: flex; flex-direction: column; gap: 8px; }
+    .item {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface-2);
+      border-radius: 14px; padding: 12px 14px; color: inherit;
+    }
+    .item.active { border-color: rgba(166,0,0,.3); background: var(--primary-soft); }
+    .meta { font-size: 12px; color: var(--ink-3); }
+    .pill { border-radius: 999px; padding: 4px 8px; font-size: 12px; background: var(--surface-3); color: var(--ink-2); }
+    .empty, .state {
+      border: 1px dashed var(--line); border-radius: 14px; padding: 18px; background: var(--surface-2);
+    }
+    .stack { display: grid; gap: 8px; }
+    .states { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+    .state h3 { font-size: 15px; margin-bottom: 8px; }
+    .skeleton { height: 14px; border-radius: 999px; background: linear-gradient(90deg, var(--surface-3), var(--skeleton-highlight), var(--surface-3)); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+    .skeleton.wide { width: 76%; }
+    .skeleton.mid { width: 52%; }
+    .skeleton.short { width: 30%; }
+    @keyframes shimmer { from { background-position: 0 0; } to { background-position: 200% 0; } }
+    .notes { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); }
+    @media (max-width: 980px) { .shell { grid-template-columns: 1fr; } .states { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div>
+        <div class="eyebrow">Chat Attachment Upload</div>
+        <h1>Chats</h1>
+        <div class="muted">Conversation-scoped retrieval stays inside the active chat.</div>
+      </div>
+      <button class="btn primary">New conversation</button>
+    </div>
+
+    <div class="shell">
+      <aside class="panel" aria-label="Conversation list">
+        <div class="stack" style="margin-bottom: 14px;">
+          <div class="muted">Browse conversations and reopen the one that holds the attachments.</div>
+        </div>
+        <div class="list" role="listbox" aria-label="Conversations">
+          <button class="item active"><span>Customer support follow-up</span><span class="pill">12</span></button>
+          <button class="item"><span>Upload cleanup for chat</span><span class="pill">4</span></button>
+          <button class="item"><span>CSV attachment review</span><span class="pill">2</span></button>
+          <button class="item"><span>Hard-delete verification</span><span class="pill">1</span></button>
+        </div>
+        <div class="notes">Keyboard order: New conversation → active list item → rename/delete controls → back to main content.</div>
+      </aside>
+
+      <section class="panel" aria-label="Conversation preview">
+        <div class="stack" style="flex: 1; min-height: 0;">
+          <div class="card" style="padding: 18px;">
+            <div class="eyebrow">Selected conversation</div>
+            <h2>Customer support follow-up</h2>
+            <p class="muted">Attachments appear only in the conversation they belong to.</p>
+            <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+              <span class="pill">Rename</span>
+              <span class="pill">Delete</span>
+              <span class="pill">Back to chats</span>
+            </div>
+          </div>
+
+          <div class="states" aria-label="Conversation list states">
+            <div class="state">
+              <h3>Empty</h3>
+              <p class="muted">No conversations yet — start a new conversation to begin chat attachment upload.</p>
+            </div>
+            <div class="state">
+              <h3>Loading</h3>
+              <div class="skeleton wide"></div><div class="skeleton mid" style="margin-top:10px;"></div><div class="skeleton short" style="margin-top:10px;"></div>
+            </div>
+            <div class="state">
+              <h3>Error</h3>
+              <p class="muted">Failed to load conversations. Please try again.</p>
+              <button class="btn" style="margin-top:10px;">Retry</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

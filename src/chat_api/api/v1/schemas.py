@@ -5,9 +5,25 @@ AnswerKind = Literal["answer", "clarification", "guardrail_blocked", "out_of_dom
 Rating = Literal["up", "down"]
 
 
+class AttachmentInput(BaseModel):
+    filename: str = Field(..., min_length=1, max_length=255)
+    mime_type: str | None = None
+    file_size_bytes: int | None = Field(default=None, ge=0)
+
+
+class AttachmentOut(BaseModel):
+    id: str
+    filename: str
+    mime_type: str | None = None
+    file_size_bytes: int | None = None
+    conversation_id: str | None = None
+    created_at: str
+
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
     conversation_id: str | None = None
+    attachments: list[AttachmentInput] | None = None
 
 
 class Source(BaseModel):
@@ -133,6 +149,7 @@ class ConversationDetail(BaseModel):
     title: str | None
     created_at: str
     messages: list[MessageResponse]
+    attachments: list[AttachmentOut] = Field(default_factory=list)
 
 
 class ConversationCreateResponse(BaseModel):

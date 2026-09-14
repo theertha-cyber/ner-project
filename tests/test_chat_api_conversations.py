@@ -215,6 +215,95 @@ class TestChatEndpointTurnShape:
         assert any(m["content"] == "First question" for m in fake.seen_context)
         assert [m["content"] for m in detail.json()["messages"]][:2] == ["First question", "Second reply."]
 
+    async def test_first_send_with_attachments_creates_conversation_and_persists_metadata(
+        self, engine, tenant_schema, monkeypatch,
+    ):
+        from httpx import ASGITransport, AsyncClient
+        from sqlalchemy import text
+
+        tid, schema = tenant_schema
+        self._patch(monkeypatch, "Attachment reply.", [
+            Citation(document_name="r.pdf", document_id="doc-1", source_type="sql"),
+        ])
+
+        async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/chat",
+                headers=self._auth(tid),
+                json={
+                    "message": "Here is the file",
+                    "conversation_id": None,
+                    "attachments": [
+                        {"filename": "agreement.pdf", "mime_type": "application/pdf", "file_size_bytes": 12},
+                    ],
+                },
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        conv_id = body["conversation_id"]
+
+        async with engine.begin() as conn:
+            rows = (await conn.execute(text(f"SELECT filename, conversation_id FROM {schema}.documents WHERE conversation_id = :cid"), {"cid": conv_id})).fetchall()
+
+        assert [r[0] for r in rows] == ["agreement.pdf"]
+        async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
+            detail_resp = await client.get(f"/api/v1/chat/conversations/{conv_id}", headers=self._auth(tid))
+
+        assert detail_resp.status_code == 200
+        assert detail_resp.json()["attachments"][0]["filename"] == "agreement.pdf"
+
+    async def test_other_conversation_does_not_return_attachments(
+        self, engine, tenant_schema, monkeypatch,
+    ):
+        from httpx import ASGITransport, AsyncClient
+
+        tid, _ = tenant_schema
+        self._patch(monkeypatch, "Attachment reply.", [
+            Citation(document_name="r.pdf", document_id="doc-1", source_type="sql"),
+        ])
+
+        async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
+            first = await client.post(
+                "/api/v1/chat",
+                headers=self._auth(tid),
+                json={
+                    "message": "First file",
+                    "conversation_id": None,
+                    "attachments": [{"filename": "first.pdf", "mime_type": "application/pdf", "file_size_bytes": 5}],
+                },
+            )
+            first_conv_id = first.json()["conversation_id"]
+            second = await client.post(
+                "/api/v1/chat",
+                headers=self._auth(tid),
+                json={"message": "No files here", "conversation_id": None},
+            )
+            second_conv_id = second.json()["conversation_id"]
+            detail = await client.get(f"/api/v1/chat/conversations/{second_conv_id}", headers=self._auth(tid))
+
+        assert second_conv_id != first_conv_id
+        assert detail.status_code == 200
+        assert detail.json()["attachments"] == []
+
+    async def test_text_only_send_unchanged(self, engine, tenant_schema, monkeypatch):
+        from httpx import ASGITransport, AsyncClient
+
+        tid, _ = tenant_schema
+        fake = self._patch(monkeypatch, "Plain reply.", [
+            Citation(document_name="r.pdf", document_id="doc-1", source_type="sql"),
+        ])
+
+        async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/chat",
+                headers=self._auth(tid),
+                json={"message": "Plain send", "conversation_id": None},
+            )
+
+        assert resp.status_code == 200
+        assert fake.seen_context == [] or fake.seen_context is None
+
     async def test_unauthenticated_chat_returns_401(self, engine, tenant_schema):
         from httpx import ASGITransport, AsyncClient
 

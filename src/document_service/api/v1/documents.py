@@ -162,6 +162,20 @@ async def list_documents(
     conditions = ["{p}tenant_id = :tid"]
     params = {"tid": tenant_id}
 
+    column_check = await session.execute(
+        text("""
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = 'documents'
+              AND column_name = 'conversation_id'
+            LIMIT 1
+        """),
+        {"schema": _schema(tenant_id)},
+    )
+    if column_check.fetchone():
+        conditions.append("{p}conversation_id IS NULL")
+
     if role != "tenant_admin":
         # Ownership scoping applies only to documents a *person* ingested. A
         # system-ingested document is visible tenant-wide, because retrieval filters on
