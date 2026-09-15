@@ -1,30 +1,25 @@
 """add export_rows/export_row_count to chat_messages
 
 Revision ID: 047
-Revises: 037
+Revises: 046
 Create Date: 2026-09-14
 
-NOTE (found during implementation of export-chat-results, 2026-09-14): this
-branch (`export-chat`) was cut before nine migrations (038-046) landed on
-`main` — including two files both numbered `038`
-(`038_document_provenance_and_retention.py`,
-`038_llm_prelabeling_columns.py`), so `main`'s own chain already has a branch
-point this file knows nothing about. `down_revision` below is still "037",
-this branch's own local head — it does NOT chain onto `main`'s actual tip
-(046, or wherever the two 038s converge). Renumbered from 038 to 047 (the
-next free number after main's highest, 046) purely to avoid an obvious
-filename/revision-id collision; `down_revision` MUST be corrected to the
-real chain tip as part of rebasing this branch onto `main` before this
-migration is merged or run anywhere `main`'s migrations have been applied
-(e.g. the shared `ner_dev` database, observed at revision 046 during this
-session). Do not run `alembic upgrade head` on a shared database from this
-branch as-is.
+NOTE (resolved 2026-09-15): this branch (`export-chat`) was originally cut
+before nine migrations (038-046) landed on `main`, and `down_revision` here
+briefly pointed at "037" (this branch's own stale head) rather than `main`'s
+real tip. Two of those nine migrations were also duplicate revision IDs
+("038" and "039", each independently created on separate branches) that
+broke `alembic history`/`upgrade` outright — fixed separately by renumbering
+them to "038b"/"039b" (see those files). With that fix landed on `main`, this
+migration now correctly chains onto `046`, `main`'s real, verified-unambiguous
+head (`alembic heads`/`upgrade head` both confirmed clean end-to-end before
+this change).
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "047"
-down_revision = "037"
+down_revision = "046"
 branch_labels = None
 depends_on = None
 
