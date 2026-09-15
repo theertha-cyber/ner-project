@@ -48,7 +48,7 @@ export default function ImportAnnotationLanding() {
           title: "1. Import annotations",
           description: "Bring in a vendor export, gold set, or previous project's labels.",
           cta: "Import annotations",
-          href: "/imported-documents?import=1",
+          href: "/imported-documents",
         },
         {
           title: "2. Train model",
@@ -65,7 +65,7 @@ export default function ImportAnnotationLanding() {
       primaryAction={
         isAnnotator
           ? undefined
-          : { label: "＋ Import file", onClick: () => router.push("/imported-documents?import=1") }
+          : { label: "＋ Import file", onClick: () => router.push("/imported-documents") }
       }
       stats={stats}
       workCards={workCards}

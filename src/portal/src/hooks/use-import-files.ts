@@ -11,6 +11,7 @@ export interface ImportFile {
   training_eligible_at: string | null;
   pending_count: number;
   reviewed_count: number;
+  unmapped_types: { type: string; row_count: number }[];
 }
 
 /** One row per imported file: size, rows still needing a type mapping, and whether the

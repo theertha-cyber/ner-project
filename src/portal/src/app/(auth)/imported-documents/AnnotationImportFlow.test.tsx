@@ -4,6 +4,8 @@ import ImportedDocumentsPage from "./page";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: vi.fn(() => new URLSearchParams()),
+  useRouter: vi.fn(() => ({ replace: vi.fn() })),
+  usePathname: vi.fn(() => "/imported-documents"),
 }));
 
 const mockAuthFetch = vi.fn();

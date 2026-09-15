@@ -154,6 +154,26 @@ def _row_unknown_types(tags: list[str], known_lower: set[str]) -> set[str]:
     return unknown
 
 
+async def _unmapped_types_for_file(
+    session: AsyncSession, schema: str, source_file: str, known_lower: set[str]
+) -> dict[str, int]:
+    """Unique unknown base types still referenced by this file's pending rows, with the
+    number of rows each appears in — the same shape the import-time response uses, so the
+    UI can offer a bulk "create all as new types" action after the fact."""
+    rows = await session.execute(
+        text(
+            f"SELECT tags FROM {schema}.imported_annotations "
+            "WHERE source_file = :f AND pending_mapping = TRUE"
+        ),
+        {"f": source_file},
+    )
+    counts: dict[str, int] = {}
+    for (tags,) in rows.fetchall():
+        for t in _row_unknown_types(list(tags), known_lower):
+            counts[t] = counts.get(t, 0) + 1
+    return counts
+
+
 async def _refresh_import_header(session: AsyncSession, schema: str, source_file: str) -> bool:
     """Recompute a file's pending count and set `training_eligible_at` when it hits zero.
     Returns whether the file is now training-eligible."""
@@ -303,11 +323,20 @@ async def list_import_files(
             f"FROM {schema}.annotation_imports ai ORDER BY ai.created_at DESC"
         )
     )
+    rows = rows.fetchall()
+    known_lower = await get_known_entity_types_lower(session, tenant_id) if any(r[4] for r in rows) else set()
+
     files = []
-    for r in rows.fetchall():
+    for r in rows:
         type_map = r[2]
         if isinstance(type_map, str):
             type_map = json.loads(type_map)
+        pending_count = int(r[4] or 0)
+        unmapped_types = (
+            await _unmapped_types_for_file(session, schema, r[0], known_lower)
+            if pending_count
+            else {}
+        )
         files.append(
             {
                 "source_file": r[0],
@@ -315,8 +344,11 @@ async def list_import_files(
                 "type_map": type_map or {},
                 "training_eligible": r[3] is not None,
                 "training_eligible_at": r[3].isoformat() if r[3] else None,
-                "pending_count": int(r[4] or 0),
+                "pending_count": pending_count,
                 "reviewed_count": int(r[5] or 0),
+                "unmapped_types": [
+                    {"type": t, "row_count": n} for t, n in sorted(unmapped_types.items())
+                ],
             }
         )
     return {"files": files}

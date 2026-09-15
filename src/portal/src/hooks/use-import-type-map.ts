@@ -43,6 +43,7 @@ export function useImportTypeMap() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["imported-annotations"] });
       qc.invalidateQueries({ queryKey: ["entity-types"] });
+      qc.invalidateQueries({ queryKey: ["import-files"] });
     },
   });
 }

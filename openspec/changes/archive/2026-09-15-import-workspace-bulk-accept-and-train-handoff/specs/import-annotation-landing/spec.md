@@ -1,9 +1,4 @@
-# import-annotation-landing Specification
-
-## Purpose
-TBD - created by archiving change import-annotation-training-workflow. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Workflow Steps
 

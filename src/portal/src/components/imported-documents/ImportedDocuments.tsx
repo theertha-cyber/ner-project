@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useReducer, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useEntityTypes } from "@/hooks/use-entity-types";
 import { authFetch } from "@/lib/auth-fetch";
@@ -18,8 +18,8 @@ import type { TokenRangeSpan } from "@/components/annotation/token-range-reducer
 import { AnnotationImportPreview } from "@/components/annotation/AnnotationImportPreview";
 import { AnnotationImportResult } from "@/components/annotation/AnnotationImportResult";
 import { useAnnotationImport } from "@/hooks/use-annotation-import";
-import { useImportFiles } from "@/hooks/use-import-files";
-import { useRequestRetrain } from "@/hooks/use-retraining";
+import { useImportFiles, type ImportFile } from "@/hooks/use-import-files";
+import { useImportTypeMap, type TypeMapEntry } from "@/hooks/use-import-type-map";
 import { FilterSelect } from "@/components/ui/filter-select";
 
 const REVIEWED_FILTER_OPTIONS = [
@@ -70,10 +70,11 @@ export function ImportedDocumentsList({
   onSelectRow: (id: string) => void;
 }) {
   const { user } = useAuth();
-  const searchParams = useSearchParams();
+  const router = useRouter();
   const isTenantAdmin = user?.role === "tenant_admin";
   const importFiles = useImportFiles(isTenantAdmin);
-  const requestRetrain = useRequestRetrain();
+  const typeMap = useImportTypeMap();
+  const [acceptingFile, setAcceptingFile] = useState<string | null>(null);
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -109,16 +110,18 @@ export function ImportedDocumentsList({
     fetchList();
   }, [fetchList]);
 
-  // The Import landing page's "Import file" workflow step links here with `?import=1` so the
-  // step actually opens the file picker, not just the list.
-  useEffect(() => {
-    if (canImport && searchParams.get("import") === "1") {
-      fileInputRef.current?.click();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const totalPages = data ? Math.ceil(data.total / perPage) : 0;
+
+  // One click: every currently-unmapped type in the file is created as a new canonical
+  // entity type (same default as the post-import dialog), skipping per-row review entirely.
+  function handleAcceptAllAsNew(f: ImportFile) {
+    setAcceptingFile(f.source_file);
+    const mapping: Record<string, TypeMapEntry> = {};
+    for (const u of f.unmapped_types) {
+      mapping[u.type] = { create: true };
+    }
+    typeMap.mutate({ sourceFile: f.source_file, mapping });
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -171,19 +174,36 @@ export function ImportedDocumentsList({
                 <span className="font-mono">{f.source_file}</span>
                 <span style={{ color: "var(--ink-3)" }}>{f.row_count} rows</span>
                 {f.pending_count > 0 ? (
-                  <span style={{ color: "var(--bad)" }}>
-                    {f.pending_count} rows need a type mapping
-                  </span>
+                  <>
+                    <span style={{ color: "var(--bad)" }}>
+                      {f.pending_count} rows need a type mapping
+                    </span>
+                    <button
+                      type="button"
+                      disabled={typeMap.isPending && acceptingFile === f.source_file}
+                      onClick={() => handleAcceptAllAsNew(f)}
+                      className="ml-auto rounded border px-2.5 py-1 text-xs font-medium disabled:opacity-50"
+                      style={{ borderColor: "var(--line)" }}
+                    >
+                      {typeMap.isPending && acceptingFile === f.source_file
+                        ? "Creating types…"
+                        : "Accept all as new types"}
+                    </button>
+                    {typeMap.isError && acceptingFile === f.source_file && (
+                      <span className="w-full text-xs" style={{ color: "var(--bad)" }}>
+                        {typeMap.error.message}
+                      </span>
+                    )}
+                  </>
                 ) : f.training_eligible ? (
                   <>
                     <span style={{ color: "var(--good, #16a34a)" }}>Training: Eligible</span>
                     <button
                       type="button"
-                      disabled={requestRetrain.isPending}
-                      onClick={() => requestRetrain.mutate()}
-                      className="ml-auto rounded bg-brand-primary px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
+                      onClick={() => router.push("/training-jobs?source=import")}
+                      className="ml-auto rounded bg-brand-primary px-2.5 py-1 text-xs font-medium text-white"
                     >
-                      {requestRetrain.isPending ? "Requesting…" : "Request training"}
+                      Train model
                     </button>
                   </>
                 ) : (
@@ -192,11 +212,6 @@ export function ImportedDocumentsList({
               </li>
             ))}
           </ul>
-          {requestRetrain.isSuccess && (
-            <p className="mt-2 text-xs" style={{ color: "var(--good, #16a34a)" }}>
-              Training requested — pending System Admin approval.
-            </p>
-          )}
         </div>
       )}
 

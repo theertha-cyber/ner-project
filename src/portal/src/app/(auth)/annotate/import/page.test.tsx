@@ -39,10 +39,10 @@ describe("ImportAnnotationLanding", () => {
     expect(screen.queryByText(/review imported files/i)).toBeNull();
   });
 
-  it("step 1 routes to the import file picker", () => {
+  it("step 1 routes to the imported files workspace — the picker opens only on an explicit click there", () => {
     render(<ImportAnnotationLanding />);
     fireEvent.click(screen.getByText("Import annotations →"));
-    expect(mockPush).toHaveBeenCalledWith("/imported-documents?import=1");
+    expect(mockPush).toHaveBeenCalledWith("/imported-documents");
   });
 
   it("step 2 routes straight to Models & Training scoped to import, with no review gate", () => {

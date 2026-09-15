@@ -736,6 +736,8 @@ async def test_list_import_files(seeded_entity_types, client):
     assert by_name["known.jsonl"]["training_eligible"] is True
     assert by_name["pending.jsonl"]["training_eligible"] is False
     assert by_name["pending.jsonl"]["pending_count"] == 1
+    assert by_name["known.jsonl"]["unmapped_types"] == []
+    assert by_name["pending.jsonl"]["unmapped_types"] == [{"type": "XX", "row_count": 1}]
 
 
 @pytest.mark.asyncio
