@@ -9,14 +9,22 @@ The table holds secret *references* only. There is no column a credential value 
 in, which is what makes "no raw secrets" a property of the schema rather than a rule
 someone has to remember.
 
-Revision ID: 039
-Revises: 038
+NOTE (renumbered 2026-09-15): this file was independently created as revision "039" (down_revision
+"038") on a separate branch from `039_seed_bootstrap.py`, which also claimed "039" off the same
+ambiguous "038" — `alembic history`/`upgrade` cannot resolve a revision ID that names two different
+files. Both migrations' DDL was already applied to the shared dev database despite the ambiguity
+(verified directly against `ner_dev` before this fix), so this is a pure bookkeeping renumbering,
+not a schema repair. This file is renumbered to "039b" and re-chained after `039_seed_bootstrap.py`;
+`040_confidence_routed_review.py`'s `down_revision` is updated from "039" to "039b" to match.
+
+Revision ID: 039b
+Revises: 039
 Create Date: 2026-09-07
 """
 from alembic import op
 
-revision = "039"
-down_revision = "038"
+revision = "039b"
+down_revision = "039"
 branch_labels = None
 depends_on = None
 

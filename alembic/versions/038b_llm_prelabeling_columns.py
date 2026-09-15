@@ -22,8 +22,18 @@ later change in this same plan, and adding a value to a Postgres ENUM is itself 
 Additive-only and reversible: `downgrade` drops exactly what `upgrade` added and touches no other
 column, so no pre-existing `suggested_spans` row is at risk in either direction.
 
-Revision ID: 038
-Revises: 037
+NOTE (renumbered 2026-09-15): this file and `038_document_provenance_and_retention.py` were both
+independently created as revision "038" (down_revision "037") on separate branches, and both
+`039_*` files independently chained off the ambiguous "038" — `alembic history`/`upgrade` cannot
+resolve a revision ID that names two different files. Both migrations' DDL was already applied to
+the shared dev database despite the ambiguity (verified directly against `ner_dev` before this
+fix), so this is a pure bookkeeping renumbering, not a schema repair: `037`-`046`'s revision IDs
+are left untouched so any environment already stamped at one of them stays valid. This file is
+renumbered to "038b" and re-chained after `038` (`038_document_provenance_and_retention.py`);
+`039_seed_bootstrap.py`'s `down_revision` is updated from "038" to "038b" to match.
+
+Revision ID: 038b
+Revises: 038
 Create Date: 2026-09-03
 """
 from alembic import op
@@ -31,8 +41,8 @@ from sqlalchemy import text
 
 from tenant_schema_ddl import apply_to_all_tenant_schemas
 
-revision = "038"
-down_revision = "037"
+revision = "038b"
+down_revision = "038"
 branch_labels = None
 depends_on = None
 

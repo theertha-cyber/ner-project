@@ -44,15 +44,20 @@ agreement data exists to compare it against.
 Additive and reversible: `downgrade` drops exactly the five tables and the one column `upgrade`
 creates.
 
+NOTE (renumbered 2026-09-15): `Revises` corrected from the ambiguous "039" to "039b" —
+`039_tenant_integration_profiles.py` was independently created as revision "039" on another branch
+and renumbered to "039b" to resolve the collision with `039_seed_bootstrap.py`; see that file's own
+note. This migration's own identity ("040") and content are unchanged.
+
 Revision ID: 040
-Revises: 039
+Revises: 039b
 Create Date: 2026-09-07
 """
 from alembic import op
 from sqlalchemy import text
 
 revision = "040"
-down_revision = "039"
+down_revision = "039b"
 branch_labels = None
 depends_on = None
 

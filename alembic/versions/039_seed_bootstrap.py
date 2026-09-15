@@ -29,15 +29,20 @@ Absence of a row means individual review, which is what every pre-existing span 
 
 Additive-only and reversible: `downgrade` drops exactly the six tables `upgrade` creates.
 
+NOTE (renumbered 2026-09-15): `Revises` corrected from the ambiguous "038" to "038b" —
+`038_llm_prelabeling_columns.py` was independently created as revision "038" on another branch and
+renumbered to "038b" to resolve the collision; see that file's own note. This migration's own
+identity ("039") and content are unchanged.
+
 Revision ID: 039
-Revises: 038
+Revises: 038b
 Create Date: 2026-09-03
 """
 from alembic import op
 from sqlalchemy import text
 
 revision = "039"
-down_revision = "038"
+down_revision = "038b"
 branch_labels = None
 depends_on = None
 
