@@ -20,13 +20,13 @@
 ## 3. API contract and persistence
 
 - [x] 3.1 Add `chart: ChartPayload | None = None` to `ChatResponse` in `src/chat_api/api/v1/schemas.py`, and add `chart` to the exclude set in `_response_payload` (`src/chat_api/api/v1/chat.py:164-174`) when None, following the `pending_clarification` precedent. Leave `WidgetChatResponse` untouched.
-- [x] 3.2 Write Alembic migration `alembic/versions/047_chat_message_chart.py` (`down_revision = "046"`) adding nullable JSONB `chart` to `chat_messages`, applied to `tenant_template` and every existing tenant schema via `apply_to_all_tenant_schemas` — follow `033_chat_messages_response_time_ms.py`.
+- [x] 3.2 Write Alembic migration `alembic/versions/048_chat_message_chart.py` (`down_revision = "047"`) adding nullable JSONB `chart` to `chat_messages`, applied to `tenant_template` and every existing tenant schema via `apply_to_all_tenant_schemas` — follow `033_chat_messages_response_time_ms.py`.
 - [x] 3.3 Persist the chart in `_persist_turn_and_respond` (`chat.py:113-161`) on the assistant row only, serialized with `json.dumps` exactly as `sources` is; write null when absent.
 - [x] 3.4 Add `chart` to the conversation detail SELECT and to `MessageResponse` (`schemas.py:120-128`), parsed tolerantly so rows written before the column existed return without a chart. Null the chart for user rows.
 - [x] 3.5 Emit the chart as an SSE `chart` frame in `event_stream()` (`chat.py:230-257`) after the chart is known and before the first `token` frame, at most once per turn, and never for a turn whose reply the guardrail replaces. Keep the chart in the `done` payload.
 - [x] 3.6 Test the response and persistence contract in `tests/test_chat_api_chart_response.py`: no-chart response omits the key entirely and is otherwise unchanged (scenario 24); charted response carries the payload with at least one citation (25); widget response carries no chart (26); chart survives conversation reload (31); chart-less conversations reload unchanged (32); pre-column rows read back cleanly (34).
 - [x] 3.7 Extend `tests/test_chat_api_streaming.py`: no `token` event is emitted for the duration of the stage A call and the first `token` corresponds to stage B content (scenario 20); exactly one `chart` event before the first `token` (27); no `chart` event for an uncharted turn with unchanged `token`/`done` sequence (28); `done` repeats the chart (29); guardrail-replaced turn emits no `chart` event and no `chart` key in `done` (30).
-- [x] 3.8 Add `tests/test_migration_047_chat_message_chart.py` following `test_migration_032_chat_message_feedback.py`: the column exists in `tenant_template` and in pre-existing tenant schemas after migration (scenario 33).
+- [x] 3.8 Add `tests/test_migration_048_chat_message_chart.py` following `test_migration_032_chat_message_feedback.py`: the column exists in `tenant_template` and in pre-existing tenant schemas after migration (scenario 33).
 
 ## 4. Portal rendering
 
@@ -54,7 +54,7 @@
 
 ## 7. Verification & Evidence
 
-- [x] 7.1 Run all acceptance-criteria tests for every scenario in verification.md § Spec Alignment and confirm all pass (`pytest tests/test_chat_*.py tests/test_migration_047_chat_message_chart.py` and `npm test` in `src/portal`).
+- [x] 7.1 Run all acceptance-criteria tests for every scenario in verification.md § Spec Alignment and confirm all pass (`pytest tests/test_chat_*.py tests/test_migration_048_chat_message_chart.py` and `npm test` in `src/portal`).
 - [x] 7.2 Collect functional evidence (screenshot / test output / log) for each scenario — record one entry per row in verification.md § Evidence Log.
 - [x] 7.3 Confirm every Hallucination Risk mitigation step in verification.md § Hallucination Risk Register.
 - [x] 7.4 Confirm all ADR compliance steps in verification.md § Pattern & ADR Compliance.

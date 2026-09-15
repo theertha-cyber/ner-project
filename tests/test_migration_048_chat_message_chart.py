@@ -1,4 +1,4 @@
-"""Verifies migration 047 (chat_messages.chart) was actually applied to the real dev
+"""Verifies migration 048 (chat_messages.chart) was actually applied to the real dev
 database, not just the ad-hoc tables the unit-test fixtures provision. Runs against the
 dev DB directly, following test_migration_032_chat_message_feedback.py.
 
@@ -36,7 +36,7 @@ async def _chart_column(conn, schema: str) -> tuple[str, str] | None:
     return (row[0], row[1]) if row else None
 
 
-class TestMigration047AppliedToTenantTemplate:
+class TestMigration048AppliedToTenantTemplate:
     async def test_chart_column_exists_and_is_nullable_jsonb(self, dev_engine):
         async with dev_engine.begin() as conn:
             column = await _chart_column(conn, "tenant_template")
@@ -49,7 +49,7 @@ class TestMigration047AppliedToTenantTemplate:
         assert is_nullable == "YES"
 
 
-class TestMigration047BackfilledToLiveTenantSchemas:
+class TestMigration048BackfilledToLiveTenantSchemas:
     async def test_every_provisioned_tenant_schema_has_the_chart_column(self, dev_engine):
         """ADR-001: the column must reach every tenant schema, not only the template."""
         async with dev_engine.begin() as conn:
@@ -67,7 +67,7 @@ class TestMigration047BackfilledToLiveTenantSchemas:
                 if await _chart_column(conn, schema) is None:
                     missing.append(schema)
 
-        assert not missing, f"tenant schemas missing migration 047 backfill: {missing}"
+        assert not missing, f"tenant schemas missing migration 048 backfill: {missing}"
 
     async def test_user_messages_never_carry_a_chart(self, dev_engine):
         """The migration backfills nothing, and a user's own message can never acquire a

@@ -1,7 +1,7 @@
 """chat_messages.chart — the chart rendered alongside an assistant answer
 
-Revision ID: 047
-Revises: 046
+Revision ID: 048
+Revises: 047
 Create Date: 2026-09-15
 
 When the generation model proposes a chart and its numbers are validated against the
@@ -14,8 +14,8 @@ chart-less, which is correct (chat-chart-generation design.md Decision 5).
 from alembic import op
 from tenant_schema_ddl import apply_to_all_tenant_schemas
 
-revision = "047"
-down_revision = "046"
+revision = "048"
+down_revision = "047"
 branch_labels = None
 depends_on = None
 
