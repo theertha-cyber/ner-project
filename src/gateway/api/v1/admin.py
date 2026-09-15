@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,8 @@ class CreateTenantRequest(BaseModel):
     max_model_versions: int = 10
     admin_email: EmailStr
     admin_password: str
+    # ADR-017. `Literal` rejects any other value with a 422 before the handler runs.
+    data_plane_mode: Literal["platform", "tenant_owned"] = "platform"
 
 
 @router.post("/tenants", status_code=201)

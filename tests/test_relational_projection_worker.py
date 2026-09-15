@@ -201,7 +201,7 @@ async def tenant(monkeypatch, engine, setup_database):
         for ddl in _TENANT_TABLES:
             conn.execute(text(ddl.format(schema=schema)))
 
-    monkeypatch.setattr(worker_module, "_get_sync_engine", lambda: sync_engine)
+    monkeypatch.setattr(worker_module, "_get_sync_engine", lambda tenant_id=None: sync_engine)
     monkeypatch.setattr(worker_module, "_get_active_model_version", lambda tenant_id: "1")
 
     import src.shared.auth as auth_module

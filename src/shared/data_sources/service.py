@@ -21,8 +21,20 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from src.shared.config import settings
+from src.shared.data_plane import (
+    MODE_TENANT_OWNED,
+    get_data_plane_record,
+    invalidate as invalidate_data_plane_record,
+    mark_paused,
+    mark_provisioning,
+    mark_ready_from_paused,
+    mark_retired,
+)
 from src.shared.data_sources import lifecycle as lc
 from src.shared.data_sources.providers import (
+    PROVIDER_AZURE_BLOB,
+    PROVIDER_AZURE_POSTGRESQL,
+    PROVIDER_AZURE_POSTGRESQL_DATA_PLANE,
     PROVIDER_SECRET_KIND,
     ConnectionValidationError,
     validate_configuration,
@@ -43,8 +55,14 @@ from src.shared.observability.domain_metrics import (
     record_data_source_lifecycle,
     record_data_source_test,
 )
+from src.shared.tenant_schema import schema_for_tenant
 
 logger = logging.getLogger(__name__)
+
+# Mirrors `blob_sync.ledger.RUNS_TABLE`; a literal keeps this shared layer free of
+# the worker import.
+SYNC_RUNS_TABLE = "azure_blob_sync_runs"
+_REPORTED_SYNC_OUTCOMES = sorted(lc.SYNC_OUTCOMES - {lc.SYNC_OUTCOME_NEVER_RUN})
 
 LIST_SORTS = frozenset({"last_activity", "created_at", "provider", "status"})
 LIST_ORDERS = frozenset({"asc", "desc"})
@@ -104,6 +122,57 @@ def _secret_values(tenant_id: str, provider: str, secret_references: dict) -> di
     return dict(context.values)
 
 
+async def _invalidate_tenant_engines(tenant_id: str) -> None:
+    """Disposes this process's cached engines for `tenant_id` after a pause, replace,
+    or retire (Design D4). Deferred import: `src.shared.database` imports this
+    package's provider validation indirectly via `data_plane.py`'s callers, so a
+    module-level import here risks a cycle as the module set grows."""
+    from src.shared.database import get_resolver
+
+    await get_resolver().invalidate_tenant(tenant_id)
+
+
+async def _check_data_plane_draft_allowed(
+    session, tenant_id: str, secret_references: dict
+) -> None:
+    """The three `azure_postgresql_data_plane`-specific draft checks (ADR-017,
+    tenant-data-source-control-plane spec): feature flag, tenant mode, and no secret
+    reference shared with the tenant's read-only `azure_postgresql` connection. Raises
+    `lc.LifecycleRejected` with the finite safe code; no row is written on rejection."""
+    if not settings.tenant_owned_data_plane_enabled:
+        raise lc.LifecycleRejected(
+            "TENANT_OWNED_DATA_PLANE_DISABLED",
+            "tenant-owned data planes are disabled in this environment",
+        )
+
+    record = await get_data_plane_record(tenant_id, session)
+    if record.mode != MODE_TENANT_OWNED:
+        raise lc.LifecycleRejected(
+            "DATA_PLANE_NOT_TENANT_OWNED",
+            "an azure_postgresql_data_plane connection requires a tenant_owned data plane",
+        )
+
+    password_ref = (secret_references or {}).get("password_ref")
+    if password_ref:
+        existing = (
+            await session.execute(
+                text(
+                    f"SELECT secret_references FROM {CONNECTIONS_TABLE} "
+                    f"WHERE tenant_id = :tid AND provider = :provider "
+                    f"AND status != '{lc.STATUS_RETIRED}'"
+                ),
+                {"tid": tenant_id, "provider": PROVIDER_AZURE_POSTGRESQL},
+            )
+        ).fetchall()
+        for row in existing:
+            if (row.secret_references or {}).get("password_ref") == password_ref:
+                raise lc.LifecycleRejected(
+                    "SECRET_REFERENCE_SHARED_ACROSS_PURPOSES",
+                    "this secret reference is already used by the tenant's read-only "
+                    "azure_postgresql connection",
+                )
+
+
 def _uses_env_scheme(secret_references: dict) -> bool:
     return any(
         isinstance(value, str) and value.startswith("env://")
@@ -158,6 +227,9 @@ async def create_connection(
     validate_provider(provider)
     configuration = validate_configuration(provider, configuration)
     secret_references = validate_secret_references(provider, secret_references)
+
+    if provider == PROVIDER_AZURE_POSTGRESQL_DATA_PLANE:
+        await _check_data_plane_draft_allowed(session, tenant_id, secret_references)
 
     connection_id = uuid.uuid4()
     now = _utcnow()
@@ -390,7 +462,24 @@ async def test_connection(session, tenant_id: str, connection_id: str):
         _emit("test", tenant_id, row.id, provider, "error", lc.TEST_REASON_SECRET_UNAVAILABLE)
         return await _fetch(session, tenant_id, str(row.id))
 
-    result = await run_secure_test(provider, configuration, secret_values)
+    expected_store_id = None
+    if provider == PROVIDER_AZURE_POSTGRESQL_DATA_PLANE:
+        # A replacement or credential-rotation test must reach the *same* store the
+        # tenant is already recorded against (tenant-residency-store-provisioning
+        # spec's "Replacement connections must point at the same store") — a first
+        # activation draft has no recorded store yet, so this is `None` then and the
+        # tester falls back to "any recognized marker is fine".
+        dp_row = (
+            await session.execute(
+                text("SELECT store_id FROM public.tenant_data_planes WHERE tenant_id = :tid"),
+                {"tid": tenant_id},
+            )
+        ).fetchone()
+        expected_store_id = str(dp_row.store_id) if dp_row and dp_row.store_id else None
+
+    result = await run_secure_test(
+        provider, configuration, secret_values, tenant_id=tenant_id, expected_store_id=expected_store_id
+    )
     if result.passed:
         await _record(lc.TEST_OUTCOME_PASSED, lc.TEST_REASON_NONE, lc.STATUS_VALIDATED)
         _emit("test", tenant_id, row.id, provider, "success")
@@ -451,6 +540,20 @@ async def activate_connection(
         raise lc.LifecycleRejected(
             "TEST_REQUIRED", "activation requires a current passed connection test"
         )
+    if provider == PROVIDER_AZURE_POSTGRESQL_DATA_PLANE:
+        from src.shared.integration_profile.store import load_profile
+
+        profile = await load_profile(session, tenant_id)
+        if profile.retention_mode == "platform_blob":
+            await _mark_activation_blocked(
+                session, tenant_id, row, lc.ACTIVATION_REASON_RETENTION_MODE_NOT_PERMITTED
+            )
+            _emit("activate", tenant_id, row.id, provider, "rejected",
+                  lc.ACTIVATION_REASON_RETENTION_MODE_NOT_PERMITTED)
+            raise lc.LifecycleRejected(
+                "RETENTION_MODE_NOT_PERMITTED",
+                "activation is blocked while the tenant's retention mode is platform_blob",
+            )
     if (
         not isinstance(activation_evidence, list)
         or sorted(activation_evidence) != sorted(lc.REQUIRED_ACTIVATION_EVIDENCE)
@@ -549,6 +652,57 @@ async def activate_connection(
             "ACTIVE_PROVIDER_EXISTS",
             f"tenant already has an active '{provider}' connection",
         )
+
+    if provider == PROVIDER_AZURE_POSTGRESQL_DATA_PLANE and row.replaces_connection_id is not None:
+        # Replacement activation (tenant-residency-store-provisioning spec's
+        # "Credential rotation keeps the tenant ready"): the successor's own
+        # connection test already verified the store identity matches
+        # (`data_plane_tester._target_schema_outcome`, task 10.3), so this is a
+        # rebind, never a re-provisioning — `tenant_data_planes.connection_id` is
+        # repointed at the successor and the resolver's engine cache is
+        # invalidated so the next request builds an engine from the new
+        # credentials. Status (`ready`) and `store_id`/`schema_revision` are left
+        # untouched: the store itself did not change.
+        await session.execute(
+            text(
+                "UPDATE public.tenant_data_planes SET connection_id = CAST(:cid AS UUID), "
+                "updated_at = NOW() WHERE tenant_id = :tid"
+            ),
+            {"cid": str(row.id), "tid": tenant_id},
+        )
+        await session.commit()
+        invalidate_data_plane_record(tenant_id)
+        await _invalidate_tenant_engines(tenant_id)
+    elif provider == PROVIDER_AZURE_POSTGRESQL_DATA_PLANE and row.replaces_connection_id is None:
+        if row.status == lc.STATUS_VALIDATED:
+            # First activation: enqueue provisioning (Design D6). The task itself
+            # (schema/baseline/role creation on the tenant's own store) is
+            # `provision_tenant_data_plane`, task group 10.1.
+            await mark_provisioning(session, tenant_id, str(row.id))
+            await session.commit()
+            try:
+                from src.document_service.blob_sync.tasks import celery_app as _document_celery_app
+
+                _document_celery_app.send_task(
+                    "provision_tenant_data_plane", args=[tenant_id], queue="data_plane"
+                )
+            except Exception:
+                logger.warning(
+                    "data_plane_provisioning_enqueue_failed",
+                    extra={"tenant_id": tenant_id},
+                )
+        elif row.status == lc.STATUS_PAUSED:
+            # Re-activation of an already-provisioned store: straight to ready, no
+            # re-provisioning (tenant-residency-store-provisioning spec's "Credential
+            # rotation keeps the tenant ready"). Store identity is unchanged from
+            # the connection just reactivated, not a fresh secret — the identity
+            # check applies to a *replacement* draft's own connection test (Design
+            # D3, task 10.3), which already ran before this connection reached
+            # `validated`/`paused`.
+            await mark_ready_from_paused(session, tenant_id)
+            await session.commit()
+        await _invalidate_tenant_engines(tenant_id)
+
     _emit("activate", tenant_id, row.id, provider, "success")
     return await _fetch(session, tenant_id, str(row.id))
 
@@ -571,9 +725,94 @@ async def pause_connection(session, tenant_id: str, connection_id: str):
         ),
         {"cid": str(row.id), "tid": tenant_id},
     )
+    if row.provider == PROVIDER_AZURE_POSTGRESQL_DATA_PLANE:
+        await mark_paused(session, tenant_id)
     await session.commit()
+    if row.provider == PROVIDER_AZURE_POSTGRESQL_DATA_PLANE:
+        await _invalidate_tenant_engines(tenant_id)
     _emit("pause", tenant_id, row.id, row.provider, "success")
     return await _fetch(session, tenant_id, str(row.id))
+
+
+async def request_manual_sync(session, tenant_id: str, connection_id: str, enqueue) -> dict:
+    """Enqueue a manual Blob synchronization, bypassing the scheduler cadence.
+
+    Blob-provider and active-lifecycle gating happen here for a fast safe
+    rejection; the worker re-checks both before executing, so a state race
+    stays safe. `enqueue` is an injected `(tenant_id, connection_id, trigger)`
+    callable so this layer stays free of broker configuration. Returns the
+    safe trigger descriptor; raises `LifecycleRejected` with a finite code
+    otherwise.
+    """
+    row = _require(await get_connection(session, tenant_id, connection_id), tenant_id)
+    if row.provider != PROVIDER_AZURE_BLOB:
+        _emit("sync", tenant_id, row.id, row.provider, "rejected", "unsupported_provider")
+        raise lc.LifecycleRejected(
+            "UNSUPPORTED_PROVIDER",
+            "manual sync applies to Azure Blob connections only",
+        )
+    if row.status != lc.STATUS_ACTIVE:
+        _emit("sync", tenant_id, row.id, row.provider, "rejected", "inactive_connection")
+        raise lc.LifecycleRejected(
+            "INACTIVE_CONNECTION",
+            "manual sync requires an active connection",
+        )
+    try:
+        # Literal mirrors `blob_sync.TRIGGER_MANUAL`; a literal keeps this
+        # shared layer free of the worker import (same pattern as the
+        # declared `BLOB_SYNC_TRIGGERS` set in domain_metrics).
+        enqueue(tenant_id, str(row.id), "manual")
+    except Exception as exc:
+        logger.warning(
+            "manual_sync_enqueue_failed",
+            extra={"action": "sync", "error_type": type(exc).__name__},
+        )
+        _emit("sync", tenant_id, row.id, row.provider, "error", "broker_unavailable")
+        raise lc.LifecycleRejected(
+            "SYNC_UNAVAILABLE",
+            "the sync queue is temporarily unavailable",
+        )
+    _emit("sync", tenant_id, row.id, row.provider, "success")
+    return {
+        "connection_id": str(row.id),
+        "trigger": "manual",
+        "outcome": "enqueued",
+        "enqueued_at": _utcnow().isoformat(),
+    }
+
+
+async def latest_sync_outcomes(session, tenant_id: str, connection_ids) -> dict:
+    """Latest completed Blob sync run per connection, as safe classes only.
+
+    Reads the tenant's run ledger (CAP-3) in one query for any number of
+    connections. A tenant whose sync tables were never created has no runs, so
+    the table is looked up first rather than created on a read path. Runs still
+    in progress (no `completed_at`) and outcomes outside the finite set are
+    skipped. Returns `{connection_id: {"outcome", "completed_at"}}`; connections
+    that never finished a run are absent.
+    """
+    ids = [str(cid) for cid in connection_ids]
+    if not ids:
+        return {}
+    table = f"{schema_for_tenant(tenant_id)}.{SYNC_RUNS_TABLE}"
+    exists = (
+        await session.execute(text("SELECT to_regclass(:t) IS NOT NULL"), {"t": table})
+    ).scalar()
+    if not exists:
+        return {}
+    rows = (
+        await session.execute(
+            text(
+                "SELECT DISTINCT ON (connection_id) connection_id, outcome, completed_at "
+                f"FROM {table} "
+                "WHERE connection_id = ANY(:ids) AND completed_at IS NOT NULL "
+                "AND outcome = ANY(:outcomes) "
+                "ORDER BY connection_id, started_at DESC"
+            ),
+            {"ids": ids, "outcomes": _REPORTED_SYNC_OUTCOMES},
+        )
+    ).fetchall()
+    return {row[0]: {"outcome": row[1], "completed_at": row[2]} for row in rows}
 
 
 async def replace_connection(
@@ -664,7 +903,13 @@ async def retire_connection(session, tenant_id: str, connection_id: str, confirm
         ),
         {"cid": str(row.id), "tid": tenant_id},
     )
+    if row.provider == PROVIDER_AZURE_POSTGRESQL_DATA_PLANE:
+        # No DDL/DML against the tenant store: this touches the control-plane row
+        # only. Content remaining in the tenant store is the customer's to delete.
+        await mark_retired(session, tenant_id)
     await session.commit()
+    if row.provider == PROVIDER_AZURE_POSTGRESQL_DATA_PLANE:
+        await _invalidate_tenant_engines(tenant_id)
     _emit("retire", tenant_id, row.id, row.provider, "success")
     return await _fetch(session, tenant_id, str(row.id))
 

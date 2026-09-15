@@ -32,6 +32,16 @@ _JSON_SCHEMA_TYPES = {
 # matched nothing, which is not the same thing.
 SqlSearch = Callable[..., Awaitable["list[dict] | None"]]
 
+# Contract-grounded external-database entry point used by the external database
+# retrieval tool. Injected via ToolContext for the same reason as `sql_search`:
+# src/shared never imports src.chat_api. Called as
+#   external_search(query, session, tenant_id, conversation_context, deadline)
+# and returns an object with `.rows`, `.truncated`, `.relations`, and `.reason`
+# (`ExternalAnswer` in practice) — never raises for a finite, expected outcome;
+# `.reason` carries that instead. An exception here is treated the same as any
+# other tool failure.
+ExternalSearch = Callable[..., Awaitable[Any]]
+
 
 @dataclass(frozen=True)
 class ToolContext:
@@ -45,6 +55,7 @@ class ToolContext:
     jwt_token: str | None = None
     max_top_k: int = 20
     sql_search: SqlSearch | None = None
+    external_search: ExternalSearch | None = None
     deadline: float | None = None
     # Prior `{"role", "content"}` messages of the conversation this call belongs to.
     # A tool receives only its own `arguments` — the planner's history never reaches it

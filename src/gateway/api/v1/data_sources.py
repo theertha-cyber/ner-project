@@ -28,15 +28,20 @@ from src.gateway.dependencies import (
     resolve_tenant_from_jwt,
 )
 from src.shared.data_sources import lifecycle as lc
-from src.shared.data_sources.providers import ConnectionValidationError
+from src.shared.data_sources.providers import (
+    PROVIDER_AZURE_BLOB,
+    ConnectionValidationError,
+)
 from src.shared.data_sources.service import (
     activate_connection,
     check_replay,
     create_connection,
     get_connection,
+    latest_sync_outcomes,
     list_connections,
     pause_connection,
     replace_connection,
+    request_manual_sync,
     retire_connection,
     store_replay,
     test_connection,
@@ -47,6 +52,8 @@ from src.shared.data_sources.store import to_connection_dict
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/data-sources", tags=["tenant-data-sources"])
+
+data_plane_router = APIRouter(prefix="/api/v1/data-plane", tags=["tenant-data-plane"])
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[\x20-\x7E]{1,128}$")
 
@@ -68,6 +75,9 @@ _CODE_STATUS = {
     "ACTIVE_PROVIDER_EXISTS": 409,
     "RETIRED_CONNECTION": 409,
     "RETIRE_CONFIRMATION_REQUIRED": 422,
+    "INACTIVE_CONNECTION": 409,
+    "UNSUPPORTED_PROVIDER": 409,
+    "SYNC_UNAVAILABLE": 503,
     "CONNECTION_TEST_UNAVAILABLE": 503,
     "INTERNAL_ERROR": 500,
 }
@@ -82,6 +92,9 @@ _CODE_HINTS = {
     "ACTIVE_PROVIDER_EXISTS": "Your tenant already has an active connection of this provider type.",
     "RETIRED_CONNECTION": "Pause an active connection before retiring it; retired connections stay retired.",
     "RETIRE_CONFIRMATION_REQUIRED": "Confirm retirement explicitly before proceeding.",
+    "INACTIVE_CONNECTION": "Activate the connection before triggering a sync.",
+    "UNSUPPORTED_PROVIDER": "Manual sync applies to Azure Blob connections only.",
+    "SYNC_UNAVAILABLE": "The sync queue is temporarily unavailable; try again shortly.",
 }
 
 
@@ -116,6 +129,21 @@ def _ok(body: dict, replayed: bool = False):
         content=body,
         headers={"Idempotent-Replay": "true"} if replayed else {},
     )
+
+
+async def _render_many(session, tenant_id: str, rows) -> list[dict]:
+    """Safe `Connection` shapes with each Blob connection's latest completed run.
+
+    Every route that returns a connection goes through here, so a mutation
+    response never resets the portal's cached last-run status to `never_run`.
+    """
+    blob_ids = [str(row.id) for row in rows if row.provider == PROVIDER_AZURE_BLOB]
+    runs = await latest_sync_outcomes(session, tenant_id, blob_ids)
+    return [to_connection_dict(row, runs.get(str(row.id))) for row in rows]
+
+
+async def _render(session, tenant_id: str, row) -> dict:
+    return (await _render_many(session, tenant_id, [row]))[0]
 
 
 async def _parse_body(request: Request):
@@ -236,7 +264,7 @@ async def create_data_source(
             body["configuration"],
             body["secret_references"],
         )
-        return 201, to_connection_dict(row)
+        return 201, await _render(db, tenant_id, row)
 
     return await _mutate(request, db, tenant_id, _action)
 
@@ -274,6 +302,7 @@ async def list_data_sources(
             page=page,
             page_size=page_size,
         )
+        items = await _render_many(db, tenant_id, rows)
     except ConnectionValidationError as exc:
         return _error(request, "INVALID_REQUEST", str(exc))
     except Exception:
@@ -281,7 +310,7 @@ async def list_data_sources(
         return _error(request, "INTERNAL_ERROR")
     total_pages = (total + page_size - 1) // page_size if total else 0
     return _ok({
-        "items": [to_connection_dict(row) for row in rows],
+        "items": items,
         "page": page,
         "page_size": page_size,
         "total": total,
@@ -301,12 +330,13 @@ async def read_data_source(
 ):
     try:
         row = await get_connection(db, tenant_id, connection_id)
+        body = await _render(db, tenant_id, row) if row is not None else None
     except Exception:
         logger.exception("data_source_read_failed")
         return _error(request, "INTERNAL_ERROR")
-    if row is None:
+    if body is None:
         return _error(request, "CONNECTION_NOT_FOUND")
-    return _ok(to_connection_dict(row))
+    return _ok(body)
 
 
 @router.patch("/{connection_id}")
@@ -324,7 +354,7 @@ async def update_data_source(
                 None, "One of 'configuration' or 'secret_references' is required."
             )
         row = await update_connection(db, tenant_id, connection_id, body)
-        return 200, to_connection_dict(row)
+        return 200, await _render(db, tenant_id, row)
 
     return await _mutate(request, db, tenant_id, _action)
 
@@ -340,7 +370,7 @@ async def test_data_source(
     async def _action(body: dict):
         _require_keys(body, set(), set())
         row = await test_connection(db, tenant_id, connection_id)
-        return 200, to_connection_dict(row)
+        return 200, await _render(db, tenant_id, row)
 
     return await _mutate(request, db, tenant_id, _action)
 
@@ -358,7 +388,7 @@ async def activate_data_source(
         row = await activate_connection(
             db, tenant_id, connection_id, body["activation_evidence"]
         )
-        return 200, to_connection_dict(row)
+        return 200, await _render(db, tenant_id, row)
 
     return await _mutate(request, db, tenant_id, _action)
 
@@ -374,9 +404,21 @@ async def pause_data_source(
     async def _action(body: dict):
         _require_keys(body, set(), set())
         row = await pause_connection(db, tenant_id, connection_id)
-        return 200, to_connection_dict(row)
+        return 200, await _render(db, tenant_id, row)
 
     return await _mutate(request, db, tenant_id, _action)
+
+
+def _enqueue_blob_sync(tenant_id: str, connection_id: str, trigger: str) -> None:
+    """Broker seam for manual sync triggers (ADR-012).
+
+    Module-level and lazily imported so tests can substitute a fake without a
+    broker, and the gateway stays free of worker configuration. The payload is
+    identity only: tenant, connection, trigger class.
+    """
+    from src.document_service.blob_sync.tasks import enqueue_sync
+
+    enqueue_sync(tenant_id, connection_id, trigger)
 
 
 @router.post("/{connection_id}/replace", status_code=201)
@@ -409,7 +451,96 @@ async def replace_data_source(
             body["configuration"],
             body["secret_references"],
         )
-        return 201, to_connection_dict(row)
+        return 201, await _render(db, tenant_id, row)
+
+    return await _mutate(request, db, tenant_id, _action)
+
+
+@router.post("/{connection_id}/sync", status_code=202)
+async def trigger_data_source_sync(
+    connection_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_tenant_admin),
+    tenant_id: str = Depends(resolve_tenant_from_jwt),
+):
+    async def _action(body: dict):
+        _require_keys(body, set(), set())
+        descriptor = await request_manual_sync(
+            db, tenant_id, connection_id, _enqueue_blob_sync
+        )
+        return 202, descriptor
+
+    return await _mutate(request, db, tenant_id, _action)
+
+
+@data_plane_router.get("")
+async def read_data_plane(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_tenant_admin),
+    tenant_id: str = Depends(resolve_tenant_from_jwt),
+):
+    """`GET /api/v1/data-plane` (task 10.2): the tenant's own data-plane status —
+    `mode`, `status`, `status_reason`, and (when applicable) `store_id` /
+    `schema_revision`. No configuration, secret, or host detail — those live on
+    the connection resource."""
+    from src.shared.data_plane import get_data_plane_record
+
+    record = await get_data_plane_record(tenant_id, db)
+    return _ok(_data_plane_body(record))
+
+
+def _data_plane_body(record) -> dict:
+    return {
+        "mode": record.mode,
+        "status": record.status,
+        "status_reason": record.status_reason,
+        "store_id": record.store_id,
+        "schema_revision": record.schema_revision,
+    }
+
+
+@data_plane_router.post("/provision")
+async def retry_data_plane_provisioning(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_tenant_admin),
+    tenant_id: str = Depends(resolve_tenant_from_jwt),
+):
+    """`POST /api/v1/data-plane/provision` (task 10.2, design.md Decision 6):
+    tenant-admin retry after a `provisioning_failed` outcome. CAS
+    `provisioning_failed` -> `provisioning` (`mark_provisioning`, the same
+    transition the initial activation uses), then enqueues the same idempotent
+    task. Goes through the same `Idempotency-Key` wrapper every other mutation on
+    this router uses; the CAS underneath is a second, independent idempotency
+    layer — a retry that lands while a prior attempt is still running (or one
+    replayed with a fresh key) is a no-op CAS, not a second concurrent
+    provisioning run."""
+    from src.shared.data_plane import get_data_plane_record, mark_provisioning
+
+    async def _action(body: dict):
+        _require_keys(body, set(), set())
+        record = await get_data_plane_record(tenant_id, db)
+        if record.status != "provisioning_failed" or record.connection_id is None:
+            raise lc.LifecycleRejected(
+                "INVALID_LIFECYCLE_TRANSITION",
+                "Retry is only available while the data plane is provisioning_failed.",
+            )
+        moved = await mark_provisioning(db, tenant_id, record.connection_id)
+        await db.commit()
+        if not moved:
+            raise lc.LifecycleRejected(
+                "INVALID_LIFECYCLE_TRANSITION",
+                "Retry is only available while the data plane is provisioning_failed.",
+            )
+        from src.document_service.blob_sync.tasks import celery_app as _document_celery_app
+
+        _document_celery_app.send_task(
+            "provision_tenant_data_plane", args=[tenant_id], queue="data_plane"
+        )
+        record = await get_data_plane_record(tenant_id, db)
+        return 200, _data_plane_body(record)
 
     return await _mutate(request, db, tenant_id, _action)
 
@@ -425,6 +556,6 @@ async def retire_data_source(
     async def _action(body: dict):
         _require_keys(body, {"confirm"}, set())
         row = await retire_connection(db, tenant_id, connection_id, body.get("confirm"))
-        return 200, to_connection_dict(row)
+        return 200, await _render(db, tenant_id, row)
 
     return await _mutate(request, db, tenant_id, _action)

@@ -145,7 +145,7 @@ class TestFineTuneRetryGuard:
     def test_skips_when_status_completed(self, monkeypatch):
         from src.training_service.worker import fine_tune_model
         mock_engine = self.make_mock_engine("completed")
-        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda: mock_engine)
+        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda tenant_id=None: mock_engine)
 
         result = fine_tune_model("tenant-1", "job-completed", {"learning_rate": 2e-5})
         assert result is None
@@ -153,7 +153,7 @@ class TestFineTuneRetryGuard:
     def test_skips_when_status_failed(self, monkeypatch):
         from src.training_service.worker import fine_tune_model
         mock_engine = self.make_mock_engine("failed")
-        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda: mock_engine)
+        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda tenant_id=None: mock_engine)
 
         result = fine_tune_model("tenant-1", "job-failed", {"learning_rate": 2e-5})
         assert result is None
@@ -161,7 +161,7 @@ class TestFineTuneRetryGuard:
     def test_skips_when_status_cancelled(self, monkeypatch):
         from src.training_service.worker import fine_tune_model
         mock_engine = self.make_mock_engine("cancelled")
-        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda: mock_engine)
+        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda tenant_id=None: mock_engine)
 
         result = fine_tune_model("tenant-1", "job-cancelled", {"learning_rate": 2e-5})
         assert result is None
@@ -169,14 +169,14 @@ class TestFineTuneRetryGuard:
     def test_skips_when_job_not_found(self, monkeypatch):
         from src.training_service.worker import fine_tune_model
         mock_engine = self.make_mock_engine(None)
-        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda: mock_engine)
+        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda tenant_id=None: mock_engine)
 
         result = fine_tune_model("tenant-1", "job-unknown", {"learning_rate": 2e-5})
         assert result is None
 
     def test_proceeds_when_status_approved(self, monkeypatch):
         mock_engine = self.make_mock_engine("approved")
-        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda: mock_engine)
+        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda tenant_id=None: mock_engine)
 
         reached_mlflow = False
         def fake_set_tracking_uri(*args):
@@ -394,7 +394,7 @@ class TestLabelListPersistedInMetrics:
             def begin(self):
                 return FakeConn()
 
-        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda: FakeEngine())
+        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda tenant_id=None: FakeEngine())
         monkeypatch.setattr(worker_module, "_update_job_progress", lambda *a, **k: None)
 
         records = [

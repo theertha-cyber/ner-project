@@ -167,7 +167,8 @@ class TestTenantSchemaReconciliation:
             with sync_engine.begin() as conn:
                 schemas = [
                     r[0] for r in conn.execute(text(
-                        "SELECT nspname FROM pg_namespace WHERE nspname LIKE 'tenant\\_%'"
+                        "SELECT nspname FROM pg_namespace WHERE nspname LIKE 'tenant\\_%' "
+                        "AND nspname != 'tenant_template'"
                     ))
                 ]
                 for s in schemas:

@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, UploadFile, File, Form
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy import text
-from src.shared.database import get_engine
+from sqlalchemy.exc import DBAPIError, OperationalError
+from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable
+from src.shared.data_plane_gate import require_data_plane_ready
+from src.shared.database import get_engine, get_resolver
+from src.shared.tenant_context import classify_driver_error, record_health_best_effort
 from src.shared.exceptions import NotFoundError
 from src.document_service.ingestion import (
     PLATFORM_UPLOAD_SOURCE_ID,
@@ -26,7 +30,11 @@ from src.shared.entity_views import (
 )
 from src.shared.tenant_schema import schema_for_tenant as _schema
 
-router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+router = APIRouter(
+    prefix="/api/v1/documents",
+    tags=["documents"],
+    dependencies=[Depends(require_data_plane_ready)],
+)
 
 VALID_PURPOSES = {"query", "training"}
 
@@ -46,8 +54,43 @@ def get_tenant_id(request: Request) -> str:
     return tid
 
 
-async def get_session() -> AsyncSession:
-    from sqlalchemy.ext.asyncio import async_sessionmaker
+async def get_session(request: Request) -> AsyncSession:
+    """Routed through EngineResolver (ADR-017): a `tenant_owned` tenant's documents
+    live wherever its data plane resolves, never the platform database.
+
+    Unlike `tenant_context.tenant_session`, this never narrows `search_path` — every
+    query on this session names its schema explicitly (tenant-schema tables via
+    `_schema`, control-plane tables via `public.`), and routes in this module rely
+    on being able to do both on one session. `SELECT 1` proves the connection is
+    actually reachable before this dependency yields (tenant-data-plane-failure-
+    isolation spec's "Uploads are rejected before bytes are accepted when the store
+    is unavailable" — this dependency resolves, and so runs, before the route body
+    ever reads upload bytes off the wire), classifying a real driver failure into
+    `DataPlaneUnavailable` the same way `tenant_session` does, without adopting its
+    search_path narrowing."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    try:
+        engine = await get_resolver().resolve(tenant_id)
+    except (DataPlaneNotReady, DataPlaneUnavailable):
+        raise
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        try:
+            await session.execute(text("SELECT 1"))
+        except (DBAPIError, OperationalError, OSError) as exc:
+            reason = classify_driver_error(exc)
+            await record_health_best_effort(tenant_id, reason)
+            raise DataPlaneUnavailable(reason) from exc
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+async def _platform_session() -> AsyncSession:
+    """A session on the platform database, for control-plane reads that must never run
+    on a tenant session (Design D10) — e.g. resolving an uploader's email from
+    `public.tenant_users`, which does not exist in a `tenant_owned` store."""
     factory = async_sessionmaker(get_engine(), expire_on_commit=False)
     async with factory() as session:
         try:
@@ -152,6 +195,7 @@ async def list_documents(
     per_page: int = Query(20, ge=1, le=100),
     request: Request = None,
     session: AsyncSession = Depends(get_session),
+    platform_session: AsyncSession = Depends(_platform_session),
 ):
     tenant_id = get_tenant_id(request)
     role = getattr(request.state, "role", None)
@@ -185,16 +229,15 @@ async def list_documents(
     where = " AND ".join(c.format(p="") for c in conditions)
     offset = (page - 1) * per_page
 
-    # LEFT JOIN so a document whose uploader was deleted (or that predates the
-    # uploaded_by column) still lists, with a null email the client renders as unknown.
+    # No cross-schema join to `public.tenant_users` (Design D10): that table does not
+    # exist in a `tenant_owned` store. The tenant session reads documents alone; the
+    # uploader email is a second, control-plane lookup on the platform session.
     document_where = " AND ".join(c.format(p="d.") for c in conditions)
     result = await session.execute(
         text(f"""
             SELECT d.id, d.filename, d.content_type, d.file_size, d.status, d.error_message,
-                   d.purpose, d.uploaded_by, u.email AS uploaded_by_email,
-                   d.created_at, d.updated_at
+                   d.purpose, d.uploaded_by, d.created_at, d.updated_at
             FROM {_schema(tenant_id)}.documents d
-            LEFT JOIN public.tenant_users u ON u.id = d.uploaded_by
             WHERE {document_where}
             ORDER BY d.created_at DESC
             LIMIT :limit OFFSET :offset
@@ -209,6 +252,15 @@ async def list_documents(
     )
     total = count_result.scalar()
 
+    uploader_ids = {r.uploaded_by for r in rows if r.uploaded_by}
+    uploader_emails: dict[str, str] = {}
+    if uploader_ids:
+        uploader_rows = await platform_session.execute(
+            text("SELECT id, email FROM public.tenant_users WHERE id = ANY(:ids)"),
+            {"ids": list(uploader_ids)},
+        )
+        uploader_emails = {u.id: u.email for u in uploader_rows.fetchall()}
+
     documents_list = [
         {
             "id": r.id,
@@ -219,7 +271,7 @@ async def list_documents(
             "error_message": r.error_message,
             "purpose": r.purpose,
             "uploaded_by": r.uploaded_by,
-            "uploaded_by_email": r.uploaded_by_email,
+            "uploaded_by_email": uploader_emails.get(r.uploaded_by),
             "created_at": str(r.created_at),
             "updated_at": str(r.updated_at),
         }
@@ -328,5 +380,12 @@ async def delete_document(
         {"id": doc_id},
     )
     await session.commit()
+
+    from src.shared import tenant_document_registry as registry
+
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        await registry.update_status(
+            platform_session, tenant_id=tenant_id, document_id=doc_id, status="deleted"
+        )
 
     return {"status": "deleted", "id": doc_id}

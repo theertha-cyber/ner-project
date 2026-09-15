@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.extraction_service.services.entity_normalizer import canonicalize
 from src.shared.config import settings
-from src.shared.database import get_engine
+from src.shared.database import get_resolver
 from src.shared.retrieval.orchestrator import (
     SEMANTIC_CAPABILITY_NAME,
     STOP_EMPTY_PLAN,
@@ -23,7 +23,10 @@ from src.shared.retrieval.orchestrator import (
     execute_plan,
     plan_retrieval,
 )
+from src.shared.external_postgres.capability import resolve_external_capability
 from src.shared.retrieval.tools.base import ToolContext
+from src.shared.retrieval.tools.external_tools import ExternalDatabaseTool, render_external_tool_description
+from src.shared.retrieval.tools.registry import ToolRegistry
 from src.chat_api.api.v1.schemas import CandidateEntity, PendingClarification, Source
 from src.chat_api.graph.state import ChatState
 from src.chat_api.services import conversation_entity_state as conv_state
@@ -42,6 +45,16 @@ from src.shared.observability.spans import stage_span
 logger = logging.getLogger(__name__)
 
 DOMAIN_DECLINE_REASON = "out_of_domain"
+
+# Appended to the planner's system prompt only on a turn where `external_database`
+# is offered (design.md Decision 5) — omitted, the planner's input is unchanged.
+EXTERNAL_TOOL_ADDENDUM = (
+    "A third capability, `external_database`, is offered this turn: it answers "
+    "questions about the records in the tenant's own connected database by "
+    "running a generated SQL query. Use it for questions about that connected "
+    "database's data specifically — not for questions about uploaded documents, "
+    "which the other two capabilities already cover."
+)
 
 DECLINE_MESSAGES = {
     "cross_tenant": "I can only answer questions about your tenant's data. Cross-tenant queries are not supported.",
@@ -209,13 +222,44 @@ def build_nodes(orchestrator) -> dict:
         """Makes the single planning LLM call and stores the resulting plan in state.
         On a planner exception or an all-rejected plan, substitutes the degraded
         fallback plan (both capabilities on the raw query) so the plan itself is
-        already visible in state before retrieval_execution_node runs."""
+        already visible in state before retrieval_execution_node runs.
+
+        Also resolves this turn's tool registry (design.md Decision 5):
+        `external_database` is added, with a contract-derived description, only
+        when `resolve_external_capability` says this tenant is executable right
+        now. `orchestrator.tool_registry` itself is never reassigned — a tenant
+        without a connection gets byte-identical planner input, every turn."""
         message = state["message"]
+        tenant_id = state["tenant_id"]
+        session = state["session"]
         conversation_context = state.get("conversation_context")
+
         registry = orchestrator.tool_registry
+        system_prompt_addendum = None
+        try:
+            capability = await resolve_external_capability(session, tenant_id)
+        except Exception as e:
+            logger.warning(
+                "external_capability_resolution_failed",
+                extra={"error_class": type(e).__name__},
+            )
+            capability = {"executable": False}
+
+        if capability.get("executable"):
+            turn_registry = ToolRegistry()
+            for tool in orchestrator.tool_registry.list():
+                turn_registry.register(tool)
+            turn_registry.register(ExternalDatabaseTool(
+                description=render_external_tool_description(capability["contract"]),
+            ))
+            registry = turn_registry
+            system_prompt_addendum = EXTERNAL_TOOL_ADDENDUM
 
         try:
-            plan = await plan_retrieval(message, conversation_context, orchestrator.llm_client, orchestrator.llm_model, registry)
+            plan = await plan_retrieval(
+                message, conversation_context, orchestrator.llm_client, orchestrator.llm_model,
+                registry, system_prompt_addendum,
+            )
         except Exception as e:
             logger.warning(
                 "orchestrator_planning_failed",
@@ -223,6 +267,7 @@ def build_nodes(orchestrator) -> dict:
             )
             return {
                 "retrieval_plan": build_fallback_plan(message, registry),
+                "tool_registry": registry,
                 "orchestration_degraded": True,
                 "orchestration_stop_reason": STOP_PLANNER_ERROR,
             }
@@ -231,11 +276,15 @@ def build_nodes(orchestrator) -> dict:
             logger.info("orchestrator: planner produced no usable entries, using degraded fallback plan")
             return {
                 "retrieval_plan": build_fallback_plan(message, registry),
+                "tool_registry": registry,
                 "orchestration_degraded": True,
                 "orchestration_stop_reason": STOP_EMPTY_PLAN,
             }
 
-        return {"retrieval_plan": plan, "orchestration_degraded": False, "orchestration_stop_reason": None}
+        return {
+            "retrieval_plan": plan, "tool_registry": registry,
+            "orchestration_degraded": False, "orchestration_stop_reason": None,
+        }
 
     @_traced("entity_resolution")
     async def entity_resolution_node(state: ChatState) -> dict:
@@ -361,8 +410,12 @@ def build_nodes(orchestrator) -> dict:
         already_degraded = state.get("orchestration_degraded", False)
         resolved_document_ids = state.get("resolved_document_ids") or []
         conversation_context = state.get("conversation_context")
+        registry = state.get("tool_registry") or orchestrator.tool_registry
 
-        session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+        # Routed through EngineResolver (ADR-017): retrieval and generated SQL both run
+        # against wherever this tenant's data plane resolves.
+        engine = await get_resolver().resolve(tenant_id)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
         deadline = time.monotonic() + settings.retrieval_deadline_seconds
 
         @asynccontextmanager
@@ -372,12 +425,13 @@ def build_nodes(orchestrator) -> dict:
                     tenant_id=tenant_id, schema=schema, session=session,
                     retriever=orchestrator.retriever, jwt_token=jwt_token,
                     max_top_k=settings.retrieval_top_k, sql_search=orchestrator._sql_source,
+                    external_search=orchestrator._external_source,
                     deadline=deadline, conversation_context=conversation_context,
                 )
 
         budget = OrchestrationBudget(max_invocations=settings.orchestrator_max_invocations, deadline=deadline)
         result = await execute_plan(
-            plan, orchestrator.tool_registry, context_factory, budget,
+            plan, registry, context_factory, budget,
             recovery_query=state.get("message"),
         )
 
@@ -405,6 +459,10 @@ def build_nodes(orchestrator) -> dict:
             "chunks": result.chunks,
             "sql_results": sql_results,
             "sql_completeness": result.sql_completeness,
+            "external_results": result.external_results,
+            "external_relations": result.external_relations,
+            "external_truncated": result.external_truncated,
+            "external_failure_reason": result.external_failure_reason,
             "retrieval_status": status,
             "plan_trace": [asdict(t) for t in result.plan_trace],
             "orchestration_degraded": status.planning_degraded,
@@ -433,6 +491,10 @@ def build_nodes(orchestrator) -> dict:
             message, sql_results, chunks, document_names, conversation_context,
             retrieval_status=state.get("retrieval_status"),
             sql_completeness=state.get("sql_completeness"),
+            external_results=state.get("external_results"),
+            external_relations=state.get("external_relations"),
+            external_truncated=state.get("external_truncated", False),
+            external_failure_reason=state.get("external_failure_reason"),
             return_evidence=True,
         )
         return {
@@ -459,6 +521,15 @@ def build_nodes(orchestrator) -> dict:
             sources.append(Source(
                 source_type="sql",
                 value=json.dumps(admitted.rows, default=str),
+                relevance_score=1.0,
+            ))
+        if admitted is not None and admitted.external_relations:
+            import json
+            # Relation names only — external row values are never serialized into
+            # a persisted source (ADR-015, ADR-016).
+            sources.append(Source(
+                source_type="external_postgresql",
+                value=json.dumps({"relations": admitted.external_relations}),
                 relevance_score=1.0,
             ))
 

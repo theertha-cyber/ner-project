@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS %I.external_pg_schema_index (
 def upgrade() -> None:
     op.execute(PUBLIC_DDL)
     op.execute(PUBLIC_INDEX_DDL)
-    op.execute(TENANT_DDL % "tenant_template")
+    op.execute(TENANT_DDL.replace("%I", "tenant_template"))
     op.execute(_for_each_tenant_schema(TENANT_DDL))
 
 

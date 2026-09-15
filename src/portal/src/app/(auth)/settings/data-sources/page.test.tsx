@@ -111,7 +111,59 @@ describe("DataSourcesPage", () => {
     render(<DataSourcesPage />, { wrapper: Wrapper });
     expect(await screen.findByRole("heading", { name: "No data sources yet" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Configure the first connection" }));
-    expect(screen.getByRole("region", { name: "Create connection" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Create connection" })).toBeInTheDocument();
+  });
+
+  it("opens the new-connection modal, submits, and navigates to the new connection's detail route", async () => {
+    mockAuthFetch.mockResolvedValueOnce(new Response(JSON.stringify(PAGE), { status: 200 }));
+    // A fresh `Response` per call: a `Response` body can only be read once, and
+    // with the page's own `useDataPlaneStatus()` background check (ADR-017,
+    // task 13.1) now also in flight, a single shared instance would have its
+    // body consumed by whichever call resolves it first, silently failing
+    // whichever call reads it second (here, the actual create POST).
+    mockAuthFetch.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ ...CONNECTION, id: "conn-9" }), { status: 201 })),
+    );
+    render(<DataSourcesPage />, { wrapper: Wrapper });
+    await screen.findByText("Azure Blob Storage");
+
+    const trigger = screen.getByRole("button", { name: "New connection" });
+    await userEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Create connection" });
+
+    await userEvent.type(within(dialog).getByLabelText("Storage account"), "acct");
+    await userEvent.type(within(dialog).getByLabelText("Container"), "docs");
+    await userEvent.type(within(dialog).getByLabelText("Connection string reference"), "ref-1");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create draft" }));
+
+    await waitFor(() => expect(navState.push).toHaveBeenCalledWith("/settings/data-sources/conn-9"));
+    const createCall = mockAuthFetch.mock.calls.find(([, init]) => (init as RequestInit)?.method === "POST");
+    const [url, init] = createCall as [string, RequestInit];
+    expect(url).toBe("/api/v1/data-sources");
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBeTruthy();
+  });
+
+  it("dismisses the new-connection modal on Escape without sending a request, and returns focus to the trigger", async () => {
+    mockAuthFetch.mockResolvedValue(new Response(JSON.stringify(PAGE), { status: 200 }));
+    render(<DataSourcesPage />, { wrapper: Wrapper });
+    await screen.findByText("Azure Blob Storage");
+
+    const trigger = screen.getByRole("button", { name: "New connection" });
+    await userEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Create connection" });
+    await userEvent.type(within(dialog).getByLabelText("Storage account"), "acct");
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Create connection" })).not.toBeInTheDocument();
+    // The collection GET plus the page's own `useDataPlaneStatus()` background
+    // check (ADR-017, task 13.1 — gates which provider options the modal
+    // offers) — neither is a request the Escape dismissal itself should add to.
+    expect(mockAuthFetch).toHaveBeenCalledTimes(2);
+    expect(trigger).toHaveFocus();
+
+    await userEvent.click(trigger);
+    const reopened = await screen.findByRole("dialog", { name: "Create connection" });
+    expect(within(reopened).getByLabelText("Storage account")).toHaveValue("");
   });
 
   it("renders safe errors with retry and never leaks provider diagnostics", async () => {
@@ -134,5 +186,48 @@ describe("DataSourcesPage", () => {
     mockAuthFetch.mockResolvedValue(new Response(JSON.stringify(PAGE), { status: 200 }));
     await userEvent.click(within(alert).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(mockAuthFetch.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  // Scenario #72 (tenant-data-source-portal) — task 13.5.
+  it("hides the data-plane provider option for a platform tenant", async () => {
+    mockAuthFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/data-plane")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ mode: "platform", status: "ready", status_reason: "none", store_id: null, schema_revision: null }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(PAGE), { status: 200 }));
+    });
+    render(<DataSourcesPage />, { wrapper: Wrapper });
+    await screen.findByText("Azure Blob Storage");
+    await userEvent.click(screen.getByRole("button", { name: "New connection" }));
+    const dialog = await screen.findByRole("dialog", { name: "Create connection" });
+    expect(within(dialog).queryByText("Tenant-Owned PostgreSQL (Data Plane)")).not.toBeInTheDocument();
+  });
+
+  it("shows the data-plane provider option for a tenant_owned tenant", async () => {
+    mockAuthFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/data-plane")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ mode: "tenant_owned", status: "ready", status_reason: "none", store_id: "s1", schema_revision: 43 }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(PAGE), { status: 200 }));
+    });
+    render(<DataSourcesPage />, { wrapper: Wrapper });
+    await screen.findByText("Azure Blob Storage");
+    await userEvent.click(screen.getByRole("button", { name: "New connection" }));
+    const dialog = await screen.findByRole("dialog", { name: "Create connection" });
+    await waitFor(() =>
+      expect(within(dialog).getByText("Tenant-Owned PostgreSQL (Data Plane)")).toBeInTheDocument(),
+    );
   });
 });

@@ -1,5 +1,11 @@
 """Contract-governed external PostgreSQL query path (CAP-4, ADR-013)."""
 
+from src.shared.external_postgres.azure_database import (
+    AzureExternalDatabase,
+    ExternalDatabaseUnavailable,
+    build_live_database,
+    resolve_live_database,
+)
 from src.shared.external_postgres.capability import (
     is_external_request_executable,
     resolve_external_capability,
@@ -39,12 +45,15 @@ from src.shared.external_postgres.validator import (
 __all__ = [
     "ROW_CAP",
     "STATEMENT_TIMEOUT_MS",
+    "AzureExternalDatabase",
     "ContractRejected",
     "DriftBlocked",
     "ExternalDatabase",
+    "ExternalDatabaseUnavailable",
     "ExternalExecutionFailed",
     "FixtureExternalDatabase",
     "accepted_contract",
+    "build_live_database",
     "canonical_fingerprint",
     "clamp_limit",
     "clear_connection_entries",
@@ -56,6 +65,7 @@ __all__ = [
     "publish_version",
     "replace_version_entries",
     "resolve_external_capability",
+    "resolve_live_database",
     "store_draft",
     "validate_contract_document",
     "validate_statement",

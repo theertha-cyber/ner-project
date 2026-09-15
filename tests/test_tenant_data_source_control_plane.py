@@ -868,11 +868,11 @@ class TestTelemetry:
         test_fam = dm.FAMILIES["ner_data_source_tests_total"]
         by_name = {label.name: label.values for label in lifecycle_fam.labels}
         assert by_name["provider"] == frozenset(
-            {"azure_blob", "azure_postgresql", "other"}
+            {"azure_blob", "azure_postgresql", "azure_postgresql_data_plane", "other"}
         )
         assert by_name["action"] == frozenset(
             {"create", "update", "test", "activate", "pause", "replace", "retire",
-             "other"}
+             "sync", "other"}
         )
         assert by_name["outcome"] == frozenset({"success", "rejected", "error", "other"})
         by_name = {label.name: label.values for label in test_fam.labels}

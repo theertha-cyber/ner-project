@@ -159,9 +159,14 @@ def reset_providers() -> None:
     _PROVIDERS.clear()
 
 
-def get_provider(key: str | None = None) -> BlobProvider:
+def get_provider(key: str | None = None, fallback=None) -> BlobProvider:
+    """Look up a bound provider; when none is registered, call `fallback` if
+    supplied instead of returning the always-refusing default. Existing
+    callers that omit `fallback` keep today's behavior exactly."""
     if key is not None and key in _PROVIDERS:
         return _PROVIDERS[key]
     if "default" in _PROVIDERS:
         return _PROVIDERS["default"]
+    if fallback is not None:
+        return fallback()
     return _DEFAULT

@@ -18,10 +18,23 @@ def _index_table(schema: str) -> str:
     return f"{schema}.external_pg_schema_index"
 
 
-def entry_text_for_relation(relation: str, columns: list[str],
+def entry_text_for_relation(relation: str, relation_def: dict,
                             joins: list[dict]) -> str:
-    """Bounded context text for one relation: columns plus its join keys."""
-    lines = [f"table {relation} columns: {', '.join(sorted(columns))}"]
+    """Bounded context text for one relation: its description, columns (each
+    with an optional description), and its join keys (design.md Decision 2)."""
+    columns = relation_def.get("columns", [])
+    description = relation_def.get("description")
+    column_descriptions = relation_def.get("column_descriptions") or {}
+    header = f"table {relation}"
+    if description:
+        header += f" — {description}"
+    lines = [header, "columns:"]
+    for column in sorted(columns):
+        col_description = column_descriptions.get(column)
+        if col_description:
+            lines.append(f"  {column} — {col_description}")
+        else:
+            lines.append(f"  {column}")
     for join in joins:
         if join.get("left") == relation:
             lines.append(
@@ -49,7 +62,7 @@ async def replace_version_entries(session, schema: str, connection_id: str,
     joins = canonical.get("joins", [])
     count = 0
     for relation, rel_def in relations.items():
-        columns = rel_def.get("columns", []) if isinstance(rel_def, dict) else []
+        rel_def = rel_def if isinstance(rel_def, dict) else {}
         await session.execute(
             text(f"INSERT INTO {table} "
                  "(connection_id, contract_version, relation_name, entry_text) "
@@ -58,7 +71,7 @@ async def replace_version_entries(session, schema: str, connection_id: str,
                  "DO UPDATE SET entry_text = EXCLUDED.entry_text, "
                  "updated_at = NOW()"),
             {"cid": connection_id, "v": version, "rel": relation,
-             "entry": entry_text_for_relation(relation, columns, joins)},
+             "entry": entry_text_for_relation(relation, rel_def, joins)},
         )
         count += 1
     return count

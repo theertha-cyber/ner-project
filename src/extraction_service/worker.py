@@ -4,8 +4,10 @@ import re
 import uuid
 import requests
 from datetime import datetime, timezone
-from sqlalchemy import text, create_engine
+from sqlalchemy import text
 from src.shared.config import settings
+from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable, data_plane_retry_countdown
+from src.shared.database import get_resolver
 from src.extraction_service.celery_app import celery_app
 from src.extraction_service.services.document_entity_store import (
     delete_document_entities,
@@ -114,12 +116,16 @@ def _align_predictions_with_offsets(predictions: list[dict], token_records: list
     return aligned
 
 
-def _get_sync_engine():
-    return create_engine(settings.database_url_sync)
+def _get_sync_engine(tenant_id: str):
+    """The one place this worker obtains a tenant-schema engine — routed through
+    `EngineResolver` (ADR-017) so a `tenant_owned` tenant's data never touches the
+    platform database. Never construct an engine from `settings.database_url_sync`
+    for tenant-schema access anywhere else in this file."""
+    return get_resolver().resolve_sync(tenant_id)
 
 
 def _get_documents_to_process(tenant_id: str, doc_ids: list[str]) -> list[str]:
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     placeholders = ", ".join(f"'{d}'" for d in doc_ids)
     with engine.connect() as conn:
@@ -141,7 +147,7 @@ def _get_document_filenames(tenant_id: str, doc_ids: list[str]) -> dict[str, str
     get right on every question that mentions a file."""
     if not doc_ids:
         return {}
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     with engine.connect() as conn:
         result = conn.execute(
@@ -157,7 +163,7 @@ def _get_cached_model_version(tenant_id: str) -> str:
     silently produced the version string "None", matching no extraction run and making
     every document look never-extracted. Only reached when the registry is unreachable;
     the cache can lag MLflow, so it is the fallback, not the authority."""
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     with engine.connect() as conn:
         result = conn.execute(
@@ -223,7 +229,7 @@ def _accumulate_entity_counts(entities, counts: dict) -> None:
 
 
 def _update_run_status(tenant_id: str, run_id: str, status: str, **kwargs):
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     set_clauses = [f"status = :status"]
     params = {"id": run_id, "status": status}
@@ -264,6 +270,17 @@ def run_batch_extraction(
             outcome = _run_batch_extraction(
                 self, tenant_id, run_id, doc_ids, processing_mode, span
             )
+        except (DataPlaneUnavailable, DataPlaneNotReady) as exc:
+            if self.request.retries < settings.data_plane_task_max_retries:
+                span.set("outcome", "retrying")
+                raise self.retry(
+                    exc=exc,
+                    countdown=data_plane_retry_countdown(self.request.retries),
+                    max_retries=settings.data_plane_task_max_retries,
+                )
+            span.set("outcome", "failed_retryable")
+            record_extraction_job(tenant_id, "failed_retryable")
+            return None
         except Exception as exc:
             span.set("outcome", "failed")
             span.record_error(exc)
@@ -309,10 +326,13 @@ def _run_batch_extraction(
     # `TenantService.create_tenant` clones `tenant_template` via `pg_tables` + `CREATE TABLE
     # (LIKE ...)`, so a freshly provisioned tenant starts with zero generated tables and its
     # first run would otherwise fail every document.
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     try:
-        with engine.connect() as conn:
+        # entity_definitions is a control-plane table (Design D10) — read it from the
+        # platform engine, never the tenant-resolved one, which for a tenant_owned
+        # tenant is a different server entirely.
+        with get_resolver().resolve_sync(None).connect() as conn:
             entity_specs = load_entity_definition_specs(conn, tenant_id)
         with engine.begin() as conn:
             reconcile_entity_tables_sync(conn, schema, entity_specs)
@@ -344,7 +364,7 @@ def _run_batch_extraction(
         try:
             from src.shared.auth import create_access_token
 
-            engine = _get_sync_engine()
+            engine = _get_sync_engine(tenant_id)
             schema = _schema(tenant_id)
 
             with engine.connect() as conn:
@@ -401,7 +421,7 @@ def _run_batch_extraction(
             # text ("two and a half years") rather than the labelled fragments.
             normalized_entities = reconstruct_entities(merged_predictions, token_records)
 
-            with engine.connect() as conn:
+            with get_resolver().resolve_sync(None).connect() as conn:
                 type_config = load_entity_type_config(conn, tenant_id)
             normalized_entities, unparseable_count = apply_semantic_normalization(normalized_entities, type_config)
             if unparseable_count:

@@ -76,11 +76,30 @@ def _fake_store():
 
 @pytest.fixture(autouse=True)
 async def cleanup_public():
+    # Hard safety guard: this fixture drops every tenant schema it finds. It must
+    # never run against a real database — only a name containing "test" is
+    # accepted, regardless of what NER_DATABASE_URL happens to be set to. This
+    # exists because a real incident happened: an env var override pointed this
+    # fixture at the live dev database and it destroyed every tenant's data.
+    db_name = settings.database_url.rsplit("/", 1)[-1].split("?")[0]
+    if "test" not in db_name.lower():
+        raise RuntimeError(
+            f"cleanup_public refuses to run against database '{db_name}' — "
+            "it only runs against a database whose name contains 'test'. "
+            "Point NER_DATABASE_URL at an isolated test database."
+        )
+
     engine = create_async_engine(
         settings.database_url, isolation_level="AUTOCOMMIT", poolclass=NullPool,
     )
     async with engine.connect() as conn:
-        rows = await conn.execute(text("SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_%'"))
+        rows = await conn.execute(
+            text(
+                "SELECT schema_name FROM information_schema.schemata "
+                "WHERE schema_name LIKE 'tenant\\_%' ESCAPE '\\' "
+                "AND schema_name != 'tenant_template'"
+            )
+        )
         for row in rows:
             await conn.execute(text(f"DROP SCHEMA IF EXISTS {row[0]} CASCADE"))
     await engine.dispose()

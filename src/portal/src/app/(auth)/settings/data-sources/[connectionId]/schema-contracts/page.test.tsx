@@ -108,10 +108,12 @@ describe("SchemaContractsPage", () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              code: "INVALID_CONTRACT",
-              message: "Not valid.",
-              request_id: "req-5",
-              field_errors: [{ field: "relations", message: "At least one relation is required." }],
+              error: {
+                code: "INVALID_CONTRACT",
+                message: "Not valid.",
+                request_id: "req-5",
+                field_errors: [{ field: "relations", message: "At least one relation is required." }],
+              },
             }),
             { status: 422 },
           ),
@@ -136,7 +138,7 @@ describe("SchemaContractsPage", () => {
       if (String(url).includes("/publish")) {
         return Promise.resolve(
           new Response(
-            JSON.stringify({ code: "PUBLISH_PRECONDITION_FAILED", message: "Drift.", request_id: "req-6" }),
+            JSON.stringify({ error: { code: "PUBLISH_PRECONDITION_FAILED", message: "Drift.", request_id: "req-6" } }),
             { status: 409 },
           ),
         );

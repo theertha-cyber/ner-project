@@ -140,6 +140,7 @@ function DetailContent() {
               </button>
             </section>
           )}
+          <SyncActivitySummary connection={connection} />
           <LifecyclePanel
             connection={connection}
             pendingAction={mutation.isPending ? (mutation.variables?.action ?? null) : null}
@@ -147,7 +148,6 @@ function DetailContent() {
             actionResult={lastResult}
             onAction={runAction}
           />
-          <SyncActivitySummary connection={connection} />
         </>
       )}
     </div>
@@ -170,7 +170,6 @@ function SafeFacts({ connection }: { connection: SafeConnection }) {
     ["Configured fields", connection.configured_fields.length > 0 ? connection.configured_fields.join(", ") : "None yet"],
     ["Secret references", connection.secret_reference_fields.length > 0 ? connection.secret_reference_fields.join(", ") : "None yet"],
     ["Test", `${connection.last_test.outcome.replace("_", " ")} · ${connection.last_test.reason_code}`],
-    ["Activation", `${connection.activation.outcome} · ${connection.activation.reason_code}`],
   ];
   if (connection.replaces_connection_id) rows.push(["Replaces", connection.replaces_connection_id]);
   if (connection.replaced_by_connection_id) rows.push(["Replaced by", connection.replaced_by_connection_id]);

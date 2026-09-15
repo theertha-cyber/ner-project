@@ -11,13 +11,24 @@
  * UI cannot render what it cannot hold.
  */
 
-export const PROVIDERS = ["azure_blob", "azure_postgresql"] as const;
+export const PROVIDERS = ["azure_blob", "azure_postgresql", "azure_postgresql_data_plane"] as const;
 export type ConnectionProvider = (typeof PROVIDERS)[number];
 
 export const PROVIDER_LABELS: Record<ConnectionProvider, string> = {
   azure_blob: "Azure Blob Storage",
   azure_postgresql: "Azure Database for PostgreSQL",
+  // Labelled distinctly from the read-only `azure_postgresql` source (ADR-017,
+  // task 13.1): this one *is* the tenant's data plane — every document, span,
+  // chunk, and conversation for the tenant lives here, not a copy of it.
+  azure_postgresql_data_plane: "Tenant-Owned PostgreSQL (Data Plane)",
 };
+
+/** Providers a `tenant_owned` tenant may configure that a `platform` tenant may
+ * not (task 13.1's "shown only for tenant_owned tenants") — `PROVIDERS` minus
+ * this set is what a `platform` tenant's catalog offers. */
+export const TENANT_OWNED_ONLY_PROVIDERS: ReadonlySet<ConnectionProvider> = new Set([
+  "azure_postgresql_data_plane",
+]);
 
 export const STATUSES = ["draft", "validated", "active", "paused", "error", "retired"] as const;
 export type ConnectionStatus = (typeof STATUSES)[number];
@@ -60,8 +71,16 @@ export interface ConnectionSchedule {
 }
 
 export interface LastSync {
-  outcome: "never_run" | "succeeded" | "failed" | "blocked";
+  outcome: "never_run" | "succeeded" | "failed" | "blocked" | "lease_held";
   completed_at: string | null;
+}
+
+/** Safe manual-sync trigger result. Identifiers and finite classes only. */
+export interface ManualSyncResult {
+  connection_id: string;
+  trigger: "manual";
+  outcome: "enqueued";
+  enqueued_at: string;
 }
 
 export interface SafeConnection {
@@ -129,6 +148,9 @@ export const FINITE_ERROR_CODES = [
   "ACTIVE_PROVIDER_EXISTS",
   "RETIRED_CONNECTION",
   "RETIRE_CONFIRMATION_REQUIRED",
+  "INACTIVE_CONNECTION",
+  "UNSUPPORTED_PROVIDER",
+  "SYNC_UNAVAILABLE",
   "CONNECTION_TEST_UNAVAILABLE",
   "INVALID_CONTRACT",
   "CONTRACT_VERSION_EXISTS",
@@ -136,6 +158,10 @@ export const FINITE_ERROR_CODES = [
   "IDEMPOTENCY_KEY_REQUIRED",
   "IDEMPOTENCY_KEY_REUSED",
   "INTERNAL_ERROR",
+  "TENANT_DATA_PLANE_NOT_READY",
+  "TENANT_DATA_PLANE_UNAVAILABLE",
+  "DATA_PLANE_NOT_TENANT_OWNED",
+  "SECRET_REFERENCE_SHARED_ACROSS_PURPOSES",
 ] as const;
 
 export interface SafeApiError {
@@ -145,6 +171,12 @@ export interface SafeApiError {
   field_errors?: ContractFieldError[];
   reason?: string;
   replayed?: boolean;
+  /** Carried only by `TENANT_DATA_PLANE_NOT_READY` (`data_plane_gate.py`'s
+   * `_not_ready_handler` — the tenant's current `DataPlaneStatus`) and
+   * `TENANT_DATA_PLANE_UNAVAILABLE` (`_unavailable_handler` — a finite
+   * `HEALTH_*`-shaped reachability reason). Neither response carries `message`. */
+  status_class?: string;
+  reason_class?: string;
 }
 
 export const REQUIRED_ACTIVATION_EVIDENCE = ["governance_approved", "network_approved"] as const;
@@ -154,6 +186,11 @@ export const BLOB_CONFIG_KEYS = ["account", "container", "prefix"] as const;
 export const BLOB_SECRET_KEYS = ["connection_string_ref"] as const;
 export const POSTGRES_CONFIG_KEYS = ["host", "database", "username", "port", "sslmode"] as const;
 export const POSTGRES_SECRET_KEYS = ["password_ref"] as const;
+// Same shape as `azure_postgresql` — the field set the backend's
+// `PROVIDER_CONFIG_KEYS`/`PROVIDER_SECRET_FIELDS` declare for
+// `azure_postgresql_data_plane` is identical (`providers.py`).
+export const DATA_PLANE_CONFIG_KEYS = POSTGRES_CONFIG_KEYS;
+export const DATA_PLANE_SECRET_KEYS = POSTGRES_SECRET_KEYS;
 
 export interface CollectionQuery {
   q?: string;
@@ -192,23 +229,38 @@ export function isIdempotencyKeyValid(key: string): boolean {
   return /^[\x20-\x7E]{1,128}$/.test(key);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Finite codes for framework-level refusals (`{"detail": ...}`) that carry no code of their own. */
+const STATUS_FALLBACK_CODES: Record<number, string> = {
+  401: "UNAUTHENTICATED",
+  403: "FORBIDDEN",
+};
+
 export async function parseSafeError(res: Response): Promise<SafeApiError> {
   const requestId = res.headers.get("x-request-id") ?? "";
-  let body: Record<string, unknown> = {};
+  let body: unknown = null;
   try {
-    body = (await res.json()) as Record<string, unknown>;
+    body = await res.json();
   } catch {
-    body = {};
+    body = null;
   }
+  // The gateway nests the safe envelope under `error`; a top-level envelope is accepted too.
+  // Anything else in the body (e.g. a framework `detail` string) is never read.
+  const envelope: Record<string, unknown> = isRecord(body) ? (isRecord(body.error) ? body.error : body) : {};
   const replayed = res.headers.get("Idempotent-Replay") === "true";
   return {
-    code: typeof body.code === "string" ? body.code : "INTERNAL_ERROR",
-    message: typeof body.message === "string" ? body.message : "Request failed.",
-    request_id: typeof body.request_id === "string" && body.request_id ? body.request_id : requestId,
-    field_errors: Array.isArray(body.field_errors)
-      ? (body.field_errors as ContractFieldError[]).filter((e) => typeof e?.field === "string")
+    code: typeof envelope.code === "string" ? envelope.code : (STATUS_FALLBACK_CODES[res.status] ?? "INTERNAL_ERROR"),
+    message: typeof envelope.message === "string" ? envelope.message : "Request failed.",
+    request_id: typeof envelope.request_id === "string" && envelope.request_id ? envelope.request_id : requestId,
+    field_errors: Array.isArray(envelope.field_errors)
+      ? (envelope.field_errors as ContractFieldError[]).filter((e) => typeof e?.field === "string")
       : undefined,
-    reason: typeof body.reason === "string" ? body.reason : undefined,
+    reason: typeof envelope.reason === "string" ? envelope.reason : undefined,
+    status_class: typeof envelope.status_class === "string" ? envelope.status_class : undefined,
+    reason_class: typeof envelope.reason_class === "string" ? envelope.reason_class : undefined,
     replayed,
   };
 }
@@ -231,19 +283,59 @@ export function buildBlobPayload(values: {
   return { configuration, secret_references: { connection_string_ref: values.connection_string_ref.trim() } };
 }
 
+/* --- Tenant data plane (ADR-017) --------------------------------------------- */
+
+export const DATA_PLANE_MODES = ["platform", "tenant_owned"] as const;
+export type DataPlaneMode = (typeof DATA_PLANE_MODES)[number];
+
+export const DATA_PLANE_STATUSES = [
+  "awaiting_store",
+  "provisioning",
+  "provisioning_failed",
+  "ready",
+  "migration_required",
+  "paused",
+  "store_retired",
+] as const;
+export type DataPlaneStatus = (typeof DATA_PLANE_STATUSES)[number];
+
+/** `GET /api/v1/data-plane`'s safe body — matches `_data_plane_body` in
+ * `src/gateway/api/v1/data_sources.py`. No host, credential, or driver detail. */
+export interface DataPlaneStatusResponse {
+  mode: DataPlaneMode;
+  status: DataPlaneStatus;
+  status_reason: string;
+  store_id: string | null;
+  schema_revision: number | null;
+}
+
+/** States in which content pages must not render cached content (Design D9 —
+ * the same set `require_data_plane_ready` treats as not-`ready`). */
+export const DATA_PLANE_BLOCKING_STATUSES: ReadonlySet<DataPlaneStatus> = new Set([
+  "awaiting_store",
+  "provisioning",
+  "provisioning_failed",
+  "migration_required",
+  "paused",
+  "store_retired",
+]);
+
 export function buildPostgresPayload(values: {
   host: string;
   database: string;
   username: string;
   port: string;
   password_ref: string;
-}): { configuration: Record<string, string>; secret_references: Record<string, string> } {
+}): { configuration: Record<string, string | number>; secret_references: Record<string, string> } {
   return {
     configuration: {
       host: values.host.trim(),
       database: values.database.trim(),
       username: values.username.trim(),
-      port: values.port.trim(),
+      // The backend requires an actual integer (providers.py's port-range
+      // check rejects a string outright, with no field highlighted in this
+      // form since client-side validation only checks it's digits).
+      port: Number(values.port.trim()),
       sslmode: "verify-full",
     },
     secret_references: { password_ref: values.password_ref.trim() },

@@ -53,6 +53,14 @@ TEST_REASON_TLS_VALIDATION_FAILED = "tls_validation_failed"
 TEST_REASON_AUTHORIZATION_FAILED = "authorization_failed"
 TEST_REASON_PREREQUISITE_MISSING = "prerequisite_missing"
 
+# ADR-017 `azure_postgresql_data_plane` residency-specific test checks (Design D3, D11).
+TEST_REASON_SERVER_VERSION_UNSUPPORTED = "server_version_unsupported"
+TEST_REASON_VECTOR_EXTENSION_UNAVAILABLE = "vector_extension_unavailable"
+TEST_REASON_INSUFFICIENT_PRIVILEGE = "insufficient_privilege"
+TEST_REASON_QUERY_ROLE_UNAVAILABLE = "query_role_unavailable"
+TEST_REASON_TARGET_SCHEMA_NOT_EMPTY = "target_schema_not_empty"
+TEST_REASON_STORE_IDENTITY_MISMATCH = "store_identity_mismatch"
+
 TEST_REASONS = frozenset({
     TEST_REASON_NONE,
     TEST_REASON_VALIDATION_FAILED,
@@ -61,6 +69,12 @@ TEST_REASONS = frozenset({
     TEST_REASON_TLS_VALIDATION_FAILED,
     TEST_REASON_AUTHORIZATION_FAILED,
     TEST_REASON_PREREQUISITE_MISSING,
+    TEST_REASON_SERVER_VERSION_UNSUPPORTED,
+    TEST_REASON_VECTOR_EXTENSION_UNAVAILABLE,
+    TEST_REASON_INSUFFICIENT_PRIVILEGE,
+    TEST_REASON_QUERY_ROLE_UNAVAILABLE,
+    TEST_REASON_TARGET_SCHEMA_NOT_EMPTY,
+    TEST_REASON_STORE_IDENTITY_MISMATCH,
 })
 
 # --- Activation evidence -----------------------------------------------------------------
@@ -81,6 +95,9 @@ ACTIVATION_REASON_TEST_FAILED = "test_failed"
 ACTIVATION_REASON_PREREQUISITE_MISSING = "prerequisite_missing"
 ACTIVATION_REASON_ACTIVE_PROVIDER_EXISTS = "active_provider_exists"
 ACTIVATION_REASON_SECRET_UNAVAILABLE = "secret_unavailable"
+# ADR-017: an azure_postgresql_data_plane connection cannot activate while the
+# tenant's integration profile still records platform_blob retention.
+ACTIVATION_REASON_RETENTION_MODE_NOT_PERMITTED = "retention_mode_not_permitted"
 
 ACTIVATION_REASONS = frozenset({
     ACTIVATION_REASON_NONE,
@@ -89,6 +106,7 @@ ACTIVATION_REASONS = frozenset({
     ACTIVATION_REASON_PREREQUISITE_MISSING,
     ACTIVATION_REASON_ACTIVE_PROVIDER_EXISTS,
     ACTIVATION_REASON_SECRET_UNAVAILABLE,
+    ACTIVATION_REASON_RETENTION_MODE_NOT_PERMITTED,
 })
 
 # The exact attestation set an activation request must carry, once each and no
@@ -110,12 +128,14 @@ SYNC_OUTCOME_NEVER_RUN = "never_run"
 SYNC_OUTCOME_SUCCEEDED = "succeeded"
 SYNC_OUTCOME_FAILED = "failed"
 SYNC_OUTCOME_BLOCKED = "blocked"
+SYNC_OUTCOME_LEASE_HELD = "lease_held"
 
 SYNC_OUTCOMES = frozenset({
     SYNC_OUTCOME_NEVER_RUN,
     SYNC_OUTCOME_SUCCEEDED,
     SYNC_OUTCOME_FAILED,
     SYNC_OUTCOME_BLOCKED,
+    SYNC_OUTCOME_LEASE_HELD,
 })
 
 # Blob sync cadence, minutes. Enabled only while the connection is active.

@@ -32,7 +32,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 VERSIONS = ROOT / "alembic" / "versions"
 COMPOSE = ROOT / "docker-compose.yml"
 
-CHAIN = ["039", "040", "041", "042"]
+CHAIN = ["039", "040", "041", "042", "043"]
 
 EXPECTED_LABELS = {
     "ner_data_source_lifecycle_total": {

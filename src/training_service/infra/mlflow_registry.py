@@ -3,9 +3,10 @@ from datetime import datetime, timezone
 
 import mlflow
 from mlflow.tracking import MlflowClient
-from sqlalchemy import text, create_engine
+from sqlalchemy import text
 
 from src.shared.config import settings
+from src.shared.database import get_resolver
 
 
 STATUS_TO_STAGE = {
@@ -45,8 +46,11 @@ def _get_client() -> MlflowClient:
     return MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
 
 
-def _get_sync_engine():
-    return create_engine(settings.database_url_sync)
+def _get_sync_engine(tenant_id: str):
+    """The one place this module obtains a tenant-schema engine — routed through
+    `EngineResolver` (ADR-017). Never construct an engine from
+    `settings.database_url_sync` for tenant-schema access anywhere else in this file."""
+    return get_resolver().resolve_sync(tenant_id)
 
 
 def _schema(tenant_id: str) -> str:
@@ -58,7 +62,7 @@ class MLflowRegistryError(Exception):
 
 
 def _cache_model_version(tenant_id: str, version_data: dict) -> None:
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     with engine.begin() as conn:
         conn.execute(
@@ -90,7 +94,7 @@ def _cache_model_version(tenant_id: str, version_data: dict) -> None:
 
 
 def _lookup_run_number(tenant_id: str, version_number: int) -> int | None:
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     with engine.connect() as conn:
         result = conn.execute(
@@ -102,7 +106,7 @@ def _lookup_run_number(tenant_id: str, version_number: int) -> int | None:
 
 
 def _read_cache_model_versions(tenant_id: str) -> list[dict]:
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     with engine.connect() as conn:
         result = conn.execute(
@@ -114,7 +118,7 @@ def _read_cache_model_versions(tenant_id: str) -> list[dict]:
 
 
 def _read_cache_active_model(tenant_id: str) -> dict | None:
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     with engine.connect() as conn:
         result = conn.execute(

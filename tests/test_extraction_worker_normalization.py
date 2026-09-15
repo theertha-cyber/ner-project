@@ -126,7 +126,7 @@ class TestWorkerNormalizesEntitiesOnIngest:
             return "fake-token"
 
         monkeypatch.setattr(worker_module.requests, "post", mock_post)
-        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda: sync_engine)
+        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda tenant_id=None: sync_engine)
         import src.shared.auth as auth_module
         monkeypatch.setattr(auth_module, "create_access_token", mock_create_access_token)
 
@@ -249,7 +249,7 @@ class TestWorkerNormalizesEntitiesOnIngest:
             return "fake-token"
 
         monkeypatch.setattr(worker_module.requests, "post", mock_post)
-        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda: sync_engine)
+        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda tenant_id=None: sync_engine)
         import src.shared.auth as auth_module
         monkeypatch.setattr(auth_module, "create_access_token", mock_create_access_token)
 

@@ -97,7 +97,7 @@ TABLES = [
 
 def upgrade() -> None:
     for ddl in TABLES:
-        op.execute(ddl % "tenant_template")
+        op.execute(ddl.replace("%I", "tenant_template"))
     for ddl in TABLES:
         op.execute(_for_each_tenant_schema(ddl))
 

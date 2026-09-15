@@ -122,6 +122,12 @@ class Settings(BaseSettings):
     sql_entity_sample_values_per_type: int = 8
     sql_entity_sample_max_values: int = 120
 
+    # External PostgreSQL SQL generation (ADR-016). Bounded local-validation retry
+    # and the whole-contract prompt's character budget, fails closed rather than
+    # truncating entries — see design.md Decisions 3 and 5.
+    external_pg_sql_max_attempts: int = 3
+    external_pg_schema_context_max_chars: int = 60000
+
     entity_resolution_enabled: bool = True
     entity_resolution_max_candidates: int = 5
     # Entity types that hold people's names. Must cover what the tenant's own label
@@ -188,6 +194,34 @@ class Settings(BaseSettings):
     retry_backoff_multiplier: float = 2.0
     retry_max_delay_seconds: float = 10.0
     retry_max_total_seconds: float = 30.0
+
+    # --- Tenant-owned PostgreSQL data plane (ADR-017) ---
+    # Default `true` for local dev, where a `tenant_owned` tenant only ever reaches the
+    # Compose `postgres-tenant-store` stand-in. Shared environments must set this `false`
+    # in their env file until an operator has reviewed per-tenant network/credential
+    # provisioning; existing `tenant_owned` tenants keep routing to their own store either
+    # way — the flag gates creating new ones and new connection drafts, never the resolver.
+    tenant_owned_data_plane_enabled: bool = True
+    # Short-TTL in-process cache for the data-plane control-plane row (Design D4). Bounds
+    # how stale a paused/retired connection can look to a process that didn't perform the
+    # transition itself (those invalidate their own cache immediately).
+    data_plane_cache_ttl_seconds: float = 15.0
+    # Bounded LRU of cached per-tenant engines (Design D4) and the pool/timeout budget for
+    # each one. Small defaults: a tenant store is one customer's server, not a shared pool.
+    data_plane_max_cached_engines: int = 100
+    data_plane_pool_size: int = 2
+    data_plane_max_overflow: int = 2
+    data_plane_connect_timeout_seconds: float = 5.0
+    data_plane_statement_timeout_ms: int = 30_000
+    # Celery retry budget for `DataPlaneUnavailable` (Design D8) and the beat probe
+    # interval that updates per-tenant health when nothing else has touched it recently.
+    data_plane_task_max_retries: int = 5
+    data_plane_health_probe_interval_seconds: float = 60.0
+    # How long a document must have sat in `processing` before the post-recovery
+    # sweep (task 11.3) treats it as abandoned rather than merely slow, and resets
+    # it to `pending` for redispatch. Deliberately generous: a false positive here
+    # steals a genuinely in-flight document from whatever worker is still on it.
+    data_plane_stuck_document_threshold_seconds: float = 300.0
 
     model_config = {"env_prefix": "NER_", "env_file": ".env", "extra": "ignore"}
 

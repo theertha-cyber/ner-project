@@ -20,6 +20,8 @@ interface TenantDetail {
   user_count: number;
   created_at: string;
   updated_at: string;
+  data_plane?: { mode: string; status: string; health: string | null };
+  document_count?: number;
 }
 
 interface TenantUser {
@@ -137,6 +139,27 @@ export default function TenantDetailPage({ params }: { params: { id: string } })
           </span>
         </div>
 
+        {tenant.data_plane && (
+          <div className="mb-6 flex flex-wrap items-center gap-4 rounded-md bg-gray-50 p-4 text-sm">
+            <span>
+              <span className="text-gray-500">Data plane: </span>
+              <span className="font-medium text-gray-900">
+                {tenant.data_plane.mode === "tenant_owned" ? "Tenant-owned PostgreSQL" : "Platform-hosted"}
+              </span>
+            </span>
+            <span>
+              <span className="text-gray-500">Status: </span>
+              <span className="font-medium text-gray-900">{tenant.data_plane.status}</span>
+            </span>
+            {tenant.data_plane.mode === "tenant_owned" && (
+              <span>
+                <span className="text-gray-500">Health: </span>
+                <span className="font-medium text-gray-900">{tenant.data_plane.health ?? "unknown"}</span>
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="mb-6 grid grid-cols-2 gap-4">
           <div className="rounded-md bg-gray-50 p-4">
             <p className="text-sm text-gray-500">Users</p>
@@ -146,7 +169,9 @@ export default function TenantDetailPage({ params }: { params: { id: string } })
           </div>
           <div className="rounded-md bg-gray-50 p-4">
             <p className="text-sm text-gray-500">Documents</p>
-            <p className="text-2xl font-bold">0 / {tenant.max_documents}</p>
+            <p className="text-2xl font-bold">
+              {tenant.document_count ?? 0} / {tenant.max_documents}
+            </p>
           </div>
           <div className="rounded-md bg-gray-50 p-4">
             <p className="text-sm text-gray-500">Storage</p>

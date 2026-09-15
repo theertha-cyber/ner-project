@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SlideOver } from "@/components/ui/slide-over";
 import {
   PROVIDER_LABELS,
@@ -10,14 +10,15 @@ import {
   type ConnectionProvider,
   type SafeConnection,
 } from "@/lib/data-sources";
-import { SafeApiHttpError, type LifecycleAction } from "@/hooks/use-data-sources";
+import { SafeApiHttpError, useManualSyncMutation, type LifecycleAction } from "@/hooks/use-data-sources";
 import { SafeOutcomeNotice } from "./status";
+import { DataPlanePanel } from "@/components/data-plane/data-plane-panel";
 
 /* CMP-6 — Provider Configuration Form (closed schema, write-only values) */
 
 export interface ConfigPayload {
   provider: ConnectionProvider;
-  configuration: Record<string, string>;
+  configuration: Record<string, string | number>;
   secret_references: Record<string, string>;
 }
 
@@ -224,6 +225,11 @@ export function ProviderConfigForm({
 
 /* CMP-7 — Connection Lifecycle Panel */
 
+const EVIDENCE_LABELS: Record<string, string> = {
+  network_approved: "Private connectivity or approved public-egress path has been reviewed and approved.",
+  governance_approved: "Data-residency and retention has been reviewed and approved.",
+};
+
 export function LifecyclePanel({
   connection,
   pendingAction,
@@ -247,6 +253,13 @@ export function LifecyclePanel({
   const canTest = ["draft", "paused", "error"].includes(connection.status) && !busy;
   const isActive = connection.status === "active";
   const isRetired = connection.status === "retired";
+  const testing = pendingAction === "test";
+  const testFailed = connection.last_test.outcome === "failed";
+  const showAttestation = (testPassed || isActive) && !testFailed;
+
+  useEffect(() => {
+    if (testFailed) setEvidence([]);
+  }, [testFailed]);
 
   function toggleEvidence(name: string) {
     setEvidence((prev) => (prev.includes(name) ? prev.filter((e) => e !== name) : [...prev, name]));
@@ -261,69 +274,79 @@ export function LifecyclePanel({
     <section aria-label="Connection lifecycle" className="flex flex-col gap-4">
       <div className="rounded-md border p-4" style={{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
         <h2 className="text-base font-semibold" style={{ color: "var(--ink)" }}>
-          Secure test
+          Lifecycle
         </h2>
         <p className="mt-1 text-sm" style={{ color: "var(--ink-2)" }}>
           Last test: {connection.last_test.outcome.replace("_", " ")} · {connection.last_test.reason_code}
         </p>
-        <button
-          type="button"
-          disabled={!canTest}
-          onClick={() => onAction("test", {})}
-          className="mt-3 rounded-md border px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 disabled:opacity-50"
-          style={{ borderColor: "var(--primary)", background: "var(--surface-2)", color: "var(--primary-2)" }}
-        >
-          {pendingAction === "test" ? "Testing…" : "Test connection"}
-        </button>
-      </div>
 
-      <div className="rounded-md border p-4" style={{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
-        <h2 className="text-base font-semibold" style={{ color: "var(--ink)" }}>
-          Activation evidence
-        </h2>
-        {!testPassed && (
-          <div className="mt-2">
+        {!isActive && (
+          <button
+            type="button"
+            disabled={!canTest}
+            onClick={() => onAction("test", {})}
+            className="mt-3 rounded-md border px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 disabled:opacity-50"
+            style={{ borderColor: "var(--primary)", background: "var(--surface-2)", color: "var(--primary-2)" }}
+          >
+            {testing ? "Testing…" : testFailed ? "Retry test" : "Test connection"}
+          </button>
+        )}
+
+        {!showAttestation && !isActive && !testPassed && !testing && (
+          <div className="mt-3">
             <SafeOutcomeNotice variant="blocked" title="Activation unavailable" code="TEST_REQUIRED">
               Run a successful secure test first. No secrets or provider details are shown here.
             </SafeOutcomeNotice>
           </div>
         )}
-        <fieldset className="mt-3 flex flex-col gap-2">
-          <legend className="text-sm font-medium" style={{ color: "var(--ink)" }}>
-            Required attestations
-          </legend>
-          {REQUIRED_ACTIVATION_EVIDENCE.map((name) => (
-            <label key={name} className="flex items-center gap-2 text-sm" style={{ color: "var(--ink)" }}>
-              <input
-                type="checkbox"
-                checked={evidence.includes(name)}
-                onChange={() => toggleEvidence(name)}
-                className="size-4 accent-[var(--primary)]"
-              />
-              {name}
-            </label>
-          ))}
-        </fieldset>
-        <button
-          type="button"
-          disabled={!canActivate}
-          onClick={() => onAction("activate", { activation_evidence: [...REQUIRED_ACTIVATION_EVIDENCE].sort() })}
-          aria-describedby={!canActivate ? "activate-hint" : undefined}
-          className="mt-3 rounded-md px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 disabled:opacity-50"
-          style={{ background: "var(--primary)", color: "#fff" }}
-        >
-          {pendingAction === "activate" ? "Activating…" : "Activate"}
-        </button>
-        {!canActivate && (
-          <p id="activate-hint" className="mt-1 text-xs" style={{ color: "var(--ink-2)" }}>
-            Available after a passed secure test and both attestations.
-          </p>
+
+        {showAttestation && (
+          <>
+            <fieldset className="mt-3 flex flex-col gap-2">
+              <legend className="text-sm font-medium" style={{ color: "var(--ink)" }}>
+                Required attestations
+              </legend>
+              {REQUIRED_ACTIVATION_EVIDENCE.map((name) => (
+                <div key={name} className="flex flex-col gap-0.5">
+                  <label className="flex items-center gap-2 text-sm" style={{ color: "var(--ink)" }}>
+                    <input
+                      type="checkbox"
+                      checked={isActive || evidence.includes(name)}
+                      disabled={isActive}
+                      onChange={() => toggleEvidence(name)}
+                      aria-describedby={`${name}-hint`}
+                      className="size-4 accent-[var(--primary)]"
+                    />
+                    {name}
+                  </label>
+                  <span id={`${name}-hint`} className="ml-6 text-xs" style={{ color: "var(--ink-2)" }}>
+                    {EVIDENCE_LABELS[name]}
+                  </span>
+                </div>
+              ))}
+            </fieldset>
+            <button
+              type="button"
+              disabled={isActive || !canActivate}
+              onClick={() => onAction("activate", { activation_evidence: [...REQUIRED_ACTIVATION_EVIDENCE].sort() })}
+              aria-describedby={!canActivate && !isActive ? "activate-hint" : undefined}
+              className="mt-3 rounded-md px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 disabled:opacity-50"
+              style={{ background: "var(--primary)", color: "#fff" }}
+            >
+              {isActive ? "Activated" : pendingAction === "activate" ? "Activating…" : "Activate"}
+            </button>
+            {!canActivate && !isActive && (
+              <p id="activate-hint" className="mt-1 text-xs" style={{ color: "var(--ink-2)" }}>
+                Available after a passed secure test and both attestations.
+              </p>
+            )}
+          </>
         )}
       </div>
 
       <div className="rounded-md border p-4" style={{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
         <h2 className="text-base font-semibold" style={{ color: "var(--ink)" }}>
-          Lifecycle
+          Manage connection
         </h2>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" disabled={isActive || isRetired || busy} onClick={() => setConfirming("pause")} className="rounded-md border px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 disabled:opacity-50" style={{ borderColor: "var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}>
@@ -392,6 +415,15 @@ export function LifecyclePanel({
 /* CMP-9 — Sync Activity Summary */
 
 export function SyncActivitySummary({ connection }: { connection: SafeConnection }) {
+  const manualSync = useManualSyncMutation();
+  // Lease-held is only meaningful as the answer to a trigger made here; a stale
+  // lease-held last run on page load must not claim a sync is running now.
+  const [triggered, setTriggered] = useState(false);
+
+  if (connection.provider === "azure_postgresql_data_plane") {
+    return <DataPlanePanel />;
+  }
+
   if (connection.provider === "azure_postgresql") {
     return (
       <section aria-label="Sync activity" className="rounded-md border p-4" style={{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
@@ -405,11 +437,33 @@ export function SyncActivitySummary({ connection }: { connection: SafeConnection
     );
   }
   const sync = connection.last_sync;
+  const isActive = connection.status === "active";
+  const pending = manualSync.isPending;
+  const syncError = (manualSync.error as SafeApiHttpError | null) ?? null;
+  const leaseHeld = triggered && sync?.outcome === "lease_held";
+
+  function handleSync() {
+    if (!isActive || pending) return;
+    setTriggered(false);
+    manualSync.mutate({ connectionId: connection.id }, { onSuccess: () => setTriggered(true) });
+  }
+
   return (
     <section aria-label="Sync activity" className="rounded-md border p-4" style={{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
-      <h2 className="text-base font-semibold" style={{ color: "var(--ink)" }}>
-        Sync activity
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-base font-semibold" style={{ color: "var(--ink)" }}>
+          Sync activity
+        </h2>
+        <button
+          type="button"
+          disabled={!isActive || pending}
+          onClick={handleSync}
+          className="rounded-md border px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 disabled:opacity-50"
+          style={{ borderColor: "var(--primary)", background: "var(--surface-2)", color: "var(--primary-2)" }}
+        >
+          {pending ? "Starting sync…" : "Sync now"}
+        </button>
+      </div>
       <dl className="mt-2 grid gap-1 text-sm">
         <div className="flex gap-2">
           <dt style={{ color: "var(--ink-2)" }}>Schedule:</dt>
@@ -422,6 +476,33 @@ export function SyncActivitySummary({ connection }: { connection: SafeConnection
           </dd>
         </div>
       </dl>
+      <div className="mt-3 flex flex-col gap-2">
+        {!isActive && (
+          <SafeOutcomeNotice variant="blocked" title="Sync unavailable" code="INACTIVE_CONNECTION">
+            Activate the connection before triggering a sync.
+          </SafeOutcomeNotice>
+        )}
+        {pending && (
+          <p role="status" aria-label="Sync pending" className="text-sm" style={{ color: "var(--ink-2)" }}>
+            Queuing a manual sync…
+          </p>
+        )}
+        {!pending && syncError && (
+          <SafeOutcomeNotice variant="error" title="Sync not started" code={syncError.code} requestId={syncError.requestId} replayed={syncError.replayed}>
+            Nothing was queued. Review the safe reason above and try again.
+          </SafeOutcomeNotice>
+        )}
+        {!pending && manualSync.isSuccess && leaseHeld && (
+          <SafeOutcomeNotice variant="warning" title="Sync already running">
+            A sync for this connection is already in progress. Try again after it finishes.
+          </SafeOutcomeNotice>
+        )}
+        {!pending && manualSync.isSuccess && !leaseHeld && (
+          <SafeOutcomeNotice variant="success" title="Sync queued" replayed={manualSync.data.replayed}>
+            A manual sync was queued. Last-run status refreshes here when it completes.
+          </SafeOutcomeNotice>
+        )}
+      </div>
     </section>
   );
 }

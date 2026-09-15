@@ -33,6 +33,7 @@ async def test_scenario_1_create_tenant_201(client: AsyncClient, engine):
     data = resp.json()
     tenant = data.get("tenant", data)
     assert tenant.get("status") == "active", f"Expected active, got {tenant.get('status')}"
+    assert tenant.get("data_plane") == {"mode": "platform", "status": "ready", "health": None}
     tenant_id = tenant["id"]
 
     schema_name = f"tenant_{tenant_id}".replace("-", "_")

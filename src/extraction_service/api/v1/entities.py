@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from src.shared.data_plane_gate import require_data_plane_ready
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.extraction_service.api.v1.schemas import (
     EntityItem,
@@ -11,7 +12,7 @@ from src.extraction_service.services.entity_store import (
 )
 from src.extraction_service.dependencies import get_db
 
-router = APIRouter(prefix="/api/v1", tags=["entities"])
+router = APIRouter(prefix="/api/v1", tags=["entities"], dependencies=[Depends(require_data_plane_ready)])
 
 
 def _get_tenant_id(request: Request) -> str:

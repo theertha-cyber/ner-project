@@ -130,8 +130,8 @@ async def _active_blob_connection(session, tenant_id: str, connection_id: str):
     row = (
         await session.execute(
             text(
-                f"SELECT id, provider, status, configuration FROM {CONNECTIONS_TABLE} "
-                "WHERE id = :cid AND tenant_id = :tid"
+                "SELECT id, provider, status, configuration, secret_references "
+                f"FROM {CONNECTIONS_TABLE} WHERE id = :cid AND tenant_id = :tid"
             ),
             {"cid": connection_id, "tid": tenant_id},
         )
@@ -139,6 +139,46 @@ async def _active_blob_connection(session, tenant_id: str, connection_id: str):
     if row is None or row[1] != PROVIDER_AZURE_BLOB or row[2] != lc.STATUS_ACTIVE:
         return None
     return row
+
+
+def build_live_provider(tenant_id: str, configuration: dict, secret_references: dict):
+    """Build a real SDK-backed provider from a connection's own config and
+    resolved secret. Raises `BlobProviderUnavailable` for anything that keeps
+    the connection from being usable — never half-configured. Shared by the
+    sync path and the OCR reopener (`blob_sync.reopen`) so both build the same
+    provider the same way, instead of each hitting the always-refusing default."""
+    from src.document_service.blob_sync.azure_provider import AzureBlobLiveProvider
+    from src.shared.data_sources.providers import (
+        PROVIDER_AZURE_BLOB,
+        PROVIDER_SECRET_KIND,
+    )
+    from src.shared.integration_profile.secrets import (
+        SecretResolutionError,
+        resolve_for_tenant,
+    )
+
+    if not isinstance(configuration, dict) or not isinstance(secret_references, dict):
+        raise BlobProviderUnavailable("connection configuration unavailable")
+
+    container = configuration.get("container")
+    if not container:
+        raise BlobProviderUnavailable("container is not configured")
+
+    adapter_kind = PROVIDER_SECRET_KIND[PROVIDER_AZURE_BLOB]
+    namespace = type(
+        "_BlobConnectionSecrets",
+        (),
+        {"tenant_id": tenant_id, "secret_references": {adapter_kind: dict(secret_references)}},
+    )()
+    try:
+        context = resolve_for_tenant(namespace, adapter_kind)
+    except SecretResolutionError:
+        raise BlobProviderUnavailable("secret reference unresolvable") from None
+    connection_string = context.get("connection_string_ref")
+    if not connection_string:
+        raise BlobProviderUnavailable("connection string secret unresolvable")
+
+    return AzureBlobLiveProvider(connection_string, container)
 
 
 async def _profile_retention(session, tenant_id: str) -> str | None:
@@ -161,7 +201,6 @@ async def run_sync(session_factory, tenant_id: str, connection_id: str,
         raise ValueError(f"unknown sync trigger: {trigger}")
     schema = schema_for_tenant(tenant_id)
     run_id = str(uuid.uuid4())
-    provider = provider if provider is not None else get_provider(connection_id)
 
     async with session_factory() as session:
         await ledger.ensure_sync_tables(session, schema)
@@ -185,6 +224,17 @@ async def run_sync(session_factory, tenant_id: str, connection_id: str,
         connection = await _active_blob_connection(session, tenant_id, connection_id)
     if connection is None:
         return await _finish(OUTCOME_BLOCKED, REASON_INACTIVE_CONNECTION)
+
+    if provider is None:
+        try:
+            provider = get_provider(
+                connection_id,
+                fallback=lambda: build_live_provider(
+                    tenant_id, connection[3], connection[4]
+                ),
+            )
+        except BlobProviderUnavailable:
+            return await _finish(OUTCOME_BLOCKED, REASON_PREREQUISITE_MISSING)
 
     async with session_factory() as session:
         retention = await _profile_retention(session, tenant_id)

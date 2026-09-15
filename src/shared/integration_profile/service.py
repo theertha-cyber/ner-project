@@ -9,7 +9,8 @@ import json
 from sqlalchemy import text
 
 from src.document_service.ingestion.contract import assert_source_id_available
-from src.shared.document_retention import RETENTION_MODES
+from src.shared.data_plane import MODE_TENANT_OWNED, get_data_plane_record
+from src.shared.document_retention import RETENTION_MODES, RETENTION_PLATFORM_BLOB
 from src.shared.integration_profile.adapters import (
     SUPPORTED_ADAPTERS,
     unsupported_selections,
@@ -46,6 +47,18 @@ class ProfileNotFound(Exception):
         super().__init__(f"no integration profile recorded for tenant {tenant_id}")
 
 
+class RetentionModeNotPermittedForDataPlane(ProfileValidationError):
+    """`platform_blob` retention for a `tenant_owned` tenant (ADR-017): that tenant's
+    data plane has no platform-side blob store to retain an original in."""
+
+    code = "RETENTION_MODE_NOT_PERMITTED_FOR_DATA_PLANE"
+
+    def __init__(self):
+        super().__init__(
+            "platform_blob retention is not permitted for a tenant_owned data plane"
+        )
+
+
 async def write_profile(
     session,
     tenant_id: str,
@@ -72,6 +85,10 @@ async def write_profile(
 
     if retention_mode is not None and retention_mode not in RETENTION_MODES:
         raise ProfileValidationError(f"'{retention_mode}' is not a declared retention mode")
+    if retention_mode == RETENTION_PLATFORM_BLOB:
+        record = await get_data_plane_record(tenant_id, session)
+        if record.mode == MODE_TENANT_OWNED:
+            raise RetentionModeNotPermittedForDataPlane()
 
     # Configuration and secret references are validated per adapter kind against a closed
     # key set, so an unknown key or a literal in a secret field is refused before the row
@@ -125,6 +142,45 @@ async def write_profile(
             params,
         )
     await session.commit()
+
+
+async def create_initial_profile(
+    session,
+    tenant_id: str,
+    *,
+    relational_adapter: str | None = None,
+    index_adapter: str | None = None,
+    retention_mode: str | None = None,
+) -> None:
+    """The tenant-creation-time profile write (ADR-017 task 9.1): creates an `active`
+    profile atomically with the tenant row, the same transaction the caller (gateway's
+    `TenantService.create_tenant`) is already inside. Kept in this package — never as
+    raw SQL against `tenant_integration_profiles` elsewhere — so profile mutation
+    reachability stays checkable by grepping for this module (tenant-integration-profile
+    spec: "no tenant-facing route exposes profile modification")."""
+    columns = ["tenant_id", "status"]
+    values = [":tid", "'active'"]
+    params: dict = {"tid": tenant_id}
+    if relational_adapter is not None:
+        columns.append("relational_adapter")
+        values.append(":relational_adapter")
+        params["relational_adapter"] = relational_adapter
+    if index_adapter is not None:
+        columns.append("index_adapter")
+        values.append(":index_adapter")
+        params["index_adapter"] = index_adapter
+    if retention_mode is not None:
+        columns.append("retention_mode")
+        values.append(":retention_mode")
+        params["retention_mode"] = retention_mode
+
+    await session.execute(
+        text(
+            f"INSERT INTO {PROFILE_TABLE} ({', '.join(columns)}) "
+            f"VALUES ({', '.join(values)}) ON CONFLICT (tenant_id) DO NOTHING"
+        ),
+        params,
+    )
 
 
 async def _set_status(session, tenant_id: str, status: str, reason: str | None) -> None:

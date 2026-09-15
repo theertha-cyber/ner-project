@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const mockReplace = vi.fn();
 
@@ -60,7 +61,18 @@ afterEach(() => {
 });
 
 async function renderChatAndWaitForInput() {
-  render(<ChatPage />);
+  // ChatPage now renders through DataPlaneGate (ADR-017, task 13.3), which
+  // queries `/api/v1/data-plane` via react-query — a QueryClientProvider is
+  // required for that hook to run at all, and the shared `mockFetch`
+  // implementation above already answers any URL it doesn't recognize with a
+  // 200 `{}` (no `status` field), which `DATA_PLANE_BLOCKING_STATUSES` never
+  // matches, so the gate lets the page's real content straight through.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ChatPage />
+    </QueryClientProvider>,
+  );
   return screen.findByPlaceholderText("Type your question...");
 }
 

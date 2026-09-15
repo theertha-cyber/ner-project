@@ -83,6 +83,7 @@ app.include_router(dashboard.router)
 app.include_router(chat_proxy.router)
 app.include_router(analytics_proxy.router)
 app.include_router(data_sources.router)
+app.include_router(data_sources.data_plane_router)
 app.include_router(external_pg_contracts.router)
 
 

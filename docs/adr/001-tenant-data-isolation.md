@@ -1,6 +1,6 @@
 # ADR-001: Tenant Data Isolation via Separate Database Schemas
 
-**Status**: Proposed
+**Status**: Accepted
 
 **Date**: 2026-06-04
 
@@ -28,7 +28,9 @@ Enforcement at multiple layers:
 | Object storage | Prefix-based isolation: `s3://ner-platform/tenant-<uuid>/documents/` and `s3://ner-platform/tenant-<uuid>/models/` |
 | Model artifacts | Stored in tenant-prefixed object storage paths |
 
-Database topology: a single PostgreSQL 16 instance with per-tenant schemas. The `public` schema holds only migration tracking (`alembic_version`). Connection pooling via PgBouncer.
+Database topology: a single PostgreSQL 16 instance with per-tenant schemas. The `public` schema holds migration tracking (`alembic_version`) and tenant-bound, non-content control-plane records such as integration connection metadata, secret references, lifecycle/test/activation evidence, and versioned schema contracts. Connection pooling uses PgBouncer.
+
+Public control-plane records MUST carry an owning tenant identifier and be accessed through server-side authenticated tenant capability resolution. They MUST NOT contain plaintext credentials, connection strings, tenant business rows, document content, derived document data, or schema-index embeddings. Tenant content and derived data remain in the tenant schema; a public record is permitted only where it must remain available while a tenant schema or tenant-owned external system is unavailable.
 
 ## Consequences
 
@@ -56,9 +58,11 @@ Database topology: a single PostgreSQL 16 instance with per-tenant schemas. The 
 - Object storage paths MUST follow the `tenant-<uuid>/` prefix convention.
 - Migration scripts MUST be applied to the `public` schema (tracking) and each tenant schema.
 - Penetration tests MUST verify cross-tenant data isolation (zero data leakage).
+- Public tenant-bound control-plane queries MUST constrain the owning tenant from authenticated server-side context; a caller-provided tenant identifier is never authority.
 
 ## References
 
 - Technical Design Document §4.3 (Tenant Isolation Design)
 - Technical Design Document §4.4 (Technology Choices — PostgreSQL 16 + pgvector)
 - Technical Design Document §3.2 (Data Model — Relationships)
+- `011-tenant-scoped-azure-connection-control-plane.md` (tenant-bound connection and contract control plane)

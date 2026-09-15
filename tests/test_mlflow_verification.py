@@ -348,7 +348,7 @@ class TestModelRegistryProxy:
 
 class TestCacheFallback:
     def test_cache_fallback_list(self, monkeypatch, tenant_id):
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(tenant_id)
         schema = _schema(tenant_id)
         with engine.begin() as conn:
             conn.execute(sa.text(f"""
@@ -380,7 +380,7 @@ class TestCacheFallback:
         assert warning == "mlflow-unavailable"
 
     def test_cache_fallback_active(self, monkeypatch, tenant_id):
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(tenant_id)
         schema = _schema(tenant_id)
         with engine.begin() as conn:
             conn.execute(sa.text(f"""

@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.chat_api.services.sql_generator import WHITELISTED_TABLES
 from src.shared.entity_views import resolve_generated_tables
+from src.shared.data_plane import MODE_PLATFORM
 
 logger = logging.getLogger(__name__)
 
@@ -137,28 +138,118 @@ def build_role_statements(
 
 
 async def list_tenant_schemas(session: AsyncSession) -> list[str]:
+    """Platform tenant schemas only — the shape existing callers (tests passing an
+    explicit schema list bypass this entirely) and `provision_role`'s fallback when
+    `schemas` is omitted assume: one session, one database. `provision_role` itself
+    additionally reaches `ready` `tenant_owned` tenants on their own stores; this
+    helper is kept for the platform-only enumeration it already documented."""
     result = await session.execute(
         text(
-            "SELECT nspname FROM pg_namespace WHERE nspname LIKE :prefix ORDER BY nspname"
+            "SELECT t.id FROM public.tenants t "
+            "JOIN public.tenant_data_planes dp ON dp.tenant_id = t.id "
+            "WHERE dp.mode = :mode"
         ),
-        {"prefix": f"{TENANT_SCHEMA_PREFIX}%"},
+        {"mode": MODE_PLATFORM},
     )
-    return [row[0] for row in result.fetchall()]
+    return [f"{TENANT_SCHEMA_PREFIX}{row[0].replace('-', '_')}" for row in result.fetchall()]
+
+
+async def _list_active_tenants(session: AsyncSession) -> list[tuple[str, str, str]]:
+    """`(tenant_id, mode, status)` for every active tenant (ADR-017 routing spec:
+    "Fleet operations enumerate tenants from the control plane" — not `pg_namespace`,
+    which cannot see a `tenant_owned` tenant's store at all)."""
+    result = await session.execute(
+        text(
+            "SELECT t.id, dp.mode, dp.status FROM public.tenants t "
+            "JOIN public.tenant_data_planes dp ON dp.tenant_id = t.id "
+            "WHERE t.status = 'active'"
+        )
+    )
+    return [(row[0], row[1], row[2]) for row in result.fetchall()]
 
 
 async def provision_role(
     session: AsyncSession, role_name: str, schemas: list[str] | None = None
 ) -> list[str]:
-    """Creates the role if absent and (re)applies its grants. Returns the schemas
-    covered. Idempotent: safe to run on every deploy and after any tenant is added."""
-    target_schemas = schemas if schemas is not None else await list_tenant_schemas(session)
-    generated = await resolve_generated_tables(session, target_schemas)
-    for statement in build_role_statements(role_name, target_schemas, generated):
-        await session.execute(text(statement))
+    """Creates the role if absent and (re)applies its grants, one tenant at a time so a
+    single tenant's failure (a schema mid-migration, a lock, an unreachable store) does
+    not abort provisioning for every other tenant (ADR-017 routing spec: fleet
+    operations "SHALL NOT abort the operation for other tenants").
+
+    When `schemas` is omitted, every active tenant is reached: a `platform` tenant on
+    `session` (the platform database — where its schema lives), a `ready` `tenant_owned`
+    tenant on its own resolved store, and any other `tenant_owned` status skipped (there
+    is no store to provision yet). Returns the schemas actually provisioned."""
+    if schemas is not None:
+        covered: list[str] = []
+        for schema in schemas:
+            try:
+                generated = await resolve_generated_tables(session, [schema])
+                for statement in build_role_statements(role_name, [schema], generated):
+                    await session.execute(text(statement))
+                covered.append(schema)
+            except Exception:
+                logger.exception("sql_execution_role provisioning failed for schema=%s", schema)
+                await session.rollback()
+        logger.info(
+            "sql_execution_role provisioned role=%s schemas=%d/%d",
+            role_name, len(covered), len(schemas),
+        )
+        return covered
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable, STATUS_READY
+    from src.shared.database import get_resolver
+
+    covered = []
+    tenants = await _list_active_tenants(session)
+    for tenant_id, mode, status in tenants:
+        schema = f"{TENANT_SCHEMA_PREFIX}{tenant_id.replace('-', '_')}"
+        if mode == MODE_PLATFORM:
+            target_session = session
+            owns_session = False
+        elif status == STATUS_READY:
+            try:
+                engine = await get_resolver().resolve(tenant_id)
+            except (DataPlaneNotReady, DataPlaneUnavailable) as exc:
+                reason = getattr(exc, "reason_class", None) or getattr(exc, "status_class", "unavailable")
+                logger.info(
+                    "sql_execution_role provisioning skipped tenant=%s reason=%s", tenant_id, reason
+                )
+                continue
+            target_session = async_sessionmaker(engine, expire_on_commit=False)()
+            owns_session = True
+        else:
+            # Not ready yet (awaiting_store, provisioning, ...): nothing to grant on.
+            continue
+
+        try:
+            # Control-plane read, always on the platform session (Design D10):
+            # `entity_definitions` never exists on a tenant_owned store.
+            generated = await resolve_generated_tables(session, [schema])
+            for statement in build_role_statements(role_name, [schema], generated):
+                await target_session.execute(text(statement))
+            if owns_session:
+                await target_session.commit()
+            covered.append(schema)
+        except (DataPlaneNotReady, DataPlaneUnavailable) as exc:
+            reason = getattr(exc, "reason_class", None) or getattr(exc, "status_class", "unavailable")
+            logger.info(
+                "sql_execution_role provisioning skipped tenant=%s reason=%s", tenant_id, reason
+            )
+        except Exception:
+            logger.exception("sql_execution_role provisioning failed for tenant=%s", tenant_id)
+            await target_session.rollback()
+        finally:
+            if owns_session:
+                await target_session.close()
+
     logger.info(
-        "sql_execution_role provisioned role=%s schemas=%d", role_name, len(target_schemas)
+        "sql_execution_role provisioned role=%s schemas=%d/%d",
+        role_name, len(covered), len(tenants),
     )
-    return target_schemas
+    return covered
 
 
 class SmokeCheckFailed(RuntimeError):

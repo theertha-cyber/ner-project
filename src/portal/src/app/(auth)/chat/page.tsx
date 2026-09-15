@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { RequireAuth } from "@/components/require-auth";
+import { DataPlaneGate } from "@/components/data-plane/data-plane-gate";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { ConversationSwitcher } from "@/components/chat/ConversationSwitcher";
 import { MessageThread } from "@/components/chat/MessageThread";
@@ -494,9 +495,11 @@ function ChatPageInner() {
 export default function ChatPage() {
   return (
     <RequireAuth roles={["tenant_admin", "business_user"]}>
-      <Suspense fallback={null}>
-        <ChatPageInner />
-      </Suspense>
+      <DataPlaneGate>
+        <Suspense fallback={null}>
+          <ChatPageInner />
+        </Suspense>
+      </DataPlaneGate>
     </RequireAuth>
   );
 }

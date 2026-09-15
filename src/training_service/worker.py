@@ -10,11 +10,13 @@ import boto3
 from botocore.config import Config as BotoConfig
 import mlflow
 import requests
-from sqlalchemy import text, create_engine
+from sqlalchemy import text
 from transformers import TrainerCallback
 
 from src.shared.config import settings
 from src.shared.auth import create_access_token
+from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable, data_plane_retry_countdown
+from src.shared.database import get_resolver
 from src.training_service.celery_app import celery_app
 from src.shared.observability.domain_metrics import (
     record_training_completion,
@@ -58,8 +60,11 @@ def _make_service_token(tenant_id: str) -> str:
     )
 
 
-def _get_sync_engine():
-    return create_engine(settings.database_url_sync)
+def _get_sync_engine(tenant_id: str):
+    """The one place this worker obtains a tenant-schema engine — routed through
+    `EngineResolver` (ADR-017). Never construct an engine from
+    `settings.database_url_sync` for tenant-schema access anywhere else in this file."""
+    return get_resolver().resolve_sync(tenant_id)
 
 
 class TrainingDataError(Exception):
@@ -154,7 +159,7 @@ def _update_job_progress(tenant_id: str, job_id: str, **fields):
     if status is not None:
         record_training_transition(str(status))
 
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     set_clauses = []
     params = {"id": job_id}
@@ -212,7 +217,16 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
     batch_size = hyperparams.get("batch_size", 8)
     max_seq_length = hyperparams.get("max_seq_length", 128)
 
-    engine = _get_sync_engine()
+    try:
+        engine = _get_sync_engine(tenant_id)
+    except (DataPlaneUnavailable, DataPlaneNotReady) as exc:
+        if self.request.retries < settings.data_plane_task_max_retries:
+            raise self.retry(
+                exc=exc,
+                countdown=data_plane_retry_countdown(self.request.retries),
+                max_retries=settings.data_plane_task_max_retries,
+            )
+        return {"job_id": job_id, "status": "failed_retryable", "reason": "data_plane_unavailable"}
     schema = _schema(tenant_id)
     with engine.connect() as conn:
         row = conn.execute(
@@ -428,7 +442,7 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
         shutil.rmtree(model_dir)
         shutil.rmtree(output_dir)
 
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(tenant_id)
         schema = _schema(tenant_id)
         with engine.begin() as conn:
             conn.execute(

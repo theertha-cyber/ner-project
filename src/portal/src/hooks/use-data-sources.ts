@@ -11,6 +11,7 @@ import {
   type ConnectionPage,
   type ContractDraft,
   type ContractHistory,
+  type ManualSyncResult,
   type SafeApiError,
   type SafeConnection,
 } from "@/lib/data-sources";
@@ -20,6 +21,8 @@ export class SafeApiHttpError extends Error {
   requestId: string;
   fieldErrors?: SafeApiError["field_errors"];
   reason?: string;
+  statusClass?: string;
+  reasonClass?: string;
   replayed: boolean;
 
   constructor(err: SafeApiError) {
@@ -29,6 +32,8 @@ export class SafeApiHttpError extends Error {
     this.requestId = err.request_id;
     this.fieldErrors = err.field_errors;
     this.reason = err.reason;
+    this.statusClass = err.status_class;
+    this.reasonClass = err.reason_class;
     this.replayed = err.replayed ?? false;
   }
 }
@@ -121,6 +126,42 @@ export function useDataSourceMutation() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["data-sources"] });
       queryClient.setQueryData(["data-source", result.connection.id], result.connection);
+    },
+  });
+}
+
+export interface ManualSyncMutationResult {
+  result: ManualSyncResult;
+  replayed: boolean;
+}
+
+/**
+ * Manual Blob sync trigger. Each call carries a fresh Idempotency-Key unless one
+ * is supplied, so every click is a distinct intent; a success refreshes the
+ * connection's last-run status. The response is a safe trigger descriptor, not
+ * a connection, which is why this is not a `useDataSourceMutation` action.
+ */
+export function useManualSyncMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      connectionId: string;
+      idempotencyKey?: string;
+    }): Promise<ManualSyncMutationResult> => {
+      const res = await authFetch(`/api/v1/data-sources/${input.connectionId}/sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": input.idempotencyKey ?? newIdempotencyKey(),
+        },
+        body: "{}",
+      });
+      if (!res.ok) await throwForStatus(res);
+      return { result: (await res.json()) as ManualSyncResult, replayed: isReplayed(res) };
+    },
+    onSuccess: (_data, input) => {
+      queryClient.invalidateQueries({ queryKey: ["data-source", input.connectionId] });
+      queryClient.invalidateQueries({ queryKey: ["data-sources"] });
     },
   });
 }

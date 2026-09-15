@@ -23,7 +23,11 @@ async def reopen_azure_blob_content(tenant_id: str, source_id: str,
         return None
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    from src.document_service.blob_sync.provider import get_provider
+    from src.document_service.blob_sync.provider import (
+        BlobProviderError,
+        get_provider,
+    )
+    from src.document_service.blob_sync.sync import build_live_provider
     from src.shared.database import get_engine
     from src.shared.data_sources.store import CONNECTIONS_TABLE
     from src.shared.tenant_schema import schema_for_tenant  # noqa: F401
@@ -34,8 +38,8 @@ async def reopen_azure_blob_content(tenant_id: str, source_id: str,
         row = (
             await session.execute(
                 text(
-                    f"SELECT tenant_id FROM {CONNECTIONS_TABLE} "
-                    "WHERE id = :cid AND tenant_id = :tid"
+                    "SELECT tenant_id, configuration, secret_references "
+                    f"FROM {CONNECTIONS_TABLE} WHERE id = :cid AND tenant_id = :tid"
                 ),
                 {"cid": source_id, "tid": tenant_id},
             )
@@ -43,7 +47,13 @@ async def reopen_azure_blob_content(tenant_id: str, source_id: str,
     if row is None:
         return None
     try:
-        return await get_provider(source_id).acquire(external_id)
+        provider = get_provider(
+            source_id,
+            fallback=lambda: build_live_provider(tenant_id, row[1], row[2]),
+        )
+        return await provider.acquire(external_id)
+    except BlobProviderError:
+        return None
     except Exception:
         return None
 

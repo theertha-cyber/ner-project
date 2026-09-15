@@ -10,6 +10,7 @@ from src.shared.conversation_history import render_history
 from src.shared.retrieval import DenseRetriever, SparseRetriever, HybridRetriever, RerankingRetriever, CrossEncoderReranker
 from src.shared.retrieval.tools import build_default_registry
 from src.chat_api.api.v1.schemas import Source, Citation
+from src.chat_api.services.external_sql_generator import ExternalAnswer, ExternalSQLGenerator
 from src.chat_api.services.sql_generator import SQLGenerator
 from src.chat_api.services.embedding_service import EmbeddingService
 from src.chat_api.services.guardrails import GuardrailService
@@ -29,6 +30,7 @@ STREAM_DONE = object()
 class RAGOrchestrator:
     def __init__(self):
         self.sql_generator = SQLGenerator()
+        self.external_sql_generator = ExternalSQLGenerator()
         self.embedding_service = EmbeddingService()
         base_retriever = HybridRetriever(DenseRetriever(self.embedding_service), SparseRetriever())
         self.retriever = RerankingRetriever(base_retriever, CrossEncoderReranker())
@@ -175,6 +177,16 @@ class RAGOrchestrator:
             message, session, schema, conv_text,
             attempt_sink=attempt_sink, deadline=deadline, document_ids=document_ids,
             completeness_sink=completeness_sink,
+        )
+
+    async def _external_source(self, query: str, session: AsyncSession, tenant_id: str,
+                               conversation_context: list[dict] | None,
+                               deadline: float | None = None) -> ExternalAnswer:
+        """`ToolContext.external_search`: passthrough to the generator. `tenant_id`
+        here is the authenticated tenant from `ToolContext`, never a tool argument
+        (ADR-001) — the generator re-resolves the capability from it itself."""
+        return await self.external_sql_generator.answer(
+            query, session, tenant_id, conversation_context, deadline,
         )
 
     async def _resolve_document_names(self, sources: list[Source], session: AsyncSession, schema: str) -> dict[str, str]:

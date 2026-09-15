@@ -1,13 +1,14 @@
 import uuid
 from fastapi import APIRouter, Depends, Query, Request
+from src.shared.data_plane_gate import require_data_plane_ready
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from src.shared.database import get_engine
+from src.shared.database import get_resolver
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.exceptions import NotFoundError, ConflictError
 from src.shared.tenant_schema import schema_for_tenant as _schema
 
-router = APIRouter(tags=["tasks"])
+router = APIRouter(tags=["tasks"], dependencies=[Depends(require_data_plane_ready)])
 
 
 def get_tenant_id(request: Request) -> str:
@@ -18,8 +19,11 @@ def get_tenant_id(request: Request) -> str:
     return tid
 
 
-async def get_session() -> AsyncSession:
-    factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+async def get_session(request: Request) -> AsyncSession:
+    """Routed through EngineResolver (ADR-017)."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    engine = await get_resolver().resolve(tenant_id)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         try:
             yield session

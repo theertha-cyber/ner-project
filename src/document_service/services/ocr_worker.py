@@ -3,7 +3,7 @@ import logging
 import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from src.shared.database import get_engine
+from src.shared.database import get_engine, get_resolver
 from src.shared.retrieval import Chunk, chunk_text as _shared_chunk_text
 from src.shared.tenant_schema import schema_for_tenant as _schema
 from src.shared.document_retention import (
@@ -103,7 +103,7 @@ async def _embed_chunks(texts: list[str]) -> list[list[float]]:
 
 
 async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], embeddings: list[list[float]], purpose: str):
-    engine = get_engine()
+    engine = await get_resolver().resolve(tenant_id)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     schema = _schema(tenant_id)
     async with session_factory() as session:
@@ -477,7 +477,7 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
     read from persisted state, so a dispatch is replayable after a restart or through a
     queue.
     """
-    engine = get_engine()
+    engine = await get_resolver().resolve(tenant_id)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     schema = _schema(tenant_id)
 
@@ -542,7 +542,10 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
         await _purge_derived_data(session_factory, schema, document_id)
         async with session_factory() as session:
             await session.execute(
-                text(f"UPDATE {schema}.documents SET status = 'processing' WHERE id = :id"),
+                text(
+                    f"UPDATE {schema}.documents SET status = 'processing', "
+                    "error_message = NULL WHERE id = :id"
+                ),
                 {"id": document_id},
             )
             await session.commit()
@@ -582,10 +585,14 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
                 )
 
             await session.execute(
-                text(f"UPDATE {schema}.documents SET status = 'processed' WHERE id = :id"),
+                text(
+                    f"UPDATE {schema}.documents SET status = 'processed', "
+                    "ocr_applied_flag = true, error_message = NULL WHERE id = :id"
+                ),
                 {"id": document_id},
             )
             await session.commit()
+            await _record_registry_status(tenant_id, document_id, "processed")
 
         # Only query documents feed retrieval. Training documents stop after text
         # spans are stored: they are annotated/extracted, never embedded.
@@ -628,11 +635,28 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
         )
         async with session_factory() as session:
             await session.execute(
-                text(f"UPDATE {schema}.documents SET status = 'failed', error_message = :msg WHERE id = :id"),
+                text(
+                    f"UPDATE {schema}.documents SET status = 'failed', "
+                    "ocr_applied_flag = false, error_message = :msg WHERE id = :id"
+                ),
                 {"id": document_id, "msg": error_class},
             )
             await session.commit()
+        await _record_registry_status(tenant_id, document_id, "failed")
         await _release_working_copy(session_factory, schema, document)
+
+
+async def _record_registry_status(tenant_id: str, document_id: str, status: str) -> None:
+    """Updates `public.tenant_document_registry` on a fresh *platform* session
+    (Design D10) after an OCR terminal status transition — never the tenant
+    session the transition itself committed on."""
+    from src.shared import tenant_document_registry as registry
+
+    platform_sessions = async_sessionmaker(get_engine(), expire_on_commit=False)
+    async with platform_sessions() as platform_session:
+        await registry.update_status(
+            platform_session, tenant_id=tenant_id, document_id=document_id, status=status
+        )
 
 
 def trigger_ocr(document_id: str, tenant_id: str):

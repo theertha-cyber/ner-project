@@ -12,12 +12,19 @@ CAP-2 contract requires: non-empty required fields, an integer port range, and
 `sslmode` fixed to `verify-full`.
 """
 
+from src.shared.data_plane import DATA_PLANE_PROVIDER, DATA_PLANE_SECRET_KIND
 from src.shared.integration_profile.config_schema import SECRET_REFERENCE_RE
 
 PROVIDER_AZURE_BLOB = "azure_blob"
 PROVIDER_AZURE_POSTGRESQL = "azure_postgresql"
+# The tenant-owned residency provider (ADR-017). Same shape as the read-only
+# PROVIDER_AZURE_POSTGRESQL below; kept as a separate provider (not a `purpose` column
+# on the read-only one) so the existing one-active-per-provider partial unique index
+# gives "one data plane per tenant" for free, and the read-only provider keeps its
+# least-privilege meaning (Design D3).
+PROVIDER_AZURE_POSTGRESQL_DATA_PLANE = DATA_PLANE_PROVIDER
 
-PROVIDERS = frozenset({PROVIDER_AZURE_BLOB, PROVIDER_AZURE_POSTGRESQL})
+PROVIDERS = frozenset({PROVIDER_AZURE_BLOB, PROVIDER_AZURE_POSTGRESQL, PROVIDER_AZURE_POSTGRESQL_DATA_PLANE})
 
 # Map each approved provider to the existing secret-reference schema kind it reuses
 # for resolution. Configuration validation below is provider-specific and closed; the
@@ -25,6 +32,7 @@ PROVIDERS = frozenset({PROVIDER_AZURE_BLOB, PROVIDER_AZURE_POSTGRESQL})
 PROVIDER_SECRET_KIND = {
     PROVIDER_AZURE_BLOB: "tenant_azure_blob",
     PROVIDER_AZURE_POSTGRESQL: "tenant_postgresql",
+    PROVIDER_AZURE_POSTGRESQL_DATA_PLANE: DATA_PLANE_SECRET_KIND,
 }
 
 # Required secret-reference fields per provider. The value must be a reference, never
@@ -32,6 +40,7 @@ PROVIDER_SECRET_KIND = {
 PROVIDER_SECRET_FIELDS = {
     PROVIDER_AZURE_BLOB: frozenset({"connection_string_ref"}),
     PROVIDER_AZURE_POSTGRESQL: frozenset({"password_ref"}),
+    PROVIDER_AZURE_POSTGRESQL_DATA_PLANE: frozenset({"password_ref"}),
 }
 
 # Closed configuration keys per provider. `True` marks a required field.
@@ -47,6 +56,7 @@ _POSTGRES_CONFIG_KEYS = {
 PROVIDER_CONFIG_KEYS = {
     PROVIDER_AZURE_BLOB: _BLOB_CONFIG_KEYS,
     PROVIDER_AZURE_POSTGRESQL: _POSTGRES_CONFIG_KEYS,
+    PROVIDER_AZURE_POSTGRESQL_DATA_PLANE: _POSTGRES_CONFIG_KEYS,
 }
 
 
@@ -90,41 +100,41 @@ def _validate_blob(configuration: dict) -> None:
         )
 
 
-def _validate_postgres(configuration: dict) -> None:
+def _validate_postgres(provider: str, configuration: dict) -> None:
     for key in configuration:
         if key not in _POSTGRES_CONFIG_KEYS:
             raise ConnectionValidationError(
                 key,
-                f"'{key}' is not a configuration key declared for 'azure_postgresql'",
+                f"'{key}' is not a configuration key declared for '{provider}'",
             )
     for field in ("host", "database", "username"):
         if field not in configuration:
             raise ConnectionValidationError(
-                field, f"'{field}' is required for provider 'azure_postgresql'"
+                field, f"'{field}' is required for provider '{provider}'"
             )
-        _require_non_empty_string("azure_postgresql", field, configuration[field])
+        _require_non_empty_string(provider, field, configuration[field])
     if "port" not in configuration:
         raise ConnectionValidationError(
-            "port", "'port' is required for provider 'azure_postgresql'"
+            "port", f"'port' is required for provider '{provider}'"
         )
     port = configuration["port"]
     # bool is a subclass of int; a flag is not a port.
     if isinstance(port, bool) or not isinstance(port, int):
         raise ConnectionValidationError(
-            "port", "'port' for provider 'azure_postgresql' must be an integer"
+            "port", f"'port' for provider '{provider}' must be an integer"
         )
     if not 1 <= port <= 65535:
         raise ConnectionValidationError(
-            "port", "'port' for provider 'azure_postgresql' must be 1-65535"
+            "port", f"'port' for provider '{provider}' must be 1-65535"
         )
     if "sslmode" not in configuration:
         raise ConnectionValidationError(
-            "sslmode", "'sslmode' is required for provider 'azure_postgresql'"
+            "sslmode", f"'sslmode' is required for provider '{provider}'"
         )
     if configuration["sslmode"] != "verify-full":
         raise ConnectionValidationError(
             "sslmode",
-            "'sslmode' for provider 'azure_postgresql' must be exactly 'verify-full'",
+            f"'sslmode' for provider '{provider}' must be exactly 'verify-full'",
         )
 
 
@@ -146,7 +156,7 @@ def validate_configuration(provider: str, configuration: dict | None) -> dict:
     if provider == PROVIDER_AZURE_BLOB:
         _validate_blob(configuration)
     else:
-        _validate_postgres(configuration)
+        _validate_postgres(provider, configuration)
     return configuration
 
 

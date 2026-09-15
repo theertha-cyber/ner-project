@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
+from src.shared.data_plane_gate import install_data_plane_exception_handlers
 from src.shared.config import settings
 from src.annotation_service.middleware.tenant_context import TenantContextMiddleware
 from src.shared.observability import init_observability
@@ -70,6 +71,8 @@ async def app_error_handler(request: Request, exc: AppError):
     )
 
 
+
+install_data_plane_exception_handlers(app)
 app.include_router(spans.router)
 app.include_router(tasks.router)
 app.include_router(export.router)

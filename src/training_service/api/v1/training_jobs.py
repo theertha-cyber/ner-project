@@ -3,9 +3,11 @@ import os
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
+from src.shared.data_plane_gate import require_data_plane_ready
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from src.shared.database import get_engine
+from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable
+from src.shared.database import get_engine, get_resolver
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.training_service.api.v1.schemas import TrainingJobCreate, TrainingJobResponse, TrainingJobListResponse, RejectJobRequest, ApproveJobRequest
 from src.training_service.infra.repository import TrainingJobRepository, ModelVersionRepository
@@ -21,6 +23,8 @@ async def _record_audit(
     kind: str,
     tenant_id: str | None = None,
 ) -> None:
+    """`session` here is always a *platform* session — `public.audit_events` never
+    lives in a tenant store."""
     event_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     await session.execute(
@@ -43,7 +47,7 @@ async def _record_audit(
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/training-jobs", tags=["training-jobs"])
+router = APIRouter(prefix="/api/v1/training-jobs", tags=["training-jobs"], dependencies=[Depends(require_data_plane_ready)])
 
 
 def _schema(tenant_id: str) -> str:
@@ -57,13 +61,43 @@ def get_tenant_id(request: Request) -> str:
     return tid
 
 
-async def get_session() -> AsyncSession:
+async def get_session(request: Request) -> AsyncSession:
+    """Routed through EngineResolver (ADR-017) for the *caller's own* tenant.
+
+    Only correct for routes scoped to the authenticated caller's tenant. A route a
+    System Admin can point at an arbitrary `tenant_id` (approve/reject) or that
+    aggregates across every tenant (system-admin list) resolves its own engine(s)
+    per effective tenant instead of using this dependency (Design D10 / task 6.3's
+    fleet-enumeration requirement) — see `_tenant_scoped_session` and
+    `_list_aggregated_across_tenants` below.
+    """
+    tenant_id = getattr(request.state, "tenant_id", None)
+    engine = await get_resolver().resolve(tenant_id)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+async def get_platform_session() -> AsyncSession:
+    """A session on the platform database, for control-plane reads/writes that must
+    never run on a tenant session (Design D10) — `public.tenants`, `public.audit_events`."""
     factory = async_sessionmaker(get_engine(), expire_on_commit=False)
     async with factory() as session:
         try:
             yield session
         finally:
             await session.close()
+
+
+async def _tenant_scoped_session(tenant_id: str) -> AsyncSession:
+    """A session for a specific `tenant_id` chosen at request-handling time (not from
+    `request.state.tenant_id`) — for System Admin routes that act on a tenant other
+    than the caller's own."""
+    engine = await get_resolver().resolve(tenant_id)
+    return async_sessionmaker(engine, expire_on_commit=False)()
 
 
 def require_tenant_admin(request: Request) -> None:
@@ -112,6 +146,7 @@ async def create_training_job(
     body: TrainingJobCreate,
     request: Request,
     session: AsyncSession = Depends(get_session),
+    platform_session: AsyncSession = Depends(get_platform_session),
 ):
     require_tenant_admin(request)
     tenant_id = get_tenant_id(request)
@@ -138,26 +173,26 @@ async def create_training_job(
     # untrainable. Defaults to 0 (inert) — see ADR-010.
     min_per_type = int(os.environ.get("NER_MIN_ENTITIES_PER_TYPE", "0"))
     if min_per_type > 0:
-        per_type_result = await session.execute(
-            text(f"""
-                WITH counts AS (
-                    SELECT entity_type, COUNT(*) AS cnt FROM {schema}.spans GROUP BY entity_type
-                ),
-                types AS (
-                    SELECT name AS entity_type FROM public.entity_definitions
-                    WHERE tenant_id = :tid AND is_active = true
-                    UNION
-                    SELECT entity_type FROM counts
-                )
-                SELECT t.entity_type, COALESCE(c.cnt, 0) AS cnt
-                FROM types t
-                LEFT JOIN counts c ON c.entity_type = t.entity_type
-                WHERE COALESCE(c.cnt, 0) < :minimum
-                ORDER BY cnt ASC, t.entity_type ASC
-            """),
-            {"tid": tenant_id, "minimum": min_per_type},
+        # Two queries, two sessions (Design D10): `spans` lives in the tenant store,
+        # `entity_definitions` in the platform control plane. Never one join.
+        counts_result = await session.execute(
+            text(f"SELECT entity_type, COUNT(*) AS cnt FROM {schema}.spans GROUP BY entity_type"),
         )
-        short = [(r.entity_type, int(r.cnt or 0)) for r in per_type_result]
+        counts = {r.entity_type: int(r.cnt or 0) for r in counts_result}
+
+        types_result = await platform_session.execute(
+            text(
+                "SELECT name AS entity_type FROM public.entity_definitions "
+                "WHERE tenant_id = :tid AND is_active = true"
+            ),
+            {"tid": tenant_id},
+        )
+        types = {r.entity_type for r in types_result} | set(counts)
+
+        short = sorted(
+            ((t, counts.get(t, 0)) for t in types if counts.get(t, 0) < min_per_type),
+            key=lambda pair: (pair[1], pair[0]),
+        )
         if short:
             # Name the shortfalls so the caller can act without a second query.
             detail = ", ".join(f"{name} ({cnt})" for name, cnt in short)
@@ -173,7 +208,7 @@ async def create_training_job(
 
     await TrainingJobRepository.create(session, tenant_id, job_id, None, celery_task_id=None)
     await _record_audit(
-        session,
+        platform_session,
         actor=getattr(request.state, "user_email", ""),
         role=getattr(request.state, "role", ""),
         action="training_job.submit",
@@ -185,21 +220,33 @@ async def create_training_job(
     return _row_to_response(created)
 
 
-async def _all_active_tenant_ids(session: AsyncSession) -> list[str]:
-    result = await session.execute(text("SELECT id FROM public.tenants WHERE status = 'active'"))
+async def _all_active_tenant_ids(platform_session: AsyncSession) -> list[str]:
+    result = await platform_session.execute(text("SELECT id FROM public.tenants WHERE status = 'active'"))
     return [str(row[0]) for row in result.fetchall()]
 
 
-async def _list_aggregated_across_tenants(session: AsyncSession, status_filter: str) -> list[dict]:
-    tenant_ids = await _all_active_tenant_ids(session)
+async def _list_aggregated_across_tenants(platform_session: AsyncSession, status_filter: str) -> list[dict]:
+    """Fleet enumeration from the control plane, resolving each tenant's own engine
+    (routing spec: "Fleet operations enumerate tenants from the control plane") —
+    never the single session of whichever tenant happened to make this request. A
+    tenant whose store cannot be resolved is skipped, not allowed to abort the list
+    for every other tenant."""
+    tenant_ids = await _all_active_tenant_ids(platform_session)
     all_rows: list[dict] = []
     for tid in tenant_ids:
         try:
-            rows, _ = await TrainingJobRepository.list_by_tenant(session, tid, status_filter, page=1, per_page=1_000_000)
+            tenant_session = await _tenant_scoped_session(tid)
+        except (DataPlaneNotReady, DataPlaneUnavailable):
+            continue
+        try:
+            rows, _ = await TrainingJobRepository.list_by_tenant(
+                tenant_session, tid, status_filter, page=1, per_page=1_000_000
+            )
             all_rows.extend(rows)
         except Exception:
             logger.exception("system_admin training-jobs aggregation: query failed for tenant %s", tid)
-            await session.rollback()
+        finally:
+            await tenant_session.close()
     epoch = datetime.min.replace(tzinfo=timezone.utc)
     all_rows.sort(key=lambda r: r.get("created_at") or epoch, reverse=True)
     return all_rows
@@ -208,7 +255,7 @@ async def _list_aggregated_across_tenants(session: AsyncSession, status_filter: 
 @router.get("", response_model=TrainingJobListResponse)
 async def list_training_jobs(
     request: Request,
-    session: AsyncSession = Depends(get_session),
+    platform_session: AsyncSession = Depends(get_platform_session),
     status: str | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -217,9 +264,13 @@ async def list_training_jobs(
     role = getattr(request.state, "role", None)
     if role == "system_admin":
         if tenant_id:
-            rows, total = await TrainingJobRepository.list_by_tenant(session, tenant_id, status, page, per_page)
+            session = await _tenant_scoped_session(tenant_id)
+            try:
+                rows, total = await TrainingJobRepository.list_by_tenant(session, tenant_id, status, page, per_page)
+            finally:
+                await session.close()
         else:
-            all_rows = await _list_aggregated_across_tenants(session, status or "pending_approval")
+            all_rows = await _list_aggregated_across_tenants(platform_session, status or "pending_approval")
             total = len(all_rows)
             offset = (page - 1) * per_page
             rows = all_rows[offset : offset + per_page]
@@ -231,7 +282,11 @@ async def list_training_jobs(
         )
 
     tenant_id = get_tenant_id(request)
-    rows, total = await TrainingJobRepository.list_by_tenant(session, tenant_id, status, page, per_page)
+    session = await _tenant_scoped_session(tenant_id)
+    try:
+        rows, total = await TrainingJobRepository.list_by_tenant(session, tenant_id, status, page, per_page)
+    finally:
+        await session.close()
     return TrainingJobListResponse(
         items=[_row_to_response(r) for r in rows],
         total=total,
@@ -244,7 +299,6 @@ async def list_training_jobs(
 async def get_training_job(
     job_id: str,
     request: Request,
-    session: AsyncSession = Depends(get_session),
     tenant_id: str | None = Query(None, description="Tenant ID (system admin only — overrides JWT tenant)"),
 ):
     role = getattr(request.state, "role", None)
@@ -254,7 +308,11 @@ async def get_training_job(
     else:
         tenant_id = get_tenant_id(request)
 
-    row = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
+    session = await _tenant_scoped_session(tenant_id)
+    try:
+        row = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
+    finally:
+        await session.close()
     if not row:
         raise HTTPException(status_code=404, detail="Training job not found")
     return _row_to_response(row)
@@ -265,27 +323,32 @@ async def approve_training_job(
     job_id: str,
     body: ApproveJobRequest,
     request: Request,
-    session: AsyncSession = Depends(get_session),
+    platform_session: AsyncSession = Depends(get_platform_session),
     tenant_id: str = Query(..., description="Tenant ID that owns the job"),
 ):
     require_system_admin(request)
-    row = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Training job not found")
+    session = await _tenant_scoped_session(tenant_id)
+    try:
+        row = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Training job not found")
 
-    if row["status"] != "pending_approval":
-        raise HTTPException(
-            status_code=422,
-            detail=f"Cannot approve job in '{row['status']}' status",
+        if row["status"] != "pending_approval":
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot approve job in '{row['status']}' status",
+            )
+
+        hyperparams = body.model_dump()
+        task = celery_app.send_task("fine_tune_model", args=[tenant_id, job_id, hyperparams])
+        await TrainingJobRepository.approve(
+            session, tenant_id, job_id, hyperparams, celery_task_id=task.id,
         )
-
-    hyperparams = body.model_dump()
-    task = celery_app.send_task("fine_tune_model", args=[tenant_id, job_id, hyperparams])
-    await TrainingJobRepository.approve(
-        session, tenant_id, job_id, hyperparams, celery_task_id=task.id,
-    )
+        updated = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
+    finally:
+        await session.close()
     await _record_audit(
-        session,
+        platform_session,
         actor=getattr(request.state, "user_email", ""),
         role=getattr(request.state, "role", ""),
         action="training_job.approve",
@@ -293,7 +356,6 @@ async def approve_training_job(
         kind="approve",
         tenant_id=tenant_id,
     )
-    updated = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
     return _row_to_response(updated)
 
 
@@ -302,26 +364,31 @@ async def reject_training_job(
     job_id: str,
     body: RejectJobRequest,
     request: Request,
-    session: AsyncSession = Depends(get_session),
+    platform_session: AsyncSession = Depends(get_platform_session),
     tenant_id: str = Query(..., description="Tenant ID that owns the job"),
 ):
     require_system_admin(request)
-    row = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Training job not found")
+    session = await _tenant_scoped_session(tenant_id)
+    try:
+        row = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Training job not found")
 
-    if row["status"] != "pending_approval":
-        raise HTTPException(
-            status_code=422,
-            detail=f"Cannot reject job in '{row['status']}' status",
+        if row["status"] != "pending_approval":
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot reject job in '{row['status']}' status",
+            )
+
+        await TrainingJobRepository.update_status(
+            session, tenant_id, job_id, "rejected",
+            error_message=body.reason,
         )
-
-    await TrainingJobRepository.update_status(
-        session, tenant_id, job_id, "rejected",
-        error_message=body.reason,
-    )
+        updated = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
+    finally:
+        await session.close()
     await _record_audit(
-        session,
+        platform_session,
         actor=getattr(request.state, "user_email", ""),
         role=getattr(request.state, "role", ""),
         action="training_job.reject",
@@ -329,7 +396,6 @@ async def reject_training_job(
         kind="reject",
         tenant_id=tenant_id,
     )
-    updated = await TrainingJobRepository.get_by_id(session, tenant_id, job_id)
     return _row_to_response(updated)
 
 

@@ -829,7 +829,9 @@ TRAINING_FAILURES = _declare(Family(
 # No family here carries `tenant_id` — per-connection attribution joins the trace,
 # where the tenant already lives. Metric labels carry finite outcome classes only:
 # no endpoints, credentials, provider diagnostics, or tenant content.
-DATA_SOURCE_PROVIDERS = frozenset({"azure_blob", "azure_postgresql", OTHER})
+DATA_SOURCE_PROVIDERS = frozenset(
+    {"azure_blob", "azure_postgresql", "azure_postgresql_data_plane", OTHER}
+)
 
 DATA_SOURCE_ACTIONS = frozenset({
     "create",
@@ -839,6 +841,7 @@ DATA_SOURCE_ACTIONS = frozenset({
     "pause",
     "replace",
     "retire",
+    "sync",
     OTHER,
 })
 
@@ -854,6 +857,13 @@ DATA_SOURCE_TEST_REASONS = frozenset({
     "tls_validation_failed",
     "authorization_failed",
     "prerequisite_missing",
+    # ADR-017 `azure_postgresql_data_plane` residency-specific test checks.
+    "server_version_unsupported",
+    "vector_extension_unavailable",
+    "insufficient_privilege",
+    "query_role_unavailable",
+    "target_schema_not_empty",
+    "store_identity_mismatch",
     OTHER,
 })
 

@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass, field
 
+from src.chat_api.services.external_postgres_chat import EXTERNAL_OUTCOME_MESSAGES
 from src.shared.config import settings
 from src.shared.conversation_history import render_history
 from src.shared.retrieval.chunking import TOKENIZER
@@ -201,6 +202,10 @@ class AdmittedEvidence:
     rows_truncated: bool = False
     matched_rows: int | None = None
     structured_admitted: bool = False
+    # Contract relation *names* the external answer used, when admitted. Never
+    # row values — the citation built from this carries only these names
+    # (ADR-015, ADR-016 Decision 6).
+    external_relations: list[str] = field(default_factory=list)
 
     @property
     def structured_complete(self) -> bool:
@@ -244,6 +249,50 @@ def render_structured_block(rows: list[dict], matched: int | None, truncated: bo
     return f"Entity data ({completeness}): {json.dumps(rows, default=str)}"
 
 
+def render_external_block(rows: list[dict], relations: list[str], truncated: bool) -> str:
+    """The tenant's connected-database result block, headed by the relations it
+    used. Like `render_structured_block`, it states its own completeness so the
+    model never claims exhaustiveness the rows don't have."""
+    relation_list = ", ".join(relations) if relations else "the connected database"
+    if truncated:
+        completeness = f"showing {len(rows)} row(s) — PARTIAL, more rows matched than shown"
+    else:
+        completeness = f"showing all {len(rows)} matched row(s)"
+    return (
+        f"Results from the tenant's connected database ({relation_list}), "
+        f"{completeness}: {json.dumps(rows, default=str)}"
+    )
+
+
+def render_external_failure(reason: str) -> str:
+    """The fixed, non-sensitive notice for a failed external-database attempt,
+    with an instruction to relay it as-is (ADR-016's Safe external chat
+    outcomes requirement)."""
+    message = EXTERNAL_OUTCOME_MESSAGES.get(reason, EXTERNAL_OUTCOME_MESSAGES["execution_failed"])
+    return (
+        f"The tenant's connected database could not answer this turn: {message} "
+        "Relay this notice to the user plainly. Do not invent a cause, a SQL "
+        "detail, or a workaround — state only what is written here."
+    )
+
+
+def _fit_external_rows(
+    rows: list[dict], relations: list[str], truncated: bool, budget: int,
+) -> tuple[list[dict], bool]:
+    """Admits whole external rows until the budget is exhausted, mirroring
+    `ContextAssembler._fit_rows` for the structured block."""
+    if not rows:
+        return [], False
+
+    for count in range(len(rows), 0, -1):
+        candidate = rows[:count]
+        rendered = render_external_block(candidate, relations, truncated or count < len(rows))
+        if _count_tokens(rendered) <= budget:
+            return candidate, count < len(rows)
+
+    return rows[:1], True
+
+
 class ContextAssembler:
     def __init__(self, token_budget: int | None = None, max_chunks: int | None = None):
         self.token_budget = token_budget if token_budget is not None else settings.context_token_budget
@@ -258,6 +307,10 @@ class ContextAssembler:
         conversation_context: list[dict] | None,
         retrieval_status=None,
         sql_completeness: dict | None = None,
+        external_results: list[dict] | None = None,
+        external_relations: list[str] | None = None,
+        external_truncated: bool = False,
+        external_failure_reason: str | None = None,
         return_evidence: bool = False,
     ):
         """Builds the generation prompt. Returns the messages, or
@@ -298,6 +351,31 @@ class ContextAssembler:
         if status_part:
             context_parts.append(status_part)
             remaining -= _count_tokens(status_part)
+
+        # External evidence has its own channel (ADR-015, ADR-016 Decision 6): it
+        # never joins `sql_results`, so it is admitted independently, charged
+        # against the same budget, and its relation names (never row values) are
+        # the only thing carried onto AdmittedEvidence.
+        if external_failure_reason:
+            separator = _SEPARATOR_TOKENS if context_parts else 0
+            failure_part = render_external_failure(external_failure_reason)
+            if _count_tokens(failure_part) + separator <= remaining:
+                context_parts.append(failure_part)
+                remaining -= _count_tokens(failure_part) + separator
+        elif external_results:
+            separator = _SEPARATOR_TOKENS if context_parts else 0
+            admitted_external_rows, _ = _fit_external_rows(
+                external_results, external_relations or [], external_truncated,
+                remaining - separator,
+            )
+            if admitted_external_rows:
+                external_part = render_external_block(
+                    admitted_external_rows, external_relations or [],
+                    external_truncated or len(admitted_external_rows) < len(external_results),
+                )
+                context_parts.append(external_part)
+                remaining -= _count_tokens(external_part) + separator
+                evidence.external_relations = list(external_relations or [])
 
         if sql_results:
             distinct_rows = collapse_duplicate_rows(sql_results)

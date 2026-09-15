@@ -4,13 +4,16 @@ import uuid
 import json
 import logging
 from fastapi import APIRouter, Depends, Request, HTTPException
+from src.shared.data_plane_gate import require_data_plane_ready
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from src.shared.database import get_engine
+from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable
+from src.shared.database import get_resolver
 from src.shared.exceptions import NotFoundError
+from src.shared.tenant_context import classify_driver_error, record_health_best_effort
 from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut, RetrievalStatusOut
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator, STREAM_DONE
 from src.chat_api.services.guardrails import GuardrailService
@@ -20,7 +23,7 @@ from src.shared.tenant_schema import schema_for_tenant as _schema
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+router = APIRouter(prefix="/api/v1/chat", tags=["chat"], dependencies=[Depends(require_data_plane_ready)])
 orchestrator = RAGOrchestrator()
 guardrails = GuardrailService()
 
@@ -38,9 +41,26 @@ def _parse_persisted_source(s) -> Source | Citation:
     return Source(**d)
 
 
-async def get_session() -> AsyncSession:
-    factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+async def get_session(request: Request) -> AsyncSession:
+    """Routed through EngineResolver (ADR-017): a `tenant_owned` tenant's
+    conversations and messages live wherever its data plane resolves.
+
+    `SELECT 1` proves the connection is genuinely reachable before this dependency
+    yields — engine creation itself is lazy and would otherwise let a request
+    through to `chat()`/`chat_stream()` even when the store is actually down,
+    which would surface as an unclassified driver exception rather than 503
+    `TENANT_DATA_PLANE_UNAVAILABLE` (tenant-data-plane-failure-isolation spec's
+    "Chat fails closed during a store outage")."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    engine = await get_resolver().resolve(tenant_id)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
+        try:
+            await session.execute(text("SELECT 1"))
+        except (DBAPIError, OperationalError, OSError) as exc:
+            reason = classify_driver_error(exc)
+            await record_health_best_effort(tenant_id, reason)
+            raise DataPlaneUnavailable(reason) from exc
         try:
             yield session
         finally:

@@ -253,7 +253,7 @@ class TestTrainingDocumentsAreNotExtractable:
 
         sync_url = os.environ["NER_DATABASE_URL"].replace("+asyncpg", "")
         sync_engine = create_sync_engine(sync_url)
-        monkeypatch.setattr(worker, "_get_sync_engine", lambda: sync_engine)
+        monkeypatch.setattr(worker, "_get_sync_engine", lambda tenant_id=None: sync_engine)
 
         try:
             assert worker._get_documents_to_process(tid, ["query-doc", "training-doc"]) == ["query-doc"]

@@ -24,6 +24,7 @@ from src.shared.data_sources import lifecycle as lc
 from src.shared.data_sources.providers import (
     PROVIDER_AZURE_BLOB,
     PROVIDER_AZURE_POSTGRESQL,
+    PROVIDER_AZURE_POSTGRESQL_DATA_PLANE,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,14 +93,46 @@ register_tester(PROVIDER_AZURE_BLOB, TlsHandshakeTester())
 register_tester(PROVIDER_AZURE_POSTGRESQL, TlsHandshakeTester())
 
 
+def _register_data_plane_tester() -> None:
+    # Deferred import: data_plane_tester.py imports psycopg2 and this module, so a
+    # module-level import here would be circular (testing.py -> data_plane_tester.py
+    # -> testing.py for SecureTestResult).
+    from src.shared.data_sources.data_plane_tester import DataPlaneSecureTester
+
+    register_tester(PROVIDER_AZURE_POSTGRESQL_DATA_PLANE, DataPlaneSecureTester())
+
+
+_register_data_plane_tester()
+
+
 async def run_secure_test(
-    provider: str, configuration: dict, secret_values: dict
+    provider: str,
+    configuration: dict,
+    secret_values: dict,
+    tenant_id: str | None = None,
+    expected_store_id: str | None = None,
 ) -> SecureTestResult:
-    """Run the registered tester. Unknown providers fail closed."""
+    """Run the registered tester. Unknown providers fail closed.
+
+    `tenant_id` and `expected_store_id` are passed only to testers that declare
+    them (inspected, not assumed) — the shared TLS-handshake tester and every fake
+    registered in tests have no use for either, and the ADR-017 data-plane tester
+    needs `tenant_id` for its target-schema check and `expected_store_id` for the
+    replacement/credential-rotation identity check (tenant-residency-store-
+    provisioning spec).
+    """
     tester = _TESTERS.get(provider)
     if tester is None:
         return SecureTestResult(False, lc.TEST_REASON_CONNECTION_FAILED)
-    result = await tester.run(provider, configuration, secret_values)
+    import inspect
+
+    params = inspect.signature(tester.run).parameters
+    kwargs = {}
+    if "tenant_id" in params:
+        kwargs["tenant_id"] = tenant_id
+    if "expected_store_id" in params:
+        kwargs["expected_store_id"] = expected_store_id
+    result = await tester.run(provider, configuration, secret_values, **kwargs)
     if result.reason_code not in lc.TEST_REASONS:
         # A custom tester returning an undeclared class is a contract violation;
         # coerce to the safe failure rather than persisting an open vocabulary.

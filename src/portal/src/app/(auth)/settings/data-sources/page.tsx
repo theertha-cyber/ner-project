@@ -4,13 +4,15 @@ import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { RequireAuth } from "@/components/require-auth";
 import { Pagination, SourceFilters, SourceTable, type FilterState } from "@/components/data-sources/collection";
-import { ProviderConfigForm, type ConfigPayload } from "@/components/data-sources/lifecycle";
+import { type ConfigPayload } from "@/components/data-sources/lifecycle";
+import { CreateConnectionModal } from "@/components/data-sources/create-connection-modal";
 import { SafeOutcomeNotice } from "@/components/data-sources/status";
-import { useDataSourceCollection, useDataSourceMutation } from "@/hooks/use-data-sources";
+import { useDataSourceCollection, useDataSourceMutation, type SafeApiHttpError } from "@/hooks/use-data-sources";
+import { useDataPlaneStatus } from "@/hooks/use-data-plane";
 import {
   LIST_ORDERS,
   LIST_SORTS,
-  PROVIDER_LABELS,
+  PROVIDERS,
   STATUSES,
   type ConnectionProvider,
   type ConnectionStatus,
@@ -19,7 +21,7 @@ import {
 } from "@/lib/data-sources";
 
 function isProvider(v: string | null): v is ConnectionProvider {
-  return v === "azure_blob" || v === "azure_postgresql";
+  return (PROVIDERS as readonly string[]).includes(v ?? "");
 }
 
 function isStatus(v: string | null): v is ConnectionStatus {
@@ -47,7 +49,6 @@ function DataSourcesContent() {
   const router = useRouter();
   const pathname = usePathname();
   const [creating, setCreating] = useState(false);
-  const [createProvider, setCreateProvider] = useState<ConnectionProvider>("azure_blob");
 
   const providerParam = searchParams.get("provider");
   const statusParam = searchParams.get("status");
@@ -71,6 +72,7 @@ function DataSourcesContent() {
     page,
   });
   const createMutation = useDataSourceMutation();
+  const { data: dataPlane } = useDataPlaneStatus();
 
   function pushState(next: { q?: string; provider?: string; status?: string; sort?: string; order?: string; page?: number }, resetPage: boolean) {
     const params = new URLSearchParams(searchParams.toString());
@@ -115,41 +117,23 @@ function DataSourcesContent() {
         />
         <button
           type="button"
-          onClick={() => setCreating((v) => !v)}
+          onClick={() => setCreating(true)}
           aria-expanded={creating}
           className="rounded-md px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2"
           style={{ background: "var(--primary)", color: "#fff" }}
         >
-          {creating ? "Close creation" : "New connection"}
+          New connection
         </button>
       </div>
 
-      {creating && (
-        <section aria-label="Create connection" className="rounded-md border p-4 shadow-card" style={{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
-          <div className="mb-3 flex flex-col gap-1">
-            <label htmlFor="create-provider" className="text-sm font-medium tracking-[0.02em]" style={{ color: "var(--ink)" }}>
-              Provider
-            </label>
-            <select
-              id="create-provider"
-              value={createProvider}
-              onChange={(e) => setCreateProvider(e.target.value as ConnectionProvider)}
-              className="max-w-xs rounded-md border px-3 py-1.5 text-sm outline-none focus-visible:ring-2"
-              style={{ borderColor: "var(--line)", background: "var(--surface-2)", color: "var(--ink)" }}
-            >
-              <option value="azure_blob">{PROVIDER_LABELS.azure_blob}</option>
-              <option value="azure_postgresql">{PROVIDER_LABELS.azure_postgresql}</option>
-            </select>
-          </div>
-          <ProviderConfigForm
-            provider={createProvider}
-            submitting={createMutation.isPending}
-            serverError={createMutation.error as unknown as import("@/hooks/use-data-sources").SafeApiHttpError | null}
-            submitLabel="Create draft"
-            onSubmit={handleCreate}
-          />
-        </section>
-      )}
+      <CreateConnectionModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        submitting={createMutation.isPending}
+        serverError={(createMutation.error as SafeApiHttpError | null) ?? null}
+        onSubmit={handleCreate}
+        dataPlaneMode={dataPlane?.mode ?? "platform"}
+      />
 
       {isError && (
         <SafeOutcomeNotice variant="error" title="Connections unavailable" code={(error as { code?: string })?.code ?? "INTERNAL_ERROR"} requestId={(error as { requestId?: string })?.requestId}>

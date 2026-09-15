@@ -76,6 +76,41 @@ describe("parseSafeError", () => {
     const err = await parseSafeError(new Response(null, { status: 500 }));
     expect(err.code).toBe("INTERNAL_ERROR");
   });
+
+  it("reads the gateway's nested error envelope", async () => {
+    const res = new Response(
+      JSON.stringify({
+        error: {
+          code: "INVALID_CONTRACT",
+          message: "Not valid.",
+          request_id: "req-9",
+          reason: "schema_mismatch",
+          field_errors: [{ field: "relations", message: "At least one relation is required." }],
+        },
+      }),
+      { status: 422 },
+    );
+    const err = await parseSafeError(res);
+    expect(err).toMatchObject({
+      code: "INVALID_CONTRACT",
+      message: "Not valid.",
+      request_id: "req-9",
+      reason: "schema_mismatch",
+      field_errors: [{ field: "relations", message: "At least one relation is required." }],
+    });
+  });
+
+  it("maps framework 401/403 refusals to finite codes without echoing detail", async () => {
+    const forbidden = await parseSafeError(
+      new Response(JSON.stringify({ detail: "Tenant admin access required" }), { status: 403 }),
+    );
+    expect(forbidden.code).toBe("FORBIDDEN");
+    expect(forbidden.message).toBe("Request failed.");
+    const unauthenticated = await parseSafeError(
+      new Response(JSON.stringify({ detail: "Not authenticated" }), { status: 401 }),
+    );
+    expect(unauthenticated.code).toBe("UNAUTHENTICATED");
+  });
 });
 
 describe("closed-schema payloads", () => {
@@ -90,6 +125,7 @@ describe("closed-schema payloads", () => {
       host: "h", database: "d", username: "u", port: "5432", password_ref: "ref-2",
     });
     expect(payload.configuration.sslmode).toBe("verify-full");
+    expect(payload.configuration.port).toBe(5432);
     expect(payload.secret_references).toEqual({ password_ref: "ref-2" });
   });
 });

@@ -24,6 +24,46 @@ logger = logging.getLogger(__name__)
 
 SOURCE_NAME = "external_postgresql"
 
+# Fixed, non-sensitive text per finite outcome reason (ADR-015, ADR-016). Never
+# SQL text, parameter values, database error text, host names, or live metadata.
+EXTERNAL_OUTCOME_MESSAGES: dict[str, str] = {
+    "drift_mismatch": (
+        "The connected database's schema changed; an administrator must publish "
+        "an updated contract before this question can be answered."
+    ),
+    "metadata_unavailable": (
+        "The connected database could not be reached to verify its schema. "
+        "Try again shortly, or contact an administrator if this continues."
+    ),
+    "fingerprint_failure": (
+        "The connected database's schema could not be verified; an administrator "
+        "must review the published contract."
+    ),
+    "not_active_connection": (
+        "There is no active connection to a database for this tenant."
+    ),
+    "no_published_contract": (
+        "An administrator must publish a schema contract before this question "
+        "can be answered."
+    ),
+    "generation_exhausted": (
+        "This question could not be turned into a supported query against the "
+        "connected database. Try rephrasing it, or ask something simpler."
+    ),
+    "schema_context_too_large": (
+        "The connected database's published schema is too large to answer "
+        "questions against right now; an administrator must reduce it."
+    ),
+    "execution_failed": (
+        "The connected database could not complete this query. Try again "
+        "shortly, or contact an administrator if this continues."
+    ),
+    "unanswerable": (
+        "This question cannot be answered from the connected database within "
+        "the supported query rules."
+    ),
+}
+
 
 async def external_chat_answer(session, tenant_id: str, statement: str,
                                params: dict | None,

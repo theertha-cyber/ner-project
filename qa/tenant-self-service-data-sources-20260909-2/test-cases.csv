@@ -1,0 +1,27 @@
+id,type,scenario,source,ran
+TC-SMOKE-01,smoke,Gateway health reports ok with reachable database,deployed /health,yes
+TC-SMOKE-02,smoke,Portal root renders over HTTP,deployed portal /,yes
+TC-SMOKE-03,smoke,Unauthenticated data-sources list is denied 401,deployed API,yes
+TC-SMOKE-04,smoke,Seeded tenant-admin login returns bearer token,deployment record seeded account,yes
+TC-SMOKE-05,smoke,Authenticated connection list returns safe empty page,deployed API,yes
+TC-SMOKE-06,smoke,Data Sources page renders for tenant admin with empty state,deployed portal UI,yes
+TC-REG-01,regression,Change-set Python suites still pass (control-plane/blob/external-pg/ingestion/delivery),repo suite,yes
+TC-REG-02,regression,Portal data-sources scope tests pass; stale failures elsewhere are pre-existing,repo suite,yes
+TC-REG-03,regression,Nav/sidebar failures are pre-existing and not caused by CAP-5,repo suite + git archaeology,yes
+TC-INT-01,integration,List pagination bounds and unknown-param rejection hold live,deployed API,yes
+TC-INT-02,integration,Unknown connection id returns safe 404 with no tenant metadata,deployed API,yes
+TC-INT-03,integration,Migration chain 038-042 applied with single head,deployment record,yes
+TC-INT-04,integration,New CAP-2/contract routes registered in live OpenAPI,deployed API,yes
+TC-INT-05,integration,Write-path lifecycle (create/test/activate) covered by unit tests only (no junk writes to dev),repo suite,yes
+TC-UNIT-01,unit,Changed Python logic covered by 107 passing tests,repo suite,yes
+TC-UNIT-02,unit,Changed portal logic covered; 1 stale pre-existing failure named,repo suite,yes
+TC-SEC-01,security,Adversarial audit of change set plus live surface,security-auditor,yes
+TC-SEC-02,security,Auth scoping and safe error shapes verified live,deployed API,yes
+TC-SEC-03,security,Dependency CVE scan not possible here (no scanners/lockfile) — recorded gap,tooling inventory,yes
+TC-PERF-01,performance,10 sequential authed list calls p95 within dev 10s target,deployed API,yes
+TC-LOAD-01,load,k6 smoke (1VU/30s) plus average (5VU/60s) with 0 failures and p95 within target,k6,yes
+TC-LOAD-02,load,Stress and soak not run on small dev box — named condition,scope decision,yes
+TC-A11Y-01,accessibility,Axe scan of login page (signed out) against WCAG 2.1 AA,axe-core,yes
+TC-A11Y-02,accessibility,Axe scan of Data Sources page as tenant admin against WCAG 2.1 AA,axe-core,yes
+TC-A11Y-03,accessibility,Static UI contract verification (tokens/safe-shape/states/labels/motion/forms),ui-ux-governor verify,yes
+TC-FIX-01,fixtures,Live connection list is empty and curated (no test debris),deployed API,yes

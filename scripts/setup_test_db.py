@@ -269,6 +269,75 @@ PUBLIC_TABLES = [
         PRIMARY KEY (tenant_id, method, path, idempotency_key)
     )
     """,
+    # ADR-017 control plane (alembic 043). Test-only mirror, same convention as CAP-2/3
+    # above: the suite runs DDL, not alembic, so the tables and trigger the migration
+    # creates are restated here.
+    """
+    CREATE TABLE IF NOT EXISTS public.tenant_data_planes (
+        tenant_id VARCHAR(64) PRIMARY KEY
+            REFERENCES public.tenants (id) ON DELETE CASCADE,
+        mode VARCHAR(32) NOT NULL
+            CHECK (mode IN ('platform', 'tenant_owned')),
+        status VARCHAR(32) NOT NULL
+            CHECK (status IN (
+                'awaiting_store', 'provisioning', 'provisioning_failed', 'ready',
+                'migration_required', 'paused', 'store_retired'
+            )),
+        connection_id UUID
+            REFERENCES public.tenant_data_source_connections (id) ON DELETE SET NULL,
+        store_id UUID,
+        schema_revision INTEGER,
+        status_reason VARCHAR(64) NOT NULL DEFAULT 'none',
+        health_outcome VARCHAR(32)
+            CHECK (health_outcome IN ('healthy', 'unreachable', 'auth_failed', 'timeout')),
+        health_checked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE OR REPLACE FUNCTION public.reject_tenant_data_plane_mode_change()
+    RETURNS trigger AS $$
+    BEGIN
+        IF NEW.mode IS DISTINCT FROM OLD.mode THEN
+            RAISE EXCEPTION 'DATA_PLANE_MODE_IMMUTABLE'
+                USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+    """,
+    """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger WHERE tgname = 'trg_tenant_data_plane_mode_immutable'
+        ) THEN
+            CREATE TRIGGER trg_tenant_data_plane_mode_immutable
+            BEFORE UPDATE ON public.tenant_data_planes
+            FOR EACH ROW EXECUTE FUNCTION public.reject_tenant_data_plane_mode_change();
+        END IF;
+    END $$;
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS public.tenant_document_registry (
+        document_id VARCHAR(64) NOT NULL,
+        tenant_id VARCHAR(64) NOT NULL
+            REFERENCES public.tenants (id) ON DELETE CASCADE,
+        source_type VARCHAR(64) NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        file_size_bytes BIGINT,
+        checksum VARCHAR(64),
+        retention_mode VARCHAR(32) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (tenant_id, document_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_tenant_document_registry_tenant
+        ON public.tenant_document_registry (tenant_id)
+    """,
 ]
 
 
@@ -286,6 +355,30 @@ RECONCILE = [
     """,
 ]
 
+# Per-schema DDL and per-database-once reconciliation for tables that predate this
+# revision and whose `CREATE TABLE IF NOT EXISTS` above is therefore a no-op against an
+# already-created fixture database.
+PUBLIC_RECONCILE = [
+    """
+    ALTER TABLE public.tenant_data_source_connections
+        DROP CONSTRAINT IF EXISTS tenant_data_source_connections_provider_check
+    """,
+    """
+    ALTER TABLE public.tenant_data_source_connections
+        ADD CONSTRAINT tenant_data_source_connections_provider_check
+        CHECK (provider IN ('azure_blob', 'azure_postgresql', 'azure_postgresql_data_plane'))
+    """,
+]
+
+TENANT_STORE_META_DDL = """
+    CREATE TABLE IF NOT EXISTS "{schema}".platform_store_meta (
+        store_id UUID NOT NULL,
+        tenant_id VARCHAR(64) NOT NULL,
+        schema_revision INTEGER NOT NULL,
+        provisioned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+"""
+
 
 async def main():
     _assert_test_database(DATABASE_URL)
@@ -294,6 +387,8 @@ async def main():
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS public"))
         for ddl in PUBLIC_TABLES:
             await conn.execute(text(ddl))
+        for reconcile_ddl in PUBLIC_RECONCILE:
+            await conn.execute(text(reconcile_ddl))
         print("  Created public tables")
 
         for schema in SCHEMAS:
@@ -302,6 +397,7 @@ async def main():
                 await conn.execute(text(table_ddl.format(schema=schema)))
             for reconcile_ddl in RECONCILE:
                 await conn.execute(text(reconcile_ddl.format(schema=schema)))
+            await conn.execute(text(TENANT_STORE_META_DDL.format(schema=schema)))
             print(f"  Created tables in schema {schema}")
 
         await conn.execute(text("""
@@ -314,6 +410,13 @@ async def main():
             ON CONFLICT (id) DO NOTHING
         """))
         print("  Inserted test tenants")
+
+        await conn.execute(text("""
+            INSERT INTO public.tenant_data_planes (tenant_id, mode, status, schema_revision)
+            SELECT id, 'platform', 'ready', 1 FROM public.tenants
+            ON CONFLICT (tenant_id) DO NOTHING
+        """))
+        print("  Backfilled tenant data-plane records")
 
         await conn.commit()
     await engine.dispose()

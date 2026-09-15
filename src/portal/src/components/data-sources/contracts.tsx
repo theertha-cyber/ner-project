@@ -84,7 +84,9 @@ export function ContractUpload({
           style={{ color: "var(--ink)" }}
         />
         <span id="contract-file-hint" className="text-xs" style={{ color: "var(--ink-2)" }}>
-          JSON object, up to {MAX_CONTRACT_BYTES / 1024} KB. The form state is preserved when validation fails.
+          JSON object, up to {MAX_CONTRACT_BYTES / 1024} KB. Each relation may optionally include a{" "}
+          <code>description</code> and a <code>column_descriptions</code> map to help the assistant
+          answer questions correctly. The form state is preserved when validation fails.
         </span>
         {fileName && (
           <p className="text-xs" style={{ color: "var(--ink-2)" }} role="status">

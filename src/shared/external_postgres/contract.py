@@ -62,6 +62,9 @@ _MAX_RELATIONS = 100
 _MAX_COLUMNS_PER_RELATION = 200
 _MAX_JOINS = 200
 _MAX_NAME_LEN = 128
+_MAX_DESCRIPTION_LEN = 2000
+
+_CANONICAL_RELATION_KEYS = ("columns", "primary_key", "description", "column_descriptions")
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,29 @@ def validate_contract_document(document: dict) -> ContractValidation:
             pk = rel.get("primary_key")
             if pk is not None and pk not in (columns or []):
                 errors.append(f"relations.{name}.primary_key")
+            description = rel.get("description")
+            if description is not None and not (
+                isinstance(description, str) and len(description) <= _MAX_DESCRIPTION_LEN
+            ):
+                errors.append(f"relations.{name}.description")
+            column_descriptions = rel.get("column_descriptions")
+            if column_descriptions is not None:
+                if not isinstance(column_descriptions, dict):
+                    errors.append(f"relations.{name}.column_descriptions")
+                else:
+                    declared_columns = set(columns or [])
+                    for col_name, col_description in column_descriptions.items():
+                        if col_name not in declared_columns:
+                            errors.append(
+                                f"relations.{name}.column_descriptions.{col_name}"
+                            )
+                        elif not (
+                            isinstance(col_description, str)
+                            and len(col_description) <= _MAX_DESCRIPTION_LEN
+                        ):
+                            errors.append(
+                                f"relations.{name}.column_descriptions.{col_name}"
+                            )
     if not isinstance(joins, list) or len(joins) > _MAX_JOINS:
         errors.append("joins")
     else:
@@ -151,6 +177,23 @@ def validate_contract_document(document: dict) -> ContractValidation:
         # Field paths only: never echo values.
         return ContractValidation(False, reason, tuple(errors))
     return ContractValidation(True, REASON_NONE, ())
+
+
+def _normalize_relations(relations: dict) -> dict:
+    """Keeps only the canonical relation keys before persistence, so an unknown
+    key never reaches storage regardless of what the accidental pass-through
+    used to allow (design.md Decision 1, Risk 4)."""
+    normalized = {}
+    for name, rel in relations.items():
+        entry = {"columns": list(rel.get("columns", []))}
+        if rel.get("primary_key") is not None:
+            entry["primary_key"] = rel["primary_key"]
+        if rel.get("description") is not None:
+            entry["description"] = rel["description"]
+        if rel.get("column_descriptions") is not None:
+            entry["column_descriptions"] = dict(rel["column_descriptions"])
+        normalized[name] = entry
+    return normalized
 
 
 def _is_safe_name(name: object) -> bool:
@@ -195,7 +238,8 @@ async def store_draft(session, tenant_id: str, connection_id: str, document: dic
     validation = validate_contract_document(document)
     if not validation.valid:
         raise ContractRejected(validation.reason, validation.field_errors)
-    relations, joins = document["relations"], document.get("joins", [])
+    relations = _normalize_relations(document["relations"])
+    joins = document.get("joins", [])
     fingerprint = canonical_fingerprint(relations, joins)
     existing = await session.execute(
         text(

@@ -28,8 +28,12 @@ def _iso(value) -> str | None:
     return str(value)
 
 
-def to_connection_dict(row) -> dict:
-    """Render one connection row as the safe `Connection` response shape."""
+def to_connection_dict(row, last_sync: dict | None = None) -> dict:
+    """Render one connection row as the safe `Connection` response shape.
+
+    `last_sync` is the latest completed run for a Blob connection
+    (`service.latest_sync_outcomes`); without one the connection has never run.
+    """
     provider = row.provider
     configuration = row.configuration or {}
     secret_references = row.secret_references or {}
@@ -45,8 +49,8 @@ def to_connection_dict(row) -> dict:
         }
         extras = {
             "last_sync": {
-                "outcome": lc.SYNC_OUTCOME_NEVER_RUN,
-                "completed_at": None,
+                "outcome": last_sync["outcome"] if last_sync else lc.SYNC_OUTCOME_NEVER_RUN,
+                "completed_at": _iso(last_sync["completed_at"]) if last_sync else None,
             }
         }
 

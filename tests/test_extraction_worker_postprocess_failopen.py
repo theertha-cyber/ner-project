@@ -455,7 +455,7 @@ class TestARunIsNeverFailedByPostprocessingAlone:
             })
 
         monkeypatch.setattr(worker_module.requests, "post", mock_post)
-        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda: sync_engine)
+        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda tenant_id=None: sync_engine)
         monkeypatch.setattr(worker_module, "_get_active_model_version", lambda t: "0")
         import src.shared.auth as auth_module
         monkeypatch.setattr(auth_module, "create_access_token", lambda **kwargs: "fake-token")
@@ -508,7 +508,7 @@ class TestARunIsNeverFailedByPostprocessingAlone:
             })
 
         monkeypatch.setattr(worker_module.requests, "post", mock_post)
-        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda: sync_engine)
+        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda tenant_id=None: sync_engine)
         monkeypatch.setattr(worker_module, "_get_active_model_version", lambda t: "0")
         import src.shared.auth as auth_module
         monkeypatch.setattr(auth_module, "create_access_token", lambda **kwargs: "fake-token")

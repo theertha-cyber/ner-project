@@ -134,16 +134,31 @@ def _tenant_schema(tenant_id: str) -> str:
     return f"tenant_{safe}"
 
 
-async def _all_tenant_schemas(db: AsyncSession) -> list[str]:
+async def _all_active_tenant_ids(db: AsyncSession) -> list[str]:
+    """Every active tenant actually worth attempting: a `platform` tenant whose schema
+    exists (a tenant row can predate provisioning, or name a reserved id like `system`
+    that was never provisioned at all — this is the same `pg_namespace` filter the
+    original single-database enumeration used, kept so those stay silently excluded
+    rather than logging a spurious per-tenant error), plus every `ready` `tenant_owned`
+    tenant (ADR-017 routing spec: "Fleet operations enumerate tenants from the control
+    plane" — `pg_namespace` alone would silently drop these, since their schema was
+    never on the platform database to begin with)."""
     result = await db.execute(
-        text("""
+        text(
+            """
             SELECT t.id
             FROM public.tenants t
-            JOIN pg_namespace n ON n.nspname = 'tenant_' || replace(t.id, '-', '_')
+            LEFT JOIN public.tenant_data_planes dp ON dp.tenant_id = t.id
+            LEFT JOIN pg_namespace n ON n.nspname = 'tenant_' || replace(t.id, '-', '_')
             WHERE t.status = 'active'
-        """)
+              AND (
+                (COALESCE(dp.mode, 'platform') = 'platform' AND n.nspname IS NOT NULL)
+                OR (dp.mode = 'tenant_owned' AND dp.status = 'ready')
+              )
+            """
+        )
     )
-    return [_tenant_schema(row[0]) for row in result.fetchall()]
+    return [row[0] for row in result.fetchall()]
 
 
 _SYSTEM_ACTIVITY_TITLES: dict[str, str] = {
@@ -286,28 +301,37 @@ async def _system_admin_data(db: AsyncSession, tenant_id: str) -> tuple[Dashboar
     except Exception:
         await db.rollback()
 
-    schemas = []
+    tenant_ids = []
     try:
-        schemas = await _all_tenant_schemas(db)
+        tenant_ids = await _all_active_tenant_ids(db)
     except Exception:
         pass
 
-    if schemas:
+    if tenant_ids:
         try:
+            from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable
+            from src.shared.database import get_resolver
+
             total_pending = 0
             total_running = 0
             training_complete = True
-            for s in schemas:
+            for tid in tenant_ids:
+                schema = _tenant_schema(tid)
                 try:
-                    r = await db.execute(
-                        text(f"SELECT COUNT(*) FILTER (WHERE status = 'pending_approval'), COUNT(*) FILTER (WHERE status = 'running') FROM {s}.training_jobs")
-                    )
-                    row = r.fetchone()
+                    engine = await get_resolver().resolve(tid)
+                    async with engine.connect() as conn:
+                        r = await conn.execute(
+                            text(f"SELECT COUNT(*) FILTER (WHERE status = 'pending_approval'), COUNT(*) FILTER (WHERE status = 'running') FROM {schema}.training_jobs")
+                        )
+                        row = r.fetchone()
                     total_pending += row[0] or 0
                     total_running += row[1] or 0
+                except (DataPlaneNotReady, DataPlaneUnavailable):
+                    # Not ready / unreachable is an expected, safe outcome for a fleet
+                    # sweep — skip this tenant's contribution, keep going.
+                    training_complete = False
                 except Exception:
-                    logger.exception("system_admin dashboard: training_jobs count failed for schema %s", s)
-                    await db.rollback()
+                    logger.exception("system_admin dashboard: training_jobs count failed for tenant %s", tid)
                     training_complete = False
             pending_approvals = str(total_pending)
             training_jobs_running = str(total_running)
@@ -412,15 +436,30 @@ async def _tenant_admin_data(db: AsyncSession, tenant_id: str, auth_header: str 
     doc_dir: str | None = None
     doc_total = 0
     try:
+        # Read from the content-free registry (Design D7), not `{schema}.documents`
+        # directly: the registry lives on the platform database regardless of the
+        # tenant's data-plane mode, so this count is available even while a
+        # `tenant_owned` tenant's own store is unreachable (tenant-document-
+        # registry spec's "System admin sees counts during a tenant outage" — the
+        # same property applies to a tenant admin's own dashboard).
         result = await db.execute(
-            text(f"SELECT COUNT(*) FROM {schema}.documents WHERE status != 'error'")
+            text(
+                "SELECT COUNT(*) FROM public.tenant_document_registry "
+                "WHERE tenant_id = :tid AND status != 'error'"
+            ),
+            {"tid": tenant_id},
         )
         doc_total = result.scalar() or 0
         doc_count = str(doc_total)
         sources["documents"] = True
         try:
             r = await db.execute(
-                text(f"SELECT COUNT(*) FROM {schema}.documents WHERE status != 'error' AND created_at >= NOW() - INTERVAL '24 hours'")
+                text(
+                    "SELECT COUNT(*) FROM public.tenant_document_registry "
+                    "WHERE tenant_id = :tid AND status != 'error' "
+                    "AND created_at >= NOW() - INTERVAL '24 hours'"
+                ),
+                {"tid": tenant_id},
             )
             added = r.scalar() or 0
             if added > 0:
@@ -704,14 +743,28 @@ async def _tenant_curated_activity(db: AsyncSession, schema: str, tenant_id: str
     # moment the LAST evaluated type crosses the threshold — not when the Nth
     # span overall is written. The HAVING clause is what enforces "all types":
     # the query yields no row while any type is still short.
+    #
+    # Two statements, not one (Design D10): `entity_definitions` is a control-plane
+    # table and `spans` a tenant-schema one — a single JOIN across them breaks once a
+    # tenant's schema moves off the platform database (ADR-017). The active-type list
+    # is resolved first and passed into the tenant-only query as a bound array.
+    try:
+        active_types_result = await db.execute(
+            text("SELECT name FROM public.entity_definitions WHERE tenant_id = :tid AND is_active = true"),
+            {"tid": tenant_id},
+        )
+        active_types = [row[0] for row in active_types_result]
+    except Exception:
+        await db.rollback()
+        active_types = []
+
     await _add(
         f"""
             WITH counts AS (
                 SELECT entity_type, COUNT(*) AS cnt FROM {schema}.spans GROUP BY entity_type
             ),
             types AS (
-                SELECT name AS entity_type FROM public.entity_definitions
-                WHERE tenant_id = :tid AND is_active = true
+                SELECT unnest(CAST(:active_types AS text[])) AS entity_type
                 UNION
                 SELECT entity_type FROM counts
             ),
@@ -726,7 +779,7 @@ async def _tenant_curated_activity(db: AsyncSession, schema: str, tenant_id: str
             SELECT MAX(created_at) AS crossing_ts FROM crossings
             HAVING COUNT(*) > 0 AND COUNT(*) = (SELECT COUNT(*) FROM types)
         """,
-        {"threshold": DATASET_READINESS_ENTITIES_PER_TYPE, "tid": tenant_id},
+        {"threshold": DATASET_READINESS_ENTITIES_PER_TYPE, "active_types": active_types},
         lambda row: (
             row.crossing_ts,
             ActivityRow(title="Dataset reached training readiness", sub=f"{DATASET_READINESS_ENTITIES_PER_TYPE}+ entities for every type", tag="ready", tk="completed", go="annotation", icon="dataset", time=_relative_time(row.crossing_ts)),
@@ -1168,8 +1221,17 @@ async def _annotator_type_counts(db: AsyncSession, schema: str, tenant_id: str) 
     but never configured its label list. See design.md Decision 1.
 
     `entity_definitions` lives in `public` keyed by tenant_id while spans live in
-    the tenant schema, so the tenant_id filter here is the isolation boundary
-    (ADR-001) — without it this would aggregate across tenants."""
+    the tenant schema, so the tenant_id filter there is the isolation boundary
+    (ADR-001) — without it this would aggregate across tenants.
+
+    Two statements, not one (Design D10 — ADR-017): `entity_definitions` is a
+    control-plane table, `spans` a tenant-schema one."""
+    types_result = await db.execute(
+        text("SELECT name FROM public.entity_definitions WHERE tenant_id = :tid AND is_active = true"),
+        {"tid": tenant_id},
+    )
+    active_types = [row[0] for row in types_result]
+
     result = await db.execute(
         text(f"""
             WITH counts AS (
@@ -1178,9 +1240,7 @@ async def _annotator_type_counts(db: AsyncSession, schema: str, tenant_id: str) 
                 GROUP BY entity_type
             ),
             types AS (
-                SELECT name AS entity_type
-                FROM public.entity_definitions
-                WHERE tenant_id = :tid AND is_active = true
+                SELECT unnest(CAST(:active_types AS text[])) AS entity_type
                 UNION
                 SELECT entity_type FROM counts
             )
@@ -1189,7 +1249,7 @@ async def _annotator_type_counts(db: AsyncSession, schema: str, tenant_id: str) 
             LEFT JOIN counts c ON c.entity_type = t.entity_type
             ORDER BY cnt ASC, t.entity_type ASC
         """),
-        {"tid": tenant_id},
+        {"active_types": active_types},
     )
     return [(r.entity_type, int(r.cnt or 0)) for r in result]
 

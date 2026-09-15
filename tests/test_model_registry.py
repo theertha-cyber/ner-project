@@ -114,7 +114,7 @@ def mock_mlflow(monkeypatch):
         return cached, None
 
     def mock_promote(tenant_id, version_number):
-        engine = mr._get_sync_engine()
+        engine = mr._get_sync_engine(tenant_id)
         schema = mr._schema(tenant_id)
         with engine.begin() as conn:
             result = conn.execute(
@@ -140,7 +140,7 @@ def mock_mlflow(monkeypatch):
         return active
 
     def mock_demote(tenant_id, version_number):
-        engine = mr._get_sync_engine()
+        engine = mr._get_sync_engine(tenant_id)
         schema = mr._schema(tenant_id)
         with engine.begin() as conn:
             result = conn.execute(

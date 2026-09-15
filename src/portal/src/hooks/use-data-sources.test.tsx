@@ -56,7 +56,7 @@ describe("useDataSourceCollection", () => {
   it("surfaces finite safe error codes with the request ID", async () => {
     mockAuthFetch.mockResolvedValue(
       new Response(
-        JSON.stringify({ code: "INVALID_REQUEST", message: "Bad sort.", request_id: "req-9" }),
+        JSON.stringify({ error: { code: "INVALID_REQUEST", message: "Bad sort.", request_id: "req-9" } }),
         { status: 422 },
       ),
     );
@@ -103,7 +103,7 @@ describe("useDataSourceMutation", () => {
   it("carries 409 prerequisite blocks as safe errors", async () => {
     mockAuthFetch.mockResolvedValue(
       new Response(
-        JSON.stringify({ code: "ACTIVATION_PREREQUISITE_MISSING", message: "Evidence missing.", request_id: "req-2" }),
+        JSON.stringify({ error: { code: "ACTIVATION_PREREQUISITE_MISSING", message: "Evidence missing.", request_id: "req-2" } }),
         { status: 409 },
       ),
     );
@@ -132,10 +132,12 @@ describe("contracts", () => {
     mockAuthFetch.mockResolvedValue(
       new Response(
         JSON.stringify({
-          code: "INVALID_CONTRACT",
-          message: "Not valid.",
-          request_id: "req-3",
-          field_errors: [{ field: "relations", message: "At least one relation is required." }],
+          error: {
+            code: "INVALID_CONTRACT",
+            message: "Not valid.",
+            request_id: "req-3",
+            field_errors: [{ field: "relations", message: "At least one relation is required." }],
+          },
         }),
         { status: 422 },
       ),

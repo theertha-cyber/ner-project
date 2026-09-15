@@ -17,7 +17,7 @@ from src.training_service.worker import _update_job_progress, _schema, _get_sync
 
 
 def _create_test_schema(schema: str):
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(schema.removeprefix("tenant_"))
     with engine.begin() as conn:
         conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
         conn.execute(text(f"""
@@ -56,7 +56,7 @@ def _create_test_schema(schema: str):
 
 
 def _cleanup_test_schema(schema: str):
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(schema.removeprefix("tenant_"))
     with engine.begin() as conn:
         conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
 
@@ -67,7 +67,7 @@ class TestUpdateJobProgress:
         self.schema = _schema(self.tenant_id)
         self.job_id = str(uuid.uuid4())
         _create_test_schema(self.schema)
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.begin() as conn:
             conn.execute(
                 text(f"INSERT INTO {self.schema}.training_jobs (id, tenant_id, status) VALUES (:id, :tid, 'running')"),
@@ -81,7 +81,7 @@ class TestUpdateJobProgress:
         metrics = {"f1": 0.5, "loss": 0.1}
         _update_job_progress(self.tenant_id, self.job_id, status="completed", metrics=metrics)
 
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.connect() as conn:
             row = conn.execute(
                 text(f"SELECT status, metrics FROM {self.schema}.training_jobs WHERE id = :id"),
@@ -95,7 +95,7 @@ class TestUpdateJobProgress:
         metrics_str = json.dumps({"f1": 0.5})
         _update_job_progress(self.tenant_id, self.job_id, status="completed", metrics=metrics_str)
 
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.connect() as conn:
             row = conn.execute(
                 text(f"SELECT metrics FROM {self.schema}.training_jobs WHERE id = :id"),
@@ -107,7 +107,7 @@ class TestUpdateJobProgress:
     def test_update_with_none_metrics(self):
         _update_job_progress(self.tenant_id, self.job_id, status="completed", metrics=None)
 
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.connect() as conn:
             row = conn.execute(
                 text(f"SELECT metrics FROM {self.schema}.training_jobs WHERE id = :id"),
@@ -124,7 +124,7 @@ class TestUpdateJobProgress:
             model_version_id=str(uuid.uuid4()),
         )
 
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.connect() as conn:
             row = conn.execute(
                 text(f"SELECT status, metrics, error_message FROM {self.schema}.training_jobs WHERE id = :id"),
@@ -143,7 +143,7 @@ class TestModelVersionsStatusLifecycle:
         self.job_id = str(uuid.uuid4())
         self.version_id = str(uuid.uuid4())
         _create_test_schema(self.schema)
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.begin() as conn:
             conn.execute(
                 text(f"INSERT INTO {self.schema}.training_jobs (id, tenant_id, status) VALUES (:id, :tid, 'running')"),
@@ -154,7 +154,7 @@ class TestModelVersionsStatusLifecycle:
         _cleanup_test_schema(self.schema)
 
     def _insert_model_version(self, status: str):
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.begin() as conn:
             conn.execute(
                 text(f"""
@@ -175,7 +175,7 @@ class TestModelVersionsStatusLifecycle:
             )
 
     def _get_model_version_status(self):
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.connect() as conn:
             row = conn.execute(
                 text(f"SELECT status FROM {self.schema}.model_versions WHERE id = :id"),
@@ -189,7 +189,7 @@ class TestModelVersionsStatusLifecycle:
 
     def test_update_to_completed(self):
         self._insert_model_version("training")
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.begin() as conn:
             conn.execute(
                 text(f"UPDATE {self.schema}.model_versions SET status = 'completed' WHERE id = :id AND tenant_id = :tid"),
@@ -199,7 +199,7 @@ class TestModelVersionsStatusLifecycle:
 
     def test_update_to_failed(self):
         self._insert_model_version("training")
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.begin() as conn:
             conn.execute(
                 text(f"UPDATE {self.schema}.model_versions SET status = 'failed' WHERE id = :id AND tenant_id = :tid"),
@@ -210,7 +210,7 @@ class TestModelVersionsStatusLifecycle:
     def test_status_transitions_training_to_completed(self):
         self._insert_model_version("training")
         _update_job_progress(self.tenant_id, self.job_id, status="completed", metrics={"f1": 0.5})
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.begin() as conn:
             conn.execute(
                 text(f"UPDATE {self.schema}.model_versions SET status = 'completed' WHERE id = :id AND tenant_id = :tid"),
@@ -221,7 +221,7 @@ class TestModelVersionsStatusLifecycle:
     def test_status_transitions_training_to_failed(self):
         self._insert_model_version("training")
         _update_job_progress(self.tenant_id, self.job_id, status="failed", error_message="training failed")
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.begin() as conn:
             conn.execute(
                 text(f"UPDATE {self.schema}.model_versions SET status = 'failed' WHERE id = :id AND tenant_id = :tid"),
@@ -243,7 +243,7 @@ class TestModelVersionRunNumberInheritance:
         _cleanup_test_schema(self.schema)
 
     def test_model_version_inherits_job_run_number(self):
-        engine = _get_sync_engine()
+        engine = _get_sync_engine(self.tenant_id)
         with engine.begin() as conn:
             conn.execute(
                 text(f"""

@@ -327,8 +327,11 @@ async def test_platform_blob_profile_blocks_the_run(tenant, session_factory, con
 # --- Row 5: the durable lease prevents overlapping work --------------------------------
 
 
+@pytest.mark.parametrize(
+    "trigger", [blob_sync.TRIGGER_SCHEDULED, blob_sync.TRIGGER_MANUAL]
+)
 async def test_overlapping_run_records_lease_held_without_ingesting(
-    tenant, session_factory, connections
+    tenant, session_factory, connections, trigger
 ):
     tid, schema = tenant["tenant_id"], tenant["schema"]
     await set_retention(session_factory, tid, "source_only")
@@ -344,7 +347,7 @@ async def test_overlapping_run_records_lease_held_without_ingesting(
         await session.commit()
 
     result = await blob_sync.run_sync(
-        session_factory, tid, cid, blob_sync.TRIGGER_SCHEDULED,
+        session_factory, tid, cid, trigger,
         provider=provider, make_ingestion_service=factory, temp_store=temp,
     )
 
