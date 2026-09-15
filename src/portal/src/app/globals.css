@@ -45,6 +45,21 @@
   --color-error: #dc2626;
   --color-info: #2563eb;
 
+  /* Chart series — fixed categorical order, never cycled. Teal leads so charts do not
+     compete with the red brand. This is the validated eight-hue sequence rotated, not
+     re-picked: rotating preserves every adjacent pair the ordering was chosen for, and
+     re-running the validator gives the same worst-case separation as before. Three
+     slots sit below 3:1 on the light surface, so charts always ship a legend and
+     labels rather than relying on colour alone. */
+  --chart-series-1: #1baf7a;
+  --chart-series-2: #eda100;
+  --chart-series-3: #e87ba4;
+  --chart-series-4: #008300;
+  --chart-series-5: #4a3aa7;
+  --chart-series-6: #e34948;
+  --chart-series-7: #2a78d6;
+  --chart-series-8: #eb6834;
+
   /* Delta */
   --color-delta-up: #16a34a;
   --color-delta-warn: #d97706;
@@ -149,6 +164,17 @@
   --color-surface-page: #1a1a19;
   --color-glass: rgba(24, 24, 24, 0.55);
   --color-glass-border: rgba(255, 255, 255, 0.08);
+
+  /* Chart series (dark mode) — the same eight hues re-stepped for the dark
+     surface, validated as a set rather than flipped automatically. */
+  --chart-series-1: #199e70;
+  --chart-series-2: #c98500;
+  --chart-series-3: #d55181;
+  --chart-series-4: #008300;
+  --chart-series-5: #9085e9;
+  --chart-series-6: #e66767;
+  --chart-series-7: #3987e5;
+  --chart-series-8: #d95926;
 
   /* New semantic tokens (dark mode) */
   --surface: #1a1a19;

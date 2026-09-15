@@ -54,15 +54,15 @@ class RAGOrchestrator:
         self, message: str, session: AsyncSession, schema: str, tenant_id: str,
         jwt_token: str | None = None, conversation_context: list[dict] | None = None,
         conversation_id: str | None = None,
-    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None, list[dict] | None]:
+    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None, list[dict] | None, dict | None]:
         """Same as `execute`, but additionally surfaces `pending_clarification`,
-        `answer_kind`, `model_version`, the turn's `retrieval_status`, and the full,
+        `answer_kind`, `model_version`, the turn's `retrieval_status`, the full,
         pre-token-budget `sql_results` (export-chat-results design.md Decision 2 — kept
         distinct from `AdmittedEvidence.rows`, the prompt-budget-truncated subset used
-        to build the LLM prompt). Requires `conversation_id` so entity resolution can
-        read and persist its per-conversation state. Used by
-        `src/chat_api/api/v1/chat.py`; the widget endpoint keeps calling `execute`,
-        whose signature is unchanged."""
+        to build the LLM prompt), and its `chart` when the generation model produced
+        one. Requires `conversation_id` so entity resolution can read and persist its
+        per-conversation state. Used by `src/chat_api/api/v1/chat.py`; the widget
+        endpoint keeps calling `execute`, whose signature is unchanged."""
         result = await self._run_graph(message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id)
         sources = result.get("sources", [])
         return (
@@ -73,13 +73,14 @@ class RAGOrchestrator:
             self._extract_model_version(sources),
             self._retrieval_status_payload(result),
             result.get("sql_results"),
+            result.get("chart"),
         )
 
     async def execute_with_clarification_stream(
         self, message: str, session: AsyncSession, schema: str, tenant_id: str,
         token_sink: asyncio.Queue, jwt_token: str | None = None,
         conversation_context: list[dict] | None = None, conversation_id: str | None = None,
-    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None, list[dict] | None]:
+    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None, list[dict] | None, dict | None]:
         """Same as `execute_with_clarification`, but threads `token_sink` into the
         graph's initial state (design.md Decision 2) so `generation_node` can stream
         content deltas onto it as they arrive. Returns the identical tuple once the
@@ -104,6 +105,7 @@ class RAGOrchestrator:
             self._extract_model_version(sources),
             self._retrieval_status_payload(result),
             result.get("sql_results"),
+            result.get("chart"),
         )
 
     @staticmethod

@@ -32,7 +32,7 @@ def _patch_orchestrator(monkeypatch, reply="Here are the candidates.", sources=N
 
     async def fake(message, session, schema, tenant_id, jwt_token=None,
                     conversation_context=None, conversation_id=None):
-        return (reply, sources or [], None, "answer", None, retrieval_status, sql_results)
+        return (reply, sources or [], None, "answer", None, retrieval_status, sql_results, None)
 
     monkeypatch.setattr(chat_module.orchestrator, "execute_with_clarification", fake)
     return fake
@@ -197,7 +197,7 @@ class TestConversationHistoryRetainsExportAvailability:
 
 class TestOrchestratorSurfacesFullSqlResults:
     """Hallucination Risk 1, at the orchestrator boundary: proves
-    `execute_with_clarification`'s 7th return value is the graph's raw
+    `execute_with_clarification`'s sql_results return value is the graph's raw
     `sql_results`, not something derived from `admitted_evidence`/`sources`."""
 
     @pytest.mark.asyncio
@@ -222,7 +222,7 @@ class TestOrchestratorSurfacesFullSqlResults:
         result = await orchestrator.execute_with_clarification(
             "who knows python?", session=None, schema="tenant_x", tenant_id="x",
         )
-        sql_results = result[-1]
+        sql_results = result[-2]
         assert sql_results is not None
         assert len(sql_results) == 250
 

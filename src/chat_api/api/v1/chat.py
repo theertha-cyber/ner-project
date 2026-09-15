@@ -11,7 +11,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.database import get_engine
 from src.shared.exceptions import NotFoundError
-from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut, RetrievalStatusOut, ExportAvailability
+from pydantic import ValidationError
+from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut, RetrievalStatusOut, ExportAvailability, ChartPayload
+from src.chat_api.services.chart_tool import ChartFrame
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator, STREAM_DONE
 from src.chat_api.services.guardrails import GuardrailService
 from src.chat_api.services.rate_limiter import rate_limiter, INTERNAL_RATE_LIMIT, INTERNAL_WINDOW
@@ -116,6 +118,7 @@ async def _persist_turn_and_respond(
     reply: str, sources: list[Source | Citation], pending_clarification: dict | None,
     answer_kind: str, model_version: str | None, response_time_ms: int,
     retrieval_status: dict | None = None, sql_results: list[dict] | None = None,
+    chart: dict | None = None,
 ) -> ChatResponse:
     """User row insert, assistant row insert, `updated_at` bump, and commit —
     identical for the streaming and non-streaming routes. Runs once, after the RAG
@@ -130,9 +133,15 @@ async def _persist_turn_and_respond(
     nothing, e.g. an empty list, offers nothing worth downloading and is treated the
     same as no structured retrieval at all), it is persisted as an export snapshot on
     the assistant row, capped at MAX_EXPORT_ROWS (export-chat-results design.md
-    Decision 2; ADR-014)."""
+    Decision 2; ADR-014).
+
+    `chart` is the validated chart the generation model proposed for this turn, or
+    None when it produced none (chat-chart-generation design.md Decision 5). It is
+    gated on the same structured-retrieval condition as the export snapshot, so a
+    turn with rows can carry both."""
     disclaimer = guardrails.inject_disclaimer()
     sources_data = json.dumps([s.model_dump() for s in sources]) if sources else None
+    chart_data = json.dumps(chart) if chart else None
     message_id = str(uuid.uuid4())
 
     export_rows: list[dict] | None = None
@@ -154,14 +163,15 @@ async def _persist_turn_and_respond(
     )
     await session.execute(
         text(
-            f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources, answer_kind, model_version, response_time_ms, export_rows, export_row_count, created_at) "
-            "VALUES (:id, :cid, 'assistant', :content, :sources, :answer_kind, :model_version, :response_time_ms, :export_rows, :export_row_count, clock_timestamp())"
+            f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources, answer_kind, model_version, response_time_ms, export_rows, export_row_count, chart, created_at) "
+            "VALUES (:id, :cid, 'assistant', :content, :sources, :answer_kind, :model_version, :response_time_ms, :export_rows, :export_row_count, :chart, clock_timestamp())"
         ),
         {
             "id": message_id, "cid": conversation_id, "content": reply, "sources": sources_data,
             "answer_kind": answer_kind, "model_version": model_version, "response_time_ms": response_time_ms,
             "export_rows": json.dumps(export_rows, default=str) if export_rows is not None else None,
             "export_row_count": export_row_count,
+            "chart": chart_data,
         },
     )
     await session.execute(
@@ -181,6 +191,7 @@ async def _persist_turn_and_respond(
         model_version=model_version,
         retrieval_status=RetrievalStatusOut(**retrieval_status) if retrieval_status else None,
         export=ExportAvailability(message_id=message_id, row_count=export_row_count) if export_row_count is not None else None,
+        chart=chart,
     )
 
 
@@ -197,6 +208,10 @@ def _response_payload(response: ChatResponse) -> dict:
         exclude.add("retrieval_status")
     if response.export is None:
         exclude.add("export")
+    # chart is additive on the same terms: a turn that produced no chart omits the key
+    # rather than sending null, so a client that never looks for one sees no change.
+    if response.chart is None:
+        exclude.add("chart")
     return response.model_dump(exclude=exclude)
 
 
@@ -215,7 +230,7 @@ async def chat(
     auth_header = request.headers.get("Authorization", "")
     jwt_token = auth_header.removeprefix("Bearer ")
     started_at = time.monotonic()
-    reply, sources, pending_clarification, answer_kind, model_version, retrieval_status, sql_results = await orchestrator.execute_with_clarification(
+    reply, sources, pending_clarification, answer_kind, model_version, retrieval_status, sql_results, chart = await orchestrator.execute_with_clarification(
         body.message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id,
     )
     response_time_ms = round((time.monotonic() - started_at) * 1000)
@@ -223,7 +238,7 @@ async def chat(
     response = await _persist_turn_and_respond(
         session, schema, conversation_id, body.message, reply, sources,
         pending_clarification, answer_kind, model_version, response_time_ms,
-        retrieval_status, sql_results,
+        retrieval_status, sql_results, chart,
     )
 
     headers = rate_limiter.get_headers(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
@@ -266,9 +281,14 @@ async def chat_stream(
                 item = await sink.get()
                 if item is STREAM_DONE:
                     break
+                if isinstance(item, ChartFrame):
+                    # Reaches the client before the first token because the generation
+                    # node puts it on the sink before stage B produces any delta.
+                    yield _sse_frame("chart", item.payload)
+                    continue
                 yield _sse_frame("token", {"delta": item})
 
-            reply, sources, pending_clarification, answer_kind, model_version, retrieval_status, sql_results = await task
+            reply, sources, pending_clarification, answer_kind, model_version, retrieval_status, sql_results, chart = await task
         except Exception as e:
             logger.exception("Streaming chat turn failed for tenant_id=%s", tenant_id)
             yield _sse_frame("error", {"code": "GENERATION_FAILED", "message": str(e)})
@@ -278,7 +298,7 @@ async def chat_stream(
         response = await _persist_turn_and_respond(
             session, schema, conversation_id, body.message, reply, sources,
             pending_clarification, answer_kind, model_version, response_time_ms,
-            retrieval_status, sql_results,
+            retrieval_status, sql_results, chart,
         )
         yield _sse_frame("done", _response_payload(response))
 
@@ -382,7 +402,8 @@ async def get_conversation(
     msg_result = await session.execute(
         text(f"""
             SELECT m.id, m.role, m.content, m.sources, m.created_at, m.answer_kind, m.model_version,
-                   m.export_row_count, f.rating AS feedback_rating, f.created_at AS feedback_created_at
+                   m.export_row_count, m.chart,
+                   f.rating AS feedback_rating, f.created_at AS feedback_created_at
             FROM {schema}.chat_messages m
             LEFT JOIN {schema}.chat_message_feedback f ON f.message_id = m.id
             WHERE m.conversation_id = :cid
@@ -401,6 +422,16 @@ async def get_conversation(
                 sources_list = [_parse_persisted_source(s) for s in (json.loads(r.sources) if isinstance(r.sources, str) else r.sources)]
             except (json.JSONDecodeError, TypeError):
                 pass
+        # Rows written before the chart column existed read back as NULL, and a
+        # payload that no longer validates is dropped rather than failing the reload.
+        chart = None
+        if r.role == "assistant" and r.chart:
+            import json
+            try:
+                raw = json.loads(r.chart) if isinstance(r.chart, str) else r.chart
+                chart = ChartPayload.model_validate(raw)
+            except (json.JSONDecodeError, TypeError, ValidationError):
+                pass
         feedback = None
         if r.feedback_rating:
             feedback = FeedbackOut(message_id=r.id, rating=r.feedback_rating, created_at=str(r.feedback_created_at))
@@ -410,6 +441,7 @@ async def get_conversation(
             model_version=r.model_version if r.role == "assistant" else None,
             feedback=feedback,
             export=ExportAvailability(message_id=r.id, row_count=r.export_row_count) if r.export_row_count is not None else None,
+            chart=chart,
         ))
 
     return ConversationDetail(id=conv.id, title=conv.title, created_at=str(conv.created_at), messages=messages)

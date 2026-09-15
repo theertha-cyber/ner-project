@@ -220,6 +220,7 @@ CREATE TABLE IF NOT EXISTS {schema}.chat_messages (
     response_time_ms INTEGER,
     export_rows JSONB,
     export_row_count INTEGER,
+    chart JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS {schema}.chat_message_feedback (

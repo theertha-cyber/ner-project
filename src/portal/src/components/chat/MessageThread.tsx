@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ChartRenderer, type ChartPayload } from "./ChartRenderer";
 import { CitationChips } from "./CitationChips";
 import { MessageFeedback, type Feedback } from "./MessageFeedback";
 import { ExportCard, type ExportAvailability } from "./ExportCard";
@@ -55,6 +56,7 @@ interface Message {
   model_version?: string | null;
   feedback?: Feedback | null;
   export?: ExportAvailability | null;
+  chart?: ChartPayload | null;
 }
 
 interface MessageThreadProps {
@@ -216,6 +218,12 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
                   </div>
                 )}
 
+                {/* Chart and export both hang off the same structured rows, so a turn
+                    with results can show both. The chart sits directly under the answer:
+                    when the text is truncated to a preview it still conveys the whole
+                    result at a glance, and the "get the rest" affordances (export card,
+                    See more) follow below it. */}
+                {msg.chart && <ChartRenderer chart={msg.chart} />}
                 {isTruncatable && msg.export && <ExportCard export_={msg.export} />}
                 {isTruncatable && (
                   <button

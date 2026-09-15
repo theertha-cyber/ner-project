@@ -24,6 +24,7 @@ from src.shared.auth import create_access_token
 from src.chat_api.api.v1 import chat as chat_module
 from src.chat_api.graph.builder import build_chat_graph
 from src.chat_api.graph.nodes import build_nodes
+from src.chat_api.services.chart_tool import ChartFrame
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator, STREAM_DONE
 from src.shared.retrieval.tools import build_default_registry
 
@@ -282,7 +283,8 @@ class CannedStreamOrchestrator:
     def __init__(self, reply="Based on the documents, there are 5 organizations.",
                  sources=None, pending_clarification=None, answer_kind="answer",
                  model_version=None, deltas=None, raise_after=None, delay=0,
-                 retrieval_status=None):
+                 retrieval_status=None, chart=None):
+        self.chart = chart
         self.reply = reply
         self.sources = sources if sources is not None else [_fake_citation()]
         self.pending_clarification = pending_clarification
@@ -299,12 +301,14 @@ class CannedStreamOrchestrator:
                                           jwt_token=None, conversation_context=None, conversation_id=None):
         self.non_stream_calls += 1
         return (self.reply, self.sources, self.pending_clarification, self.answer_kind,
-                self.model_version, self.retrieval_status)
+                self.model_version, self.retrieval_status, None, self.chart)
 
     async def execute_with_clarification_stream(self, message, session, schema, tenant_id, token_sink,
                                                  jwt_token=None, conversation_context=None, conversation_id=None):
         self.stream_calls += 1
         try:
+            if self.chart is not None:
+                await token_sink.put(ChartFrame(self.chart))
             for i, delta in enumerate(self.deltas):
                 if self.delay:
                     await asyncio.sleep(self.delay)
@@ -314,7 +318,7 @@ class CannedStreamOrchestrator:
         finally:
             await token_sink.put(STREAM_DONE)
         return (self.reply, self.sources, self.pending_clarification, self.answer_kind,
-                self.model_version, self.retrieval_status)
+                self.model_version, self.retrieval_status, None, self.chart)
 
 
 def _fake_citation():
@@ -646,3 +650,137 @@ class TestStreamingErrorEvent:
         error_data = events[-1][1]
         assert "code" in error_data and "message" in error_data
         assert "done" not in [e[0] for e in events]
+
+
+CHART = {
+    "chart_type": "bar",
+    "title": "Billed per quarter",
+    "x_label": None,
+    "y_label": None,
+    "categories": ["Q1", "Q2", "Q3", "Q4"],
+    "series": [{"name": "amount", "data": [120000.0, 95000.0, 143000.0, 160000.0]}],
+}
+
+
+class TestChartEventOnTheStream:
+    """Covers verification.md rows 27-30: the chart travels as its own SSE event,
+    ahead of the answer text, and never accompanies a reply the guardrail replaced."""
+
+    async def test_27_chart_event_arrives_before_the_first_token(self, engine, tenant_schema, monkeypatch):
+        tid, _ = tenant_schema
+        _patch_orchestrator(monkeypatch, CannedStreamOrchestrator(chart=CHART))
+
+        async with AsyncClient(transport=ASGITransport(app=_app()), base_url="http://test") as client:
+            async with client.stream("POST", "/api/v1/chat/stream", headers=auth_header(tid),
+                                      json={"message": "billed per quarter?", "conversation_id": None}) as resp:
+                events = await _read_sse_events(resp)
+
+        names = [name for name, _ in events]
+        assert names.count("chart") == 1
+        assert names.index("chart") < names.index("token")
+        chart_payload = next(data for name, data in events if name == "chart")
+        assert chart_payload["title"] == "Billed per quarter"
+
+    async def test_28_turn_without_a_chart_emits_no_chart_event(self, engine, tenant_schema, monkeypatch):
+        tid, _ = tenant_schema
+        _patch_orchestrator(monkeypatch, CannedStreamOrchestrator())
+
+        async with AsyncClient(transport=ASGITransport(app=_app()), base_url="http://test") as client:
+            async with client.stream("POST", "/api/v1/chat/stream", headers=auth_header(tid),
+                                      json={"message": "How many organizations?", "conversation_id": None}) as resp:
+                events = await _read_sse_events(resp)
+
+        names = [name for name, _ in events]
+        assert "chart" not in names
+        assert names[-1] == "done"
+        assert set(names) == {"token", "done"}
+        done = next(data for name, data in events if name == "done")
+        assert "chart" not in done
+
+    async def test_29_done_event_repeats_the_chart(self, engine, tenant_schema, monkeypatch):
+        tid, _ = tenant_schema
+        _patch_orchestrator(monkeypatch, CannedStreamOrchestrator(chart=CHART))
+
+        async with AsyncClient(transport=ASGITransport(app=_app()), base_url="http://test") as client:
+            async with client.stream("POST", "/api/v1/chat/stream", headers=auth_header(tid),
+                                      json={"message": "billed per quarter?", "conversation_id": None}) as resp:
+                events = await _read_sse_events(resp)
+
+        streamed = next(data for name, data in events if name == "chart")
+        done = next(data for name, data in events if name == "done")
+        assert done["chart"] == streamed
+
+    async def test_30_guardrail_replaced_turn_emits_no_chart(self, engine, tenant_schema, monkeypatch):
+        """A suppressed chart never reaches the wire: the generation node clears it, so
+        the orchestrator returns None and puts no ChartFrame on the sink."""
+        tid, _ = tenant_schema
+        fallback = "I couldn't find relevant information to answer that question."
+        _patch_orchestrator(monkeypatch, CannedStreamOrchestrator(reply=fallback, chart=None))
+
+        async with AsyncClient(transport=ASGITransport(app=_app()), base_url="http://test") as client:
+            async with client.stream("POST", "/api/v1/chat/stream", headers=auth_header(tid),
+                                      json={"message": "billed per quarter?", "conversation_id": None}) as resp:
+                events = await _read_sse_events(resp)
+
+        assert "chart" not in [name for name, _ in events]
+        done = next(data for name, data in events if name == "done")
+        assert "chart" not in done
+        assert done["reply"] == fallback
+
+
+class TestNoTokenDuringTheDecisionStage:
+    """Covers verification.md row 20 at the node level, where stage A actually exists —
+    the endpoint tests above patch the orchestrator and so never run it."""
+
+    async def test_20_sink_is_untouched_while_the_decision_call_runs(self):
+        from src.chat_api.graph.nodes import build_nodes
+        from src.chat_api.services.chart_tool import RENDER_CHART_TOOL_NAME
+
+        sink: asyncio.Queue = asyncio.Queue()
+        observed_during_stage_a = []
+
+        def _message(content, tool_calls=None):
+            msg = SimpleNamespace(content=content, tool_calls=tool_calls,
+                                  model_dump=lambda **_kw: {"role": "assistant", "content": content})
+            return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
+        class Client:
+            def __init__(self):
+                self.chat = SimpleNamespace(completions=self)
+
+            async def create(self, **kwargs):
+                if "tools" in kwargs:
+                    # Whatever the sink holds at this instant is what a client would
+                    # already have been sent. It must be nothing.
+                    observed_during_stage_a.append(sink.qsize())
+                    tool_call = SimpleNamespace(
+                        id="call_1",
+                        function=SimpleNamespace(
+                            name=RENDER_CHART_TOOL_NAME,
+                            arguments=json.dumps({
+                                "chart_type": "bar", "title": "t",
+                                "categories": ["Q1"], "series": [{"name": "amount", "data": [5]}],
+                            }),
+                        ),
+                    )
+                    return _message(None, tool_calls=[tool_call])
+
+                async def chunks():
+                    yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="text"))])
+                return chunks()
+
+        orchestrator = RAGOrchestrator.__new__(RAGOrchestrator)
+        orchestrator.retriever = None
+        orchestrator.llm_client = Client()
+        orchestrator.llm_model = "fake-model"
+        orchestrator.guardrails = NoopGuardrails()
+        orchestrator.tool_registry = build_default_registry()
+
+        await build_nodes(orchestrator)["generation"]({
+            "prompt_messages": [{"role": "user", "content": "q"}],
+            "sources": [_fake_citation()],
+            "sql_results": [{"quarter": "Q1", "amount": 5}],
+            "token_sink": sink,
+        })
+
+        assert observed_during_stage_a == [0]
