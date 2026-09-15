@@ -116,6 +116,24 @@ async def proxy_submit_message_feedback(message_id: str, request: Request):
     return await _proxy("POST", f"/api/v1/chat/messages/{message_id}/feedback", request)
 
 
+@router.get("/chat/messages/{message_id}/export")
+async def proxy_export_message(message_id: str, request: Request):
+    """Raw-bytes passthrough, not `_proxy`: the export endpoint returns a CSV/XLSX
+    file body, and `_proxy`'s generic GET branch always calls `resp.json()`, which
+    would corrupt (or crash on) binary content. Mirrors `proxy_widget_js`'s pattern
+    instead — forward the response body and headers (Content-Type,
+    Content-Disposition) untouched."""
+    url = f"{CHAT_API_BASE}/api/v1/chat/messages/{message_id}/export"
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    headers.pop("content-length", None)
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(url, headers=headers, params=dict(request.query_params))
+        response_headers = dict(resp.headers)
+        response_headers.pop("content-length", None)
+        return Response(content=resp.content, status_code=resp.status_code, headers=response_headers)
+
+
 @router.post("/tenants/{tenant_slug}/widget-keys")
 async def proxy_create_widget_key(tenant_slug: str, request: Request):
     return await _proxy("POST", "/api/v1/widget-keys", request)
