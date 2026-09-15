@@ -71,6 +71,15 @@ class RetrievalStatusOut(BaseModel):
     stop_reason: str | None = None
 
 
+class ExportAvailability(BaseModel):
+    """Describes whether a structured-result snapshot is downloadable for this
+    turn — metadata only, never the row data itself (chat-export capability)."""
+
+    message_id: str
+    row_count: int
+    formats: list[str] = ["csv", "xlsx"]
+
+
 class ChatResponse(BaseModel):
     reply: str
     sources: list[Source | Citation]
@@ -81,6 +90,7 @@ class ChatResponse(BaseModel):
     answer_kind: AnswerKind | None = None
     model_version: str | None = None
     retrieval_status: RetrievalStatusOut | None = None
+    export: ExportAvailability | None = None
 
 
 class ConversationSummary(BaseModel):
@@ -126,6 +136,7 @@ class MessageResponse(BaseModel):
     answer_kind: AnswerKind | None = None
     model_version: str | None = None
     feedback: FeedbackOut | None = None
+    export: ExportAvailability | None = None
 
 
 class ConversationDetail(BaseModel):

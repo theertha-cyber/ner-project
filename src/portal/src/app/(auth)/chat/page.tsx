@@ -13,6 +13,12 @@ import { useAuth } from "@/lib/auth";
 import { readChatStream } from "@/lib/chat-stream";
 import type { Feedback } from "@/components/chat/MessageFeedback";
 
+interface ExportAvailability {
+  message_id: string;
+  row_count: number;
+  formats: string[];
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -24,6 +30,7 @@ interface Message {
   answer_kind?: "answer" | "clarification" | "guardrail_blocked" | "out_of_domain" | null;
   model_version?: string | null;
   feedback?: Feedback | null;
+  export?: ExportAvailability | null;
 }
 
 interface Source {
@@ -235,6 +242,7 @@ function ChatPageInner() {
             created_at: new Date().toISOString(),
             answer_kind: data.answer_kind as Message["answer_kind"],
             model_version: (data.model_version as string | null) ?? null,
+            export: data.export as ExportAvailability | null | undefined,
           };
           setMessages((prev) =>
             prev
@@ -288,6 +296,7 @@ function ChatPageInner() {
           created_at: new Date().toISOString(),
           answer_kind: data.answer_kind,
           model_version: data.model_version,
+          export: data.export,
         };
         setMessages((prev) =>
           prev
