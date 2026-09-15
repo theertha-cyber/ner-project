@@ -195,3 +195,51 @@ describe("MessageThread streaming lifecycle", () => {
     expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
   });
 });
+
+describe("MessageThread charts", () => {
+  const chart = {
+    chart_type: "bar" as const,
+    title: "Billed per quarter",
+    categories: ["Q1", "Q2"],
+    series: [{ name: "amount", data: [120000, 95000] }],
+  };
+
+  const withChart = [
+    {
+      id: "a1",
+      role: "assistant" as const,
+      content: "Billing rose through the year.",
+      created_at: "2026-01-01",
+      answer_kind: "answer" as const,
+      sources: [{ source_type: "sql", document_id: "d1", chunk_text: "Q1 120000" }],
+      chart,
+    },
+  ];
+
+  it("renders the chart between the answer text and its citations (row 36)", () => {
+    const { container } = render(<MessageThread messages={withChart} loading={false} />);
+
+    const figure = container.querySelector("figure");
+    expect(figure).toBeTruthy();
+    expect(screen.getByText("Billed per quarter")).toBeInTheDocument();
+
+    const markdown = container.querySelector(".chat-markdown");
+    expect(markdown).toBeTruthy();
+    // Document order: text, then chart.
+    expect(markdown!.compareDocumentPosition(figure!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("renders no chart container for a message without one (row 41)", () => {
+    const chartless = [
+      {
+        id: "a2",
+        role: "assistant" as const,
+        content: "There were five organizations.",
+        created_at: "2026-01-01",
+        answer_kind: "answer" as const,
+      },
+    ];
+    const { container } = render(<MessageThread messages={chartless} loading={false} />);
+    expect(container.querySelector("figure")).toBeNull();
+  });
+});

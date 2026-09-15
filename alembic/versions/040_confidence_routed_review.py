@@ -52,7 +52,7 @@ from alembic import op
 from sqlalchemy import text
 
 revision = "040"
-down_revision = "039"
+down_revision = "039b"
 branch_labels = None
 depends_on = None
 

@@ -28,6 +28,7 @@ from src.chat_api.api.v1.schemas import CandidateEntity, PendingClarification, S
 from src.chat_api.graph.state import ChatState
 from src.chat_api.services import conversation_entity_state as conv_state
 from src.chat_api.services import entity_resolver
+from src.chat_api.services.chart_tool import ChartFrame, RENDER_CHART_SCHEMA, parse_chart_tool_call
 from src.chat_api.services.context_assembler import ContextAssembler
 from src.chat_api.services.guardrails import FALLBACK_REPLY, INCOMPLETE_RETRIEVAL_REPLY
 from src.shared.observability import get_tenant_id
@@ -480,18 +481,89 @@ def build_nodes(orchestrator) -> dict:
         )
         return {"sources": sources}
 
+    def _chart_eligible(state: ChatState) -> bool:
+        """A turn may be offered the chart tool only when it has structured rows to
+        draw from and is headed for an ordinary answer. Blocked and out-of-domain
+        turns short-circuit before generation, so the remaining exclusion is a
+        clarification request, which asserts nothing about tenant data."""
+        return bool(state.get("sql_results")) and not state.get("pending_clarification")
+
+    async def _propose_chart(state: ChatState, llm_messages: list) -> tuple[dict | None, list]:
+        """Stage A. Asks the model whether these rows are worth drawing, offering it
+        `render_chart`. Returns the validated chart and the messages stage B should
+        send — extended with the tool exchange when a chart was produced, unchanged
+        otherwise.
+
+        Emits nothing to the token sink: the user sees no output until stage B, so the
+        guardrail's "no token before the reply is trusted" rule is untouched. Any
+        failure here degrades to a plain text answer rather than failing the turn."""
+        try:
+            async with measure_llm_call("chart_decision", get_tenant_id()) as call:
+                response = await orchestrator.llm_client.chat.completions.create(
+                    model=orchestrator.llm_model,
+                    messages=llm_messages,
+                    temperature=0.3,
+                    max_tokens=1000,
+                    tools=[RENDER_CHART_SCHEMA],
+                    tool_choice="auto",
+                    langsmith_extra=langsmith_extra(),
+                )
+                call.usage(response)
+        except Exception:
+            logger.warning("chart decision call failed; answering without a chart", exc_info=True)
+            return None, llm_messages
+
+        message = response.choices[0].message
+        tool_calls = getattr(message, "tool_calls", None)
+        if not tool_calls:
+            return None, llm_messages
+
+        tool_call = tool_calls[0]
+        chart = parse_chart_tool_call(tool_call, state.get("sql_results"))
+        if chart is None:
+            return None, llm_messages
+
+        # The tool result is an acknowledgement, not data: the chart is rendered by the
+        # client, and stage B only needs to know it exists so the prose reads as a
+        # caption rather than repeating every figure.
+        extended = llm_messages + [
+            message.model_dump(exclude_none=True),
+            {
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": "Chart rendered and shown to the user above your answer.",
+            },
+        ]
+        return chart.model_dump(), extended
+
     @_traced("generation")
     async def generation_node(state: ChatState) -> dict:
         """Streams content deltas to `state["token_sink"]` when present, per
         design.md Decision 2. Per Decision 3, streaming is entered only when sources
         are already non-empty — `enforce_sources` only ever discards a reply when
         sources are empty, so gating the streaming branch on that same condition
-        guarantees a user is never shown text the guardrail then replaces."""
+        guarantees a user is never shown text the guardrail then replaces.
+
+        For chart-eligible turns this runs in two stages (design.md Decision 1): a
+        non-streaming call that offers `render_chart`, then the ordinary generation
+        call below. A turn that is not eligible, or whose model declines to chart,
+        reaches that call exactly as it did before charts existed."""
         llm_messages = state["prompt_messages"]
         sources = state.get("sources") or []
         token_sink: asyncio.Queue | None = state.get("token_sink")
 
+        chart = None
+        if _chart_eligible(state):
+            chart, llm_messages = await _propose_chart(state, llm_messages)
+
         if token_sink is not None and sources:
+            # Ahead of the first delta, so the client can render the shape while the
+            # commentary is still arriving. Safe to send this early precisely because
+            # this branch requires non-empty sources, and `enforce_sources` only ever
+            # replaces a reply when sources are empty — nothing below can retract it.
+            if chart is not None:
+                await token_sink.put(ChartFrame(chart))
+
             # The measured span covers the whole stream, not just the call that opens it:
             # a streamed answer's latency is the time until the last delta, which is what
             # the user actually waits for. No usage block arrives on a stream unless it is
@@ -533,6 +605,10 @@ def build_nodes(orchestrator) -> dict:
         reply, sources = orchestrator.guardrails.enforce_sources(
             reply, sources, state.get("retrieval_status"),
         )
+        if reply in (FALLBACK_REPLY, INCOMPLETE_RETRIEVAL_REPLY):
+            # The chart is drawn from the evidence the guardrail just judged too thin
+            # to support a sentence, so it cannot stand next to the fallback either.
+            chart = None
         # Composition, measured after the guardrail has had its say: the citation count
         # that matters is the one on the answer the user receives, not the one the model
         # proposed. A hedged reply is one the guardrail replaced with a fallback, which is
@@ -542,7 +618,7 @@ def build_nodes(orchestrator) -> dict:
             citations=len(sources),
             hedged=reply in (FALLBACK_REPLY, INCOMPLETE_RETRIEVAL_REPLY),
         )
-        return {"reply": reply, "sources": sources}
+        return {"reply": reply, "sources": sources, "chart": chart}
 
     return {
         "guardrail": guardrail_node,

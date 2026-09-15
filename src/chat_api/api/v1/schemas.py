@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 AnswerKind = Literal["answer", "clarification", "guardrail_blocked", "out_of_domain"]
 Rating = Literal["up", "down"]
@@ -71,6 +71,34 @@ class RetrievalStatusOut(BaseModel):
     stop_reason: str | None = None
 
 
+ChartType = Literal["bar", "line", "pie"]
+
+
+class ChartSeries(BaseModel):
+    name: str
+    data: list[float]
+
+
+class ChartPayload(BaseModel):
+    chart_type: ChartType
+    title: str
+    x_label: str | None = None
+    y_label: str | None = None
+    categories: list[str] = Field(..., min_length=1)
+    series: list[ChartSeries] = Field(..., min_length=1)
+
+    @model_validator(mode="after")
+    def series_align_with_categories(self):
+        width = len(self.categories)
+        for entry in self.series:
+            if len(entry.data) != width:
+                raise ValueError(
+                    f"series '{entry.name}' has {len(entry.data)} values "
+                    f"but there are {width} categories"
+                )
+        return self
+
+
 class ChatResponse(BaseModel):
     reply: str
     sources: list[Source | Citation]
@@ -81,6 +109,7 @@ class ChatResponse(BaseModel):
     answer_kind: AnswerKind | None = None
     model_version: str | None = None
     retrieval_status: RetrievalStatusOut | None = None
+    chart: ChartPayload | None = None
 
 
 class ConversationSummary(BaseModel):
@@ -126,6 +155,7 @@ class MessageResponse(BaseModel):
     answer_kind: AnswerKind | None = None
     model_version: str | None = None
     feedback: FeedbackOut | None = None
+    chart: ChartPayload | None = None
 
 
 class ConversationDetail(BaseModel):

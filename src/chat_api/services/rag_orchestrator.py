@@ -54,9 +54,10 @@ class RAGOrchestrator:
         self, message: str, session: AsyncSession, schema: str, tenant_id: str,
         jwt_token: str | None = None, conversation_context: list[dict] | None = None,
         conversation_id: str | None = None,
-    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None]:
+    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None, dict | None]:
         """Same as `execute`, but additionally surfaces `pending_clarification`,
-        `answer_kind`, `model_version`, and the turn's `retrieval_status`, and requires
+        `answer_kind`, `model_version`, the turn's `retrieval_status`, and its `chart`
+        when the generation model produced one, and requires
         `conversation_id` so entity resolution can read and persist its per-conversation
         state. Used by `src/chat_api/api/v1/chat.py`; the widget endpoint keeps calling
         `execute`, whose signature is unchanged."""
@@ -69,13 +70,14 @@ class RAGOrchestrator:
             self._classify_answer_kind(result),
             self._extract_model_version(sources),
             self._retrieval_status_payload(result),
+            result.get("chart"),
         )
 
     async def execute_with_clarification_stream(
         self, message: str, session: AsyncSession, schema: str, tenant_id: str,
         token_sink: asyncio.Queue, jwt_token: str | None = None,
         conversation_context: list[dict] | None = None, conversation_id: str | None = None,
-    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None]:
+    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None, dict | None]:
         """Same as `execute_with_clarification`, but threads `token_sink` into the
         graph's initial state (design.md Decision 2) so `generation_node` can stream
         content deltas onto it as they arrive. Returns the identical tuple once the
@@ -99,6 +101,7 @@ class RAGOrchestrator:
             self._classify_answer_kind(result),
             self._extract_model_version(sources),
             self._retrieval_status_payload(result),
+            result.get("chart"),
         )
 
     @staticmethod

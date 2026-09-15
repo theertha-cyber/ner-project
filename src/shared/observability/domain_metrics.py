@@ -262,6 +262,10 @@ LLM_OPERATIONS = frozenset({
     "entity_selection",
     "rag_orchestration",
     "entity_postprocess",
+    # The generation node's chart-decision call. Declared separately from
+    # `answer_generation` because it is the extra round trip chart-eligible turns pay,
+    # and the whole point of measuring it is to see that cost on its own.
+    "chart_decision",
     OTHER,
 })
 

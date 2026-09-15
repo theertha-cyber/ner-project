@@ -142,7 +142,7 @@ class TestChatEndpointTurnShape:
         async def fake(message, session, schema, tenant_id, jwt_token=None,
                        conversation_context=None, conversation_id=None):
             fake.seen_context = conversation_context
-            return (reply, sources, None, "answer", None, None)
+            return (reply, sources, None, "answer", None, None, None)
 
         fake.seen_context = None
         monkeypatch.setattr(chat_module.orchestrator, "execute_with_clarification", fake)

@@ -60,7 +60,7 @@ class CannedOrchestrator:
     async def execute_with_clarification(self, message, session, schema, tenant_id,
                                          jwt_token=None, conversation_context=None,
                                          conversation_id=None):
-        return ("There are 5 organizations.", self.sources, None, "answer", None, self.retrieval_status)
+        return ("There are 5 organizations.", self.sources, None, "answer", None, self.retrieval_status, None)
 
 
 def _patch(monkeypatch, fake: CannedOrchestrator) -> None:

@@ -41,6 +41,7 @@ class ChatState(TypedDict, total=False):
 
     # stage outputs
     sql_results: list[dict] | None
+    chart: dict | None
     chunks: list[RetrievalResult]
 
     # `{"returned": int, "matched": int | None, "truncated": bool}` for the structured

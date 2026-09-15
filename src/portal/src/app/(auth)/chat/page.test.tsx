@@ -205,3 +205,78 @@ describe("Chat page — streaming kill switch", () => {
     });
   });
 });
+// Covers verification.md rows 45-46 (chat-chart-generation task 4.8).
+describe("Chat page — charts", () => {
+  const CHART = {
+    chart_type: "bar",
+    title: "Billed per quarter",
+    categories: ["Q1", "Q2"],
+    series: [{ name: "amount", data: [120000, 95000] }],
+  };
+
+  it("renders a persisted chart when a past conversation is reopened (row 46)", async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/chat/conversations/conv-1")) {
+        return Promise.resolve(
+          jsonResponse({
+            id: "conv-1",
+            title: "Test",
+            created_at: "2026-01-01",
+            messages: [
+              {
+                id: "m1",
+                role: "assistant",
+                content: "Billing rose through the year.",
+                created_at: "2026-01-01",
+                answer_kind: "answer",
+                chart: CHART,
+              },
+            ],
+          }),
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations")) return Promise.resolve(jsonResponse([]));
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<ChatPage />);
+
+    expect(await screen.findByText("Billed per quarter")).toBeInTheDocument();
+  });
+
+  it("takes the chart from the completion payload as authoritative (row 45)", async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/chat/stream")) {
+        return Promise.resolve(
+          sseResponse([
+            "event: chart\ndata: " + JSON.stringify(CHART) + "\n\n",
+            'event: token\ndata: {"delta": "Billing rose."}\n\n',
+            "event: done\ndata: " +
+              JSON.stringify({
+                reply: "Billing rose.",
+                sources: [],
+                conversation_id: "conv-1",
+                message_id: "m1",
+                answer_kind: "answer",
+                chart: { ...CHART, title: "Final title" },
+              }) +
+              "\n\n",
+          ]),
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations/conv-1")) {
+        return Promise.resolve(
+          jsonResponse({ id: "conv-1", title: "Test", created_at: "2026-01-01", messages: [] }),
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations")) return Promise.resolve(jsonResponse([]));
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    await sendMessage("how much did we bill per quarter?");
+
+    expect(await screen.findByText("Final title")).toBeInTheDocument();
+  });
+});

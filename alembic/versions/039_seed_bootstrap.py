@@ -36,8 +36,8 @@ Create Date: 2026-09-03
 from alembic import op
 from sqlalchemy import text
 
-revision = "039"
-down_revision = "038"
+revision = "039b"
+down_revision = "039"
 branch_labels = None
 depends_on = None
 

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ChartRenderer, type ChartPayload } from "./ChartRenderer";
 import { CitationChips } from "./CitationChips";
 import { MessageFeedback, type Feedback } from "./MessageFeedback";
 
@@ -40,6 +41,7 @@ interface Message {
   answer_kind?: "answer" | "clarification" | "guardrail_blocked" | "out_of_domain" | null;
   model_version?: string | null;
   feedback?: Feedback | null;
+  chart?: ChartPayload | null;
 }
 
 interface MessageThreadProps {
@@ -182,6 +184,8 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                   </div>
                 )}
+
+                {msg.chart && <ChartRenderer chart={msg.chart} />}
 
                 {showTrailers && msg.sources && msg.sources.length > 0 && (
                   <div style={{ marginTop: 14 }}>
