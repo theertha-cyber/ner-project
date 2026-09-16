@@ -14,11 +14,12 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.annotation_service.api.v1.spans import get_session, get_tenant_id
 from src.annotation_service.celery_app import celery_app
 from src.shared.config import settings
+from src.shared.database import get_engine
 from src.shared.entity_config_version import entity_config_fingerprint, load_active_entity_config
 from src.shared.exceptions import NotFoundError
 
@@ -111,7 +112,11 @@ async def trigger_llm_prelabel(
             detail={"code": "NO_TEXT", "message": "Document has no extracted text"},
         )
 
-    entity_types = await load_active_entity_config(session, tenant_id)
+    # `entity_definitions` is a control-plane table (Design D10) — always read on a
+    # fresh *platform* session, never `session` (which for a `tenant_owned` tenant is
+    # resolved to their own store, where `public.entity_definitions` does not exist).
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        entity_types = await load_active_entity_config(platform_session, tenant_id)
     if not entity_types:
         raise HTTPException(
             status_code=422,

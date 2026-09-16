@@ -4,8 +4,9 @@ import logging
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 from langsmith.wrappers import wrap_openai
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.shared.config import settings
+from src.shared.database import get_engine
 from src.shared.conversation_history import render_history
 from src.shared.retrieval import DenseRetriever, SparseRetriever, HybridRetriever, RerankingRetriever, CrossEncoderReranker
 from src.shared.retrieval.tools import build_default_registry
@@ -222,11 +223,17 @@ class RAGOrchestrator:
         conll_to_name: dict[str, str] = {}
         if conll_types:
             try:
-                result = await session.execute(
-                    text("SELECT name, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tid"),
-                    {"tid": tenant_id},
-                )
-                for row in result.fetchall():
+                # `entity_definitions` is a control-plane table (Design D10) — always
+                # read on a fresh *platform* session, never `session` (which for a
+                # `tenant_owned` tenant is resolved to their own store, where
+                # `public.entity_definitions` does not exist).
+                async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+                    result = await platform_session.execute(
+                        text("SELECT name, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tid"),
+                        {"tid": tenant_id},
+                    )
+                    rows = result.fetchall()
+                for row in rows:
                     mapping = row[1]
                     if isinstance(mapping, str):
                         import json

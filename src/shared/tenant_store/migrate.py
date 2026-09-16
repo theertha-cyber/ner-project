@@ -17,11 +17,13 @@ from __future__ import annotations
 import logging
 import sys
 from dataclasses import dataclass
+from urllib.parse import quote
 
 from sqlalchemy import create_engine, text
 
 from src.shared.config import settings
 from src.shared.data_plane import DATA_PLANE_SECRET_KIND
+from src.shared.database import system_ca_bundle_path
 from src.shared.integration_profile.secrets import (
     SecretResolutionError,
     TenantSecretContext,
@@ -48,11 +50,22 @@ class _ProfileShim:
 
 def _connection_url(configuration: dict, secrets: TenantSecretContext) -> str:
     password = secrets.get("password_ref") or secrets.get("password")
-    return (
-        f"postgresql://{configuration['username']}:{password}@"
+    sslmode = configuration.get("sslmode", "verify-full")
+    # See `database.py::_connection_url` and `data_plane/tasks.py::_connection_url` —
+    # same two bugs fixed here: an unescaped `@`/`/`/`:` in the password splits the
+    # URL's userinfo/host boundary in the wrong place, and psycopg2-binary's bundled
+    # OpenSSL does not resolve `verify-full` against the container's real CA bundle
+    # on its own.
+    url = (
+        f"postgresql://{quote(configuration['username'], safe='')}:{quote(password, safe='')}@"
         f"{configuration['host']}:{configuration['port']}/{configuration['database']}"
-        f"?sslmode={configuration.get('sslmode', 'verify-full')}"
+        f"?sslmode={sslmode}"
     )
+    if sslmode not in ("disable", "allow", "prefer"):
+        cafile = system_ca_bundle_path()
+        if cafile:
+            url += f"&sslrootcert={cafile}"
+    return url
 
 
 def _migrate_one(platform_conn, tenant_id: str, connection_row) -> tuple[str, int | None]:

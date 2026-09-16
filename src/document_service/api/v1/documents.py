@@ -376,7 +376,12 @@ async def delete_document(
     # builder the extraction worker uses, so the sync and async callers cannot diverge into a
     # half-deleted document. Inactive definitions are covered too: their tables are retained,
     # so their rows would otherwise survive.
-    specs = await load_definition_specs(session, tenant_id)
+    #
+    # `entity_definitions` is a control-plane table (Design D10) — read on a fresh
+    # *platform* session, never `session` (which for a `tenant_owned` tenant is
+    # resolved to their own store, where `public.entity_definitions` does not exist).
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        specs = await load_definition_specs(platform_session, tenant_id)
     existing = await list_existing_generated_tables(session, _schema(tenant_id))
     for statement, params in build_relational_delete_statements(
         _schema(tenant_id), doc_id, specs, existing

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from src.shared.data_plane_gate import require_data_plane_ready
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from src.shared.database import get_resolver
+from src.shared.database import get_engine, get_resolver
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.tenant_schema import schema_for_tenant as _schema
 
@@ -119,11 +119,15 @@ def parse_conll(content: str) -> list[dict]:
 
 
 async def get_known_entity_types_lower(session: AsyncSession, tenant_id: str) -> set[str]:
-    result = await session.execute(
-        text("SELECT LOWER(name) FROM public.entity_definitions WHERE tenant_id = :tenant_id"),
-        {"tenant_id": tenant_id},
-    )
-    return {row[0] for row in result.fetchall()}
+    """`entity_definitions` is a control-plane table (Design D10) — always read on a
+    fresh *platform* session, never `session` (which for a `tenant_owned` tenant is
+    resolved to their own store, where `public.entity_definitions` does not exist)."""
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        result = await platform_session.execute(
+            text("SELECT LOWER(name) FROM public.entity_definitions WHERE tenant_id = :tenant_id"),
+            {"tenant_id": tenant_id},
+        )
+        return {row[0] for row in result.fetchall()}
 
 
 def compute_entity_type_counts(rows: list[dict]) -> dict[str, int]:

@@ -3,10 +3,11 @@ import re
 from dataclasses import dataclass, field
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.extraction_service.services.entity_normalizer import canonicalize
 from src.shared.config import settings
+from src.shared.database import get_engine
 
 logger = logging.getLogger(__name__)
 
@@ -127,11 +128,16 @@ async def _resolve_tenant_person_types(session: AsyncSession, tenant_id: str) ->
     whose `base_label_mapping` maps to the raw `PER` label, so tenant-defined
     schemas (e.g. a resume-specific "Candidate Name" type) are recognised too."""
     types = _person_types()
-    result = await session.execute(
-        text("SELECT name, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tid"),
-        {"tid": tenant_id},
-    )
-    for row in result.fetchall():
+    # `entity_definitions` is a control-plane table (Design D10) — always read on a
+    # fresh *platform* session, never `session` (which for a `tenant_owned` tenant is
+    # resolved to their own store, where `public.entity_definitions` does not exist).
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        result = await platform_session.execute(
+            text("SELECT name, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tid"),
+            {"tid": tenant_id},
+        )
+        rows = result.fetchall()
+    for row in rows:
         mapping = row[1]
         if isinstance(mapping, str):
             import json

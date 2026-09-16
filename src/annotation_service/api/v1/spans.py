@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from src.shared.data_plane_gate import require_data_plane_ready
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from src.shared.database import get_resolver
+from src.shared.database import get_engine, get_resolver
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.exceptions import NotFoundError
 from src.annotation_service.services.llm_prelabel import SUGGESTION_SOURCE_KEYWORD
@@ -55,12 +55,17 @@ def _compute_bio_tags(doc_text: str, char_start: int, char_end: int, entity_type
 
 
 async def validate_entity_type(session: AsyncSession, tenant_id: str, entity_type: str) -> None:
+    """`entity_definitions` is a control-plane table (Design D10) — always read on a
+    fresh *platform* session, never `session` (which for a `tenant_owned` tenant is
+    resolved to their own store, where `public.entity_definitions` does not exist)."""
     from fastapi import HTTPException
-    result = await session.execute(
-        text("SELECT id FROM public.entity_definitions WHERE tenant_id = :tenant_id AND LOWER(name) = LOWER(:name) LIMIT 1"),
-        {"tenant_id": tenant_id, "name": entity_type},
-    )
-    if not result.fetchone():
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        result = await platform_session.execute(
+            text("SELECT id FROM public.entity_definitions WHERE tenant_id = :tenant_id AND LOWER(name) = LOWER(:name) LIMIT 1"),
+            {"tenant_id": tenant_id, "name": entity_type},
+        )
+        found = result.fetchone()
+    if not found:
         raise HTTPException(
             status_code=422,
             detail={"code": "VALIDATION_ERROR", "message": f"Entity type '{entity_type}' is not configured for this tenant"},
@@ -293,11 +298,15 @@ async def prelabel_document(
 
     doc_text = row[1] or ""
 
-    result = await session.execute(
-        text("SELECT name, examples, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tenant_id"),
-        {"tenant_id": tenant_id},
-    )
-    entity_rows = result.fetchall()
+    # `entity_definitions` is a control-plane table (Design D10) — always read on a
+    # fresh *platform* session, never `session` (which for a `tenant_owned` tenant is
+    # resolved to their own store, where `public.entity_definitions` does not exist).
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        result = await platform_session.execute(
+            text("SELECT name, examples, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tenant_id"),
+            {"tenant_id": tenant_id},
+        )
+        entity_rows = result.fetchall()
 
     import re
     keyword_to_type = {}

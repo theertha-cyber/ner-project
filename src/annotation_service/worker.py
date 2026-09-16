@@ -16,7 +16,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from src.annotation_service.celery_app import celery_app
 from src.annotation_service.services.llm_client import LLMUnavailable, get_llm_client
@@ -40,6 +40,7 @@ from src.annotation_service.services.schema_proposal import (
 from src.shared.auth import create_access_token
 from src.shared.config import settings
 from src.shared.confidence_routing import ROUTE_LLM, resolve_review_policy
+from src.shared.database import get_resolver
 from src.shared.entity_config_version import (
     load_active_entity_config,
     load_active_entity_config_sync,
@@ -64,8 +65,19 @@ def _make_service_token(tenant_id: str) -> str:
     )
 
 
-def _get_sync_engine():
-    return create_engine(settings.database_url_sync)
+def _get_sync_engine(tenant_id: str):
+    """The one place this worker obtains a tenant-schema engine — routed through
+    `EngineResolver` (ADR-017) so a `tenant_owned` tenant's data never touches the
+    platform database. Never construct an engine from `settings.database_url_sync`
+    for tenant-schema access anywhere else in this file."""
+    return get_resolver().resolve_sync(tenant_id)
+
+
+def _get_platform_sync_engine():
+    """`entity_definitions` is a control-plane table (Design D10) — always read on
+    the platform engine, never a tenant-resolved one, which for a `tenant_owned`
+    tenant is a different server with no `public.entity_definitions` at all."""
+    return get_resolver().resolve_sync(None)
 
 
 def _now():
@@ -174,7 +186,9 @@ def extract_and_ground_document(engine, tenant_id: str, doc_id: str, client, gui
 
     with engine.begin() as connection:
         document_text = load_document_text(connection, schema, doc_id)
-        entity_types = load_active_entity_config_sync(connection, tenant_id)
+    platform_engine = _get_platform_sync_engine()
+    with platform_engine.connect() as platform_connection:
+        entity_types = load_active_entity_config_sync(platform_connection, tenant_id)
 
     response = client.complete_json(
         SYSTEM_PROMPT,
@@ -197,7 +211,7 @@ def run_llm_prelabel_sync(tenant_id: str, doc_id: str, job_id: str, llm_client=N
     """
     schema = _schema(tenant_id)
     client = llm_client if llm_client is not None else get_llm_client()
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
 
     with engine.begin() as connection:
         _mark_running(connection, schema, job_id)
@@ -267,7 +281,7 @@ def run_schema_proposal_sync(tenant_id: str, proposal_id: str, llm_client=None) 
     (verification.md Risk 1)."""
     schema = _schema(tenant_id)
     client = llm_client if llm_client is not None else get_llm_client()
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
 
     with engine.begin() as connection:
         _mark_proposal_running(connection, schema, proposal_id)
@@ -282,12 +296,15 @@ def run_schema_proposal_sync(tenant_id: str, proposal_id: str, llm_client=None) 
         if isinstance(seed_ids, str):
             seed_ids = json.loads(seed_ids)
         seed_documents = _load_seed_documents(connection, schema, seed_ids or [])
-        entity_types = load_active_entity_config_sync(connection, tenant_id)
         qa_pair_id = row[1] if row else None
         qa_pair_text = None
         if qa_pair_id:
             qa_docs = _load_seed_documents(connection, schema, [qa_pair_id])
             qa_pair_text = qa_docs[0]["text"] if qa_docs else None
+
+    platform_engine = _get_platform_sync_engine()
+    with platform_engine.connect() as platform_connection:
+        entity_types = load_active_entity_config_sync(platform_connection, tenant_id)
 
     # A Q&A-pair document turns the proposal from schema discovery into schema transcription:
     # one entity type per Q&A pair, kept even when no seed document contains a value for it.
@@ -515,7 +532,7 @@ def run_prelabel_batch_sync(
     """
     schema = _schema(tenant_id)
     client = llm_client if llm_client is not None else get_llm_client()
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
 
     with engine.begin() as connection:
         connection.execute(
@@ -678,64 +695,72 @@ async def run_llm_review_async(tenant_id: str, limit: int | None = None, llm_cli
     shipped: the route is implemented and tested but enabled for nobody until human-route
     agreement data exists to compare it against.
     """
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from src.shared.database import get_engine
 
     schema = _schema(tenant_id)
-    engine = create_async_engine(settings.database_url)
-    try:
-        factory = async_sessionmaker(engine, expire_on_commit=False)
-        async with factory() as session:
-            policy = await _tenant_review_policy(session, tenant_id)
-            if policy != ROUTE_LLM:
-                return {"skipped": True, "policy": policy, "reviewed": 0, "failed": 0}
 
-            predictions = await _load_queued_predictions(session, schema, limit)
-            if not predictions:
-                return {"skipped": False, "policy": policy, "reviewed": 0, "failed": 0}
+    # `public.tenants.review_policy` and `entity_definitions` are control-plane
+    # reads (Design D10) — always the platform engine, never a tenant-resolved
+    # one, which for a `tenant_owned` tenant is a different server entirely.
+    platform_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+    async with platform_factory() as platform_session:
+        policy = await _tenant_review_policy(platform_session, tenant_id)
+        if policy != ROUTE_LLM:
+            return {"skipped": True, "policy": policy, "reviewed": 0, "failed": 0}
+        entity_types = [
+            item["name"] for item in await load_active_entity_config(platform_session, tenant_id)
+        ]
 
-            entity_types = [
-                item["name"] for item in await load_active_entity_config(session, tenant_id)
-            ]
-            client = llm_client if llm_client is not None else get_llm_client()
+    # Never disposed here: the resolver's own LRU cache owns this engine's lifetime,
+    # shared across calls for this tenant — matching every other resolver-based
+    # caller in this codebase (e.g. `blob_sync/tasks.py`).
+    engine = await get_resolver().resolve(tenant_id)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        predictions = await _load_queued_predictions(session, schema, limit)
+        if not predictions:
+            return {"skipped": False, "policy": policy, "reviewed": 0, "failed": 0}
 
-            reviewed = 0
-            failed = 0
-            for prediction in predictions:
-                try:
-                    body = review_prediction(
-                        client, prediction, prediction["document_text"], entity_types
-                    )
-                except (LLMReviewError, LLMUnavailable) as exc:
-                    # Left queued. A prediction the provider could not answer for has not been
-                    # reviewed, and recording an outcome would claim otherwise.
-                    failed += 1
-                    print(
-                        f"LLM_REVIEW_WARN tenant={tenant_id} prediction={prediction['id']} "
-                        f"unresolved: {exc}",
-                        flush=True,
-                    )
-                    continue
+        client = llm_client if llm_client is not None else get_llm_client()
 
-                await resolve_prediction(
-                    session,
-                    schema,
-                    prediction,
-                    body,
-                    "annotation-llm-worker",
-                    prediction["document_text"],
-                    origin=ORIGIN_QUEUE,
+        reviewed = 0
+        failed = 0
+        for prediction in predictions:
+            try:
+                body = review_prediction(
+                    client, prediction, prediction["document_text"], entity_types
                 )
-                reviewed += 1
+            except (LLMReviewError, LLMUnavailable) as exc:
+                # Left queued. A prediction the provider could not answer for has not been
+                # reviewed, and recording an outcome would claim otherwise.
+                failed += 1
+                print(
+                    f"LLM_REVIEW_WARN tenant={tenant_id} prediction={prediction['id']} "
+                    f"unresolved: {exc}",
+                    flush=True,
+                )
+                continue
 
-            await session.commit()
-            return {
-                "skipped": False,
-                "policy": policy,
-                "reviewed": reviewed,
-                "failed": failed,
-            }
-    finally:
-        await engine.dispose()
+            await resolve_prediction(
+                session,
+                schema,
+                prediction,
+                body,
+                "annotation-llm-worker",
+                prediction["document_text"],
+                origin=ORIGIN_QUEUE,
+            )
+            reviewed += 1
+
+        await session.commit()
+        return {
+            "skipped": False,
+            "policy": policy,
+            "reviewed": reviewed,
+            "failed": failed,
+        }
 
 
 def run_llm_review_sync(tenant_id: str, limit: int | None = None, llm_client=None) -> dict:

@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.annotation_service.api.v1.spans import generate_uuid, get_session, get_tenant_id
 from src.annotation_service.api.v1._rbac import (
@@ -38,6 +38,7 @@ from src.annotation_service.services.batch_acceptance import (
     draw_sample,
 )
 from src.shared.config import settings
+from src.shared.database import get_engine
 from src.shared.entity_config_version import load_active_entity_config
 from src.shared.exceptions import NotFoundError
 
@@ -401,14 +402,19 @@ async def approve_candidate(
         )
 
     name = row[2]
-    existing = await session.execute(
-        text(
-            "SELECT id FROM public.entity_definitions "
-            "WHERE tenant_id = :tid AND LOWER(name) = LOWER(:name) AND is_active = true LIMIT 1"
-        ),
-        {"tid": tenant_id, "name": name},
-    )
-    if existing.fetchone():
+    # `entity_definitions` is a control-plane table (Design D10) — always read on a
+    # fresh *platform* session, never `session` (which for a `tenant_owned` tenant is
+    # resolved to their own store, where `public.entity_definitions` does not exist).
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        existing = await platform_session.execute(
+            text(
+                "SELECT id FROM public.entity_definitions "
+                "WHERE tenant_id = :tid AND LOWER(name) = LOWER(:name) AND is_active = true LIMIT 1"
+            ),
+            {"tid": tenant_id, "name": name},
+        )
+        found_existing = existing.fetchone()
+    if found_existing:
         raise HTTPException(
             status_code=422,
             detail={
@@ -552,7 +558,11 @@ async def create_prelabel_batch(
                 },
             )
 
-    entity_types = await load_active_entity_config(session, tenant_id)
+    # `entity_definitions` is a control-plane table (Design D10) — always read on a
+    # fresh *platform* session, never `session` (which for a `tenant_owned` tenant is
+    # resolved to their own store, where `public.entity_definitions` does not exist).
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        entity_types = await load_active_entity_config(platform_session, tenant_id)
     if not entity_types:
         raise HTTPException(
             status_code=422,

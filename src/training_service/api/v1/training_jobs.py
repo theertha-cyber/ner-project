@@ -191,29 +191,34 @@ async def create_training_job(
         # untrainable. Defaults to 0 (inert) — see ADR-010.
         min_per_type = int(os.environ.get("NER_MIN_ENTITIES_PER_TYPE", "0"))
         if min_per_type > 0:
-            per_type_result = await session.execute(
+            # Two queries, two sessions (Design D10): `spans` lives in the tenant
+            # store, `entity_definitions` in the platform control plane. A single
+            # query joining `{schema}.spans` and `public.entity_definitions` would
+            # run on the tenant session and fail outright for a `tenant_owned`
+            # tenant, whose store has no `public.entity_definitions` at all.
+            counts_result = await session.execute(
                 text(f"""
-                    WITH counts AS (
-                        SELECT sp.entity_type, COUNT(*) AS cnt FROM {schema}.spans sp
-                        {span_join}
-                        WHERE TRUE{span_source_clause}
-                        GROUP BY sp.entity_type
-                    ),
-                    types AS (
-                        SELECT name AS entity_type FROM public.entity_definitions
-                        WHERE tenant_id = :tid AND is_active = true
-                        UNION
-                        SELECT entity_type FROM counts
-                    )
-                    SELECT t.entity_type, COALESCE(c.cnt, 0) AS cnt
-                    FROM types t
-                    LEFT JOIN counts c ON c.entity_type = t.entity_type
-                    WHERE COALESCE(c.cnt, 0) < :minimum
-                    ORDER BY cnt ASC, t.entity_type ASC
+                    SELECT sp.entity_type, COUNT(*) AS cnt FROM {schema}.spans sp
+                    {span_join}
+                    WHERE TRUE{span_source_clause}
+                    GROUP BY sp.entity_type
                 """),
-                {"tid": tenant_id, "minimum": min_per_type},
             )
-            short = [(r.entity_type, int(r.cnt or 0)) for r in per_type_result]
+            counts = {r.entity_type: int(r.cnt or 0) for r in counts_result}
+
+            types_result = await platform_session.execute(
+                text(
+                    "SELECT name AS entity_type FROM public.entity_definitions "
+                    "WHERE tenant_id = :tid AND is_active = true"
+                ),
+                {"tid": tenant_id},
+            )
+            types = {r.entity_type for r in types_result} | set(counts)
+
+            short = sorted(
+                ((t, counts.get(t, 0)) for t in types if counts.get(t, 0) < min_per_type),
+                key=lambda pair: (pair[1], pair[0]),
+            )
             if short:
                 # Name the shortfalls so the caller can act without a second query.
                 detail = ", ".join(f"{name} ({cnt})" for name, cnt in short)
