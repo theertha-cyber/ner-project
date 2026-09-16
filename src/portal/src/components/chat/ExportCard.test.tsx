@@ -15,20 +15,38 @@ describe("ExportCard", () => {
   });
 
   const exportInfo = { message_id: "msg-1", row_count: 250, formats: ["csv", "xlsx"] };
+  const singleResult = { message_id: "msg-2", row_count: 1, formats: ["csv", "xlsx"] };
 
-  it("renders a Download CSV and a Download XLSX action", () => {
+  it("shows a count-stating prompt with no download actions before the user responds", () => {
     render(<ExportCard export_={exportInfo} />);
-    expect(screen.getByLabelText("Download CSV")).toBeInTheDocument();
-    expect(screen.getByLabelText("Download XLSX")).toBeInTheDocument();
+    expect(screen.getByText(/250 results/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Download XLSX")).not.toBeInTheDocument();
   });
 
-  it("clicking Download CSV fetches the export endpoint and saves via a blob URL", async () => {
+  it("states the count in singular for a single result", () => {
+    render(<ExportCard export_={singleResult} />);
+    expect(screen.getByText(/1 result\b/)).toBeInTheDocument();
+    expect(screen.queryByText(/1 results/)).not.toBeInTheDocument();
+  });
+
+  it("clicking the prompt reveals both format actions in its place", () => {
+    render(<ExportCard export_={exportInfo} />);
+    fireEvent.click(screen.getByText(/250 results/));
+    expect(screen.getByLabelText("Download CSV")).toBeInTheDocument();
+    expect(screen.getByLabelText("Download XLSX")).toBeInTheDocument();
+    // In-place swap, not additive: the prompt question is gone once revealed.
+    expect(screen.queryByText(/want a downloadable version/)).not.toBeInTheDocument();
+  });
+
+  it("clicking Download CSV (once revealed) fetches the export endpoint and saves via a blob URL", async () => {
     const blob = new Blob(["a,b\n1,2"], { type: "text/csv" });
     mockFetch.mockResolvedValue({ ok: true, blob: () => Promise.resolve(blob) });
 
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 
     render(<ExportCard export_={exportInfo} />);
+    fireEvent.click(screen.getByText(/250 results/));
     fireEvent.click(screen.getByLabelText("Download CSV"));
 
     await waitFor(() => {
@@ -41,12 +59,13 @@ describe("ExportCard", () => {
     clickSpy.mockRestore();
   });
 
-  it("clicking Download XLSX fetches the export endpoint with format=xlsx", async () => {
+  it("clicking Download XLSX (once revealed) fetches the export endpoint with format=xlsx", async () => {
     const blob = new Blob([new Uint8Array([1, 2, 3])]);
     mockFetch.mockResolvedValue({ ok: true, blob: () => Promise.resolve(blob) });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 
     render(<ExportCard export_={exportInfo} />);
+    fireEvent.click(screen.getByText(/250 results/));
     fireEvent.click(screen.getByLabelText("Download XLSX"));
 
     await waitFor(() => {
@@ -58,6 +77,7 @@ describe("ExportCard", () => {
     mockFetch.mockResolvedValue({ ok: false, status: 500 });
 
     render(<ExportCard export_={exportInfo} />);
+    fireEvent.click(screen.getByText(/250 results/));
     fireEvent.click(screen.getByLabelText("Download CSV"));
 
     await waitFor(() => {

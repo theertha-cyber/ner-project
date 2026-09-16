@@ -32,7 +32,12 @@ async function downloadExport(messageId: string, format: "csv" | "xlsx") {
   }
 }
 
+function resultCountLabel(count: number): string {
+  return count === 1 ? "1 result" : `${count} results`;
+}
+
 export function ExportCard({ export_ }: ExportCardProps) {
+  const [confirmed, setConfirmed] = useState(false);
   const [pending, setPending] = useState<"csv" | "xlsx" | null>(null);
   const [error, setError] = useState(false);
 
@@ -47,6 +52,35 @@ export function ExportCard({ export_ }: ExportCardProps) {
       setPending(null);
     }
   };
+
+  // Same slot either way (Decision 2): the prompt is replaced by the format
+  // actions in place, rather than the actions appearing alongside it.
+  if (!confirmed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setConfirmed(true)}
+        style={{
+          marginTop: 10,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "10px 14px",
+          borderRadius: 10,
+          border: "1px solid var(--line)",
+          background: "var(--surface-2)",
+          maxWidth: 360,
+          textAlign: "left",
+          cursor: "pointer",
+        }}
+      >
+        <FileSpreadsheet size={20} color="var(--ink-3)" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: "var(--ink)" }}>
+          This includes {resultCountLabel(export_.row_count)} — want a downloadable version?
+        </span>
+      </button>
+    );
+  }
 
   return (
     <div
@@ -65,7 +99,7 @@ export function ExportCard({ export_ }: ExportCardProps) {
       <FileSpreadsheet size={20} color="var(--ink-3)" style={{ flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, color: "var(--ink)", fontWeight: 500 }}>
-          {export_.row_count} results
+          {resultCountLabel(export_.row_count)}
         </div>
         <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
           Download the full result

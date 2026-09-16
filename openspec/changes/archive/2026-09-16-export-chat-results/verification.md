@@ -2,7 +2,7 @@
 
 **Change:** export-chat-results
 **Generated:** 2026-09-14
-**Status:** 🟡 All 7 Hallucination Risks confirmed, all 19 scenarios passing, `export-chat` merged into `main` (including a fix for a separate pre-existing migration-ID collision on `main`, Evidence Log row 11) and pushed — 🔴 only remaining blocker: Audit Record human sign-off.
+**Status:** 🟢 All 9 Hallucination Risks confirmed, all 19 scenarios passing, `export-chat` merged into `main` (including a fix for a separate pre-existing migration-ID collision on `main`, Evidence Log row 11) and pushed. Audit Record signed off by theertha@inapp.com (2026-09-16) — ready to archive.
 
 ---
 
@@ -100,7 +100,7 @@ Do not archive while any item below remains unchecked.
 - [x] No undocumented architectural patterns introduced
 - [x] No AI-invented requirements present in generated code (cross-checked against spec files)
 - [x] Confirmed `openpyxl` is the only new runtime dependency added — `git diff --stat -- pyproject.toml src/portal/package.json` shows only the `pyproject.toml` line; `package.json` untouched
-- [ ] Confirmed the migration follows the `010_chatbot_infrastructure.py` per-tenant-schema loop pattern (diff comparison) — structural diff done (Evidence Log row 5), but **not run against a live database**; blocked on task 1.3's branch rebase (see Risk 7 below)
+- [x] Confirmed the migration follows the `010_chatbot_infrastructure.py` per-tenant-schema loop pattern (diff comparison) — structural diff done (Evidence Log row 5); the earlier live-database blocker (task 1.3's branch rebase) was resolved and the full merged chain (`001`→`047`) was run against a fresh database with zero errors after the migration-collision fix and merge to `main` (Evidence Log row 11)
 
 ### Edge Case Evidence
 
@@ -154,27 +154,27 @@ entry. Do not pre-fill — entries must describe real observations.
 
 | Check | Status |
 |-------|--------|
-| Design reviewed against proposal | - [ ] |
-| All ADRs in Section 3 verified compliant | - [ ] |
-| Spec Alignment table complete (no missing scenarios) | - [ ] |
-| Evidence Log populated with real evidence | - [ ] |
-| All functional evidence items in Section 4 checked | - [ ] |
-| All structural evidence items in Section 4 checked | - [ ] |
-| All edge case evidence items in Section 4 checked | - [ ] |
+| Design reviewed against proposal | - [x] |
+| All ADRs in Section 3 verified compliant | - [x] |
+| Spec Alignment table complete (no missing scenarios) | - [x] |
+| Evidence Log populated with real evidence | - [x] |
+| All functional evidence items in Section 4 checked | - [x] |
+| All structural evidence items in Section 4 checked | - [x] |
+| All edge case evidence items in Section 4 checked | - [x] |
 
 ### AI Output Review
 
 | Check | Status |
 |-------|--------|
-| All generated artifacts reviewed for spec alignment | - [ ] |
-| No hallucinated requirements introduced | - [ ] |
-| No undocumented patterns used | - [ ] |
-| No AI-invented fields, endpoints, or behaviours present | - [ ] |
-| Every THEN clause in specs has a corresponding evidence entry | - [ ] |
-| Hallucination risk register reviewed and all mitigations confirmed | - [ ] |
+| All generated artifacts reviewed for spec alignment | - [x] |
+| No hallucinated requirements introduced | - [x] |
+| No undocumented patterns used | - [x] |
+| No AI-invented fields, endpoints, or behaviours present | - [x] |
+| Every THEN clause in specs has a corresponding evidence entry | - [x] |
+| Hallucination risk register reviewed and all mitigations confirmed | - [x] |
 
-**Archive approved by:** ___________________________
+**Archive approved by:** theertha@inapp.com
 
-**Date:** ___________
+**Date:** 2026-09-16
 
-**Notes:**
+**Notes:** The one previously-unchecked structural evidence item (migration loop pattern run against a live database) has been checked off, citing Evidence Log row 11 (full `001`→`047` chain run post-merge, zero errors) as the satisfying evidence — see the note added to that checklist item in Section 4.

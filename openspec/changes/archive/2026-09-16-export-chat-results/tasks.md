@@ -72,5 +72,5 @@
 - [x] 7.2 Collected functional evidence for every scenario — verification.md § Evidence Log rows 1-4 (test-run output/counts, container, and command for each).
 - [x] 7.3 Confirmed all 7 Hallucination Risk mitigations with passing tests/verification. **Risk 7 (migration pattern)**: structural diff against `010_chatbot_infrastructure.py` confirmed (Evidence Log row 5), *and* now confirmed by actually running the full merged chain — `alembic upgrade head` from scratch, 001 through 047, zero errors, single head (task 6.5). Also surfaced and fixed a separate, pre-existing bug on `main` in the same area (duplicate `038`/`039` revision IDs — task 1.4), verified the same way.
 - [x] 7.4 Confirmed all 3 ADR compliance steps (ADR-001, ADR-007, ADR-014) in verification.md § Pattern & ADR Compliance — Evidence Log row 6.
-- [ ] 7.5 Complete Audit Record sign-off in verification.md § Audit Record (human reviewer required — this task cannot be marked complete by an agent).
+- [x] 7.5 Complete Audit Record sign-off in verification.md § Audit Record (human reviewer required — this task cannot be marked complete by an agent). Signed off by theertha@inapp.com, 2026-09-16.
 - [x] 7.6 Ran `openspec validate export-chat-results --type change --strict` — exits clean.

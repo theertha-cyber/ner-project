@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MessageThread } from "./MessageThread";
 
@@ -195,7 +195,28 @@ describe("MessageThread streaming lifecycle", () => {
     expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
   });
 
-  describe("long-answer truncation, export card, and See more", () => {
+  describe("overflow-based truncation, decoupled from export availability", () => {
+    // jsdom never lays out real boxes, so scrollHeight/clientHeight are always
+    // 0 — stub them to simulate whether the reply's rendered content actually
+    // overflows its clamped bounds.
+    function mockOverflow(overflowing: boolean) {
+      Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+        configurable: true,
+        value: overflowing ? 400 : 100,
+      });
+      Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+        configurable: true,
+        value: 100,
+      });
+    }
+
+    afterEach(() => {
+      // @ts-expect-error -- restore jsdom's own definitions
+      delete HTMLElement.prototype.scrollHeight;
+      // @ts-expect-error
+      delete HTMLElement.prototype.clientHeight;
+    });
+
     const longContent = [
       "**Name One** - Engineer",
       "**Name Two** - Developer",
@@ -208,7 +229,8 @@ describe("MessageThread streaming lifecycle", () => {
     ].join("\n\n");
     const shortContent = ["**Name One** - Engineer", "**Name Two** - Developer"].join("\n\n");
 
-    it("previews only the first 5 lines, with an export card and a See more toggle, when the answer has more than 5 lines and export data", () => {
+    it("truncates with a See more toggle when the reply visually overflows", () => {
+      mockOverflow(true);
       const messages = [
         {
           id: "a1", role: "assistant" as const, content: longContent,
@@ -217,14 +239,11 @@ describe("MessageThread streaming lifecycle", () => {
         },
       ];
       render(<MessageThread messages={messages} loading={false} />);
-      expect(screen.getByText("Name Five", { exact: false })).toBeInTheDocument();
-      expect(screen.queryByText("Name Six", { exact: false })).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Download CSV")).toBeInTheDocument();
-      expect(screen.getByLabelText("Download XLSX")).toBeInTheDocument();
-      expect(screen.getByText("See more (3 more)")).toBeInTheDocument();
+      expect(screen.getByText("See more")).toBeInTheDocument();
     });
 
     it("reveals the full answer and switches the toggle to See less when clicked", () => {
+      mockOverflow(true);
       const messages = [
         {
           id: "a1", role: "assistant" as const, content: longContent,
@@ -233,29 +252,13 @@ describe("MessageThread streaming lifecycle", () => {
         },
       ];
       render(<MessageThread messages={messages} loading={false} />);
-      fireEvent.click(screen.getByText("See more (3 more)"));
+      fireEvent.click(screen.getByText("See more"));
       expect(screen.getByText("Name Eight", { exact: false })).toBeInTheDocument();
       expect(screen.getByText("See less")).toBeInTheDocument();
     });
 
-    it("does not truncate a long answer that has no export/result-count data at all", () => {
-      // Truncation is driven by result count (export.row_count), not raw line
-      // count — a long free-text answer with no structured result behind it
-      // (e.g. answered from document chunks) has no "how many results" signal
-      // to truncate against, so it renders in full regardless of length.
-      const messages = [
-        {
-          id: "a1", role: "assistant" as const, content: longContent,
-          created_at: "2026-01-01", answer_kind: "answer" as const,
-        },
-      ];
-      render(<MessageThread messages={messages} loading={false} />);
-      expect(screen.getByText("Name Eight", { exact: false })).toBeInTheDocument();
-      expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
-    });
-
-    it("does not truncate, and shows no export card or See more, for a short answer even with export data", () => {
+    it("does not truncate a reply that fits, regardless of export.row_count", () => {
+      mockOverflow(false);
       const messages = [
         {
           id: "a1", role: "assistant" as const, content: shortContent,
@@ -264,39 +267,23 @@ describe("MessageThread streaming lifecycle", () => {
         },
       ];
       render(<MessageThread messages={messages} loading={false} />);
-      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
       expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
     });
 
-    it("does not truncate a detailed single-result answer, even with many lines", () => {
-      // Regression: "give me one single candidate" renders a multi-line detail
-      // breakdown (job title, experience, education...) about ONE result — this
-      // must show in full, not be treated as a long list just because the text
-      // happens to span more than 5 lines.
-      const singleCandidateDetail = [
-        "The most apt candidate for a React JS Developer role is **Allwin J Andrews**.",
-        "**Job Title:** React JS Developer",
-        "**Experience:**",
-        "Currently working at Labglo, Trivandrum since December 2018.",
-        "**Education:**",
-        "B.Tech in Computer Science",
-        "**Skills:** React, JavaScript, Redux",
-      ].join("\n\n");
+    it("truncates a long reply that has no export data at all, exactly as it would with one", () => {
+      mockOverflow(true);
       const messages = [
         {
-          id: "a1", role: "assistant" as const, content: singleCandidateDetail,
+          id: "a1", role: "assistant" as const, content: longContent,
           created_at: "2026-01-01", answer_kind: "answer" as const,
-          export: { message_id: "a1", row_count: 1, formats: ["csv", "xlsx"] },
         },
       ];
       render(<MessageThread messages={messages} loading={false} />);
-      expect(screen.getByText(/Computer Science/)).toBeInTheDocument();
-      expect(screen.getByText(/React, JavaScript, Redux/)).toBeInTheDocument();
-      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
-      expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
+      expect(screen.getByText("See more")).toBeInTheDocument();
     });
 
-    it("hides truncation and the export card while the message is still streaming", () => {
+    it("suppresses truncation while the message is still streaming", () => {
+      mockOverflow(true);
       const messages = [
         {
           id: "a1", role: "assistant" as const, content: longContent,
@@ -305,8 +292,73 @@ describe("MessageThread streaming lifecycle", () => {
         },
       ];
       render(<MessageThread messages={messages} loading={false} />);
-      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
       expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("export offer, decoupled from truncation and result count", () => {
+    it("offers an export for a small result, even though the reply itself is not truncated", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const,
+          content: "The most apt candidate is **Allwin J Andrews**.",
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 1, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.getByText(/1 result\b/)).toBeInTheDocument();
+      expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
+    });
+
+    it("states the count for a large result", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: "Here are the candidates.",
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 45, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.getByText(/45 results/)).toBeInTheDocument();
+    });
+
+    it("shows no export offer when there is no structured result", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: "There are five organizations.",
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
+      expect(screen.queryByText(/want a downloadable version/)).not.toBeInTheDocument();
+    });
+
+    it("suppresses the export offer while the message is still streaming", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: "Here are the candidates.",
+          created_at: "2026-01-01", isStreaming: true,
+          export: { message_id: "a1", row_count: 8, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.queryByText(/want a downloadable version/)).not.toBeInTheDocument();
+    });
+
+    it("the export offer requires a click before download actions appear, independent of truncation", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: "Here are the candidates.",
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 8, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByText(/8 results/));
+      expect(screen.getByLabelText("Download CSV")).toBeInTheDocument();
     });
   });
 });
