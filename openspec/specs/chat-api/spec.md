@@ -1,7 +1,9 @@
 ## Purpose
 
 Provide a RAG chatbot API that allows tenant users to query extracted entities, document content, and perform live NER inference through a natural language chat interface, with controlled SQL generation and guardrails.
+
 ## Requirements
+
 ### Requirement: RAG chat endpoint
 
 The system SHALL expose a chat endpoint that accepts a natural language message and a conversation_id from an authenticated tenant user, and returns a response with citations drawn from the pipeline's retrieval sources: structured entity data (via controlled SQL generation) and document context (via pgvector semantic search). Every non-declined turn SHALL run the fixed pipeline guardrail → intent orchestrator → planned retrieval → source assembly → prompt assembly → generation, with no alternative execution path selectable at runtime. The underlying LLM for guardrail classification, orchestration planning, SQL generation, and response synthesis SHALL support both direct OpenAI and Azure OpenAI configurations, selected via environment variables (`NER_AZURE_OPENAI_ENDPOINT`, `NER_AZURE_OPENAI_CHAT_DEPLOYMENT`, `NER_AZURE_OPENAI_EMBEDDING_DEPLOYMENT`). Document context supplied to the LLM SHALL be assembled under a token budget and labeled with each chunk's document filename and page number where available.
@@ -761,3 +763,30 @@ The system SHALL include the `document_entities` semantic value columns — `val
 - **THEN** the validation layer SHALL pass the query
 - **AND** the behaviour SHALL be identical to before this change
 
+### Requirement: Chat response export availability
+
+`ChatResponse` SHALL include an `export` field describing whether a structured-result snapshot is available for download for that turn. When available, it SHALL include the `message_id`, the snapshot's `row_count`, and the list of supported formats (`csv`, `xlsx`). `export` is additive, following the same convention as the existing `pending_clarification` and `retrieval_status` fields: when no structured retrieval snapshot exists for the turn, the key SHALL be omitted from the serialized JSON body entirely (not sent as `null`), so a client that ignores it observes no change. The full row data SHALL NOT be inlined into `ChatResponse` — only this availability metadata.
+
+`MessageResponse` (returned by `GET /api/v1/chat/conversations/{conv_id}`, per the `chat-api` capability's Conversation CRUD requirement) SHALL carry the same `export` availability metadata for each past assistant message that has a snapshot, using only the message's stored row count — never the `export_rows` JSONB snapshot itself — so a file card can still be shown after a page reload or conversation switch, without growing that endpoint's response in proportion to snapshot size.
+
+#### Scenario: Response includes export metadata when structured source succeeded
+
+- **GIVEN** a chat turn whose structured entity data source succeeded with 60 rows
+- **WHEN** a Tenant Admin sends `POST /api/v1/chat`
+- **THEN** the response SHALL have status 200
+- **AND** the response SHALL contain an `export` field with `row_count: 60` and `formats: ["csv", "xlsx"]`
+
+#### Scenario: Response omits export availability when no structured result exists
+
+- **GIVEN** a chat turn answered entirely from document/semantic sources
+- **WHEN** a Tenant Admin sends `POST /api/v1/chat`
+- **THEN** the response SHALL have status 200
+- **AND** the serialized JSON body SHALL NOT contain an `export` key
+
+#### Scenario: Conversation history retains export availability for past turns
+
+- **GIVEN** a conversation whose earlier assistant message has an export snapshot with 60 rows
+- **WHEN** a Tenant Admin sends `GET /api/v1/chat/conversations/{conv_id}`
+- **THEN** the response SHALL have status 200
+- **AND** that message's entry SHALL include `export.row_count: 60` and `export.formats: ["csv", "xlsx"]`
+- **AND** an assistant message with no export snapshot SHALL have `export: null` on its entry (unlike `ChatResponse`, `MessageResponse`/`ConversationDetail` does not omit absent optional fields — `answer_kind`, `model_version`, and `feedback` already serialize as explicit `null` there, and `export` follows that existing convention rather than introducing field-exclusion to this endpoint)

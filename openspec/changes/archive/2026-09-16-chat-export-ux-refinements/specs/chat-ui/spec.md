@@ -1,131 +1,17 @@
-## Purpose
+## REMOVED Requirements
 
-Provide an internal chat user interface within the NER platform portal, allowing tenant admins and business users to interact with the RAG chatbot through a conversation sidebar and message thread with expandable source citations.
+### Requirement: Inline preview truncation and file card, driven by result count
 
-## Requirements
+**Reason**: This requirement bundled three independent concerns into one row-count threshold (`PREVIEW_LINE_LIMIT`): whether reply text truncates, whether the export option appears at all, and how the export option is presented (an eager file card). Live testing found this conflation actively wrong — a verbose single-result answer got wrongly truncated, and small-but-legitimate results couldn't be downloaded at all just because they were short. It is replaced by three requirements below that make each concern independent: "Inline preview truncation is independent of export availability", "Export offer appears whenever structured data exists, regardless of result count", and "Export prompt reveals download actions only after the user opts in".
 
-### Requirement: Chat screen route and access
+**Migration**: No data migration — this is a pure frontend rendering-logic change. `export.row_count`/`formats` (unchanged on the wire) now drive three independent conditions instead of one combined threshold check.
 
-The system SHALL expose a chat screen at the `/chat` route in the portal SPA. The screen SHALL be accessible to users with `tenant_admin` or `business_user` roles. Other roles SHALL see a 403 error or be redirected to the dashboard.
+## RENAMED Requirements
 
-#### Scenario: Tenant admin accesses chat screen
+- FROM: `### Requirement: Authenticated download from the file card`
+- TO: `### Requirement: Authenticated download from the revealed format actions`
 
-- **GIVEN** an authenticated tenant_admin user
-- **WHEN** the user navigates to `/chat`
-- **THEN** the chat screen SHALL render with a conversation sidebar and message area
-- **AND** the screen SHALL load the user's existing conversations
-
-#### Scenario: Annotator accesses chat screen
-
-- **GIVEN** an authenticated annotator user
-- **WHEN** the user navigates to `/chat`
-- **THEN** the user SHALL be redirected to the dashboard
-- **OR** the screen SHALL show an access-denied message
-
-### Requirement: Conversation sidebar
-
-The chat screen SHALL display a conversation sidebar on the left, showing a list of the user's conversations ordered by most-recent-message date (descending). Each conversation item SHALL display a truncated title (derived from the first message) and the date of the last message. The sidebar SHALL include a "New conversation" button at the top.
-
-#### Scenario: New conversation button creates conversation
-
-- **GIVEN** the conversation sidebar is displayed
-- **WHEN** the user clicks "New conversation"
-- **THEN** a new empty conversation SHALL be created
-- **AND** the message area SHALL show "Send a message to start"
-
-#### Scenario: Clicking conversation loads messages
-
-- **GIVEN** a list of conversations in the sidebar
-- **WHEN** the user clicks on a conversation
-- **THEN** the message area SHALL display the conversation's message history
-- **AND** the selected conversation SHALL be visually highlighted
-
-#### Scenario: Delete conversation from sidebar
-
-- **GIVEN** a conversation in the sidebar
-- **WHEN** the user clicks the delete icon on a conversation
-- **THEN** a confirmation dialog SHALL appear
-- **AND** upon confirmation, the conversation SHALL be deleted
-- **AND** the sidebar SHALL remove the conversation from the list
-
-### Requirement: Message thread display
-
-The message area SHALL display the conversation's messages in a scrollable thread, with user messages right-aligned and assistant messages left-aligned. Each assistant message SHALL display source citations as expandable sections below the message text.
-
-#### Scenario: Send message and receive response
-
-- **GIVEN** a conversation is selected
-- **WHEN** the user types a message in the input box and presses Enter
-- **THEN** the message SHALL appear in the thread immediately (optimistic update)
-- **AND** a loading indicator SHALL appear
-- **AND** when the response arrives, it SHALL appear in the thread
-- **AND** the thread SHALL auto-scroll to show the latest message
-
-#### Scenario: Source citations are expandable
-
-- **GIVEN** an assistant message with source citations
-- **WHEN** the user clicks on a source citation
-- **THEN** the citation SHALL expand to show the source details
-- **AND** the details SHALL include `document_id` or `entity_type`, and relevant snippet text
-
-### Requirement: Authenticated API calls from chat page
-
-The chat page SHALL authenticate all API requests (list conversations, get messages, delete conversation, send message) using a Bearer JWT token obtained from the authentication system. Requests without a valid token SHALL be rejected by the gateway with status 401.
-
-#### Scenario: Chat page sends authenticated requests
-
-- **GIVEN** an authenticated tenant_admin user on the chat page
-- **WHEN** the page loads and fetches conversations
-- **THEN** the request SHALL include an `Authorization: Bearer <token>` header
-- **AND** the gateway SHALL accept the token and return conversations
-
-#### Scenario: Unauthenticated chat request returns 401
-
-- **GIVEN** no valid JWT token
-- **WHEN** a fetch is sent to `/api/v1/chat/conversations`
-- **THEN** the response SHALL have status 401
-
-### Requirement: Role-gated chat access
-
-The `/chat` route SHALL be gated by role. The screen SHALL use `<RequireAuth roles={["tenant_admin", "business_user"]}>` from SP-02 to enforce access.
-
-#### Scenario: Business user accesses chat
-
-- **GIVEN** an authenticated business_user
-- **WHEN** the user navigates to `/chat`
-- **THEN** the chat screen SHALL render normally with all functionality
-
-### Requirement: Rename conversation from sidebar
-
-Each conversation item in the sidebar SHALL display a rename (edit) control alongside the existing delete control. Clicking it SHALL turn the title into an inline editable text field. Confirming the edit (Enter key or blur) SHALL call the rename API and update the displayed title on success; pressing Escape SHALL cancel the edit without calling the API.
-
-#### Scenario: User renames a conversation via the sidebar
-
-- **GIVEN** a conversation in the sidebar with title "How many organizations..."
-- **WHEN** the user clicks the rename icon, clears the field, types "Org counts Q3", and presses Enter
-- **THEN** the sidebar SHALL call the rename API with the new title
-- **AND** on success the sidebar SHALL display "Org counts Q3" for that conversation
-
-#### Scenario: User cancels a rename in progress
-
-- **GIVEN** a conversation's title is being edited inline
-- **WHEN** the user presses Escape
-- **THEN** the inline edit SHALL close without calling the rename API
-- **AND** the original title SHALL remain displayed
-
-#### Scenario: Rename API failure keeps the previous title
-
-- **GIVEN** a conversation's title is being edited inline
-- **WHEN** the user confirms the edit and the rename API call fails
-- **THEN** the sidebar SHALL keep displaying the previous title
-- **AND** an error indication SHALL be shown to the user
-
-#### Scenario: Newly created conversation shows placeholder until first message
-
-- **GIVEN** a conversation just created via "New conversation" with no messages yet
-- **WHEN** the sidebar renders that conversation
-- **THEN** the displayed title SHALL be the placeholder "New conversation"
-- **AND** once the first message is sent and the conversation list is refreshed, the sidebar SHALL display the backend-generated title instead
+## MODIFIED Requirements
 
 ### Requirement: Authenticated download from the revealed format actions
 
@@ -137,6 +23,8 @@ Clicking a download action (once revealed, per the "Export prompt reveals downlo
 - **WHEN** the user clicks it
 - **THEN** a fetch SHALL be sent to `/api/v1/chat/messages/{message_id}/export?format=csv` with an `Authorization: Bearer <token>` header
 - **AND** the returned file SHALL be saved via a blob URL, not a direct navigation to a URL containing the token
+
+## ADDED Requirements
 
 ### Requirement: Inline preview truncation is independent of export availability
 

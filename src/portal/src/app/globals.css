@@ -318,6 +318,15 @@ body {
   animation: thinkingPulse 1.4s ease-in-out infinite;
 }
 
+/* Preview clipping for a truncatable assistant reply (see TruncatableReply.tsx).
+   Line count is a display constant, not a business threshold — tune freely. */
+.chat-reply-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 12;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .chat-markdown p {
   margin: 0 0 8px 0;
 }
