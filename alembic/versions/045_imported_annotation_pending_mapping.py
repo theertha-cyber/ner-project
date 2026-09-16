@@ -27,6 +27,18 @@ depends_on = None
 _UPGRADE = [
     "ALTER TABLE {schema}.imported_annotations "
     "ADD COLUMN IF NOT EXISTS pending_mapping BOOLEAN NOT NULL DEFAULT FALSE",
+    # Defensive, not redundant: migration 041's `apply_to_all_tenant_schemas` only
+    # reaches schemas present in `pg_namespace` at the moment it runs. A schema
+    # created between 041 and this migration -- or one this backfill otherwise
+    # missed -- would otherwise fail the INSERT below on a table that was assumed
+    # to already exist everywhere. Same definition as 041's.
+    "CREATE TABLE IF NOT EXISTS {schema}.annotation_imports ("
+    "  source_file VARCHAR PRIMARY KEY,"
+    "  row_count INTEGER NOT NULL DEFAULT 0,"
+    "  type_map JSONB,"
+    "  training_eligible_at TIMESTAMPTZ,"
+    "  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+    ")",
     "INSERT INTO {schema}.annotation_imports (source_file, row_count, training_eligible_at) "
     "SELECT source_file, COUNT(*), NOW() FROM {schema}.imported_annotations "
     "GROUP BY source_file ON CONFLICT (source_file) DO NOTHING",

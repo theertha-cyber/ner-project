@@ -10,8 +10,6 @@ here in the same PR — `tests/test_tenant_store_parity.py` fails the build othe
 The tenant-scoped Alembic migration then calls this module's `statements()` inside its
 own `tenant_template` + `pg_namespace` loop, so the DDL exists in exactly one place.
 
-There are no revisions yet: `tenant_template` at head 043 is fully captured by
-`baseline.py` alone.
 """
 
 from __future__ import annotations

@@ -18,6 +18,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
 from src.shared.tenant_store import baseline
+from src.shared.tenant_store.revisions import all_revisions
 
 pytestmark = [pytest.mark.parity]
 
@@ -107,11 +108,18 @@ def scratch_head_db():
 
 
 def test_baseline_matches_tenant_template_at_head(scratch_head_db):
+    """Baseline + every tenant-store revision, applied together -- exactly what
+    `apply.py::apply()` runs against a real store -- must reproduce `tenant_template`
+    at head exactly. Baseline alone stopped being the full picture once the first
+    revision (`revisions/002_main_feature_backlog.py`) existed."""
     engine = create_engine(scratch_head_db, poolclass=NullPool)
     baseline_schema = "tenant_parity_baseline"
     with engine.begin() as conn:
         for statement in baseline.statements(baseline_schema):
             conn.execute(text(statement))
+        for revision in all_revisions():
+            for statement in revision.statements(baseline_schema):
+                conn.execute(text(statement))
 
     with engine.connect() as conn:
         assert _tables(conn, baseline_schema) == _tables(conn, "tenant_template")
