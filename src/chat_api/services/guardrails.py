@@ -65,6 +65,8 @@ In-domain examples (note: the subject matter varies by tenant — all of these a
 - "List patients diagnosed with hypertension."
 - "Rank programming languages by popularity" (a ranking/frequency question over this tenant's own extracted entity values — "popularity" here means how often a value appears in the data, never general-knowledge/industry trivia)
 - "What's the most common job title?" / "Which skill is most in-demand among our candidates?"
+- "Chart our billing by quarter." / "Show me the hiring trend as a graph." (the platform renders charts of the tenant's own data)
+- "How much did we bill per quarter in 2026? Show as a graph." (a data question plus a presentation instruction — still one in-domain request)
 
 Out-of-domain examples (requests with no connection to any tenant document or extracted entity):
 - "Who is the American president?"
@@ -79,6 +81,12 @@ fully answer the specific question. In particular, words like "popular", "common
 "most", or "ranked" do NOT make a question out-of-domain trivia — the platform only ever has \
 access to this tenant's own extracted data, so a ranking/frequency word always means "ranked \
 within our documents," never "ranked in the real world."
+
+An instruction about how to present an answer — "show as a graph", "chart it", "as a table", \
+"visualise this" — is part of the request, not a separate one, and never makes it \
+out_of_domain. The platform renders charts of the tenant's own data, so such an instruction is \
+in-domain whether it is a clause of the question or its own sentence after it. Classify on what \
+the message asks about, not on how it asks for it to be shown.
 """
 
 
