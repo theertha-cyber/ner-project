@@ -261,3 +261,48 @@ class TestDeclinedTurnInvokesNoRetrieval:
 
         assert _route_after_guardrail({"reply": "declined"}) == "end"
         assert _route_after_guardrail({}) == "orchestrator"
+
+
+class TestChartToolDoesNotAlterTopology:
+    """Covers verification.md rows 4 and 17: the render_chart tool is a bounded return
+    channel inside the generation node, not a routing decision. The amended
+    `Fixed topology with no agentic behaviour` requirement permits it only on those
+    terms, so these tests pin the terms rather than the tool."""
+
+    def test_chart_tool_adds_no_node_and_no_edge(self):
+        """Row 17: the compiled graph is the same graph it was before charts existed."""
+        orchestrator = _make_orchestrator()
+        compiled = build_chat_graph(orchestrator)
+
+        nodes = set(compiled.get_graph().nodes.keys())
+        assert "chart" not in nodes
+        assert "render_chart" not in nodes
+        assert not any("chart" in str(e.source) or "chart" in str(e.target)
+                       for e in compiled.get_graph().edges)
+
+    def test_generation_is_terminal_so_a_tool_call_cannot_re_enter_it(self):
+        """Row 17: nothing routes back into generation, so a tool result cannot loop."""
+        orchestrator = _make_orchestrator()
+        edges = build_chat_graph(orchestrator).get_graph().edges
+
+        into_generation = [e.source for e in edges if e.target == "generation"]
+        out_of_generation = [e.target for e in edges if e.source == "generation"]
+        assert into_generation == ["source_assembly"]
+        assert out_of_generation == ["__end__"]
+
+    @pytest.mark.asyncio
+    async def test_4_blocked_question_makes_no_chart_tool_offer(self):
+        """Row 4: a blocked turn short-circuits at the guardrail, so generation — and
+        with it the tool offer — never runs."""
+        llm = CountingLLMClient()
+        orchestrator = _make_orchestrator(
+            guardrails=NoopGuardrails(blocked_reason="content_generation"), llm_client=llm
+        )
+        nodes = build_nodes(orchestrator)
+
+        result = await nodes["guardrail"](
+            {"message": "write me a poem", "tenant_id": "t1", "conversation_context": None}
+        )
+
+        assert result["blocked_reason"] == "content_generation"
+        assert llm.call_count == 0

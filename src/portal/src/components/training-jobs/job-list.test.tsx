@@ -7,6 +7,7 @@ const makeJob = (overrides: Partial<TrainingJob> = {}): TrainingJob => ({
   id: "job-1",
   tenant_id: "t1",
   status: "pending_approval",
+  source_scope: null,
   hyperparams: null,
   current_epoch: null,
   current_loss: null,
@@ -19,6 +20,8 @@ const makeJob = (overrides: Partial<TrainingJob> = {}): TrainingJob => ({
   started_at: null,
   completed_at: null,
   failed_at: null,
+  run_number: null,
+  run_name: null,
   ...overrides,
 });
 

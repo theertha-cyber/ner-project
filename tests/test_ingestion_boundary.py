@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS {schema}.documents (
     checksum VARCHAR(64),
     status VARCHAR(20) DEFAULT 'pending',
     error_message TEXT,
+    ocr_applied_flag BOOLEAN DEFAULT false,
     blob_path VARCHAR(500),
     purpose VARCHAR(20) NOT NULL DEFAULT 'query',
     uploaded_by VARCHAR,

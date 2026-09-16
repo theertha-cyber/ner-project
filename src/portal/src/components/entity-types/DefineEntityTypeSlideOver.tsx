@@ -5,7 +5,7 @@ import { SlideOver } from "@/components/ui";
 import { useToast } from "@/hooks/use-toast";
 import { useCreateEntityType } from "@/hooks/use-create-entity-type";
 import { useUpdateEntityType } from "@/hooks/use-update-entity-type";
-import type { EntityCardinality, EntityType } from "@/types/entity-types";
+import type { EntityCardinality, EntityType, QaExample } from "@/types/entity-types";
 
 const BASE_LABELS = ["PER", "ORG", "LOC", "MISC"] as const;
 
@@ -64,6 +64,10 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [examples, setExamples] = useState("");
+  // Rows are held as-typed, including half-filled ones, so the user can fill the second field
+  // rather than having a row silently discarded mid-edit. Filtering happens at submit.
+  const [qaRows, setQaRows] = useState<QaExample[]>([]);
+  const [qaError, setQaError] = useState<string | null>(null);
   const [selectedLabel, setSelectedLabel] = useState<string>(BASE_LABELS[0]);
   const [requiredFlag, setRequiredFlag] = useState(false);
   const [cardinality, setCardinality] = useState<EntityCardinality>(DEFAULT_CARDINALITY);
@@ -76,6 +80,7 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
       setName(editTarget.name);
       setDescription(editTarget.description);
       setExamples(editTarget.examples.join(", "));
+      setQaRows(editTarget.qa_examples ?? []);
       const firstKey = Object.keys(editTarget.base_label_mapping)[0];
       setSelectedLabel(firstKey ?? BASE_LABELS[0]);
       setRequiredFlag(editTarget.required_flag);
@@ -85,13 +90,23 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
       setName("");
       setDescription("");
       setExamples("");
+      setQaRows([]);
       setSelectedLabel(BASE_LABELS[0]);
       setRequiredFlag(false);
       setCardinality(DEFAULT_CARDINALITY);
       setValueKind(DEFAULT_VALUE_KIND);
     }
+    setQaError(null);
     setPendingConfirm(false);
   }, [open, editTarget]);
+
+  function updateQaRow(index: number, field: keyof QaExample, value: string) {
+    setQaRows((rows) => rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  }
+
+  function removeQaRow(index: number) {
+    setQaRows((rows) => rows.filter((_, i) => i !== index));
+  }
 
   function buildPayload() {
     // Merged into the persisted mapping rather than replacing it. The chip row is a four-way
@@ -114,6 +129,11 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
       required_flag: requiredFlag,
       cardinality,
       value_kind: valueKind,
+      // Fully empty rows are dropped rather than persisted; `handleSubmit` has already
+      // rejected the half-filled ones, so what survives here is complete pairs only.
+      qa_examples: qaRows
+        .map((row) => ({ question: row.question.trim(), answer: row.answer.trim() }))
+        .filter((row) => row.question !== "" || row.answer !== ""),
     };
   }
 
@@ -137,6 +157,20 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // A row with exactly one side filled is an unfinished thought, not an empty row: saving it
+    // would either persist a malformed pair or silently throw away typed text. Block instead.
+    const hasPartialRow = qaRows.some((row) => {
+      const q = row.question.trim();
+      const a = row.answer.trim();
+      return (q === "") !== (a === "");
+    });
+    if (hasPartialRow) {
+      setQaError("Each Q&A pair needs both a question and an answer.");
+      return;
+    }
+    setQaError(null);
+
     if (isEdit && editTarget) {
       // Create mode never prompts — there is nothing yet to be inconsistent with — and neither
       // does an edit that leaves cardinality alone.
@@ -233,6 +267,67 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
               placeholder="Acme Supplies, Global Tech Ltd"
               className="w-full rounded border border-border px-3 py-2 text-sm"
             />
+          </div>
+
+          {/* EXAMPLE Q&A */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-secondary">
+              Example Q&amp;A
+            </label>
+            <p className="mb-2 text-xs text-secondary">
+              Optional few-shot context for automated pre-labeling.
+            </p>
+            <div className="flex flex-col gap-2">
+              {qaRows.map((row, index) => {
+                const q = row.question.trim();
+                const a = row.answer.trim();
+                const rowInvalid = qaError !== null && (q === "") !== (a === "");
+                return (
+                  <div key={index} className="flex flex-col gap-1.5">
+                    <div className="flex items-start gap-2">
+                      <div className="flex flex-1 flex-col gap-1.5">
+                        <input
+                          type="text"
+                          value={row.question}
+                          onChange={(e) => updateQaRow(index, "question", e.target.value)}
+                          aria-label={`Question ${index + 1}`}
+                          placeholder="How many years of experience does X have?"
+                          className="w-full rounded border border-border px-3 py-2 text-sm"
+                        />
+                        <input
+                          type="text"
+                          value={row.answer}
+                          onChange={(e) => updateQaRow(index, "answer", e.target.value)}
+                          aria-label={`Answer ${index + 1}`}
+                          placeholder="X has 10 years of experience"
+                          className="w-full rounded border border-border px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeQaRow(index)}
+                        aria-label={`Remove Q&A pair ${index + 1}`}
+                        className="mt-1 text-secondary hover:text-primary transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {rowInvalid && (
+                      <p role="alert" className="text-xs text-red-600">
+                        {qaError}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => setQaRows((rows) => [...rows, { question: "", answer: "" }])}
+              className="mt-2 text-xs font-medium text-brand-primary hover:underline"
+            >
+              + Add Q&amp;A pair
+            </button>
           </div>
 
           {/* BASE MODEL LABEL */}

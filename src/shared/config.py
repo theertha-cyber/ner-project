@@ -58,7 +58,63 @@ class Settings(BaseSettings):
     mlflow_tracking_uri: str = "http://localhost:5000"
     model_serving_port: int = 8004
     extraction_celery_queue: str = "extraction"
+    # LLM pre-labeling runs on its own queue, deliberately not `training.jobs`. ADR-006's GPU
+    # node pool exists for PyTorch fine-tuning; an LLM API call is network I/O, so sharing that
+    # queue would both scale GPU pods for nothing and leave cheap, frequent pre-label requests
+    # queued behind expensive, infrequent training runs (design.md Decision 6).
+    annotation_llm_celery_queue: str = "annotation.llm_jobs"
+
+    # Sampled acceptance of a batch of machine-generated annotations (seed-bootstrap).
+    #
+    # Off by default, and that is the whole of the "no evidence yet" position: with sampling
+    # disabled the drawn sample is every document in the batch, so bulk acceptance requires a
+    # full review. The sampling path is fully implemented — this switch chooses whether the
+    # sample is a subset or the batch, nothing else.
+    seed_bootstrap_sampling_enabled: bool = False
+    # Used only when sampling is enabled. Deliberately not treated as a recommendation: no
+    # reviewed batch has been measured yet, so any value here is a starting point a deployment
+    # is expected to replace.
+    seed_bootstrap_sample_size: int = 20
+    # Fraction of reviewed suggestions the reviewer must have agreed with — exact entity type
+    # and exact offsets, per design.md "Definition of agreement" — before a batch may be
+    # bulk-promoted. 1.0 is not a measurement; it is the only value that cannot be too
+    # permissive, and is expected to drop once real batches produce a distribution.
+    seed_bootstrap_agreement_threshold: float = 1.0
     confidence_threshold: float = 0.50
+
+    # Confidence-routed review (confidence-routed-review).
+    #
+    # Two thresholds, not one (design.md Decision 1). `confidence_threshold` above answers "is
+    # this good enough to act on" and governs what business consumers see; the one below answers
+    # "is this uncertain enough to be worth a person's time" and governs routing only. Moving
+    # either must never move the other — that independence is what stops tuning review volume
+    # silently changing what analytics, chat and the entity projection see.
+    #
+    # 0.90 starts conservative on purpose: it generates enough queue volume to *measure* the
+    # real review rate rather than guess it, which is what a later, evidence-based value will be
+    # derived from (design.md Decision 7).
+    review_confidence_threshold: float = 0.90
+    # Which route resolves a queued prediction when a tenant has no explicit
+    # `public.tenants.review_policy`. `human` is the shipped default and the only safe one until
+    # human-route agreement data exists to compare the LLM route against (design.md Decision 10).
+    default_review_policy: str = "human"
+    # Storage bound on retained predictions (design.md Decision 11). A prediction is deleted as
+    # soon as it is resolved; this caps the abandoned path, where a queue that outpaces its
+    # reviewers would otherwise grow without limit.
+    retained_prediction_max_age_days: int = 90
+    # Audit draw over the auto-accepted population: `min(max, max(floor, ceil(fraction * N)))`
+    # (design.md Decision 13). The floor keeps the rate meaningful on a small tenant, where the
+    # fraction alone would sample almost nothing; the cap stops a large tenant drawing a sample
+    # nobody can review.
+    audit_sample_floor: int = 20
+    audit_sample_fraction: float = 0.05
+    audit_sample_cap: int = 100
+    # How often the draw happens, per tenant (design.md Decision 13). Weekly moves fast enough
+    # to notice a confidently-wrong model without costing an operator a daily review, and the
+    # cadence is a setting rather than a literal because the right interval is the thing a
+    # deployment learns from its own agreement rates.
+    audit_interval_days: int = 7
+
     model_cache_memory_limit_gb: int = 2
     model_cache_ttl_minutes: int = 30
     model_serving_url: str = "http://localhost:8004"

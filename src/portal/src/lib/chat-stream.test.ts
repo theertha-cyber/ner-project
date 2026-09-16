@@ -79,4 +79,38 @@ describe("readChatStream", () => {
     expect(onDone).not.toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
   });
+  it("dispatches a chart frame to onChart (row 44)", async () => {
+    const chart = {
+      chart_type: "bar",
+      title: "Billed per quarter",
+      categories: ["Q1", "Q2"],
+      series: [{ name: "amount", data: [120000, 95000] }],
+    };
+    const resp = streamResponse([
+      "event: chart\ndata: " + JSON.stringify(chart) + "\n\n",
+      'event: token\ndata: {"delta": "Billing "}\n\n',
+      'event: done\ndata: {"reply": "Billing rose."}\n\n',
+    ]);
+
+    const seen: string[] = [];
+    const onChart = vi.fn(() => seen.push("chart"));
+    const onToken = vi.fn(() => seen.push("token"));
+    await readChatStream(resp, { onChart, onToken, onDone: vi.fn() });
+
+    expect(onChart).toHaveBeenCalledWith(chart);
+    // The chart must be handed over before any text, so the UI can draw it while the
+    // answer is still arriving.
+    expect(seen).toEqual(["chart", "token"]);
+  });
+
+  it("ignores a chart frame when no onChart handler is supplied", async () => {
+    const resp = streamResponse([
+      'event: chart\ndata: {"chart_type": "bar"}\n\n',
+      'event: done\ndata: {"reply": "ok"}\n\n',
+    ]);
+
+    const onDone = vi.fn();
+    await expect(readChatStream(resp, { onDone })).resolves.toBeUndefined();
+    expect(onDone).toHaveBeenCalled();
+  });
 });

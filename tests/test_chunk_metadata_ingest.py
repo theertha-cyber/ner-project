@@ -1,3 +1,4 @@
+import io
 import subprocess
 import uuid
 from pathlib import Path
@@ -491,3 +492,46 @@ class TestChunkingRestrictedToQueryPurpose:
         assert len(embed_calls) == 1
         assert span_count == 1
         assert status == "processed"
+
+
+class TestQaPairTextExtraction:
+    """The .txt and .docx paths a Q&A-pair document takes through the OCR worker. Pure
+    functions — no DB, no storage."""
+
+    def test_plain_text_is_decoded_to_one_span(self):
+        from src.document_service.services import ocr_worker
+
+        spans = ocr_worker.extract_text_plain(b"Q: What is the name?\nA: Aakash R P")
+        assert len(spans) == 1
+        assert spans[0]["text"] == "Q: What is the name?\nA: Aakash R P"
+        assert spans[0]["char_start"] == 0
+        assert spans[0]["char_end"] == len(spans[0]["text"])
+
+    def test_plain_text_tolerates_bad_bytes(self):
+        from src.document_service.services import ocr_worker
+
+        spans = ocr_worker.extract_text_plain(b"caf\xe9 resume")
+        assert "caf" in spans[0]["text"]
+
+    def test_docx_paragraphs_are_joined_with_newlines(self):
+        from docx import Document
+        from src.document_service.services import ocr_worker
+
+        document = Document()
+        document.add_paragraph("Q: What is the candidate name?")
+        document.add_paragraph("A: Aakash R P")
+        buf = io.BytesIO()
+        document.save(buf)
+
+        spans = ocr_worker.extract_text_docx(buf.getvalue())
+        assert spans[0]["text"] == "Q: What is the candidate name?\nA: Aakash R P"
+
+    def test_extension_gate_is_purpose_aware(self):
+        from src.document_service.services import ocr_worker
+
+        assert ocr_worker.is_allowed_file("qa.txt", "qa_pair") is True
+        assert ocr_worker.is_allowed_file("qa.docx", "qa_pair") is True
+        assert ocr_worker.is_allowed_file("qa.pdf", "qa_pair") is True
+        assert ocr_worker.is_allowed_file("qa.txt", "training") is False
+        assert ocr_worker.is_allowed_file("qa.doc", "qa_pair") is False
+        assert ocr_worker.is_allowed_file("scan.png", "training") is True

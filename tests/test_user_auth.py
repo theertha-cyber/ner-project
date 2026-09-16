@@ -71,6 +71,76 @@ async def test_scenario_7_login_wrong_password(client: AsyncClient, seeded_tenan
     assert resp.status_code == 401, f"Expected 401, got {resp.status_code}: {resp.text}"
 
 
+# --- Same email registered in two tenants: login must resolve by password, not by whichever
+#     row the database happens to return first (a real production incident: the account in the
+#     active tenant was refused with "Tenant is deactivated" because an unrelated tenant had
+#     the same email on a deactivated one). ---
+@pytest.mark.asyncio
+async def test_login_disambiguates_same_email_across_tenants_by_password(client: AsyncClient):
+    sys_token = create_access_token(
+        tenant_id="00000000-0000-0000-0000-000000000000",
+        user_id="admin-dup-email",
+        role="system_admin",
+    )
+    email = "shared@duplicate-email-test.local"
+
+    # Tenant A: will be deactivated.
+    resp_a = await client.post(
+        "/api/v1/admin/tenants",
+        json={"name": "Dup Email Tenant A", "slug": "dup-email-a"},
+        headers=auth_header(sys_token),
+    )
+    assert resp_a.status_code == 201, resp_a.text
+    tid_a = resp_a.json()["tenant"]["id"]
+    ta_token_a = create_access_token(tenant_id=tid_a, user_id="ta-a", role="tenant_admin")
+    user_a = await client.post(
+        f"/api/v1/tenants/dup-email-a/users",
+        json={"email": email, "password": "TenantAPass1", "role": "tenant_admin"},
+        headers=auth_header(ta_token_a),
+    )
+    assert user_a.status_code == 201, user_a.text
+
+    # Tenant B: stays active. Different password on the same email.
+    resp_b = await client.post(
+        "/api/v1/admin/tenants",
+        json={"name": "Dup Email Tenant B", "slug": "dup-email-b"},
+        headers=auth_header(sys_token),
+    )
+    assert resp_b.status_code == 201, resp_b.text
+    tid_b = resp_b.json()["tenant"]["id"]
+    ta_token_b = create_access_token(tenant_id=tid_b, user_id="ta-b", role="tenant_admin")
+    user_b = await client.post(
+        f"/api/v1/tenants/dup-email-b/users",
+        json={"email": email, "password": "TenantBPass1", "role": "annotator"},
+        headers=auth_header(ta_token_b),
+    )
+    assert user_b.status_code == 201, user_b.text
+
+    deactivate = await client.post(
+        f"/api/v1/admin/tenants/{tid_a}/deactivate", headers=auth_header(sys_token)
+    )
+    assert deactivate.status_code == 200, deactivate.text
+
+    # Logging in with tenant B's password must succeed and resolve to tenant B — the account
+    # sharing the same email in the now-deactivated tenant A must not intercept the login.
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": email, "password": "TenantBPass1"}
+    )
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    payload = jwt.decode(
+        resp.json()["access_token"], settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+    )
+    assert payload["tenant_id"] == tid_b
+
+    # Logging in with tenant A's password must still surface the deactivation, not a generic
+    # invalid-credentials error — the password is correct for that (deactivated) account.
+    resp_a_login = await client.post(
+        "/api/v1/auth/login", json={"email": email, "password": "TenantAPass1"}
+    )
+    assert resp_a_login.status_code == 401
+    assert "deactivated" in resp_a_login.text.lower()
+
+
 # --- Scenario 8: Expired token ---
 @pytest.mark.asyncio
 async def test_scenario_8_expired_token(client: AsyncClient, seeded_tenant_and_user):

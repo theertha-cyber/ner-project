@@ -6,6 +6,7 @@ from sqlalchemy import text
 from src.shared.database import get_resolver
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.exceptions import NotFoundError
+from src.annotation_service.services.llm_prelabel import SUGGESTION_SOURCE_KEYWORD
 from src.shared.tenant_schema import schema_for_tenant as _schema
 
 router = APIRouter(tags=["spans"], dependencies=[Depends(require_data_plane_ready)])
@@ -146,20 +147,23 @@ async def list_spans(
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
 
+    # `source` is selected only for suggested spans: a confirmed span has passed through a
+    # human, so which mechanism first proposed it is no longer what the row is about.
     if type_filter == "suggested":
         result = await session.execute(
-            text(f"SELECT id, entity_type, char_start, char_end, text_content, confidence, created_at FROM {schema}.suggested_spans WHERE document_id = :doc_id ORDER BY char_start"),
+            text(f"SELECT id, entity_type, char_start, char_end, text_content, confidence, created_at, source FROM {schema}.suggested_spans WHERE document_id = :doc_id ORDER BY char_start"),
             {"doc_id": doc_id},
         )
     else:
         result = await session.execute(
-            text(f"SELECT id, entity_type, char_start, char_end, text_content, confidence, created_at FROM {schema}.spans WHERE document_id = :doc_id ORDER BY char_start"),
+            text(f"SELECT id, entity_type, char_start, char_end, text_content, confidence, created_at, NULL AS source FROM {schema}.spans WHERE document_id = :doc_id ORDER BY char_start"),
             {"doc_id": doc_id},
         )
 
     rows = result.fetchall()
-    return [
-        {
+    spans = []
+    for r in rows:
+        span = {
             "id": r[0],
             "entity_type": r[1],
             "char_start": r[2],
@@ -168,8 +172,10 @@ async def list_spans(
             "confidence": float(r[5]),
             "created_at": str(r[6]),
         }
-        for r in rows
-    ]
+        if type_filter == "suggested":
+            span["source"] = r[7]
+        spans.append(span)
+    return spans
 
 
 @router.patch("/api/v1/documents/{doc_id}/spans/{span_id}")
@@ -322,6 +328,7 @@ async def prelabel_document(
                 "char_end": end,
                 "text": match.group(),
                 "confidence": 0.85,
+                "source": SUGGESTION_SOURCE_KEYWORD,
             })
 
     await session.execute(
@@ -332,8 +339,8 @@ async def prelabel_document(
     for s in suggested:
         await session.execute(
             text(f"""
-                INSERT INTO {schema}.suggested_spans (id, document_id, entity_type, char_start, char_end, text_content, confidence)
-                VALUES (:id, :doc_id, :entity_type, :char_start, :char_end, :text_val, :confidence)
+                INSERT INTO {schema}.suggested_spans (id, document_id, entity_type, char_start, char_end, text_content, confidence, source)
+                VALUES (:id, :doc_id, :entity_type, :char_start, :char_end, :text_val, :confidence, :source)
             """),
             {
                 "id": s["id"],
@@ -343,6 +350,10 @@ async def prelabel_document(
                 "char_end": s["char_end"],
                 "text_val": s["text"],
                 "confidence": s["confidence"],
+                # Written explicitly rather than left to the column default: a suggestion's
+                # provenance is a fact this path knows, and relying on the default would make
+                # the value correct only for as long as nobody changes it.
+                "source": s["source"],
             },
         )
 

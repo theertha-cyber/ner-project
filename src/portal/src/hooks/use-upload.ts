@@ -5,6 +5,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { DOCUMENT_URL } from "@/lib/api";
 
+export interface UploadResult {
+  id: string;
+}
+
 export function useUpload() {
   const [progress, setProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -14,7 +18,7 @@ export function useUpload() {
   const { getAccessToken } = useAuth();
 
   const upload = useCallback(
-    async (file: File, purpose: "query" | "training" = "query") => {
+    async (file: File, purpose: "query" | "training" | "qa_pair" = "query") => {
       setProgress(0);
       setError(null);
       setIsUploading(true);
@@ -22,7 +26,10 @@ export function useUpload() {
       const xhr = new XMLHttpRequest();
       xhrRef.current = xhr;
 
-      return new Promise<void>((resolve, reject) => {
+      // Resolves with the created document's id rather than `void`: the annotation-mode
+      // trigger loop needs it to address the per-document pre-label endpoint. Callers that
+      // do not need it simply ignore the value.
+      return new Promise<UploadResult>((resolve, reject) => {
         xhr.upload.onprogress = (e: ProgressEvent) => {
           if (e.lengthComputable) {
             setProgress(Math.round((e.loaded / e.total) * 100));
@@ -34,7 +41,11 @@ export function useUpload() {
             setProgress(100);
             setIsUploading(false);
             queryClient.invalidateQueries({ queryKey: ["documents"] });
-            resolve();
+            let id = "";
+            try {
+              id = JSON.parse(xhr.responseText)?.id ?? "";
+            } catch {}
+            resolve({ id });
           } else {
             let msg = `Upload failed: ${xhr.status}`;
             try {

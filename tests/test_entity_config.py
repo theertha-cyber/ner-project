@@ -145,3 +145,151 @@ async def test_scenario_19_filter_active(client: AsyncClient, tenant_with_token)
     types = resp.json()["entity_types"]
     for t in types:
         assert t["is_active"] is True
+
+
+# --- llm-assisted-prelabeling: entity-config QA pairs (verification.md rows 17-20) ---
+#
+# These use their own fixture rather than `tenant_with_token` above: that fixture provisions
+# through `POST /api/v1/admin/tenants`, which returns 422 on this branch as it does on `main`,
+# and these assertions are about the entity-type API rather than about tenant provisioning.
+# The route is the real one the gateway mounts, `/api/v1/tenants/{slug}/entity-types`.
+
+import uuid  # noqa: E402
+
+from sqlalchemy import text  # noqa: E402
+
+
+@pytest.fixture
+async def qa_tenant(client: AsyncClient, engine):
+    tid = f"qa-{uuid.uuid4().hex[:8]}"
+    schema = f"tenant_{tid.replace('-', '_')}"
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO public.tenants (id, name, slug, status, max_users, max_documents, "
+                "max_storage_gb, max_model_versions) "
+                "VALUES (:id, :id, :id, 'active', 10, 1000, 5, 10) ON CONFLICT (id) DO NOTHING"
+            ),
+            {"id": tid},
+        )
+        await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+
+    token = create_access_token(tenant_id=tid, user_id="admin", role="tenant_admin")
+    yield {
+        "id": tid,
+        "headers": auth_header(token),
+        "url": f"/api/v1/tenants/{tid}/entity-types",
+    }
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("DELETE FROM public.entity_definitions WHERE tenant_id = :id"), {"id": tid}
+        )
+        await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await conn.execute(text("DELETE FROM public.tenants WHERE id = :id"), {"id": tid})
+
+
+@pytest.mark.asyncio
+async def test_create_entity_type(client: AsyncClient, qa_tenant):
+    """verification.md row 17."""
+    resp = await client.post(
+        qa_tenant["url"],
+        json={
+            "name": "customer_name",
+            "description": "Full name of a customer",
+            "examples": ["John Smith", "Acme Corp"],
+            "validation_rule": None,
+            "required_flag": True,
+        },
+        headers=qa_tenant["headers"],
+    )
+    assert resp.status_code == 201, resp.text
+    entity = resp.json()
+    assert entity["name"] == "customer_name"
+    assert entity["version"] == 1
+    assert entity["is_active"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_entity_type(client: AsyncClient, qa_tenant):
+    """verification.md row 18."""
+    created = await client.post(
+        qa_tenant["url"],
+        json={"name": "customer_name", "description": "Full name of a customer"},
+        headers=qa_tenant["headers"],
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["version"] == 1
+
+    resp = await client.put(
+        f"{qa_tenant['url']}/customer_name",
+        json={"description": "Updated description"},
+        headers=qa_tenant["headers"],
+    )
+    assert resp.status_code == 200, resp.text
+    entity = resp.json()
+    assert entity["version"] == 2
+    assert entity["description"] == "Updated description"
+
+
+@pytest.mark.asyncio
+async def test_add_qa_examples_increments_version(client: AsyncClient, qa_tenant):
+    """verification.md row 19.
+
+    QA pairs go through the same versioned update path as every other field — nothing about
+    them being LLM prompt context exempts them from the catalog's change tracking, and the
+    pre-labeling cache keys on the configuration precisely so this edit invalidates it."""
+    created = await client.post(
+        qa_tenant["url"],
+        json={"name": "years_experience", "description": "Years of professional experience"},
+        headers=qa_tenant["headers"],
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["qa_examples"] == []
+
+    pair = {
+        "question": "How many years of experience does X have?",
+        "answer": "X has 10 years of experience",
+    }
+    resp = await client.put(
+        f"{qa_tenant['url']}/years_experience",
+        json={"qa_examples": [pair]},
+        headers=qa_tenant["headers"],
+    )
+    assert resp.status_code == 200, resp.text
+    entity = resp.json()
+    assert entity["qa_examples"] == [pair]
+    assert entity["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_entity_type_without_qa_examples_is_valid(client: AsyncClient, qa_tenant):
+    """verification.md row 20.
+
+    The whole point of Extraction Scope: an entity type with no QA pairs is a first-class
+    entity type, not a half-configured one."""
+    resp = await client.post(
+        qa_tenant["url"],
+        json={
+            "name": "person_name",
+            "description": "A person's full name",
+            "examples": ["John Smith"],
+        },
+        headers=qa_tenant["headers"],
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["qa_examples"] in ([], None)
+
+
+@pytest.mark.asyncio
+async def test_malformed_qa_example_is_rejected(client: AsyncClient, qa_tenant):
+    """A pair missing its answer never reaches prompt construction.
+
+    Not a spec scenario — it is the guard behind row 19's contract, and without it a malformed
+    pair renders into the prompt as `None`."""
+    resp = await client.post(
+        qa_tenant["url"],
+        json={"name": "broken_type", "qa_examples": [{"question": "Where?"}]},
+        headers=qa_tenant["headers"],
+    )
+    assert resp.status_code == 422, resp.text

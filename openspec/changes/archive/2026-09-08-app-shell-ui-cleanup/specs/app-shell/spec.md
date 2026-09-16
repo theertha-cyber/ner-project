@@ -36,11 +36,11 @@ The system SHALL render a sticky 248 px sidebar (`position: sticky; top: 0; heig
 - **WHEN** the logo block is inspected
 - **THEN** the wordmark text is exactly "NER Platform"
 
-#### Scenario: no tenant pill is rendered
+#### Scenario: tenant pill shows correct values with muted avatar
 
 - **GIVEN** the sidebar renders for any authenticated user
 - **WHEN** the sidebar DOM is inspected
-- **THEN** no tenant-initial avatar, tenant name, or tenant slug element is present between the logo block and the nav section
+- **THEN** no tenant pill is present between the logo block and the nav section — no tenant-initial avatar, tenant name, or tenant slug element (the tenant-switcher affordance was removed by this change)
 
 #### Scenario: user strip chevron is rendered in a framed box
 
@@ -115,18 +115,24 @@ The system SHALL render a 62 px fixed-height topbar (`border-bottom; z-index: 50
 - **THEN** the title "Tenants" and path "/admin/tenants" are displayed in the same horizontal row with baseline alignment
 - **AND** they are NOT stacked vertically
 
-#### Scenario: no search box is rendered
+#### Scenario: search placeholder is non-interactive
 
 - **GIVEN** the topbar renders
 - **WHEN** the topbar DOM is inspected
-- **THEN** no search input, search icon, or "⌘K" hint element is present
+- **THEN** no search input, search icon, or "⌘K" hint element is present (the non-interactive placeholder was removed by this change)
 
-#### Scenario: no role-switcher is rendered regardless of demo mode
+#### Scenario: role-switcher hidden in production mode
 
 - **GIVEN** `NEXT_PUBLIC_DEMO_MODE` is `"true"` or unset
 - **WHEN** the topbar renders
 - **THEN** no `AS` label or SA/TA/AN/BU chips are visible
 - **AND** the topbar accepts no `demoRole` or `onDemoRoleChange` props
+
+#### Scenario: role-switcher wrapped in single bordered pill
+
+- **GIVEN** the topbar renders in any mode
+- **WHEN** the topbar DOM is inspected
+- **THEN** no bordered pill container for role-switcher chips is present — the demo role-switcher was removed from the persistent chrome by this change
 
 #### Scenario: dark mode toggle has 10px border radius
 

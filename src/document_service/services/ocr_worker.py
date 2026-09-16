@@ -136,6 +136,13 @@ ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".doc", 
 # for tesseract on typical document scans.
 OCR_DPI = 200
 
+# Q&A-pair documents are guidance text, not scanned pages, so they additionally accept the
+# text-bearing office formats a team is likely to have written one in. `.doc` (the legacy
+# binary format) is deliberately excluded: it cannot be parsed without a heavyweight
+# dependency, and asking for a re-save as .docx/.pdf/.txt is the honest failure.
+QA_PAIR_EXTRA_EXTENSIONS = {".txt", ".docx"}
+QA_PAIR_ALLOWED_EXTENSIONS = (ALLOWED_EXTENSIONS - {".doc"}) | QA_PAIR_EXTRA_EXTENSIONS
+
 
 def get_extension(filename: str) -> str:
     dot = filename.rfind(".")
@@ -144,26 +151,35 @@ def get_extension(filename: str) -> str:
     return filename[dot:].lower()
 
 
-def is_allowed_file(filename: str) -> bool:
-    return get_extension(filename) in ALLOWED_EXTENSIONS
+def is_allowed_file(filename: str, purpose: str | None = None) -> bool:
+    allowed = QA_PAIR_ALLOWED_EXTENSIONS if purpose == "qa_pair" else ALLOWED_EXTENSIONS
+    return get_extension(filename) in allowed
 
 
 def extract_text_pdf(file_bytes: bytes) -> list[dict]:
-    import fitz
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    """Rasterise every page and OCR it with Tesseract — one span per page.
+
+    PyMuPDF's text-layer extraction is deliberately not used: its default reader inserts
+    layout-driven whitespace and keeps line-break hyphenation, which breaks the exact-match
+    grounding the automated-annotation and schema-proposal paths rely on. OCR of a clean
+    300-DPI render gives text closer to what a reader sees.
+    """
+    from pdf2image import convert_from_bytes
+    import pytesseract
+
+    images = convert_from_bytes(file_bytes, dpi=300)
     spans = []
     char_offset = 0
-    for page_num, page in enumerate(doc):
-        text = page.get_text()
+    for page_num, image in enumerate(images):
+        page_text = pytesseract.image_to_string(image)
         spans.append({
             "span_index": page_num,
-            "text": text,
+            "text": page_text,
             "char_start": char_offset,
-            "char_end": char_offset + len(text),
+            "char_end": char_offset + len(page_text),
             "page_number": page_num,
         })
-        char_offset += len(text) + 1
-    doc.close()
+        char_offset += len(page_text) + 1
     return spans
 
 
@@ -263,8 +279,37 @@ def extract_text_doc(file_bytes: bytes) -> list[dict]:
     }]
 
 
+def _single_span(text_value: str) -> list[dict]:
+    return [{
+        "span_index": 0,
+        "text": text_value,
+        "char_start": 0,
+        "char_end": len(text_value),
+        "page_number": 0,
+    }]
+
+
+def extract_text_plain(file_bytes: bytes) -> list[dict]:
+    """A .txt Q&A-pair document. UTF-8 with a lenient fallback so a stray byte does not
+    fail the whole upload."""
+    try:
+        text_value = file_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        text_value = file_bytes.decode("utf-8", errors="replace")
+    return _single_span(text_value)
+
+
+# extract_text_docx and extract_text_doc are defined above (python-docx / antiword) and
+# cover the Q&A-pair .docx/.doc case too — no separate hand-rolled parser needed here.
+
+
 def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
-    """OCR a scanned PDF by rasterising pages with PyMuPDF (no poppler needed)."""
+    """OCR a scanned PDF by rasterising pages with PyMuPDF (no poppler needed).
+
+    Fallback for `extract_text_pdf`: a genuinely different rasterisation path (PyMuPDF
+    instead of pdf2image/poppler), not a retry of the same one, so a PDF that defeats one
+    approach has a real second chance rather than failing identically twice.
+    """
     import fitz
     from PIL import Image
     import io
@@ -296,6 +341,7 @@ def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
 MEDIA_TYPE_PDF = "application/pdf"
 MEDIA_TYPE_DOC = "application/msword"
 MEDIA_TYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+MEDIA_TYPE_TXT = "text/plain"
 IMAGE_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/tiff"})
 
 # Types a client sends when it does not know or does not care. Treating one of these as
@@ -313,6 +359,7 @@ _EXTENSION_MEDIA_TYPES = {
     ".tiff": "image/tiff",
     ".doc": MEDIA_TYPE_DOC,
     ".docx": MEDIA_TYPE_DOCX,
+    ".txt": MEDIA_TYPE_TXT,
 }
 
 _MAGIC_PREFIXES = (
@@ -330,7 +377,7 @@ def _media_type_from_declaration(declared: str | None) -> str | None:
     value = declared.split(";")[0].strip().lower()
     if value in _UNINFORMATIVE_MEDIA_TYPES:
         return None
-    if value in {MEDIA_TYPE_PDF, MEDIA_TYPE_DOC, MEDIA_TYPE_DOCX} or value in IMAGE_MEDIA_TYPES:
+    if value in {MEDIA_TYPE_PDF, MEDIA_TYPE_DOC, MEDIA_TYPE_DOCX, MEDIA_TYPE_TXT} or value in IMAGE_MEDIA_TYPES:
         return value
     # Aliases real clients send.
     if value in ("image/jpg", "image/pjpeg"):
@@ -562,6 +609,8 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
             spans = await asyncio.to_thread(extract_text_docx, file_data)
         elif media_type == MEDIA_TYPE_DOC:
             spans = await asyncio.to_thread(extract_text_doc, file_data)
+        elif media_type == MEDIA_TYPE_TXT:
+            spans = await asyncio.to_thread(extract_text_plain, file_data)
         else:
             raise UnsupportedMediaType(f"Unsupported media type: {media_type or 'unresolved'}")
 

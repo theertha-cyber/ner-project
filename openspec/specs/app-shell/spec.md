@@ -1,6 +1,11 @@
 ## Purpose
 
-<!-- TBD: This spec covers the authenticated application shell — sidebar, topbar, placeholder screens, and the authenticated route group layout. -->
+`app-shell` is the persistent chrome around every authenticated page: the sticky sidebar
+(logo, tenant pill, role-specific nav from `nav-config`, user strip with the action menu)
+and the topbar (screen title, dark-mode toggle). It renders once in the `(auth)` layout so
+navigation, the active-route highlight, and the screen title are consistent across the
+portal and no page re-implements them.
+
 ## Requirements
 ### Requirement: Sidebar Layout
 

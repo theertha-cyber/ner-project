@@ -32,21 +32,27 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 VERSIONS = ROOT / "alembic" / "versions"
 COMPOSE = ROOT / "docker-compose.yml"
 
-CHAIN = ["039", "040", "041", "042", "043"]
+CHAIN = [
+    "039", "039b", "040", "041", "042", "043", "044", "045", "046", "047", "048",
+    "049", "050", "051", "052",
+]
 
 EXPECTED_LABELS = {
     "ner_data_source_lifecycle_total": {
-        "provider": {"azure_blob", "azure_postgresql", "other"},
+        "provider": {"azure_blob", "azure_postgresql", "azure_postgresql_data_plane", "other"},
         "action": {"create", "update", "test", "activate", "pause",
-                   "replace", "retire", "other"},
+                   "replace", "retire", "sync", "other"},
         "outcome": {"success", "rejected", "error", "other"},
     },
     "ner_data_source_tests_total": {
-        "provider": {"azure_blob", "azure_postgresql", "other"},
+        "provider": {"azure_blob", "azure_postgresql", "azure_postgresql_data_plane", "other"},
         "outcome": {"passed", "failed", "not_run", "other"},
         "reason": {"none", "validation_failed", "secret_unavailable",
                    "connection_failed", "tls_validation_failed",
-                   "authorization_failed", "prerequisite_missing", "other"},
+                   "authorization_failed", "prerequisite_missing",
+                   "server_version_unsupported", "vector_extension_unavailable",
+                   "insufficient_privilege", "query_role_unavailable",
+                   "target_schema_not_empty", "store_identity_mismatch", "other"},
     },
     "ner_blob_sync_total": {
         "trigger": {"manual", "scheduled", "retry", "catchup", "other"},

@@ -53,6 +53,7 @@ export function AnnotationPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartIndex, setDragStartIndex] = useState<number | null>(null);
   const [dragEndIndex, setDragEndIndex] = useState<number | null>(null);
+  const suppressNextTokenClickRef = useRef(false);
   const [pendingWrites, setPendingWrites] = useState(0);
   const pendingWritesRef = useRef(0);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -134,9 +135,9 @@ export function AnnotationPage() {
     // CSS-only focus mode — no fullscreen API
   }, []);
 
-  // Task 3.4 — prepend new task from assignment form and close it
-  const handleTaskAssigned = useCallback((newTask: AnnotationTask) => {
-    setLocallyPrependedTasks((prev) => [newTask, ...prev]);
+  // Task 3.4 — prepend newly-assigned tasks (one or many) from the assignment form and close it
+  const handleTaskAssigned = useCallback((newTasks: AnnotationTask[]) => {
+    setLocallyPrependedTasks((prev) => [...newTasks, ...prev]);
     setIsAssignFormOpen(false);
     queryClient.invalidateQueries({ queryKey: ["annotation-tasks"] });
   }, [queryClient]);
@@ -228,6 +229,10 @@ export function AnnotationPage() {
 
   const handleTokenClick = useCallback(
     async (tokenIndex: number) => {
+      if (suppressNextTokenClickRef.current) {
+        suppressNextTokenClickRef.current = false;
+        return;
+      }
       if (!selectedTask || !docText) return;
       const entry = tokenMap[tokenIndex];
       if (!entry) return;
@@ -320,9 +325,14 @@ export function AnnotationPage() {
       setDragEndIndex(null);
 
       if (minIdx === maxIdx) {
-        handleTokenClick(minIdx);
+        // A normal click receives both mouseup and click. Let the click path
+        // create the single-token span; invoking it here would submit twice.
         return;
       }
+
+      // Browsers dispatch click after a drag's mouseup on the release token.
+      // The range save above owns the gesture, so consume that follow-up click.
+      suppressNextTokenClickRef.current = true;
 
       if (!spanState.armedType || !selectedTask || !docText) return;
 

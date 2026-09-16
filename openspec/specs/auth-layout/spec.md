@@ -1,4 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+`auth-layout` defines the Next.js App Router route group at `app/(auth)/` — the single
+place authentication and the app shell are applied. Every authenticated screen lives under
+it, so an unauthenticated request is redirected to `/login` once, the sidebar and topbar
+wrap every page, and the `/admin/*` sub-layout adds the `system_admin` role guard — without
+each page re-implementing any of it. The `(auth)` segment never appears in a URL.
+
+## Requirements
 
 ### Requirement: Authenticated Route Group Layout
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { authFetch, initAuthFetch } from "./auth-fetch";
+import { ANNOTATION_URL } from "./api";
 
 // ─── URL routing ─────────────────────────────────────────────────────────────
 
@@ -57,6 +58,44 @@ describe("authFetch — URL routing", () => {
       .mockResolvedValue(new Response(null, { status: 200 }));
     await authFetch("/api/v1/annotation/labels");
     expect(String(spy.mock.calls[0][0])).toContain("/api/v1/annotation/labels");
+  });
+
+  it("routes /api/v1/schema-proposals/* to ANNOTATION_URL", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    await authFetch("/api/v1/schema-proposals/abc");
+    expect(String(spy.mock.calls[0][0])).toBe(`${ANNOTATION_URL}/api/v1/schema-proposals/abc`);
+  });
+
+  it("routes /api/v1/prelabel-batches/* to ANNOTATION_URL", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    await authFetch("/api/v1/prelabel-batches/abc/acceptance");
+    expect(String(spy.mock.calls[0][0])).toBe(
+      `${ANNOTATION_URL}/api/v1/prelabel-batches/abc/acceptance`,
+    );
+  });
+
+  // Regression: these three had no rule, so they fell through to the relative return and hit
+  // the portal's own origin, where the review queue 404'd against its own Next server.
+  it("routes the confidence-routed review endpoints to ANNOTATION_URL", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    for (const path of [
+      "/api/v1/review-queue?limit=25&offset=0",
+      "/api/v1/review-queue/pred-1/resolve",
+      "/api/v1/review-accumulation",
+      "/api/v1/audits",
+      "/api/v1/audits/audit-1/complete",
+    ]) {
+      spy.mockClear();
+      await authFetch(path);
+      expect(String(spy.mock.calls[0][0])).toBe(`${ANNOTATION_URL}${path}`);
+    }
   });
 
   it("routes /api/v1/training/* to TRAINING_URL", async () => {

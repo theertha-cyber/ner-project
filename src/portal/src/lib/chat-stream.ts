@@ -1,5 +1,6 @@
 export interface ChatStreamEvents {
   onToken?: (delta: string) => void;
+  onChart?: (chart: Record<string, unknown>) => void;
   onDone?: (data: Record<string, unknown>) => void;
   onError?: (data: { code?: string; message?: string }) => void;
 }
@@ -72,6 +73,8 @@ function dispatchFrame(rawFrame: string, events: ChatStreamEvents): void {
 
   if (eventName === "token") {
     events.onToken?.(typeof data.delta === "string" ? data.delta : "");
+  } else if (eventName === "chart") {
+    events.onChart?.(data);
   } else if (eventName === "done") {
     events.onDone?.(data);
   } else if (eventName === "error") {

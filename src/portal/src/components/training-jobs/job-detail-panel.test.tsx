@@ -24,6 +24,7 @@ const baseJob: TrainingJob = {
   id: "job-1",
   tenant_id: "t1",
   status: "pending_approval",
+  source_scope: null,
   hyperparams: { learning_rate: 2e-5, num_epochs: 3, batch_size: 8, max_seq_length: 128 },
   current_epoch: null,
   current_loss: null,

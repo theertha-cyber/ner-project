@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 AnswerKind = Literal["answer", "clarification", "guardrail_blocked", "out_of_domain"]
 Rating = Literal["up", "down"]
@@ -71,6 +71,43 @@ class RetrievalStatusOut(BaseModel):
     stop_reason: str | None = None
 
 
+class ExportAvailability(BaseModel):
+    """Describes whether a structured-result snapshot is downloadable for this
+    turn — metadata only, never the row data itself (chat-export capability)."""
+
+    message_id: str
+    row_count: int
+    formats: list[str] = ["csv", "xlsx"]
+
+
+ChartType = Literal["bar", "line", "pie"]
+
+
+class ChartSeries(BaseModel):
+    name: str
+    data: list[float]
+
+
+class ChartPayload(BaseModel):
+    chart_type: ChartType
+    title: str
+    x_label: str | None = None
+    y_label: str | None = None
+    categories: list[str] = Field(..., min_length=1)
+    series: list[ChartSeries] = Field(..., min_length=1)
+
+    @model_validator(mode="after")
+    def series_align_with_categories(self):
+        width = len(self.categories)
+        for entry in self.series:
+            if len(entry.data) != width:
+                raise ValueError(
+                    f"series '{entry.name}' has {len(entry.data)} values "
+                    f"but there are {width} categories"
+                )
+        return self
+
+
 class ChatResponse(BaseModel):
     reply: str
     sources: list[Source | Citation]
@@ -81,6 +118,8 @@ class ChatResponse(BaseModel):
     answer_kind: AnswerKind | None = None
     model_version: str | None = None
     retrieval_status: RetrievalStatusOut | None = None
+    export: ExportAvailability | None = None
+    chart: ChartPayload | None = None
 
 
 class ConversationSummary(BaseModel):
@@ -126,6 +165,8 @@ class MessageResponse(BaseModel):
     answer_kind: AnswerKind | None = None
     model_version: str | None = None
     feedback: FeedbackOut | None = None
+    export: ExportAvailability | None = None
+    chart: ChartPayload | None = None
 
 
 class ConversationDetail(BaseModel):

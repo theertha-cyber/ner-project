@@ -68,7 +68,7 @@ class DocumentIngestionService:
         return self._working_store if self._working_store is not None else get_working_store()
 
     async def ingest(self, session, document: NormalizedDocument) -> IngestionResult:
-        if not is_allowed_file(document.filename or ""):
+        if not is_allowed_file(document.filename or "", document.purpose):
             raise UnsupportedFileType(get_extension(document.filename or ""))
 
         data = document.content.read()

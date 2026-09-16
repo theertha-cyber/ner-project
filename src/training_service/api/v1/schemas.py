@@ -1,10 +1,22 @@
 from pydantic import BaseModel, Field
-from typing import Any
+from typing import Any, Literal
 from datetime import datetime
+
+# Manual, Automated, and Import are independent workflows — a training job trains on exactly
+# one of them, never a blend (manual-training-data-source-scoping).
+SourceScope = Literal["manual", "automated", "import"]
 
 
 class TrainingJobCreate(BaseModel):
     model_config = {"extra": "forbid"}
+
+    source_scope: SourceScope | None = Field(
+        None,
+        description=(
+            "Which workflow this job trains from — 'manual', 'automated', or 'import'. "
+            "Omit to train on every source combined (the pre-existing behaviour)."
+        ),
+    )
 
 
 class ApproveJobRequest(BaseModel):
@@ -18,6 +30,7 @@ class TrainingJobResponse(BaseModel):
     id: str
     tenant_id: str
     status: str
+    source_scope: SourceScope | None = None
     hyperparams: dict | None = None
     current_epoch: int | None = None
     current_loss: float | None = None

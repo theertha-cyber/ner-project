@@ -39,23 +39,37 @@ The system SHALL render an `EntityTypeCard` component for each entity type. The 
 - A **colored dot** (34×34 px rounded square with inner 12×12 px dot) whose hue is derived from `index % 7` mapping to `[25, 330, 235, 285, 155, 200, 60]` degrees in OKLCH space, matching the `etDefs` mockup color scheme
 - The entity type **name** in JetBrains Mono weight-600 14.5 px
 - A **version label** (`v{n}`) in JetBrains Mono 10 px muted
+- A **provenance chip** in JetBrains Mono 10 px reading `manual`, `suggested`, or `imported`; when `provenance_ref` is present the chip reads `suggested · {ref}` or `imported · {ref}`
 - A **description** below the name in 12.5 px secondary color
 - **Required** and **Active/Inactive** pill badges
-- A **BASE LABEL MAPPING** section header in JetBrains Mono 10.5 px, with the mapping value shown as `{BASE} → {name}` (e.g. `ORG → vendor_name`) in a styled monospace box
+- A **BASE LABEL MAPPING** section header in JetBrains Mono 10.5 px, with the mapping value shown as `{BASE} → {name}` in a styled monospace box
 - An **EXAMPLES** section header with up to 2 example values joined by ", "
-- Two action buttons: **Edit** (opens the slide-over in edit mode) and a toggle button labeled "Deactivate" / "Reactivate" that soft-deletes or restores the entity type
+- Two action buttons: **Edit** (opens the slide-over in edit mode) and a toggle button labeled "Deactivate" / "Reactivate"
 
 The card SHALL apply a `translateY(-2px)` hover lift and `border-color: var(--primary-line)` highlight on hover.
 
 #### Scenario: Card displays all fields for an active required entity type
 
-- **GIVEN** an entity type `{name: "vendor_name", version: 2, description: "Name of a vendor", mapping: {ORG: ["vendor_name"]}, examples: ["Northwind Logistics", "Globex Supplies"], required: true, active: true}`
+- **GIVEN** an entity type `{name: "vendor_name", version: 2, description: "Name of a vendor", mapping: {ORG: ["vendor_name"]}, examples: ["Northwind Logistics", "Globex Supplies"], required: true, active: true, provenance: "manual"}`
 - **WHEN** the card renders at index 0
 - **THEN** the name "vendor_name" and "v2" label are visible
 - **AND** "Required" and "Active" pills are visible
 - **AND** the BASE LABEL MAPPING section shows "ORG → vendor_name"
 - **AND** the EXAMPLES section shows "Northwind Logistics, Globex Supplies"
 - **AND** the dot uses hue 25 (orange)
+- **AND** a provenance chip reading "manual" is visible
+
+#### Scenario: Card shows a suggested provenance chip with reference
+
+- **GIVEN** an entity type with `provenance: "suggested"` and `provenance_ref: "schema v3"`
+- **WHEN** the card renders
+- **THEN** a provenance chip reading "suggested · schema v3" is visible
+
+#### Scenario: Card shows an imported provenance chip
+
+- **GIVEN** an entity type with `provenance: "imported"` and `provenance_ref: "hr_gold_set.jsonl"`
+- **WHEN** the card renders
+- **THEN** a provenance chip reading "imported · hr_gold_set.jsonl" is visible
 
 #### Scenario: Card shows Deactivate button for active entity type
 
@@ -76,8 +90,6 @@ The card SHALL apply a `translateY(-2px)` hover lift and `border-color: var(--pr
 - **WHEN** the user hovers over the card
 - **THEN** the card applies `transform: translateY(-2px)` and highlights its border with `var(--primary-line)`
 
----
-
 ### Requirement: Define / Edit Entity Type Slide-Over
 
 The system SHALL render a `DefineEntityTypeSlideOver` component using the existing `SlideOver` primitive (width=460). The slide-over SHALL open when the user clicks "+ Define entity type" (create mode) or "Edit" on a card (edit mode). It SHALL display:
@@ -87,6 +99,7 @@ The system SHALL render a `DefineEntityTypeSlideOver` component using the existi
 - A **NAME** field (`placeholder: "vendor_name"`, JetBrains Mono) — disabled in edit mode
 - A **DESCRIPTION** field (`placeholder: "Name of a vendor / supplier"`)
 - An **EXAMPLES** field (`placeholder: "Acme Supplies, Global Tech Ltd"`, comma-separated, stored as array by splitting on `, `)
+- An **EXAMPLE Q&A** section rendering zero or more question/answer row pairs bound to the `qa_examples` field, with an "+ Add Q&A pair" control to append a row and a remove control on each row. The section SHALL be optional — an entity type with no Q&A rows SHALL be valid and SHALL submit `qa_examples` as an empty array. A row with only one of question or answer filled SHALL block submission with an inline validation message; a fully empty row SHALL be discarded on save rather than blocking.
 - **BASE MODEL LABEL** chip row with exactly four buttons: PER, ORG, LOC, MISC — only one active at a time (selected chip highlighted with primary-color background)
 - A **Required flag** toggle row (`label: "Required flag"`, sub-label: `"enforce presence at extraction"`)
 - A save button labeled "Create entity type" or "Save changes" depending on mode
@@ -100,6 +113,7 @@ On save, the slide-over SHALL call `POST /api/v1/tenants/{slug}/entity-types` (c
 - **THEN** the slide-over opens with title "Create entity type"
 - **AND** all fields are empty
 - **AND** the NAME field is editable
+- **AND** the EXAMPLE Q&A section renders with no rows
 
 #### Scenario: Slide-over opens in edit mode from card
 
@@ -110,6 +124,41 @@ On save, the slide-over SHALL call `POST /api/v1/tenants/{slug}/entity-types` (c
 - **AND** the DESCRIPTION field is pre-filled with "Name of a vendor"
 - **AND** the ORG chip is selected
 - **AND** the Required toggle is on
+
+#### Scenario: Existing QA pairs are pre-filled in edit mode
+
+- **GIVEN** entity type "years_experience" exists with `qa_examples: [{"question": "How many years of experience does X have?", "answer": "X has 10 years of experience"}]`
+- **WHEN** the user clicks "Edit" on the years_experience card
+- **THEN** the EXAMPLE Q&A section renders exactly 1 row
+- **AND** the row's question input shows "How many years of experience does X have?"
+- **AND** the row's answer input shows "X has 10 years of experience"
+
+#### Scenario: Adding a QA pair row and saving submits qa_examples
+
+- **GIVEN** the slide-over is open in edit mode for "years_experience" with no existing Q&A rows
+- **WHEN** the user clicks "+ Add Q&A pair", enters a question and an answer, and clicks "Save changes"
+- **THEN** the PUT request body SHALL contain `qa_examples` with one object having the entered `question` and `answer`
+
+#### Scenario: Removing a QA pair row
+
+- **GIVEN** the slide-over is open with 2 Q&A rows
+- **WHEN** the user clicks the remove control on the first row and saves
+- **THEN** the request body SHALL contain `qa_examples` with only the remaining pair
+
+#### Scenario: Partially filled QA pair row blocks submission
+
+- **GIVEN** the slide-over is open with one Q&A row whose question is filled and whose answer is empty
+- **WHEN** the user clicks the save button
+- **THEN** an inline validation message SHALL be shown on that row
+- **AND** no API request SHALL be sent
+- **AND** the slide-over SHALL remain open
+
+#### Scenario: Saving with no QA pairs submits an empty array
+
+- **GIVEN** the slide-over is open in create mode with name, description and examples filled and no Q&A rows added
+- **WHEN** the user clicks "Create entity type"
+- **THEN** the POST request body SHALL contain `qa_examples` as an empty array
+- **AND** on 201 response the slide-over SHALL close
 
 #### Scenario: BASE MODEL LABEL chip selection is single-select
 

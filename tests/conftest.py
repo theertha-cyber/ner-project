@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS {schema}.annotation_tasks (
     status VARCHAR(20) DEFAULT 'unannotated',
     reviewer VARCHAR,
     dataset_version INTEGER,
+    training_eligible_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );
@@ -136,7 +137,21 @@ CREATE TABLE IF NOT EXISTS {schema}.suggested_spans (
     char_end INTEGER NOT NULL,
     text_content VARCHAR NOT NULL,
     confidence FLOAT NOT NULL,
+    source VARCHAR(16) NOT NULL DEFAULT 'keyword',
     created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS {schema}.llm_prelabel_jobs (
+    id VARCHAR PRIMARY KEY,
+    document_id VARCHAR NOT NULL REFERENCES {schema}.documents(id) ON DELETE CASCADE,
+    status VARCHAR(16) NOT NULL DEFAULT 'queued',
+    content_hash VARCHAR(64) NOT NULL,
+    config_version VARCHAR(64) NOT NULL,
+    served_from_cache BOOLEAN NOT NULL DEFAULT false,
+    spans JSONB,
+    counts JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
 );
 CREATE TABLE IF NOT EXISTS {schema}.training_jobs (
     id VARCHAR PRIMARY KEY,
@@ -203,6 +218,9 @@ CREATE TABLE IF NOT EXISTS {schema}.chat_messages (
     answer_kind TEXT NOT NULL DEFAULT 'answer',
     model_version TEXT,
     response_time_ms INTEGER,
+    export_rows JSONB,
+    export_row_count INTEGER,
+    chart JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS {schema}.chat_message_feedback (

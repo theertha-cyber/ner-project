@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
 import { navFor } from "@/lib/nav-config";
+import type { NavItem, NavLeaf } from "@/lib/nav-config";
 import { Settings, LogOut, ChevronDown, PanelLeft } from "lucide-react";
 
 function userInitials(email: string): string {
@@ -32,8 +33,69 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
 
   if (!user) return null;
 
-  const navItems = navFor(effectiveRole);
+  const navItems: NavItem[] = navFor(effectiveRole);
   const initials = userInitials(user.email);
+
+  const renderLeaf = (item: NavLeaf) => {
+    const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+    return (
+      <button
+        key={item.id}
+        onClick={() => router.push(item.href)}
+        title={collapsed ? item.label : undefined}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: collapsed ? "center" : "flex-start",
+          gap: 10,
+          width: "100%",
+          padding: collapsed ? "9px" : "9px 11px",
+          borderRadius: 10,
+          border: "none",
+          background: isActive ? "var(--primary)" : "transparent",
+          color: isActive ? "#fff" : "var(--ink-2)",
+          fontFamily: "var(--font-display, sans-serif)",
+          fontSize: 13.5,
+          fontWeight: isActive ? 600 : 400,
+          cursor: "pointer",
+          textAlign: "left",
+          marginBottom: 2,
+          transition: "background 0.12s, color 0.12s",
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) {
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--ink)";
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) {
+            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-2)";
+          }
+        }}
+      >
+        <item.icon size={16} strokeWidth={2} style={{ flexShrink: 0 }} />
+        {!collapsed && <span style={{ flex: 1 }}>{item.label}</span>}
+        {!collapsed && item.badge != null && (
+          <span
+            style={{
+              fontFamily: "var(--font-mono, monospace)",
+              fontSize: 10,
+              fontWeight: 600,
+              padding: "1px 6px",
+              borderRadius: 20,
+              background: isActive ? "rgba(255,255,255,0.25)" : "var(--primary-soft)",
+              color: isActive ? "#fff" : "var(--primary)",
+              flexShrink: 0,
+            }}
+          >
+            {item.badge}
+          </span>
+        )}
+      </button>
+    );
+  };
   const roleLabel = user.role.replace(/_/g, " ");
 
   return (
@@ -116,64 +178,38 @@ export function Sidebar({ effectiveRole }: SidebarProps) {
       {/* Nav section */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "10px 12px" }}>
         {navItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-          return (
-            <button
-              key={item.id}
-              onClick={() => router.push(item.href)}
-              title={collapsed ? item.label : undefined}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: collapsed ? "center" : "flex-start",
-                gap: 10,
-                width: "100%",
-                padding: collapsed ? "9px" : "9px 11px",
-                borderRadius: 10,
-                border: "none",
-                background: isActive ? "var(--primary)" : "transparent",
-                color: isActive ? "#fff" : "var(--ink-2)",
-                fontFamily: "var(--font-display, sans-serif)",
-                fontSize: 13.5,
-                fontWeight: isActive ? 600 : 400,
-                cursor: "pointer",
-                textAlign: "left",
-                marginBottom: 2,
-                transition: "background 0.12s, color 0.12s",
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)";
-                  (e.currentTarget as HTMLButtonElement).style.color = "var(--ink)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                  (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-2)";
-                }
-              }}
-            >
-              <item.icon size={16} strokeWidth={2} style={{ flexShrink: 0 }} />
-              {!collapsed && <span style={{ flex: 1 }}>{item.label}</span>}
-              {!collapsed && item.badge != null && (
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontSize: 10,
-                    fontWeight: 600,
-                    padding: "1px 6px",
-                    borderRadius: 20,
-                    background: isActive ? "rgba(255,255,255,0.25)" : "var(--primary-soft)",
-                    color: isActive ? "#fff" : "var(--primary)",
-                    flexShrink: 0,
-                  }}
-                >
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
+          if (item.kind === "section") {
+            return (
+              <div key={item.id} style={{ marginTop: 14 }}>
+                {!collapsed && (
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      color: "var(--ink-3)",
+                      padding: "6px 11px 4px",
+                    }}
+                  >
+                    {item.label}
+                  </div>
+                )}
+                {collapsed && (
+                  <div
+                    style={{
+                      height: 1,
+                      background: "var(--line)",
+                      margin: "8px 6px",
+                    }}
+                  />
+                )}
+                {item.items.map(renderLeaf)}
+              </div>
+            );
+          }
+          return renderLeaf(item);
         })}
       </nav>
 

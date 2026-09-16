@@ -5,9 +5,7 @@
 Frontend annotation workspace at `/annotation` for annotators and tenant admins to perform document labeling, manage annotation tasks, and trigger pre-labeling.
 
 ---
-
 ## Requirements
-
 ### Requirement: Layout and Navigation
 
 The annotation workspace SHALL render at `/annotation` inside the authenticated app shell. The workspace SHALL support two layout modes: **3-pane** (default) with a fixed-width task queue (`228px`) on the left, a scrollable document viewer in the center, and a fixed-width entity panel (`326px`) on the right; and **focus mode** where the task queue is hidden, the entity palette becomes a `position: fixed` horizontal strip anchored to the bottom center of the viewport, and the document viewer expands to the full browser width with a maximum content width of `760px`. The selected layout mode SHALL be persisted to `localStorage` under the key `"ner-annotation-layout"`.
@@ -226,14 +224,14 @@ When an entity type is armed, an **armed banner** SHALL appear below the toolbar
 
 ### Requirement: Token-Click Span Creation
 
-When an entity type is armed, clicking any document token SHALL create a single-token confirmed span via `POST /api/v1/documents/{id}/spans`. The span's `char_start` and `char_end` SHALL be derived from the token's position in the document text using whitespace-split tokenization. Span creation SHALL be optimistic — the token SHALL highlight immediately without waiting for the API response. If the API returns an error, the optimistic highlight SHALL be reverted and a toast SHALL display the error.
+When an entity type is armed, clicking any document token SHALL create a single-token confirmed span via `POST /api/v1/documents/{id}/spans`. The span's `char_start` and `char_end` SHALL be derived from the token's position in the document text using whitespace-split tokenization. Span creation SHALL be optimistic — the token SHALL highlight immediately without waiting for the API response. If the API returns an error, the optimistic highlight SHALL be reverted and a toast SHALL display the error. A token click followed by the document mouseup event for the same gesture SHALL still issue at most one create-span request.
 
 #### Scenario: Clicking a token while armed creates a span
 
 - **GIVEN** the entity type "ORG" is armed and the document text is "Acme Corp hired John"
-- **WHEN** the user clicks the token "Acme"
+- **WHEN** the user clicks the token "Acme" and the document mouseup for that click is dispatched
 - **THEN** the "Acme" token SHALL immediately highlight with the ORG color (optimistic)
-- **AND** a `POST /documents/{id}/spans` request SHALL be sent with `{entity_type: "ORG", char_start: 0, char_end: 4, text: "Acme"}`
+- **AND** exactly one `POST /documents/{id}/spans` request SHALL be sent with `{entity_type: "ORG", char_start: 0, char_end: 4, text: "Acme"}`
 - **AND** on success (201), the span ID from the response SHALL replace the optimistic placeholder
 
 #### Scenario: Clicking an already-spanned token while armed does nothing
@@ -254,7 +252,7 @@ When an entity type is armed, clicking any document token SHALL create a single-
 
 - **GIVEN** no entity type is armed and the user clicks a token that belongs to a confirmed span
 - **WHEN** the token is clicked
-- **THEN** the span inspector SHALL open for that span (see Span Inspector requirement)
+- **THEN** the span inspector SHALL open for that span
 
 ### Requirement: Span Inspector
 
@@ -488,3 +486,4 @@ The workspace SHALL perform all char-offset ↔ token-index conversions client-s
 - **WHEN** the document viewer maps span to token indices
 - **THEN** token 0 ("Hello") and token 1 ("World") SHALL be highlighted
 - **AND** token 2 ("Foo") SHALL not be highlighted
+

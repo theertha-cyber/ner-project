@@ -41,6 +41,23 @@ function resolveUrl(url: string): string {
     return `${ANNOTATION_URL}${url}`;
   if (url.startsWith("/api/v1/annotation")) return `${ANNOTATION_URL}${url}`;
   if (url.startsWith("/api/v1/imported-annotations")) return `${ANNOTATION_URL}${url}`;
+  // Seed bootstrap. Both live in the annotation service, and both need naming explicitly:
+  // neither prefix matches any rule above, so without these they would fall through to the
+  // relative return below and hit the portal's own origin.
+  if (url.startsWith("/api/v1/schema-proposals")) return `${ANNOTATION_URL}${url}`;
+  if (url.startsWith("/api/v1/prelabel-batches")) return `${ANNOTATION_URL}${url}`;
+  // Confidence-routed review. Same reason as the two above: none of these prefixes matches a
+  // rule already here, so without them they fall through to the relative return at the bottom
+  // and hit the portal's own origin, where they 404.
+  if (url.startsWith("/api/v1/review-queue")) return `${ANNOTATION_URL}${url}`;
+  if (url.startsWith("/api/v1/review-accumulation")) return `${ANNOTATION_URL}${url}`;
+  if (url.startsWith("/api/v1/audits")) return `${ANNOTATION_URL}${url}`;
+  // The retraining decision surface reads change 5's accumulation figure, so it lives beside it
+  // in the annotation service. Named here for the same reason as the three above — the prefix
+  // matches no existing rule. Its two companions (`/api/v1/training-retrain-requests` and
+  // `/api/v1/training-promotion-evidence`) need no rule: they already match the
+  // `/api/v1/training` prefix below, which is why they are named that way.
+  if (url.startsWith("/api/v1/retraining-decision")) return `${ANNOTATION_URL}${url}`;
   if (url.startsWith("/api/v1/document")) return `${DOCUMENT_URL}${url}`;
   if (url.startsWith("/api/v1/training") || url.startsWith("/api/v1/models"))
     return `${TRAINING_URL}${url}`;

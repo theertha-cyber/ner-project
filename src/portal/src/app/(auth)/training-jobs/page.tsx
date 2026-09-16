@@ -18,6 +18,9 @@ import { ModelVersionCard } from "@/components/training-jobs/model-version-card"
 import { ModelDetailPanel } from "@/components/training-jobs/model-detail-panel";
 import { useModelVersions } from "@/hooks/use-model-versions";
 import type { ModelVersion } from "@/types/model-registry";
+import type { SourceScope } from "@/types/training-jobs";
+
+const VALID_SOURCE_SCOPES: SourceScope[] = ["manual", "automated", "import"];
 
 type ViewMode = "jobs" | "models";
 
@@ -34,7 +37,22 @@ export default function TrainingJobsPage() {
   const currentTab: FilterTab = (statusParam as FilterTab) ?? "all";
   const selectedJobId = selectedParam;
 
+  // A "Train model" action from a specific workflow (Manual, Automated) links here with
+  // ?source=<scope> — that pre-locks the submit panel to that workflow rather than asking the
+  // admin to choose again, and opens it immediately since arriving with this param means they
+  // already decided to submit.
+  const sourceParam = searchParams.get("source");
+  const lockedSourceScope: SourceScope | undefined = VALID_SOURCE_SCOPES.includes(
+    sourceParam as SourceScope,
+  )
+    ? (sourceParam as SourceScope)
+    : undefined;
+
   const [submitOpen, setSubmitOpen] = useState(false);
+
+  useEffect(() => {
+    if (lockedSourceScope) setSubmitOpen(true);
+  }, [lockedSourceScope]);
 
   const { data: listData, isLoading: listLoading } = useTrainingJobs(
     currentTab === "all" ? undefined : currentTab,
@@ -164,6 +182,23 @@ export default function TrainingJobsPage() {
             + Submit job
           </button>
         )}
+        {isTenantAdmin && view === "models" && (
+          <button
+            type="button"
+            onClick={() => router.push("/annotate/automated/retrain")}
+            className="font-display font-bold"
+            style={{
+              padding: "9px 16px",
+              borderRadius: 12,
+              border: "1px solid var(--line)",
+              background: "transparent",
+              color: "var(--ink-2)",
+              fontSize: 13,
+            }}
+          >
+            Retraining & promotion evidence →
+          </button>
+        )}
       </div>
 
       {view === "jobs" ? (
@@ -268,7 +303,13 @@ export default function TrainingJobsPage() {
       )}
 
       {/* Submit Slide-over */}
-      {isTenantAdmin && <SubmitJobSlideover open={submitOpen} onClose={() => setSubmitOpen(false)} />}
+      {isTenantAdmin && (
+        <SubmitJobSlideover
+          open={submitOpen}
+          onClose={() => setSubmitOpen(false)}
+          sourceScope={lockedSourceScope}
+        />
+      )}
     </div>
   );
 }

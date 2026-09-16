@@ -761,6 +761,73 @@ async def test_8_2c_tenant_admin_default_purpose_is_rejected_not_silently_querie
 
 
 @pytest.mark.asyncio
+async def test_8_2d_tenant_admin_can_upload_qa_pair_purpose(seeded_tenant, client):
+    """A Tenant Admin uploads a question/answer document as purpose='qa_pair' to guide
+    schema proposal. It is the same upload path, a different role capability."""
+    tid = seeded_tenant["tid"]
+    token = make_token(tid, role="tenant_admin")
+    doc_id = str(uuid.uuid4())
+
+    with (
+        patch("src.document_service.ingestion.service.get_durable_store", return_value=_fake_store()) as mock_storage_cls,
+        patch("src.document_service.ingestion.dispatcher.InProcessDispatcher.dispatch") as mock_trigger,
+        patch("src.document_service.ingestion.service.generate_document_id", return_value=doc_id),
+    ):
+        mock_storage_cls.return_value
+        mock_trigger.return_value = None
+        resp = await client.post(
+            "/api/v1/documents",
+            files={"file": ("qa.txt", io.BytesIO(b"Q: What is the candidate name? A: Aakash"), "text/plain")},
+            data={"purpose": "qa_pair"},
+            headers=auth_header(token),
+        )
+
+    assert resp.status_code == 201, resp.text
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    schema = f"tenant_{tid}"
+    async with engine.begin() as conn:
+        row = (await conn.execute(
+            text(f"SELECT purpose FROM {schema}.documents WHERE id = :id"), {"id": doc_id}
+        )).fetchone()
+    await engine.dispose()
+    assert row.purpose == "qa_pair"
+
+
+@pytest.mark.asyncio
+async def test_8_2e_business_user_cannot_upload_qa_pair_purpose(seeded_tenant, client):
+    tid = seeded_tenant["tid"]
+    token = make_token(tid, role="business_user")
+
+    resp = await client.post(
+        "/api/v1/documents",
+        files={"file": ("qa.txt", io.BytesIO(b"Q: x A: y"), "text/plain")},
+        data={"purpose": "qa_pair"},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 403
+    assert "PURPOSE_NOT_ALLOWED" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_8_2f_txt_and_docx_only_accepted_for_qa_pair(seeded_tenant, client):
+    """A .txt is fine for a Q&A pair but not for an annotation document — the scanned-page
+    formats and the text formats do not mix."""
+    tid = seeded_tenant["tid"]
+    token = make_token(tid, role="tenant_admin")
+
+    resp = await client.post(
+        "/api/v1/documents",
+        files={"file": ("notes.txt", io.BytesIO(b"plain text"), "text/plain")},
+        data={"purpose": "training"},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 422
+    assert "not supported" in resp.text.lower()
+
+
+@pytest.mark.asyncio
 async def test_8_3_upload_with_invalid_purpose_returns_422(seeded_tenant, client):
     tid = seeded_tenant["tid"]
     token = make_token(tid)

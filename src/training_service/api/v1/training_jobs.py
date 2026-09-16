@@ -124,6 +124,7 @@ def _row_to_response(row: dict) -> TrainingJobResponse:
         id=row["id"],
         tenant_id=row["tenant_id"],
         status=row["status"],
+        source_scope=row.get("source_scope"),
         hyperparams=row.get("hyperparams"),
         current_epoch=row.get("current_epoch"),
         current_loss=row.get("current_loss"),
@@ -151,62 +152,84 @@ async def create_training_job(
     require_tenant_admin(request)
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
+    source_scope = body.source_scope
 
-    count_result = await session.execute(
-        text(f"""
-            SELECT COUNT(sp.id)
-            FROM {schema}.spans sp
-            JOIN {schema}.documents d ON d.id = sp.document_id
-        """),
-    )
-    entity_count = count_result.scalar() or 0
-    min_entities = int(os.environ.get("NER_MIN_TRAINING_ENTITIES", "0"))
-    if entity_count < min_entities:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Insufficient annotated entities: {entity_count}. Minimum {min_entities} required.",
-        )
+    # Manual, Automated, and Import are independent workflows (manual-training-data-source-
+    # scoping) — a job scoped to one of them is gated on only that workflow's data. A span with
+    # a `span_batch_provenance` row was promoted from an accepted automated batch; every other
+    # confirmed span is manual. Import data lives entirely outside `spans`
+    # (`imported_annotations`), so these two span-based gates don't apply to it at all.
+    if source_scope == "automated":
+        span_join = f"JOIN {schema}.span_batch_provenance bp ON bp.span_id = sp.id"
+    elif source_scope == "manual":
+        span_join = f"LEFT JOIN {schema}.span_batch_provenance bp ON bp.span_id = sp.id"
+    else:
+        span_join = ""
+    span_source_clause = " AND bp.span_id IS NULL" if source_scope == "manual" else ""
 
-    # Per-entity-type minimum, evaluated independently of the total-count gate
-    # above. NER quality is bounded by the weakest label, so a corpus dominated
-    # by one entity type can clear a large total while leaving other types
-    # untrainable. Defaults to 0 (inert) — see ADR-010.
-    min_per_type = int(os.environ.get("NER_MIN_ENTITIES_PER_TYPE", "0"))
-    if min_per_type > 0:
-        # Two queries, two sessions (Design D10): `spans` lives in the tenant store,
-        # `entity_definitions` in the platform control plane. Never one join.
-        counts_result = await session.execute(
-            text(f"SELECT entity_type, COUNT(*) AS cnt FROM {schema}.spans GROUP BY entity_type"),
+    if source_scope != "import":
+        count_result = await session.execute(
+            text(f"""
+                SELECT COUNT(sp.id)
+                FROM {schema}.spans sp
+                JOIN {schema}.documents d ON d.id = sp.document_id
+                {span_join}
+                WHERE TRUE{span_source_clause}
+            """),
         )
-        counts = {r.entity_type: int(r.cnt or 0) for r in counts_result}
-
-        types_result = await platform_session.execute(
-            text(
-                "SELECT name AS entity_type FROM public.entity_definitions "
-                "WHERE tenant_id = :tid AND is_active = true"
-            ),
-            {"tid": tenant_id},
-        )
-        types = {r.entity_type for r in types_result} | set(counts)
-
-        short = sorted(
-            ((t, counts.get(t, 0)) for t in types if counts.get(t, 0) < min_per_type),
-            key=lambda pair: (pair[1], pair[0]),
-        )
-        if short:
-            # Name the shortfalls so the caller can act without a second query.
-            detail = ", ".join(f"{name} ({cnt})" for name, cnt in short)
+        entity_count = count_result.scalar() or 0
+        min_entities = int(os.environ.get("NER_MIN_TRAINING_ENTITIES", "0"))
+        if entity_count < min_entities:
             raise HTTPException(
                 status_code=422,
-                detail=(
-                    f"Insufficient annotated entities per type. Minimum {min_per_type} required "
-                    f"for each entity type; short: {detail}."
-                ),
+                detail=f"Insufficient annotated entities: {entity_count}. Minimum {min_entities} required.",
             )
+
+        # Per-entity-type minimum, evaluated independently of the total-count gate
+        # above. NER quality is bounded by the weakest label, so a corpus dominated
+        # by one entity type can clear a large total while leaving other types
+        # untrainable. Defaults to 0 (inert) — see ADR-010.
+        min_per_type = int(os.environ.get("NER_MIN_ENTITIES_PER_TYPE", "0"))
+        if min_per_type > 0:
+            per_type_result = await session.execute(
+                text(f"""
+                    WITH counts AS (
+                        SELECT sp.entity_type, COUNT(*) AS cnt FROM {schema}.spans sp
+                        {span_join}
+                        WHERE TRUE{span_source_clause}
+                        GROUP BY sp.entity_type
+                    ),
+                    types AS (
+                        SELECT name AS entity_type FROM public.entity_definitions
+                        WHERE tenant_id = :tid AND is_active = true
+                        UNION
+                        SELECT entity_type FROM counts
+                    )
+                    SELECT t.entity_type, COALESCE(c.cnt, 0) AS cnt
+                    FROM types t
+                    LEFT JOIN counts c ON c.entity_type = t.entity_type
+                    WHERE COALESCE(c.cnt, 0) < :minimum
+                    ORDER BY cnt ASC, t.entity_type ASC
+                """),
+                {"tid": tenant_id, "minimum": min_per_type},
+            )
+            short = [(r.entity_type, int(r.cnt or 0)) for r in per_type_result]
+            if short:
+                # Name the shortfalls so the caller can act without a second query.
+                detail = ", ".join(f"{name} ({cnt})" for name, cnt in short)
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Insufficient annotated entities per type. Minimum {min_per_type} required "
+                        f"for each entity type; short: {detail}."
+                    ),
+                )
 
     job_id = str(uuid.uuid4())
 
-    await TrainingJobRepository.create(session, tenant_id, job_id, None, celery_task_id=None)
+    await TrainingJobRepository.create(
+        session, tenant_id, job_id, None, celery_task_id=None, source_scope=source_scope
+    )
     await _record_audit(
         platform_session,
         actor=getattr(request.state, "user_email", ""),

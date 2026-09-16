@@ -164,6 +164,9 @@ PUBLIC_TABLES = [
         validation_rule VARCHAR(500),
         target_table VARCHAR(255),
         base_label_mapping JSON,
+        -- Added by migration 038. Few-shot question/answer context for LLM pre-labeling;
+        -- nullable, because an entity type without QA pairs is fully eligible for extraction.
+        qa_examples JSONB,
         value_kind VARCHAR(32),
         value_unit VARCHAR(32),
         -- Both added by migration 037. Restated here rather than left out because the tests
@@ -174,6 +177,8 @@ PUBLIC_TABLES = [
         version INTEGER NOT NULL DEFAULT 1,
         required_flag BOOLEAN DEFAULT FALSE,
         is_active BOOLEAN DEFAULT TRUE,
+        provenance VARCHAR(16) NOT NULL DEFAULT 'manual',
+        provenance_ref VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )
@@ -183,7 +188,10 @@ PUBLIC_TABLES = [
     """
     ALTER TABLE public.entity_definitions
         ADD COLUMN IF NOT EXISTS cardinality VARCHAR(16) NOT NULL DEFAULT 'multi',
-        ADD COLUMN IF NOT EXISTS sql_identifier VARCHAR(63)
+        ADD COLUMN IF NOT EXISTS sql_identifier VARCHAR(63),
+        ADD COLUMN IF NOT EXISTS qa_examples JSONB,
+        ADD COLUMN IF NOT EXISTS provenance VARCHAR(16) NOT NULL DEFAULT 'manual',
+        ADD COLUMN IF NOT EXISTS provenance_ref VARCHAR(255)
     """,
     """
     DO $$
@@ -337,6 +345,21 @@ PUBLIC_TABLES = [
     """
     CREATE INDEX IF NOT EXISTS ix_tenant_document_registry_tenant
         ON public.tenant_document_registry (tenant_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS public.notifications (
+        id VARCHAR PRIMARY KEY,
+        tenant_id VARCHAR NOT NULL,
+        recipient_role VARCHAR(50),
+        recipient_user_id VARCHAR,
+        kind VARCHAR(64) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        body TEXT,
+        resource_type VARCHAR(64),
+        resource_id VARCHAR,
+        read_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
     """,
 ]
 

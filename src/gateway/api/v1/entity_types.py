@@ -14,6 +14,17 @@ router = APIRouter(prefix="/api/v1/tenants/{tenant_slug}/entity-types", tags=["e
 Cardinality = Literal["single", "multi"]
 
 
+class QaExample(BaseModel):
+    """One few-shot question/answer pair for LLM pre-labeling.
+
+    A model rather than a bare dict so a malformed pair is a 422 naming the offending field,
+    not a row that reaches prompt construction and renders as `None`. Both fields are required:
+    a pair missing either half teaches the model nothing."""
+
+    question: str
+    answer: str
+
+
 class EntityTypeCreate(BaseModel):
     """The create contract.
 
@@ -32,6 +43,9 @@ class EntityTypeCreate(BaseModel):
     value_kind: str | None = None
     value_unit: str | None = None
     cardinality: Cardinality | None = None
+    # Few-shot context for LLM pre-labeling only — never a literal label source for a specific
+    # document. Optional: an entity type without QA pairs is still fully eligible for extraction.
+    qa_examples: list[QaExample] | None = None
 
 
 class EntityTypeUpdate(BaseModel):
@@ -48,6 +62,9 @@ class EntityTypeUpdate(BaseModel):
     value_kind: str | None = None
     value_unit: str | None = None
     cardinality: Cardinality | None = None
+    # Few-shot context for LLM pre-labeling only — never a literal label source for a specific
+    # document. Optional: an entity type without QA pairs is still fully eligible for extraction.
+    qa_examples: list[QaExample] | None = None
 
 
 class EntityTypeToggle(BaseModel):

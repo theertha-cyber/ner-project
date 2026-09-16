@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MessageThread } from "./MessageThread";
 
 beforeAll(() => {
@@ -193,5 +193,168 @@ describe("MessageThread streaming lifecycle", () => {
     expect(screen.getByText("Based on the documents, there are 5.")).toBeInTheDocument();
     expect(screen.getByText("report.pdf")).toBeInTheDocument();
     expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
+  });
+
+  describe("long-answer truncation, export card, and See more", () => {
+    const longContent = [
+      "**Name One** - Engineer",
+      "**Name Two** - Developer",
+      "**Name Three** - Engineer",
+      "**Name Four** - Developer",
+      "**Name Five** - Engineer",
+      "**Name Six** - Developer",
+      "**Name Seven** - Engineer",
+      "**Name Eight** - Developer",
+    ].join("\n\n");
+    const shortContent = ["**Name One** - Engineer", "**Name Two** - Developer"].join("\n\n");
+
+    it("previews only the first 5 lines, with an export card and a See more toggle, when the answer has more than 5 lines and export data", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: longContent,
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 8, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.getByText("Name Five", { exact: false })).toBeInTheDocument();
+      expect(screen.queryByText("Name Six", { exact: false })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Download CSV")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download XLSX")).toBeInTheDocument();
+      expect(screen.getByText("See more (3 more)")).toBeInTheDocument();
+    });
+
+    it("reveals the full answer and switches the toggle to See less when clicked", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: longContent,
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 8, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      fireEvent.click(screen.getByText("See more (3 more)"));
+      expect(screen.getByText("Name Eight", { exact: false })).toBeInTheDocument();
+      expect(screen.getByText("See less")).toBeInTheDocument();
+    });
+
+    it("does not truncate a long answer that has no export/result-count data at all", () => {
+      // Truncation is driven by result count (export.row_count), not raw line
+      // count — a long free-text answer with no structured result behind it
+      // (e.g. answered from document chunks) has no "how many results" signal
+      // to truncate against, so it renders in full regardless of length.
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: longContent,
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.getByText("Name Eight", { exact: false })).toBeInTheDocument();
+      expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
+    });
+
+    it("does not truncate, and shows no export card or See more, for a short answer even with export data", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: shortContent,
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 250, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
+      expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
+    });
+
+    it("does not truncate a detailed single-result answer, even with many lines", () => {
+      // Regression: "give me one single candidate" renders a multi-line detail
+      // breakdown (job title, experience, education...) about ONE result — this
+      // must show in full, not be treated as a long list just because the text
+      // happens to span more than 5 lines.
+      const singleCandidateDetail = [
+        "The most apt candidate for a React JS Developer role is **Allwin J Andrews**.",
+        "**Job Title:** React JS Developer",
+        "**Experience:**",
+        "Currently working at Labglo, Trivandrum since December 2018.",
+        "**Education:**",
+        "B.Tech in Computer Science",
+        "**Skills:** React, JavaScript, Redux",
+      ].join("\n\n");
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: singleCandidateDetail,
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 1, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.getByText(/Computer Science/)).toBeInTheDocument();
+      expect(screen.getByText(/React, JavaScript, Redux/)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
+      expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
+    });
+
+    it("hides truncation and the export card while the message is still streaming", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: longContent,
+          created_at: "2026-01-01", isStreaming: true,
+          export: { message_id: "a1", row_count: 8, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
+      expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("MessageThread charts", () => {
+  const chart = {
+    chart_type: "bar" as const,
+    title: "Billed per quarter",
+    categories: ["Q1", "Q2"],
+    series: [{ name: "amount", data: [120000, 95000] }],
+  };
+
+  const withChart = [
+    {
+      id: "a1",
+      role: "assistant" as const,
+      content: "Billing rose through the year.",
+      created_at: "2026-01-01",
+      answer_kind: "answer" as const,
+      sources: [{ source_type: "sql", document_id: "d1", chunk_text: "Q1 120000" }],
+      chart,
+    },
+  ];
+
+  it("renders the chart between the answer text and its citations (row 36)", () => {
+    const { container } = render(<MessageThread messages={withChart} loading={false} />);
+
+    const figure = container.querySelector("figure");
+    expect(figure).toBeTruthy();
+    expect(screen.getByText("Billed per quarter")).toBeInTheDocument();
+
+    const markdown = container.querySelector(".chat-markdown");
+    expect(markdown).toBeTruthy();
+    // Document order: text, then chart.
+    expect(markdown!.compareDocumentPosition(figure!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("renders no chart container for a message without one (row 41)", () => {
+    const chartless = [
+      {
+        id: "a2",
+        role: "assistant" as const,
+        content: "There were five organizations.",
+        created_at: "2026-01-01",
+        answer_kind: "answer" as const,
+      },
+    ];
+    const { container } = render(<MessageThread messages={chartless} loading={false} />);
+    expect(container.querySelector("figure")).toBeNull();
   });
 });

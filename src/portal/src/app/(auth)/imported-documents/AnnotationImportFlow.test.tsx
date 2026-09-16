@@ -2,6 +2,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ImportedDocumentsPage from "./page";
 
+vi.mock("next/navigation", () => ({
+  useSearchParams: vi.fn(() => new URLSearchParams()),
+  useRouter: vi.fn(() => ({ replace: vi.fn() })),
+  usePathname: vi.fn(() => "/imported-documents"),
+}));
+
 const mockAuthFetch = vi.fn();
 vi.mock("@/lib/auth-fetch", () => ({ authFetch: (...args: unknown[]) => mockAuthFetch(...args) }));
 
@@ -24,6 +30,25 @@ vi.mock("@/components/ui", () => ({
 const mockUseAnnotationImport = vi.fn();
 vi.mock("@/hooks/use-annotation-import", () => ({
   useAnnotationImport: () => mockUseAnnotationImport(),
+}));
+
+vi.mock("@/hooks/use-import-files", () => ({
+  useImportFiles: () => ({ data: { files: [] }, refetch: vi.fn() }),
+}));
+
+vi.mock("@/hooks/use-retraining", () => ({
+  useRequestRetrain: () => ({ mutate: vi.fn(), isPending: false, isSuccess: false }),
+}));
+
+vi.mock("@/hooks/use-import-type-map", () => ({
+  useImportTypeMap: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    data: undefined,
+    error: null,
+  }),
 }));
 
 function renderPage() {
@@ -49,14 +74,15 @@ beforeEach(() => {
 });
 
 describe("Imported Documents page — Import button", () => {
-  it("shows Import button for annotator role", async () => {
+  it("hides Import button for annotator role (review-only)", async () => {
     mockUseAuth.mockReturnValue({
       user: { userId: "ann-1", tenantSlug: "test-tenant", role: "annotator", email: "ann@test.com" },
     });
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("Import file")).toBeInTheDocument();
+      expect(screen.getByRole("combobox", { name: /Filter by review status/i })).toBeInTheDocument();
     });
+    expect(screen.queryByText("Import file")).not.toBeInTheDocument();
   });
 
   it("shows Import button for tenant_admin role", async () => {

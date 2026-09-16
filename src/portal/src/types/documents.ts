@@ -1,6 +1,6 @@
 export type DocumentStatus = "pending" | "processing" | "processed" | "failed" | "deleted";
 
-export type DocumentPurpose = "query" | "training";
+export type DocumentPurpose = "query" | "training" | "qa_pair";
 
 export interface Document {
   id: string;

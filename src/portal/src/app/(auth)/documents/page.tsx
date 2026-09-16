@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { DocumentTable } from "@/components/documents/DocumentTable";
 import { UploadDialog } from "@/components/documents/UploadDialog";
@@ -20,7 +20,28 @@ export default function DocumentsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadPurpose, setUploadPurpose] = useState<"training" | "qa_pair">("training");
+  const [uploadMode, setUploadMode] = useState<"manual" | "automated" | undefined>(undefined);
   const perPage = 25;
+
+  // Landing pages link here with `?upload=1` so the step actually lands the user on an open
+  // uploader, not just the list — Manual's "Upload documents" workflow card, and the Automated
+  // flow's own "Upload documents" / "Upload Q&A pair" cards, which also pass `?purpose=` and
+  // (for documents) `?mode=automated` so the dialog opens already set to what that flow needs.
+  useEffect(() => {
+    if (searchParams.get("upload") === "1") {
+      setUploadOpen(true);
+      const purposeParam = searchParams.get("purpose");
+      if (purposeParam === "training" || purposeParam === "qa_pair") {
+        setUploadPurpose(purposeParam);
+      }
+      const modeParam = searchParams.get("mode");
+      if (modeParam === "manual" || modeParam === "automated") {
+        setUploadMode(modeParam);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data, isLoading } = useDocuments(page, perPage, currentFilter === "all" ? undefined : currentFilter, search || undefined);
   const { data: allData } = useDocuments(1, 1000, undefined);
@@ -61,10 +82,18 @@ export default function DocumentsPage() {
   if (isTenantAdmin) {
     return (
       <div className="animate-fade-up flex h-full flex-col">
-        <div className="flex items-center justify-end border-b px-6 py-3" style={{ borderColor: "var(--line)" }}>
+        <div className="flex items-center justify-end gap-2 border-b px-6 py-3" style={{ borderColor: "var(--line)" }}>
           <button
             type="button"
-            onClick={() => setUploadOpen(true)}
+            onClick={() => { setUploadPurpose("qa_pair"); setUploadMode(undefined); setUploadOpen(true); }}
+            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium"
+            style={{ borderColor: "var(--line)", color: "var(--ink-2)" }}
+          >
+            Upload Q&amp;A pair
+          </button>
+          <button
+            type="button"
+            onClick={() => { setUploadPurpose("training"); setUploadMode(undefined); setUploadOpen(true); }}
             className="flex items-center gap-1.5 rounded-md bg-brand-primary px-3 py-1.5 text-sm font-medium text-white"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-4">
@@ -89,7 +118,7 @@ export default function DocumentsPage() {
           />
         </div>
 
-        <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} purpose="training" />
+        <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} purpose={uploadPurpose} defaultAnnotationMode={uploadMode} />
       </div>
     );
   }

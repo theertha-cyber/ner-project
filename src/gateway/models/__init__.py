@@ -46,6 +46,11 @@ class Tenant(Base):
     max_documents = Column(Integer, default=1000, nullable=False)
     max_storage_gb = Column(Integer, default=5, nullable=False)
     max_model_versions = Column(Integer, default=10, nullable=False)
+    # Which route resolves this tenant's queued low-confidence predictions: `human` or `llm`
+    # (confidence-routed-review design.md Decision 10). Ships defaulting to `human` for every
+    # tenant — the LLM route is implemented and tested but enabled for nobody until human-route
+    # agreement data exists to compare it against.
+    review_policy = Column(String(8), default="human", nullable=False, server_default="human")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -82,6 +87,10 @@ class EntityDefinition(Base):
     validation_rule = Column(String(500), nullable=True)
     target_table = Column(String(255), nullable=True)
     base_label_mapping = Column(JSON, nullable=True)
+    # Question/answer pairs a tenant supplies as few-shot context for LLM pre-labeling. Nullable
+    # with no default: absent means the tenant configured none, and an entity type without QA
+    # pairs is still fully eligible for extraction, so there is nothing to default it to.
+    qa_examples = Column(JSON, nullable=True)
     # Semantic normalization config. NULL value_kind means "text" — no semantic
     # normalization — which is how every entity type predating this column behaves.
     value_kind = Column(String(32), nullable=True)
@@ -101,6 +110,12 @@ class EntityDefinition(Base):
     version = Column(Integer, default=1, nullable=False)
     required_flag = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    # How this entity type came to exist: 'manual' (created by hand), 'suggested' (approved
+    # LLM schema-proposal candidate), or 'imported' (created while mapping an annotation
+    # import). Assigned at creation, immutable thereafter. `server_default` for the same
+    # reason as `cardinality`: `entity_service.create` inserts an explicit column list.
+    provenance = Column(String(16), server_default="manual", default="manual", nullable=False)
+    provenance_ref = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

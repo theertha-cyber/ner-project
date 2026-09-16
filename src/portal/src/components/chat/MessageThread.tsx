@@ -1,10 +1,25 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ChartRenderer, type ChartPayload } from "./ChartRenderer";
 import { CitationChips } from "./CitationChips";
 import { MessageFeedback, type Feedback } from "./MessageFeedback";
+import { ExportCard, type ExportAvailability } from "./ExportCard";
+
+// Truncation is triggered by *result count* (export.row_count), not by how many
+// lines the reply happens to render as — a detailed answer about ONE candidate
+// (job title, experience, education, each on its own line) is still one result,
+// and must show in full. "List every candidate" with 28 results is what this is
+// for. Once a turn covers more than this many results, only the first
+// PREVIEW_LINE_LIMIT lines are shown by default, with a "See more" toggle to
+// reveal the rest and an export card offering the full result as a file.
+const PREVIEW_LINE_LIMIT = 5;
+
+function contentLines(content: string): string[] {
+  return content.split("\n").filter((line) => line.trim() !== "");
+}
 
 interface Source {
   source_type: string;
@@ -40,6 +55,8 @@ interface Message {
   answer_kind?: "answer" | "clarification" | "guardrail_blocked" | "out_of_domain" | null;
   model_version?: string | null;
   feedback?: Feedback | null;
+  export?: ExportAvailability | null;
+  chart?: ChartPayload | null;
 }
 
 interface MessageThreadProps {
@@ -72,6 +89,16 @@ function toCitation(s: Source | Citation): Citation {
 
 export function MessageThread({ messages, loading, canRate, onRateMessage }: MessageThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Depend on a signal describing the *tail* of the thread, not the array itself:
   // rating an old message replaces `messages` with a new array (same length, same
@@ -171,6 +198,14 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
             }
 
             const showTrailers = !msg.isThinking && !msg.isStreaming;
+            const lines = showTrailers ? contentLines(msg.content) : [];
+            const resultCount = msg.export?.row_count ?? 0;
+            const isTruncatable =
+              showTrailers && resultCount > PREVIEW_LINE_LIMIT && lines.length > PREVIEW_LINE_LIMIT;
+            const expanded = expandedIds.has(msg.id);
+            const displayContent =
+              isTruncatable && !expanded ? lines.slice(0, PREVIEW_LINE_LIMIT).join("\n\n") : msg.content;
+
             return (
               <div key={msg.id} style={{ marginBottom: 36 }}>
                 {msg.isThinking ? (
@@ -179,8 +214,34 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
                   </span>
                 ) : (
                   <div className="chat-markdown chat-doc">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
                   </div>
+                )}
+
+                {/* Chart and export both hang off the same structured rows, so a turn
+                    with results can show both. The chart sits directly under the answer:
+                    when the text is truncated to a preview it still conveys the whole
+                    result at a glance, and the "get the rest" affordances (export card,
+                    See more) follow below it. */}
+                {msg.chart && <ChartRenderer chart={msg.chart} />}
+                {isTruncatable && msg.export && <ExportCard export_={msg.export} />}
+                {isTruncatable && (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded(msg.id)}
+                    style={{
+                      marginTop: 8,
+                      padding: 0,
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--primary)",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {expanded ? "See less" : `See more (${lines.length - PREVIEW_LINE_LIMIT} more)`}
+                  </button>
                 )}
 
                 {showTrailers && msg.sources && msg.sources.length > 0 && (

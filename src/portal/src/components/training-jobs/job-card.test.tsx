@@ -7,6 +7,7 @@ const baseJob: TrainingJob = {
   id: "job-1",
   tenant_id: "t1",
   status: "pending_approval",
+  source_scope: null,
   hyperparams: null,
   current_epoch: null,
   current_loss: null,
