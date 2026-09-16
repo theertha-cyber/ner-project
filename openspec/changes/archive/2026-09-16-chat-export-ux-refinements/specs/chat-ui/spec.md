@@ -1,4 +1,30 @@
+## REMOVED Requirements
+
+### Requirement: Inline preview truncation and file card, driven by result count
+
+**Reason**: This requirement bundled three independent concerns into one row-count threshold (`PREVIEW_LINE_LIMIT`): whether reply text truncates, whether the export option appears at all, and how the export option is presented (an eager file card). Live testing found this conflation actively wrong — a verbose single-result answer got wrongly truncated, and small-but-legitimate results couldn't be downloaded at all just because they were short. It is replaced by three requirements below that make each concern independent: "Inline preview truncation is independent of export availability", "Export offer appears whenever structured data exists, regardless of result count", and "Export prompt reveals download actions only after the user opts in".
+
+**Migration**: No data migration — this is a pure frontend rendering-logic change. `export.row_count`/`formats` (unchanged on the wire) now drive three independent conditions instead of one combined threshold check.
+
+## RENAMED Requirements
+
+- FROM: `### Requirement: Authenticated download from the file card`
+- TO: `### Requirement: Authenticated download from the revealed format actions`
+
 ## MODIFIED Requirements
+
+### Requirement: Authenticated download from the revealed format actions
+
+Clicking a download action (once revealed, per the "Export prompt reveals download actions only after the user opts in" requirement below) SHALL fetch the file from the export endpoint using the same Bearer JWT authentication as other chat API calls, and SHALL NOT expose the token in the resulting file URL.
+
+#### Scenario: Clicking download triggers an authenticated fetch
+
+- **GIVEN** a revealed "Download CSV" action for an assistant message
+- **WHEN** the user clicks it
+- **THEN** a fetch SHALL be sent to `/api/v1/chat/messages/{message_id}/export?format=csv` with an `Authorization: Bearer <token>` header
+- **AND** the returned file SHALL be saved via a blob URL, not a direct navigation to a URL containing the token
+
+## ADDED Requirements
 
 ### Requirement: Inline preview truncation is independent of export availability
 
@@ -90,14 +116,3 @@ The export prompt SHALL NOT render "Download CSV"/"Download XLSX" actions immedi
 - **GIVEN** a rendered export prompt as above
 - **WHEN** the user clicks the prompt
 - **THEN** "Download CSV" and "Download XLSX" actions SHALL appear in its place
-
-### Requirement: Authenticated download from the revealed format actions
-
-Clicking a download action (once revealed, per the requirement above) SHALL fetch the file from the export endpoint using the same Bearer JWT authentication as other chat API calls, and SHALL NOT expose the token in the resulting file URL.
-
-#### Scenario: Clicking download triggers an authenticated fetch
-
-- **GIVEN** a revealed "Download CSV" action for an assistant message
-- **WHEN** the user clicks it
-- **THEN** a fetch SHALL be sent to `/api/v1/chat/messages/{message_id}/export?format=csv` with an `Authorization: Bearer <token>` header
-- **AND** the returned file SHALL be saved via a blob URL, not a direct navigation to a URL containing the token

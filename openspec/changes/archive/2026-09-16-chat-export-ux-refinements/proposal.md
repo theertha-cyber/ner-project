@@ -13,17 +13,17 @@
 
 ### New Capabilities
 
-(none)
+(none — the two new requirements below are additions within the existing `chat-ui` capability, not a new capability)
 
 ### Modified Capabilities
 
-- `chat-ui`: the "Inline preview truncation and file card, driven by result count" requirement (introduced by `export-chat-results`) is being restructured — truncation and export-availability become independent conditions, and the file card's presentation becomes a two-step opt-in instead of an eager display.
+- `chat-ui`: the "Inline preview truncation and file card, driven by result count" requirement (introduced by `export-chat-results`) is removed and replaced by three narrower requirements — "Inline preview truncation is independent of export availability", "Export offer appears whenever structured data exists, regardless of result count", and "Export prompt reveals download actions only after the user opts in" — each covering one of the three concerns the old requirement bundled together. "Authenticated download from the file card" is renamed to "Authenticated download from the revealed format actions" to match the new two-step mechanics (content otherwise unchanged).
 
 ## Impact
 
 - **Frontend**: `src/portal/src/components/chat/MessageThread.tsx` (the `isTruncatable`/`PREVIEW_LINE_LIMIT` logic — truncation trigger changes from a line/row-count check to a rendered-overflow check; export-offer gating changes from `row_count > PREVIEW_LINE_LIMIT` to `row_count >= 1`; positioning of the export affordance relative to the truncation boundary changes), `src/portal/src/components/chat/ExportCard.tsx` (becomes a two-stage component: a lightweight prompt stating the row count, then the CSV/XLSX actions on confirmation — or is split into two components).
 - **Backend**: none expected — `ChatResponse.export`/`MessageResponse.export` already carry `row_count`, which is all the frontend needs for both the new gating and the new prompt copy. The download endpoint and its ownership/sanitization behavior are unchanged.
-- **OpenSpec bookkeeping**: `export-chat-results` has not been archived yet (its `verification.md` Audit Record is still pending human sign-off), so the canonical `openspec/specs/chat-ui/spec.md` does not yet contain the requirement this change modifies — only `export-chat-results`'s own delta spec does. This change's delta is written against that delta's requirement text rather than the (not-yet-updated) canonical spec. Archiving `export-chat-results` (or both changes together) will be needed before the canonical spec reflects either change accurately.
+- **OpenSpec bookkeeping**: `export-chat-results` archived as `2026-09-16-export-chat-results`, so the canonical `openspec/specs/chat-ui/spec.md` now contains the requirements this change renames/modifies.
 
 ## Open Questions
 

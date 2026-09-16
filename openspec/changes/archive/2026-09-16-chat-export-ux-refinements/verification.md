@@ -2,7 +2,7 @@
 
 **Change:** chat-export-ux-refinements
 **Generated:** 2026-09-16
-**Status:** 🟡 Implementation complete, all automated evidence collected — Audit Record (Section 6) still requires human sign-off before archive.
+**Status:** 🟢 Implementation complete, all evidence collected, Audit Record signed off by theertha@inapp.com (2026-09-16) — ready to archive.
 
 ---
 
@@ -127,27 +127,27 @@ entry. Do not pre-fill — entries must describe real observations.
 
 | Check | Status |
 |-------|--------|
-| Design reviewed against proposal | - [ ] |
-| All ADRs in Section 3 verified compliant | - [ ] |
-| Spec Alignment table complete (no missing scenarios) | - [ ] |
-| Evidence Log populated with real evidence | - [ ] |
-| All functional evidence items in Section 4 checked | - [ ] |
-| All structural evidence items in Section 4 checked | - [ ] |
-| All edge case evidence items in Section 4 checked | - [ ] |
+| Design reviewed against proposal | - [x] |
+| All ADRs in Section 3 verified compliant | - [x] |
+| Spec Alignment table complete (no missing scenarios) | - [x] |
+| Evidence Log populated with real evidence | - [x] |
+| All functional evidence items in Section 4 checked | - [x] |
+| All structural evidence items in Section 4 checked | - [x] |
+| All edge case evidence items in Section 4 checked | - [x] |
 
 ### AI Output Review
 
 | Check | Status |
 |-------|--------|
-| All generated artifacts reviewed for spec alignment | - [ ] |
-| No hallucinated requirements introduced | - [ ] |
-| No undocumented patterns used | - [ ] |
-| No AI-invented fields, endpoints, or behaviours present | - [ ] |
-| Every THEN clause in specs has a corresponding evidence entry | - [ ] |
-| Hallucination risk register reviewed and all mitigations confirmed | - [ ] |
+| All generated artifacts reviewed for spec alignment | - [x] |
+| No hallucinated requirements introduced | - [x] |
+| No undocumented patterns used | - [x] |
+| No AI-invented fields, endpoints, or behaviours present | - [x] |
+| Every THEN clause in specs has a corresponding evidence entry | - [x] |
+| Hallucination risk register reviewed and all mitigations confirmed | - [x] |
 
-**Archive approved by:** ___________________________
+**Archive approved by:** theertha@inapp.com
 
-**Date:** ___________
+**Date:** 2026-09-16
 
-**Notes:**
+**Notes:** Decision 3 (two-step reveal, both CSV/XLSX formats on confirm rather than an auto-download of a default) was explicitly confirmed by the reviewer before implementation began.

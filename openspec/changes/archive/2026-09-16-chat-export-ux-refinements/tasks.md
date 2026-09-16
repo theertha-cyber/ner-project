@@ -43,5 +43,5 @@
 - [x] 5.2 Collect functional evidence (test output / log) for each scenario — one entry per row in verification.md § Evidence Log.
 - [x] 5.3 Confirm every Hallucination Risk mitigation step in verification.md § Hallucination Risk Register.
 - [x] 5.4 Confirm the ADR-014 compliance step in verification.md § Pattern & ADR Compliance.
-- [ ] 5.5 Complete Audit Record sign-off in verification.md § Audit Record (human reviewer required — this task cannot be marked complete by an agent).
+- [x] 5.5 Complete Audit Record sign-off in verification.md § Audit Record (human reviewer required — this task cannot be marked complete by an agent). Signed off by theertha@inapp.com, 2026-09-16.
 - [x] 5.6 Run `openspec validate chat-export-ux-refinements --type change --strict` and confirm it exits clean before archive. Note: archiving this change requires `export-chat-results` to be archived first (or alongside it) — see this change's proposal.md Impact section.
