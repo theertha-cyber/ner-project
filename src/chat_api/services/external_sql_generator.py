@@ -24,8 +24,10 @@ import re
 from dataclasses import dataclass, field
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.shared.config import settings
+from src.shared.database import get_engine
 from src.shared.external_postgres import validator as _validator
 from src.shared.external_postgres.azure_database import (
     ExternalDatabaseUnavailable,
@@ -192,7 +194,14 @@ class ExternalSQLGenerator:
         """Answers one external chat question end to end (design.md Decision 3).
         `deadline` is accepted for interface symmetry with the retrieval tools'
         recovery loop; generation attempts are bounded by count, not by time."""
-        capability = await resolve_external_capability(session, tenant_id)
+        # Control-plane reads (Design D10) go on their own platform session:
+        # `session` here is the tenant-resolved one, which for a `tenant_owned`
+        # tenant is their own store with no `public.*` tables at all. The
+        # `fetch_entries` call below is the opposite case and correctly keeps
+        # `session` — the schema index lives in the tenant's own schema.
+        platform_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+        async with platform_factory() as platform_session:
+            capability = await resolve_external_capability(platform_session, tenant_id)
         if not capability.get("executable"):
             return ExternalAnswer(reason=capability.get("reason") or "not_active_connection")
 
@@ -261,7 +270,10 @@ class ExternalSQLGenerator:
             return ExternalAnswer(reason="generation_exhausted")
 
         try:
-            database = await resolve_live_database(session, tenant_id)
+            # Same control-plane read as the capability resolution above — the
+            # connection row it resolves lives in `public`, not the tenant store.
+            async with platform_factory() as platform_session:
+                database = await resolve_live_database(platform_session, tenant_id)
         except ExternalDatabaseUnavailable:
             return ExternalAnswer(reason="not_active_connection")
 

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.extraction_service.services.entity_normalizer import canonicalize
 from src.shared.config import settings
-from src.shared.database import get_resolver
+from src.shared.database import get_engine, get_resolver
 from src.shared.retrieval.orchestrator import (
     SEMANTIC_CAPABILITY_NAME,
     STOP_EMPTY_PLAN,
@@ -238,7 +238,16 @@ def build_nodes(orchestrator) -> dict:
         registry = orchestrator.tool_registry
         system_prompt_addendum = None
         try:
-            capability = await resolve_external_capability(session, tenant_id)
+            # Capability resolution reads only control-plane tables
+            # (`public.tenant_data_source_connections`, `public.external_pg_contracts`)
+            # — Design D10, so it gets its own platform session, never `session`,
+            # which for a `tenant_owned` tenant is their own store where no
+            # `public.*` table exists. Its own session also means a failure here
+            # cannot leave `session`'s transaction aborted and take every
+            # downstream node's unrelated query down with it.
+            platform_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+            async with platform_factory() as platform_session:
+                capability = await resolve_external_capability(platform_session, tenant_id)
         except Exception as e:
             logger.warning(
                 "external_capability_resolution_failed",

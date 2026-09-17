@@ -20,6 +20,13 @@ _sync_platform_engine = None
 
 _CONNECTIONS_TABLE = "public.tenant_data_source_connections"
 
+# Azure's gateway drops an idle connection well before Postgres itself would, so a pooled
+# connection older than this is replaced on checkout rather than handed out and found dead
+# mid-query. `pool_pre_ping` proves the same thing per checkout, but that is a round trip
+# every time — ~90ms against a remote store, where a reconnect costs that only rarely. The
+# value sits under Azure's own configurable 4–30 minute idle window.
+DATA_PLANE_POOL_RECYCLE_SECONDS = 240
+
 
 class _ConnectionSecretShim:
     """The minimal shape `resolve_for_tenant` needs — a tenant id and a
@@ -224,6 +231,7 @@ class EngineResolver:
                 _connection_url(configuration, password, async_driver=True),
                 pool_size=settings.data_plane_pool_size,
                 max_overflow=settings.data_plane_max_overflow,
+                pool_recycle=DATA_PLANE_POOL_RECYCLE_SECONDS,
                 connect_args=_asyncpg_connect_args(configuration),
             )
         except Exception as exc:  # malformed configuration, etc.
@@ -270,6 +278,7 @@ class EngineResolver:
                 _connection_url(configuration, password, async_driver=False),
                 pool_size=settings.data_plane_pool_size,
                 max_overflow=settings.data_plane_max_overflow,
+                pool_recycle=DATA_PLANE_POOL_RECYCLE_SECONDS,
                 connect_args=_psycopg2_connect_args(configuration),
             )
         except Exception as exc:

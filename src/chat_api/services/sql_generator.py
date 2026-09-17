@@ -5,8 +5,9 @@ from dataclasses import dataclass, field
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 from langsmith.wrappers import wrap_openai
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.shared.config import settings
+from src.shared.database import get_engine
 from src.shared.entity_views import (
     CHILD_VALUE_COLUMNS,
     SUBJECT_TABLE_NAME,
@@ -1377,6 +1378,12 @@ Return ONLY the SQL query, no explanations:"""
             "a promoted model version to populate it"
         )
 
+    def _open_platform_session(self):
+        """The platform session `_fetch_query_surface` reads `public.entity_definitions`
+        on (Design D10). Its own method so tests can swap in the fake tenant session they
+        already control, instead of standing up a real engine."""
+        return async_sessionmaker(get_engine(), expire_on_commit=False)()
+
     async def _fetch_query_surface(self, session: AsyncSession, schema: str) -> QuerySurface:
         """The querying tenant's relational surface, from the shared resolver.
 
@@ -1386,9 +1393,15 @@ Return ONLY the SQL query, no explanations:"""
 
         Best-effort: a failure here must not turn a working question into a 500. The
         consequence of an empty surface is only that a generated statement naming a generated
-        relation is rejected — the same outcome as before those tables existed."""
+        relation is rejected — the same outcome as before those tables existed.
+
+        `resolve_query_surface` reads `public.entity_definitions` — control-plane
+        (Design D10) — so it gets its own platform session, never `session`, which
+        for a `tenant_owned` tenant is their own store where no `public.*` table
+        exists."""
         try:
-            resolved = await resolve_query_surface(session, [schema])
+            async with self._open_platform_session() as platform_session:
+                resolved = await resolve_query_surface(platform_session, [schema])
         except Exception as e:
             logger.warning(
                 "query_surface_resolution_failed",

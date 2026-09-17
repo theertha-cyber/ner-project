@@ -107,10 +107,18 @@ class FakeSession:
     Exception to raise (simulating a Postgres failure).
     """
 
+    #: The most recently constructed instance. `_fetch_query_surface`'s platform-session
+    #: read (Design D10) is patched, by the autouse `_platform_session_is_fake_session`
+    #: fixture in `conftest.py`, to reuse this rather than stand up a real engine — in
+    #: these offline tests there is only ever one fake database, so "platform" and
+    #: "tenant" resolve to the same fake.
+    current: "FakeSession | None" = None
+
     def __init__(self, samples=(), data_results=None,
                  data_columns=("value",), value_types=None, matched_total=None,
                  entity_definitions=DEFINITIONS, filenames=(),
                  projected=True, extracted=True, subject_exists=True):
+        FakeSession.current = self  # not type(self) -- subclasses share the one slot
         # Rows as `public.entity_definitions` returns them, for the query-surface resolver.
         self.entity_definitions = list(entity_definitions)
         self.definition_queries: list[str] = []

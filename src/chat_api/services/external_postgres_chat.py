@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from src.shared.database import get_engine
 from src.shared.external_postgres.capability import resolve_external_capability
 from src.shared.external_postgres.connector import execute_external_query
 from src.shared.external_postgres.drift import DriftBlocked, ExternalDatabase
@@ -75,7 +78,12 @@ async def external_chat_answer(session, tenant_id: str, statement: str,
     :class:`ExternalNotExecutable` (finite reason), :class:`DriftBlocked`,
     :class:`ValidationRejected`, or :class:`ExternalExecutionFailed`.
     """
-    capability = await resolve_external_capability(session, tenant_id)
+    # Control-plane read (Design D10) — own platform session, never `session`,
+    # which for a `tenant_owned` tenant resolves to their store where no
+    # `public.*` table exists.
+    platform_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+    async with platform_factory() as platform_session:
+        capability = await resolve_external_capability(platform_session, tenant_id)
     if not capability.get("executable"):
         raise ExternalNotExecutable(capability.get("reason", "not_active_connection"))
     # The resolved connection id is authority: a caller-supplied connection

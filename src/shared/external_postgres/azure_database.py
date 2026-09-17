@@ -150,7 +150,11 @@ def build_live_database(tenant_id: str, configuration: dict,
 async def resolve_live_database(session, tenant_id: str) -> AzureExternalDatabase:
     """The tenant's active `azure_postgresql` connection as a live database, or
     raises. Composes `active_connection` (CAP-2 authority: an active,
-    tenant-owned row — never caller input) with `build_live_database`."""
+    tenant-owned row — never caller input) with `build_live_database`.
+
+    `session` must be a **platform** session (Design D10): the connection row
+    lives in `public.tenant_data_source_connections`, which a `tenant_owned`
+    tenant's own store does not have."""
     from src.shared.data_sources.providers import PROVIDER_AZURE_POSTGRESQL
     from src.shared.data_sources.resolver import active_connection
 

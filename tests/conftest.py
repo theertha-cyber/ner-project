@@ -303,6 +303,29 @@ async def client(engine, setup_database):
         yield ac
 
 
+@pytest.fixture(autouse=True)
+def _platform_session_is_fake_session(monkeypatch):
+    """Every offline `SQLGenerator` test models a single fake database, via
+    `tests.test_chat_api_sql_retry.FakeSession`. `SQLGenerator._fetch_query_surface`'s
+    Design D10 platform-session read must not stand up a real engine against that fake,
+    so this routes it back to whichever `FakeSession` instance is current.
+
+    Autouse and global (not just in `test_chat_api_sql_retry.py`) because several other
+    test modules build a `SQLGenerator`/`FakeSession` pair of their own via local
+    imports, which can't otherwise pick up a fixture defined in that leaf module."""
+    from src.chat_api.services.sql_generator import SQLGenerator
+    from tests.test_chat_api_sql_retry import FakeSession
+
+    class _FakePlatformSessionCtx:
+        async def __aenter__(self):
+            return FakeSession.current
+
+        async def __aexit__(self, *exc_info):
+            return False
+
+    monkeypatch.setattr(SQLGenerator, "_open_platform_session", lambda self: _FakePlatformSessionCtx())
+
+
 @pytest.fixture
 def captured_spans(monkeypatch):
     """Collect the stage spans a block of code emits.

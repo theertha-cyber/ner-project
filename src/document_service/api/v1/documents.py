@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, Request, HTTPException, UploadFil
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
-from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable
+from src.shared.data_plane import DataPlaneUnavailable
 from src.shared.data_plane_gate import require_data_plane_ready
 from src.shared.database import get_engine, get_resolver
 from src.shared.tenant_context import classify_driver_error, record_health_best_effort
@@ -62,28 +62,29 @@ async def get_session(request: Request) -> AsyncSession:
     Unlike `tenant_context.tenant_session`, this never narrows `search_path` — every
     query on this session names its schema explicitly (tenant-schema tables via
     `_schema`, control-plane tables via `public.`), and routes in this module rely
-    on being able to do both on one session. `SELECT 1` proves the connection is
-    actually reachable before this dependency yields (tenant-data-plane-failure-
+    on being able to do both on one session.
+
+    A body-carrying request pre-probes with `SELECT 1`, because proving the store
+    reachable *before* bytes are accepted is the point (tenant-data-plane-failure-
     isolation spec's "Uploads are rejected before bytes are accepted when the store
     is unavailable" — this dependency resolves, and so runs, before the route body
-    ever reads upload bytes off the wire), classifying a real driver failure into
-    `DataPlaneUnavailable` the same way `tenant_session` does, without adopting its
-    search_path narrowing."""
+    ever reads upload bytes off the wire). A read has no bytes to refuse and its own
+    first query proves the same thing one round trip later, so it skips the probe;
+    against a remote store that round trip is a third of the request. Either way a
+    driver failure classifies into `DataPlaneUnavailable` the same way
+    `tenant_session` does, without adopting its search_path narrowing."""
     tenant_id = getattr(request.state, "tenant_id", None)
-    try:
-        engine = await get_resolver().resolve(tenant_id)
-    except (DataPlaneNotReady, DataPlaneUnavailable):
-        raise
+    engine = await get_resolver().resolve(tenant_id)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         try:
-            await session.execute(text("SELECT 1"))
+            if request.method in ("POST", "PUT", "PATCH"):
+                await session.execute(text("SELECT 1"))
+            yield session
         except (DBAPIError, OperationalError, OSError) as exc:
             reason = classify_driver_error(exc)
             await record_health_best_effort(tenant_id, reason)
             raise DataPlaneUnavailable(reason) from exc
-        try:
-            yield session
         finally:
             await session.close()
 
@@ -240,10 +241,14 @@ async def list_documents(
     # exist in a `tenant_owned` store. The tenant session reads documents alone; the
     # uploader email is a second, control-plane lookup on the platform session.
     document_where = " AND ".join(c.format(p="d.") for c in conditions)
+    # `COUNT(*) OVER ()` carries the unpaginated total on each row, so the listing and
+    # its total are one round trip rather than two — the difference is a whole query's
+    # latency when the store is remote.
     result = await session.execute(
         text(f"""
             SELECT d.id, d.filename, d.content_type, d.file_size, d.status, d.error_message,
-                   d.purpose, d.uploaded_by, d.created_at, d.updated_at
+                   d.purpose, d.uploaded_by, d.created_at, d.updated_at,
+                   COUNT(*) OVER () AS total
             FROM {_schema(tenant_id)}.documents d
             WHERE {document_where}
             ORDER BY d.created_at DESC
@@ -253,11 +258,18 @@ async def list_documents(
     )
     rows = result.fetchall()
 
-    count_result = await session.execute(
-        text(f"SELECT COUNT(*) FROM {_schema(tenant_id)}.documents WHERE {where}"),
-        params,
-    )
-    total = count_result.scalar()
+    if rows:
+        total = rows[0].total
+    elif page > 1:
+        # A page past the end returns no rows, so the windowed count has nothing to
+        # report — the standalone count still has to answer how many there really are.
+        count_result = await session.execute(
+            text(f"SELECT COUNT(*) FROM {_schema(tenant_id)}.documents WHERE {where}"),
+            params,
+        )
+        total = count_result.scalar()
+    else:
+        total = 0
 
     uploader_ids = {r.uploaded_by for r in rows if r.uploaded_by}
     uploader_emails: dict[str, str] = {}

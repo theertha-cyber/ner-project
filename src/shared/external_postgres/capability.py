@@ -32,6 +32,13 @@ async def resolve_external_capability(session, tenant_id: str) -> dict:
     Returns ``{"executable": True, "connection_id": ..., "contract": {...}}``
     or ``{"executable": False, "reason": <finite>}``. Never raises for a
     missing connection or contract — absence resolves to non-executable.
+
+    `session` must be a **platform** session (Design D10). Both reads below are
+    control-plane — `public.tenant_data_source_connections` and
+    `public.external_pg_contracts` — and a `tenant_owned` tenant's resolved
+    session points at their own store, which has no `public.*` tables at all.
+    Passing one there fails the query and leaves that session's transaction
+    aborted, taking every later query on it down with it.
     """
     connection = await active_connection(session, tenant_id, PROVIDER_AZURE_POSTGRESQL)
     if connection is None:

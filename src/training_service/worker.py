@@ -297,24 +297,38 @@ def fine_tune_model(self, tenant_id: str, job_id: str, hyperparams: dict):
         return {"job_id": job_id, "status": "failed_retryable", "reason": "data_plane_unavailable"}
     schema = _schema(tenant_id)
     source_scope: str | None = None
-    with engine.connect() as conn:
-        row = conn.execute(
-            text(f"SELECT status, source_scope FROM {schema}.training_jobs WHERE id = :id"),
-            {"id": job_id},
-        ).fetchone()
-        if row is not None:
-            status = row[0]
-            source_scope = row[1]
-            if status in ("completed", "failed", "cancelled"):
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(f"SELECT status, source_scope FROM {schema}.training_jobs WHERE id = :id"),
+                {"id": job_id},
+            ).fetchone()
+            if row is not None:
+                status = row[0]
+                source_scope = row[1]
+                if status in ("completed", "failed", "cancelled"):
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning("Job %s already %s, skipping", job_id, status)
+                    return
+            elif row is None:
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.warning("Job %s already %s, skipping", job_id, status)
+                logger.warning("Job %s not found in database, skipping", job_id)
                 return
-        elif row is None:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning("Job %s not found in database, skipping", job_id)
-            return
+    except Exception as exc:
+        # A failure here (e.g. a stale pooled connection) happens before the job
+        # is ever marked "running" — nothing downstream will touch its status, so
+        # without this it stays stuck at "queued" forever instead of surfacing
+        # as a failure.
+        record_training_failure(_training_failure_cause(exc))
+        _update_job_progress(
+            tenant_id, job_id,
+            status="failed",
+            error_message=str(exc),
+            failed_at=datetime.now(timezone.utc),
+        )
+        raise
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     experiment_name = f"tenant_{tenant_id}"
