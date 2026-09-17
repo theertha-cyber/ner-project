@@ -20,6 +20,10 @@ export function useDataPlaneStatus(options?: { pollIntervalMs?: number }) {
       if (!res.ok) await throwForStatus(res);
       return res.json() as Promise<DataPlaneStatusResponse>;
     },
+    // `DataPlaneGate` shows a spinner over the whole page until this settles, so the
+    // default 1s/2s/4s backoff costs every navigation ~7s. A server answer (403, 409,
+    // 503) will say the same thing again; only a request that never got one retries.
+    retry: (failureCount, error) => !(error instanceof SafeApiHttpError) && failureCount < 3,
     refetchInterval: options?.pollIntervalMs ?? false,
   });
 }

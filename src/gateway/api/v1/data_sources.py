@@ -2,7 +2,8 @@
 
 `POST/GET/PATCH /api/v1/data-sources` plus `test`, `activate`, `pause`,
 `replace`, and confirmed `retire` actions. Every route requires a valid JWT,
-`resolve_tenant_from_jwt`, and `require_tenant_admin`. There is no tenant ID in
+`resolve_tenant_from_jwt`, and `require_tenant_admin` — except `GET
+/api/v1/data-plane`, which any tenant role may read. There is no tenant ID in
 a path, query, or body — the service uses only the authenticated tenant ID for
 every lookup, write, idempotency entry, lifecycle constraint, and audit record.
 
@@ -25,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.gateway.dependencies import (
     get_db,
     require_tenant_admin,
+    require_tenant_role,
     resolve_tenant_from_jwt,
 )
 from src.shared.data_sources import lifecycle as lc
@@ -478,13 +480,17 @@ async def trigger_data_source_sync(
 async def read_data_plane(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(require_tenant_admin),
+    _: str = Depends(require_tenant_role),
     tenant_id: str = Depends(resolve_tenant_from_jwt),
 ):
     """`GET /api/v1/data-plane` (task 10.2): the tenant's own data-plane status —
     `mode`, `status`, `status_reason`, and (when applicable) `store_id` /
     `schema_revision`. No configuration, secret, or host detail — those live on
-    the connection resource."""
+    the connection resource.
+
+    Any tenant role, not only tenant admins: the portal's `DataPlaneGate` reads this
+    before rendering documents, extraction, annotation, training, analytics, and chat
+    pages for every role, so a role this rejected would never be gated at all."""
     from src.shared.data_plane import get_data_plane_record
 
     record = await get_data_plane_record(tenant_id, db)

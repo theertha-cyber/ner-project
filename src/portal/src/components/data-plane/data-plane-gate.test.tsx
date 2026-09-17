@@ -52,6 +52,24 @@ describe("DataPlaneGate", () => {
     expect(screen.queryByText("protected content")).not.toBeInTheDocument();
   });
 
+  it("does not retry a server rejection before rendering the page", async () => {
+    mockAuthFetch.mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "FORBIDDEN", request_id: "req-2" } }), { status: 403 }),
+    );
+
+    // Client default retries are left on, so only the hook's own policy can keep this fast.
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <DataPlaneGate>
+          <div>protected content</div>
+        </DataPlaneGate>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText("protected content")).toBeInTheDocument(), { timeout: 500 });
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the wrapped content for a ready data plane", async () => {
     mockAuthFetch.mockResolvedValue(
       new Response(

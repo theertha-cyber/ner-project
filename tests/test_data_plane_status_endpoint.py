@@ -92,6 +92,30 @@ async def test_get_data_plane_reports_platform_default(ready_platform_tenant):
     assert body["status"] == "ready"
 
 
+@pytest.mark.parametrize("role", ["business_user", "annotator"])
+async def test_get_data_plane_readable_by_non_admin_roles(ready_platform_tenant, role):
+    """Scenario: the portal gates pages for every role on this read, so a non-admin
+    gets the status rather than a 403."""
+    transport = ASGITransport(app=gateway_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/api/v1/data-plane", headers=_bearer(ready_platform_tenant, role=role)
+        )
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+
+
+async def test_provision_retry_still_requires_tenant_admin(failed_tenant):
+    """Scenario: opening the status read did not open the retry."""
+    transport = ASGITransport(app=gateway_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/data-plane/provision",
+            headers={**_bearer(failed_tenant, role="business_user"), "Idempotency-Key": str(uuid.uuid4())},
+        )
+    assert response.status_code == 403
+
+
 async def test_provision_retry_rejected_outside_provisioning_failed(ready_platform_tenant):
     """Scenario: retry on a `platform`/`ready` tenant is a no-op, rejected."""
     transport = ASGITransport(app=gateway_app)
