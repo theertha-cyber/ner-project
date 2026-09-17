@@ -26,6 +26,20 @@
   --color-warning: #d97706;
   --color-error: #dc2626;
   --color-info: #2563eb;
+  /* Chart series — fixed categorical order, never cycled. Teal leads so charts do not
+     compete with the red brand. This is the validated eight-hue sequence rotated, not
+     re-picked: rotating preserves every adjacent pair the ordering was chosen for, and
+     re-running the validator gives the same worst-case separation as before. Three
+     slots sit below 3:1 on the light surface, so charts always ship a legend and
+     labels rather than relying on colour alone. */
+  --chart-series-1: #1baf7a;
+  --chart-series-2: #eda100;
+  --chart-series-3: #e87ba4;
+  --chart-series-4: #008300;
+  --chart-series-5: #4a3aa7;
+  --chart-series-6: #e34948;
+  --chart-series-7: #2a78d6;
+  --chart-series-8: #eb6834;
   --color-delta-up: #16a34a;
   --color-delta-warn: #d97706;
   --color-delta-neutral: #6b7280;
@@ -75,6 +89,9 @@
   --color-border: rgba(255, 255, 255, 0.09); --color-border-focus: #a60000;
   --color-status-active: #4fbf82; --color-status-inactive: #86867f; --color-status-running: #6ea8e0; --color-status-completed: #4fbf9a; --color-status-failed: #e2685f; --color-status-pending_approval: #d9a94e; --color-status-queued: #a68fdb; --color-status-rejected: #e2685f; --color-status-cancelled: #86867f; --color-status-promoted: #5bb3d9; --color-status-training: #d9a94e; --color-status-archived: #77776f;
   --color-success: #4fbf82; --color-warning: #d9a94e; --color-error: #e2685f; --color-info: #6ea8e0; --color-delta-up: #4fbf82; --color-delta-warn: #d9a94e; --color-delta-neutral: #86867f;
+  /* Chart series (dark mode) — the same eight hues re-stepped for the dark
+     surface, validated as a set rather than flipped automatically. */
+  --chart-series-1: #199e70; --chart-series-2: #c98500; --chart-series-3: #d55181; --chart-series-4: #008300; --chart-series-5: #9085e9; --chart-series-6: #e66767; --chart-series-7: #3987e5; --chart-series-8: #d95926;
   --color-surface-page: #1a1a19; --color-glass: rgba(24, 24, 24, 0.55); --color-glass-border: rgba(255, 255, 255, 0.08);
   --surface: #1a1a19; --surface-2: #181818; --surface-3: #383835; --ink: #ededec; --ink-2: #a8a8a4; --ink-3: #7a7a76; --line: rgba(255, 255, 255, 0.09); --line-2: rgba(255, 255, 255, 0.05);
   --primary: #a60000; --primary-2: #cc0000; --primary-soft: rgba(166, 0, 0, 0.14); --primary-line: rgba(166, 0, 0, 0.32); --bad: #e2685f; --bad-soft: rgba(226, 104, 95, 0.13); --good: #4bbd7a; --good-soft: rgba(75, 189, 122, 0.13);
