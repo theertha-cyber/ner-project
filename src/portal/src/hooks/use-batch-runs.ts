@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import {
   DEFAULT_PROCESSING_MODE,
@@ -9,50 +10,26 @@ import {
 } from "@/types/extraction";
 
 const POLL_INTERVAL_MS = 3000;
+const BATCH_RUNS_KEY = ["batch-runs"] as const;
 
 export function useBatchRuns() {
-  const [runs, setRuns] = useState<BatchRun[]>([]);
-  const intervalsRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+  const queryClient = useQueryClient();
 
-  function startPolling(runId: string) {
-    if (intervalsRef.current[runId]) return;
-    const id = setInterval(async () => {
-      try {
-        const res = await authFetch(`/api/v1/extract-batch/${runId}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setRuns((prev) =>
-          prev.map((r) => (r.run_id === runId ? { ...r, ...data, run_id: runId } : r))
-        );
-        if (data.status === "completed" || data.status === "failed") {
-          clearInterval(intervalsRef.current[runId]);
-          delete intervalsRef.current[runId];
-        }
-      } catch {
-        // swallow network errors during polling
-      }
-    }, POLL_INTERVAL_MS);
-    intervalsRef.current[runId] = id;
-  }
-
-  useEffect(() => {
-    authFetch("/api/v1/extract-batch")
-      .then((r) => r.json())
-      .then((data) => {
-        const loaded: BatchRun[] = data.runs ?? [];
-        setRuns(loaded);
-        loaded
-          .filter((r) => r.status === "running" || r.status === "queued")
-          .forEach((r) => startPolling(r.run_id));
-      })
-      .catch(() => {});
-
-    return () => {
-      Object.values(intervalsRef.current).forEach(clearInterval);
-    };
-  // startPolling is stable (defined in module scope relative to the ref) — no dep needed
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // A query rather than component state, so returning to the tab renders the cached
+  // list at once instead of an empty one while the refetch is in flight.
+  const query = useQuery<BatchRun[]>({
+    queryKey: BATCH_RUNS_KEY,
+    queryFn: async () => {
+      const res = await authFetch("/api/v1/extract-batch");
+      if (!res.ok) throw new Error(`Failed to load batch runs: ${res.status}`);
+      const data = await res.json();
+      return (data.runs ?? []) as BatchRun[];
+    },
+    refetchInterval: (q) =>
+      q.state.data?.some((r) => r.status === "running" || r.status === "queued")
+        ? POLL_INTERVAL_MS
+        : false,
+  });
 
   const triggerBatch = useCallback(
     async (
@@ -83,12 +60,20 @@ export function useBatchRuns() {
         status: data.status ?? "queued",
         processing_mode: processingMode,
       };
-      setRuns((prev) => [newRun, ...prev]);
-      startPolling(data.run_id);
+      // Shown immediately; being `queued`, it also switches polling on, and the next poll
+      // replaces it with the server's own record. A list fetch already in flight started
+      // before this run existed, so it is cancelled rather than left to overwrite it.
+      await queryClient.cancelQueries({ queryKey: BATCH_RUNS_KEY });
+      queryClient.setQueryData<BatchRun[]>(BATCH_RUNS_KEY, (prev) => [newRun, ...(prev ?? [])]);
       return newRun;
     },
-    []
+    [queryClient]
   );
 
-  return { runs, triggerBatch };
+  return {
+    runs: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+    triggerBatch,
+  };
 }

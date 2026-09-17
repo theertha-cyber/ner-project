@@ -6,13 +6,22 @@
  * downgraded would leave the user believing a run produced data it did not.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ReactNode } from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useBatchRuns } from "./use-batch-runs";
 
 const mockAuthFetch = vi.fn();
 vi.mock("@/lib/auth-fetch", () => ({
   authFetch: (...args: unknown[]) => mockAuthFetch(...args),
 }));
+
+function renderBatchRuns(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  return renderHook(() => useBatchRuns(), { wrapper });
+}
 
 function listResponse() {
   return new Response(JSON.stringify({ runs: [] }), { status: 200 });
@@ -45,7 +54,7 @@ describe("useBatchRuns.triggerBatch", () => {
   });
 
   it("sends the default processing mode when the caller specifies none", async () => {
-    const { result } = renderHook(() => useBatchRuns());
+    const { result } = renderBatchRuns();
     respondToPostWith(acceptedResponse());
 
     await act(async () => {
@@ -62,7 +71,7 @@ describe("useBatchRuns.triggerBatch", () => {
   });
 
   it("sends the selected mode alongside the document ids in one request", async () => {
-    const { result } = renderHook(() => useBatchRuns());
+    const { result } = renderBatchRuns();
     respondToPostWith(acceptedResponse());
 
     await act(async () => {
@@ -75,7 +84,7 @@ describe("useBatchRuns.triggerBatch", () => {
   });
 
   it("sends the mode in the body, never as a query parameter", async () => {
-    const { result } = renderHook(() => useBatchRuns());
+    const { result } = renderBatchRuns();
     respondToPostWith(acceptedResponse());
 
     await act(async () => {
@@ -87,7 +96,7 @@ describe("useBatchRuns.triggerBatch", () => {
   });
 
   it("records the mode on the run it adds to the list", async () => {
-    const { result } = renderHook(() => useBatchRuns());
+    const { result } = renderBatchRuns();
     // The mount effect replaces the whole list when its fetch resolves, so it has to
     // settle before a triggered run is added or it would be overwritten.
     await waitFor(() => expect(mockAuthFetch).toHaveBeenCalled());
@@ -108,7 +117,7 @@ describe("useBatchRuns.triggerBatch", () => {
   });
 
   it("surfaces a 422 rejection and adds no run", async () => {
-    const { result } = renderHook(() => useBatchRuns());
+    const { result } = renderBatchRuns();
     respondToPostWith(
       new Response(
         JSON.stringify({ detail: "LLM post-processing is not configured for this deployment" }),
@@ -126,7 +135,7 @@ describe("useBatchRuns.triggerBatch", () => {
   });
 
   it("falls back to the status code when the server sends no detail", async () => {
-    const { result } = renderHook(() => useBatchRuns());
+    const { result } = renderBatchRuns();
     respondToPostWith(new Response("nope", { status: 500 }));
 
     await expect(
@@ -134,5 +143,49 @@ describe("useBatchRuns.triggerBatch", () => {
         await result.current.triggerBatch(["doc-1"]);
       })
     ).rejects.toThrow(/500/);
+  });
+});
+
+describe("useBatchRuns list", () => {
+  beforeEach(() => mockAuthFetch.mockReset());
+
+  it("reports loading, not an empty list, while the first fetch is in flight", async () => {
+    let resolve!: (r: Response) => void;
+    mockAuthFetch.mockImplementation(() => new Promise<Response>((r) => { resolve = r; }));
+
+    const { result } = renderBatchRuns();
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.runs).toEqual([]);
+
+    await act(async () => {
+      resolve(new Response(JSON.stringify({ runs: [{ run_id: "r1", status: "completed" }] }), { status: 200 }));
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.runs).toHaveLength(1);
+  });
+
+  it("serves a remount from cache instead of starting empty", async () => {
+    mockAuthFetch.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ runs: [{ run_id: "r1", status: "completed" }] }), { status: 200 }))
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const first = renderBatchRuns(client);
+    await waitFor(() => expect(first.result.current.runs).toHaveLength(1));
+    first.unmount();
+
+    const second = renderBatchRuns(client);
+    expect(second.result.current.isLoading).toBe(false);
+    expect(second.result.current.runs).toHaveLength(1);
+  });
+
+  it("surfaces a failed load as an error rather than an empty list", async () => {
+    mockAuthFetch.mockImplementation(() => Promise.resolve(new Response("{}", { status: 503 })));
+
+    const { result } = renderBatchRuns();
+
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    expect(result.current.isLoading).toBe(false);
   });
 });
