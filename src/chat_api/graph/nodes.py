@@ -567,7 +567,10 @@ def build_nodes(orchestrator) -> dict:
 
         Emits nothing to the token sink: the user sees no output until stage B, so the
         guardrail's "no token before the reply is trusted" rule is untouched. Any
-        failure here degrades to a plain text answer rather than failing the turn."""
+        failure here degrades to a plain text answer rather than failing the turn.
+
+        Stage B is still instructed to write a full text answer (figures included),
+        not a caption, so the chart and the answer are both complete on their own."""
         try:
             async with measure_llm_call("chart_decision", get_tenant_id()) as call:
                 response = await orchestrator.llm_client.chat.completions.create(
@@ -594,15 +597,20 @@ def build_nodes(orchestrator) -> dict:
         if chart is None:
             return None, llm_messages
 
-        # The tool result is an acknowledgement, not data: the chart is rendered by the
-        # client, and stage B only needs to know it exists so the prose reads as a
-        # caption rather than repeating every figure.
+        # The chart is rendered by the client above whatever stage B writes, but the
+        # reply must still stand on its own as a full answer to the question — the
+        # chart is a visual aid, not a replacement for stating the actual figures.
         extended = llm_messages + [
             message.model_dump(exclude_none=True),
             {
                 "role": "tool",
                 "tool_call_id": tool_call.id,
-                "content": "Chart rendered and shown to the user above your answer.",
+                "content": (
+                    "Chart rendered and shown to the user above your answer. Still write "
+                    "a complete answer to the question in your reply, including the key "
+                    "figures and any notable comparisons or standouts from the data — do "
+                    "not just describe the chart or say it was created."
+                ),
             },
         ]
         return chart.model_dump(), extended
