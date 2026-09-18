@@ -43,7 +43,9 @@ The portal SHALL open the same viewer when a user activates the chip for a file 
 
 ### Requirement: The viewer renders the document, at the cited page
 
-The portal SHALL render a PDF document with a page-faithful renderer and an image document as an image. When the citation identifies a page, the viewer SHALL open at that page rather than at the first. When the citation identifies the position of the cited passage, the viewer SHALL indicate that passage within the page.
+The portal SHALL render a PDF document with a page-faithful renderer and an image document as an image. When the citation identifies a page, the viewer SHALL open at that page rather than at the first.
+
+The viewer SHALL NOT mark or highlight any part of the rendered page. A citation's snippet is frequently most of the document, so matching page text against it marks nearly everything; a highlight that is usually wrong is worse than none, because it directs the reader confidently to the wrong place. The cited page is the locator the viewer provides.
 
 #### Scenario: A PDF opens at the cited page
 
@@ -57,11 +59,11 @@ The portal SHALL render a PDF document with a page-faithful renderer and an imag
 - **WHEN** the user opens it
 - **THEN** the viewer SHALL display the document from its first page
 
-#### Scenario: The cited passage is indicated
+#### Scenario: No part of the page is marked
 
-- **GIVEN** a citation carrying the position of the cited passage within its document
-- **WHEN** the viewer displays that page
-- **THEN** the cited passage SHALL be visually distinguished from the surrounding text
+- **GIVEN** a citation carrying a snippet of the document's text
+- **WHEN** the viewer displays the page
+- **THEN** no part of the rendered page SHALL be highlighted or otherwise marked
 
 #### Scenario: An image document renders as an image
 
@@ -75,6 +77,22 @@ The portal SHALL render a PDF document with a page-faithful renderer and an imag
 - **WHEN** the user opens it
 - **THEN** it SHALL render through the same PDF path as a natively stored PDF
 - **AND** a page reference SHALL behave as it does for a stored PDF
+
+### Requirement: The viewer shows the document and its controls, and nothing else
+
+The portal SHALL present the document itself as the panel's content. It SHALL NOT reproduce the citation's snippet, the answer text, or other material already visible in the conversation the chip sits in. Chrome SHALL be limited to identifying the document, navigating its pages, and closing the panel.
+
+#### Scenario: The citation snippet is not reproduced in the panel
+
+- **GIVEN** a citation carrying a snippet, whose chip the user activates
+- **WHEN** the viewer opens
+- **THEN** the snippet SHALL NOT be displayed within the panel
+
+#### Scenario: Page navigation appears only when there is more than one page
+
+- **GIVEN** a single-page document
+- **WHEN** the viewer displays it
+- **THEN** no page navigation SHALL be shown
 
 ### Requirement: Document bytes are fetched as authenticated data, never as a subresource URL
 

@@ -5,56 +5,44 @@ import { useEffect, useRef, useState } from "react";
 import { loadPdfjs } from "@/lib/pdf";
 
 /**
- * One rendered PDF page, with the cited passage highlighted.
+ * One rendered PDF page.
  *
- * pdf.js rather than the browser's built-in viewer, because the built-in one cannot be
- * asked to mark a passage — and marking the passage is the point. A citation says "this
- * answer came from here"; opening the right page and leaving the reader to find the
- * sentence is only half of that.
+ * pdf.js rather than the browser's built-in viewer so the page renders inside the panel's
+ * own layout — the built-in viewer brings its own chrome, which cannot be styled and
+ * fights the surrounding UI.
  *
- * The highlight is drawn from pdf.js's text layer: every text item carries a transform,
- * so the items whose concatenated text contains the snippet can be boxed directly. When
- * the snippet spans a line break or the extraction differs from the rendered glyphs, no
- * match is found and the page simply renders unmarked — a missing highlight is a much
- * better failure than a wrong one.
+ * Deliberately no passage highlighting. An earlier version marked the cited passage from
+ * the text layer, but a citation's snippet is often most of the document, and matching a
+ * line against it lit up nearly every page. A highlight that is usually wrong is worse
+ * than none: it tells the reader to look in the wrong place while looking authoritative.
+ * The panel opens at the cited page, which is the part that reliably helps.
  */
 
 export interface PdfPageProps {
   /** Object URL for the document's bytes. */
   url: string;
   pageNumber: number;
-  /** The passage to mark, if the citation carried one. */
-  highlight?: string | null;
   onPageCount?: (count: number) => void;
 }
 
-interface Box {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
+// Rendered above CSS size so the page stays sharp on high-density displays.
+const RENDER_SCALE = 2;
 
-/** Comparable form: extraction whitespace rarely matches the answer's quoting. */
-function normalise(value: string) {
-  return value.replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-export function PdfPage({ url, pageNumber, highlight, onPageCount }: PdfPageProps) {
+export function PdfPage({ url, pageNumber, onPageCount }: PdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [boxes, setBoxes] = useState<Box[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let doc: { destroy: () => void; numPages: number } | null = null;
 
+    setReady(false);
+
     (async () => {
       try {
         const pdfjs = await loadPdfjs();
-        const task = pdfjs.getDocument({ url });
-        const loaded = await task.promise;
+        const loaded = await pdfjs.getDocument({ url }).promise;
         if (cancelled) {
           loaded.destroy();
           return;
@@ -66,48 +54,20 @@ export function PdfPage({ url, pageNumber, highlight, onPageCount }: PdfPageProp
         const page = await loaded.getPage(target);
         if (cancelled) return;
 
-        const viewport = page.getViewport({ scale: 1.5 });
+        const viewport = page.getViewport({ scale: RENDER_SCALE });
         const canvas = canvasRef.current;
         if (!canvas) return;
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-        setSize({ width: viewport.width, height: viewport.height });
+        // Laid out at half the render size, so the extra pixels become sharpness rather
+        // than a page twice as wide as the panel.
+        canvas.style.width = `${viewport.width / RENDER_SCALE}px`;
+        canvas.style.height = "auto";
 
         const context = canvas.getContext("2d");
         if (!context) return;
         await page.render({ canvasContext: context, viewport }).promise;
-        if (cancelled) return;
-
-        if (highlight) {
-          const wanted = normalise(highlight);
-          const content = await page.getTextContent();
-          if (cancelled) return;
-          const found: Box[] = [];
-          for (const item of content.items as Array<{
-            str: string;
-            transform: number[];
-            width: number;
-            height: number;
-          }>) {
-            const text = normalise(item.str);
-            if (!text) continue;
-            // Either direction: the snippet may be a fragment of a long line, or a line
-            // may be a fragment of a multi-line snippet.
-            if (wanted.includes(text) || text.includes(wanted)) {
-              const [, , , , x, y] = item.transform;
-              const [left, top] = viewport.convertToViewportPoint(x, y);
-              found.push({
-                left,
-                top: top - item.height * viewport.scale,
-                width: item.width * viewport.scale,
-                height: item.height * viewport.scale,
-              });
-            }
-          }
-          setBoxes(found);
-        } else {
-          setBoxes([]);
-        }
+        if (!cancelled) setReady(true);
       } catch {
         if (!cancelled) setError("This document could not be rendered.");
       }
@@ -117,28 +77,25 @@ export function PdfPage({ url, pageNumber, highlight, onPageCount }: PdfPageProp
       cancelled = true;
       doc?.destroy();
     };
-  }, [url, pageNumber, highlight, onPageCount]);
+  }, [url, pageNumber, onPageCount]);
 
   if (error) {
     return (
-      <p role="status" className="p-6 text-sm text-ink-3">
+      <p role="status" className="p-8 text-center text-sm text-ink-3">
         {error}
       </p>
     );
   }
 
   return (
-    <div className="relative mx-auto" style={size ? { width: size.width } : undefined}>
-      <canvas ref={canvasRef} data-testid="pdf-canvas" className="mx-auto block shadow" />
-      {boxes.map((box, index) => (
-        <span
-          key={index}
-          data-testid="pdf-highlight"
-          aria-hidden="true"
-          className="pointer-events-none absolute bg-yellow-300/40"
-          style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
-        />
-      ))}
-    </div>
+    <canvas
+      ref={canvasRef}
+      data-testid="pdf-canvas"
+      className={[
+        "mx-auto block max-w-full rounded-md bg-white shadow-sm ring-1 ring-black/5",
+        "transition-opacity duration-150",
+        ready ? "opacity-100" : "opacity-0",
+      ].join(" ")}
+    />
   );
 }

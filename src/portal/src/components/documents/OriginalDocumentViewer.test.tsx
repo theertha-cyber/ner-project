@@ -7,8 +7,8 @@ import { OriginalDocumentViewer } from "./OriginalDocumentViewer";
 /**
  * jsdom has no canvas and no PDF engine, so pdf.js is mocked at the module boundary. What
  * remains testable is everything that decides *what* is rendered — which page is asked
- * for, whether the passage is marked, which unavailable message is shown, and whether the
- * panel behaves as a dialog. The rendering itself is verified in a real browser.
+ * for, which unavailable message is shown, and whether the panel behaves as a dialog. The
+ * rendering itself is verified in a real browser.
  */
 
 const mockFetch = vi.fn();
@@ -17,7 +17,6 @@ vi.mock("@/lib/auth-fetch", () => ({
 }));
 
 const renderPage = vi.fn();
-const getTextContent = vi.fn();
 
 vi.mock("@/lib/pdf", () => ({
   loadPdfjs: async () => ({
@@ -30,7 +29,6 @@ vi.mock("@/lib/pdf", () => ({
           return {
             getViewport: () => ({ width: 600, height: 800, scale: 1.5, convertToViewportPoint: () => [10, 20] }),
             render: () => ({ promise: Promise.resolve() }),
-            getTextContent,
           };
         },
       }),
@@ -71,8 +69,6 @@ function bytes(type = "application/pdf") {
 beforeEach(() => {
   mockFetch.mockReset();
   renderPage.mockReset();
-  getTextContent.mockReset();
-  getTextContent.mockResolvedValue({ items: [] });
   globalThis.URL.createObjectURL = vi.fn(() => "blob:mock/1");
   globalThis.URL.revokeObjectURL = vi.fn();
   // jsdom implements neither.
@@ -102,30 +98,18 @@ describe("rendering the document at the cited page", () => {
     await waitFor(() => expect(renderPage).toHaveBeenCalledWith(1));
   });
 
-  it("marks the cited passage when the page contains it", async () => {
-    getTextContent.mockResolvedValue({
-      items: [
-        { str: "Five years of Python", transform: [1, 0, 0, 1, 50, 700], width: 120, height: 10 },
-        { str: "unrelated line", transform: [1, 0, 0, 1, 50, 680], width: 80, height: 10 },
-      ],
-    });
+  it("does not mark anything on the page", async () => {
+    // Removed deliberately. A citation's snippet is often most of the document, so
+    // matching page text against it lit up nearly everything. A highlight that is
+    // usually wrong is worse than none: it points the reader somewhere confidently and
+    // incorrectly.
     mockFetch.mockResolvedValueOnce(probe()).mockResolvedValueOnce(bytes());
 
-    open({ pageNumber: 1, contextSnippet: "five years of python" });
-
-    await waitFor(() => expect(screen.getAllByTestId("pdf-highlight").length).toBe(1));
-  });
-
-  it("renders unmarked rather than wrongly marked when the passage is not found", async () => {
-    getTextContent.mockResolvedValue({
-      items: [{ str: "something else entirely", transform: [1, 0, 0, 1, 50, 700], width: 80, height: 10 }],
-    });
-    mockFetch.mockResolvedValueOnce(probe()).mockResolvedValueOnce(bytes());
-
-    open({ contextSnippet: "a passage that does not appear" });
+    open({ pageNumber: 1 });
 
     await waitFor(() => expect(screen.getByTestId("pdf-canvas")).toBeInTheDocument());
     expect(screen.queryAllByTestId("pdf-highlight")).toHaveLength(0);
+    expect(document.querySelectorAll("[class*='yellow']")).toHaveLength(0);
   });
 
   it("renders an image document as an image", async () => {
@@ -155,8 +139,8 @@ describe("rendering the document at the cited page", () => {
 
     open({ pageNumber: 2 });
 
-    await waitFor(() => expect(screen.getByTestId("page-indicator")).toHaveTextContent("Page 2 of 5"));
-    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(screen.getByTestId("page-indicator")).toHaveTextContent("2 / 5"));
+    await userEvent.click(screen.getByRole("button", { name: /next page/i }));
     await waitFor(() => expect(renderPage).toHaveBeenCalledWith(3));
   });
 });
@@ -250,11 +234,14 @@ describe("dialog behaviour", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("shows the quoted passage alongside the document", async () => {
+  it("shows nothing but the document", async () => {
+    // No snippet banner: it duplicated text already visible in the answer the chip sits
+    // under, and took vertical space from the page itself.
     mockFetch.mockResolvedValueOnce(probe()).mockResolvedValueOnce(bytes());
 
-    open({ contextSnippet: "five years of Python" });
+    open();
 
-    expect(await screen.findByText(/five years of Python/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("pdf-canvas")).toBeInTheDocument());
+    expect(screen.queryByText(/five years of Python/)).not.toBeInTheDocument();
   });
 });

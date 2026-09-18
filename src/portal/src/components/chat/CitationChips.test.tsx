@@ -47,7 +47,7 @@ describe("a chip that names a document", () => {
     expect(await screen.findByTestId("viewer")).toHaveTextContent("doc-1");
   });
 
-  it("passes the cited page and passage through", async () => {
+  it("passes the cited page through", async () => {
     render(<CitationChips citations={[DOC_CITATION]} />);
 
     await userEvent.click(screen.getByRole("button", { name: /open document resume.pdf/i }));
@@ -57,7 +57,6 @@ describe("a chip that names a document", () => {
         expect.objectContaining({
           documentId: "doc-1",
           pageNumber: 3,
-          contextSnippet: "five years of Python",
         }),
       ),
     );

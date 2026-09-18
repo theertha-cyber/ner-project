@@ -21,7 +21,6 @@ const VISIBLE_COUNT = 2;
 interface Viewing {
   documentId: string;
   pageNumber: number | null;
-  contextSnippet: string | null;
   documentName: string | null;
 }
 
@@ -57,7 +56,6 @@ export function CitationChips({ citations }: { citations: Citation[] }) {
                     ? setViewing({
                         documentId,
                         pageNumber: citation.page_number ?? null,
-                        contextSnippet: citation.context_snippet ?? null,
                         documentName: citation.document_name ?? null,
                       })
                     : setExpandedIndex(isOpen ? null : i)
@@ -148,7 +146,6 @@ export function CitationChips({ citations }: { citations: Citation[] }) {
       <OriginalDocumentViewer
         documentId={viewing?.documentId ?? null}
         pageNumber={viewing?.pageNumber ?? null}
-        contextSnippet={viewing?.contextSnippet ?? null}
         documentName={viewing?.documentName ?? null}
         onClose={() => setViewing(null)}
       />
