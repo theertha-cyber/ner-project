@@ -73,6 +73,8 @@ async def seeded_conversation_chunks(tenant_schema, engine):
                     char_end INTEGER,
                     purpose VARCHAR(20),
                     conversation_id VARCHAR,
+                    uploaded_by VARCHAR,
+                    ingested_by_kind VARCHAR(32) DEFAULT 'source_system',
                     chunk_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', chunk_text)) STORED
                 )
             """)

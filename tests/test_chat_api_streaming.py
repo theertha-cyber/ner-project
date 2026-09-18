@@ -298,13 +298,15 @@ class CannedStreamOrchestrator:
         self.non_stream_calls = 0
 
     async def execute_with_clarification(self, message, session, schema, tenant_id,
-                                          jwt_token=None, conversation_context=None, conversation_id=None):
+                                          jwt_token=None, conversation_context=None, conversation_id=None,
+                       requesting_user=None):
         self.non_stream_calls += 1
         return (self.reply, self.sources, self.pending_clarification, self.answer_kind,
                 self.model_version, self.retrieval_status, None, self.chart)
 
     async def execute_with_clarification_stream(self, message, session, schema, tenant_id, token_sink,
-                                                 jwt_token=None, conversation_context=None, conversation_id=None):
+                                                 jwt_token=None, conversation_context=None, conversation_id=None,
+                       requesting_user=None):
         self.stream_calls += 1
         try:
             if self.chart is not None:

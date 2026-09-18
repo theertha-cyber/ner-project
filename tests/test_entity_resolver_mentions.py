@@ -86,7 +86,8 @@ class TestResolveEntityEndToEnd:
             for d, v in stored
         ]
 
-        async def fake_lookup(session, schema, canonical_values, person_types):
+        async def fake_lookup(session, schema, canonical_values, person_types,
+                              requesting_user=None, conversation_id=None):
             return [
                 r for r in rows
                 if any(_mention_matches(c, r["normalized_value"]) for c in canonical_values)

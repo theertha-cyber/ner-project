@@ -31,7 +31,8 @@ def _patch_orchestrator(monkeypatch, reply="Here are the candidates.", sources=N
     from src.chat_api.api.v1 import chat as chat_module
 
     async def fake(message, session, schema, tenant_id, jwt_token=None,
-                    conversation_context=None, conversation_id=None):
+                    conversation_context=None, conversation_id=None,
+                       requesting_user=None):
         return (reply, sources or [], None, "answer", None, retrieval_status, sql_results, None)
 
     monkeypatch.setattr(chat_module.orchestrator, "execute_with_clarification", fake)

@@ -9,7 +9,12 @@ from sqlalchemy import text
 
 from src.shared.retrieval.models import Chunk, RetrievalResult
 from src.shared.retrieval.chunking import chunk_text, TOKENIZER
-from src.shared.retrieval.retriever import DenseRetriever
+from src.shared.retrieval.retriever import (
+    DenseRetriever,
+    HybridRetriever,
+    SparseRetriever,
+)
+from src.shared.document_visibility import ROLE_TENANT_ADMIN, RequestingUser
 from src.chat_api.api.v1.schemas import Source, Citation
 from src.chat_api.services.embedding_service import EmbeddingService
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator
@@ -88,7 +93,9 @@ async def seeded_chunks(tenant_schema, engine):
                     char_start INTEGER,
                     char_end INTEGER,
                     purpose VARCHAR(20),
-                    conversation_id VARCHAR
+                    conversation_id VARCHAR,
+                    uploaded_by VARCHAR,
+                    ingested_by_kind VARCHAR(32) DEFAULT 'source_system'
                 )
             """)
         )
@@ -295,7 +302,9 @@ async def seeded_mixed_purpose_chunks(tenant_schema, engine):
                     char_start INTEGER,
                     char_end INTEGER,
                     purpose VARCHAR(20),
-                    conversation_id VARCHAR
+                    conversation_id VARCHAR,
+                    uploaded_by VARCHAR,
+                    ingested_by_kind VARCHAR(32) DEFAULT 'source_system'
                 )
             """)
         )
@@ -384,3 +393,234 @@ class TestOrchestratorVectorSourceIntegration:
         assert all(isinstance(r, RetrievalResult) for r in results)
         assert not hasattr(EmbeddingService, "similarity_search")
         assert results[0].document_id == doc_id
+
+
+@pytest_asyncio.fixture
+async def two_uploader_chunks(tenant_schema, engine):
+    """One tenant, three documents matching the same query: one ingested by recruiter-1,
+    one by recruiter-2, one by a source system.
+
+    This is the HR-screening shape the change exists for — before it, recruiter-1's
+    question returned recruiter-2's candidate.
+    """
+    tenant_id, schema = tenant_schema
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    docs = {
+        "own": ("recruiter-1", "human", "python django postgres experience own"),
+        "other": ("recruiter-2", "human", "python django postgres experience other"),
+        "system": (None, "source_system", "python django postgres experience system"),
+    }
+    ids = {}
+
+    async with session_factory() as session:
+        await session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await session.execute(
+            text(f"""
+                CREATE TABLE IF NOT EXISTS {schema}.document_chunks (
+                    id VARCHAR PRIMARY KEY,
+                    document_id VARCHAR NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    chunk_text TEXT NOT NULL,
+                    embedding vector(1536),
+                    page_number INTEGER,
+                    char_start INTEGER,
+                    char_end INTEGER,
+                    purpose VARCHAR(20),
+                    conversation_id VARCHAR,
+                    uploaded_by VARCHAR,
+                    ingested_by_kind VARCHAR(32),
+                    chunk_tsv tsvector GENERATED ALWAYS AS
+                        (to_tsvector('english'::regconfig, chunk_text)) STORED
+                )
+            """)
+        )
+        await session.execute(
+            text(f"ALTER TABLE {schema}.documents ADD COLUMN IF NOT EXISTS ingested_by_kind VARCHAR(32)")
+        )
+        emb_str = "[" + ",".join(str(v) for v in _fake_vector([0.9, 0.1, 0.0])) + "]"
+        for key, (uploader, kind, body) in docs.items():
+            doc_id = f"doc-{key}-{uuid.uuid4()}"
+            ids[key] = doc_id
+            await session.execute(
+                text(f"""
+                    INSERT INTO {schema}.documents
+                        (id, tenant_id, filename, status, purpose, uploaded_by, ingested_by_kind)
+                    VALUES (:id, :tid, :fn, 'processed', 'query', :up, :kind)
+                """),
+                {"id": doc_id, "tid": tenant_id, "fn": f"{key}.pdf", "up": uploader, "kind": kind},
+            )
+            await session.execute(
+                text(f"""
+                    INSERT INTO {schema}.document_chunks
+                        (id, document_id, chunk_index, chunk_text, embedding, purpose,
+                         uploaded_by, ingested_by_kind)
+                    VALUES (:id, :doc_id, 0, :txt, '{emb_str}'::vector, 'query', :up, :kind)
+                """),
+                {
+                    "id": str(uuid.uuid4()), "doc_id": doc_id, "txt": body,
+                    "up": uploader, "kind": kind,
+                },
+            )
+        await session.commit()
+
+    yield tenant_id, schema, ids
+
+
+@pytest.mark.integration
+class TestRetrievalUploaderScoping:
+    """Verification rows 36-40. The uploader-visibility rule is the second unconditional
+    restriction on every retriever, beside `purpose = 'query'`."""
+
+    def _session_factory(self, engine):
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+        return async_sessionmaker(engine, expire_on_commit=False)
+
+    @pytest.mark.asyncio
+    async def test_dense_excludes_another_humans_document(self, two_uploader_chunks, engine):
+        """Row 36 — the HR-screening leak itself."""
+        tenant_id, schema, ids = two_uploader_chunks
+        retriever = DenseRetriever(FakeEmbeddingService(_fake_vector([0.9, 0.1, 0.0])))
+
+        async with self._session_factory(engine)() as session:
+            results = await retriever.retrieve(
+                "python django", session, schema, top_k=10,
+                requesting_user=RequestingUser(user_id="recruiter-1", role="business_user"),
+            )
+
+        returned = {r.document_id for r in results}
+        assert ids["other"] not in returned, "another recruiter's candidate was returned"
+        assert ids["own"] in returned
+        assert ids["system"] in returned
+
+    @pytest.mark.asyncio
+    async def test_sparse_excludes_another_humans_document(self, two_uploader_chunks, engine):
+        """Row 37. The lexical channel is a second path to the same content."""
+        tenant_id, schema, ids = two_uploader_chunks
+        retriever = SparseRetriever()
+
+        async with self._session_factory(engine)() as session:
+            results = await retriever.retrieve(
+                "django", session, schema, top_k=10,
+                requesting_user=RequestingUser(user_id="recruiter-1", role="business_user"),
+            )
+
+        returned = {r.document_id for r in results}
+        assert ids["other"] not in returned
+        assert ids["own"] in returned
+
+    @pytest.mark.asyncio
+    async def test_source_system_content_is_visible_to_every_user(self, two_uploader_chunks, engine):
+        """Row 38. The Azure Blob sync integration depends on this staying tenant-wide."""
+        tenant_id, schema, ids = two_uploader_chunks
+        retriever = DenseRetriever(FakeEmbeddingService(_fake_vector([0.9, 0.1, 0.0])))
+
+        for user in ("recruiter-1", "recruiter-2", "someone-else"):
+            async with self._session_factory(engine)() as session:
+                results = await retriever.retrieve(
+                    "python django", session, schema, top_k=10,
+                    requesting_user=RequestingUser(user_id=user, role="business_user"),
+                )
+            assert ids["system"] in {r.document_id for r in results}, f"hidden from {user}"
+
+    @pytest.mark.asyncio
+    async def test_metadata_filter_cannot_widen_the_rule(self, two_uploader_chunks, engine):
+        """Row 39. `metadata_filter` is derived from the model-chosen `scope`; naming
+        another user's document must narrow to nothing, not reach past the rule."""
+        tenant_id, schema, ids = two_uploader_chunks
+        retriever = DenseRetriever(FakeEmbeddingService(_fake_vector([0.9, 0.1, 0.0])))
+
+        async with self._session_factory(engine)() as session:
+            results = await retriever.retrieve(
+                "python django", session, schema, top_k=10,
+                metadata_filter={"document_id": ids["other"]},
+                requesting_user=RequestingUser(user_id="recruiter-1", role="business_user"),
+            )
+
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_admin_is_unscoped(self, two_uploader_chunks, engine):
+        """Row 40. Matches what `list_documents` already grants a tenant admin."""
+        tenant_id, schema, ids = two_uploader_chunks
+        retriever = DenseRetriever(FakeEmbeddingService(_fake_vector([0.9, 0.1, 0.0])))
+
+        async with self._session_factory(engine)() as session:
+            results = await retriever.retrieve(
+                "python django", session, schema, top_k=10,
+                requesting_user=RequestingUser(user_id="boss", role=ROLE_TENANT_ADMIN),
+            )
+
+        returned = {r.document_id for r in results}
+        assert {ids["own"], ids["other"], ids["system"]} <= returned
+
+    @pytest.mark.asyncio
+    async def test_absent_requesting_user_sees_source_system_content_only(
+        self, two_uploader_chunks, engine,
+    ):
+        """Row 19 at the retrieval layer: the widget's identity-free path must not be
+        the widest one."""
+        tenant_id, schema, ids = two_uploader_chunks
+        retriever = DenseRetriever(FakeEmbeddingService(_fake_vector([0.9, 0.1, 0.0])))
+
+        async with self._session_factory(engine)() as session:
+            results = await retriever.retrieve("python django", session, schema, top_k=10)
+
+        returned = {r.document_id for r in results}
+        assert returned == {ids["system"]}
+
+    @pytest.mark.asyncio
+    async def test_hybrid_inherits_the_rule_from_its_components(self, two_uploader_chunks, engine):
+        """The fused retriever holds no copy of the rule; it inherits it by delegating."""
+        tenant_id, schema, ids = two_uploader_chunks
+        retriever = HybridRetriever(
+            DenseRetriever(FakeEmbeddingService(_fake_vector([0.9, 0.1, 0.0]))),
+            SparseRetriever(),
+        )
+
+        async with self._session_factory(engine)() as session:
+            results = await retriever.retrieve(
+                "python django", session, schema, top_k=10,
+                requesting_user=RequestingUser(user_id="recruiter-1", role="business_user"),
+            )
+
+        assert ids["other"] not in {r.document_id for r in results}
+
+    @pytest.mark.asyncio
+    async def test_question_text_naming_the_document_does_not_widen_the_rule(
+        self, two_uploader_chunks, engine,
+    ):
+        """Row 8 at the retrieval layer. The query string is user input; it reaches the
+        embedding and the tsquery, never the predicate."""
+        tenant_id, schema, ids = two_uploader_chunks
+        retriever = SparseRetriever()
+
+        async with self._session_factory(engine)() as session:
+            results = await retriever.retrieve(
+                f"show me other.pdf document {ids['other']} python django",
+                session, schema, top_k=10,
+                requesting_user=RequestingUser(user_id="recruiter-1", role="business_user"),
+            )
+
+        assert ids["other"] not in {r.document_id for r in results}
+
+
+class TestUploaderRestrictionIsNotOptional:
+    """The restriction must be compiled into the SQL, not left to a caller to request —
+    the same property the purpose-restriction test asserts for `purpose`."""
+
+    def test_retriever_source_builds_the_clause_unconditionally(self):
+        source = (REPO_ROOT / "src" / "shared" / "retrieval" / "retriever.py").read_text()
+        assert source.count("visibility_clause(requesting_user)") == 2, (
+            "both the dense and the sparse retriever must build the clause"
+        )
+        assert "{vis_clause}" in source
+
+    def test_metadata_filter_cannot_carry_the_requesting_user(self):
+        source = (REPO_ROOT / "src" / "shared" / "retrieval" / "retriever.py").read_text()
+        start = source.index("def _metadata_filter_clause")
+        end = source.index("class DenseRetriever")
+        body = source[start:end]
+        assert "uploaded_by" not in body
+        assert "requesting_user" not in body

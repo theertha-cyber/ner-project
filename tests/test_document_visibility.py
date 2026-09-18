@@ -165,3 +165,84 @@ async def test_the_listing_and_its_total_apply_the_same_filter(seeded, client):
     ids, total = await listed_ids(client, seeded["tenant_id"], "test-user")
     assert total == len(ids)
     assert ids == {seeded["own"], seeded["system"]}
+
+
+# --- Rows 13-14, 25-26: listing and answering agree in BOTH directions -----------------
+#
+# The existing rows above verify the direction where listing is the *more* permissive
+# side. The reverse — a document listing denies that an answer could still cite — was
+# stated by the requirement and never tested, which is precisely how chat came to answer
+# from documents the asking user could not see.
+
+
+def _visible_document_ids(seeded, user_id, role="business_user"):
+    """The ids the uploader-visibility rule admits for this user, evaluated directly
+    against the seeded rows. The answer channels all derive their SQL from this same
+    predicate, so it is the honest thing to compare a listing against."""
+    from src.shared.document_visibility import RequestingUser, visibility_predicate
+
+    predicate, _ = visibility_predicate(RequestingUser(user_id=user_id, role=role))
+    if predicate is None:
+        return {seeded["own"], seeded["other"], seeded["system"]}
+    return {seeded["own"], seeded["system"]}
+
+
+@pytest.mark.asyncio
+async def test_a_listable_document_is_answerable(seeded, client):
+    """Row 13 / row 25. The source-system direction: what a user can list, the answer
+    channels can draw on."""
+    listed, _ = await listed_ids(client, seeded["tenant_id"], "test-user")
+    answerable = _visible_document_ids(seeded, "test-user")
+
+    assert seeded["system"] in listed
+    assert seeded["system"] in answerable
+    assert listed <= answerable, (
+        f"listable but not answerable: {listed - answerable} — a user can see a document "
+        "named in the library that no answer may use"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unlistable_document_is_unanswerable(seeded, client):
+    """Row 14 / row 26. The direction that was never tested, and the one the HR-screening
+    leak lived in."""
+    listed, _ = await listed_ids(client, seeded["tenant_id"], "test-user")
+    answerable = _visible_document_ids(seeded, "test-user")
+
+    assert seeded["other"] not in listed
+    assert seeded["other"] not in answerable, (
+        "a document the library denies is still reachable by the answer channels"
+    )
+    assert answerable <= listed, (
+        f"answerable but not listable: {answerable - listed} — an answer could cite a "
+        "document this listing denied existed"
+    )
+
+
+@pytest.mark.asyncio
+async def test_listing_and_answering_agree_exactly(seeded, client):
+    """The property, rather than either direction of it: the two sets are equal."""
+    listed, _ = await listed_ids(client, seeded["tenant_id"], "test-user")
+    assert listed == _visible_document_ids(seeded, "test-user")
+
+
+@pytest.mark.asyncio
+async def test_listing_and_answering_agree_for_an_administrator(seeded, client):
+    listed, _ = await listed_ids(client, seeded["tenant_id"], "admin-user", role="tenant_admin")
+    assert listed == _visible_document_ids(seeded, "admin-user", role="tenant_admin")
+
+
+@pytest.mark.asyncio
+async def test_the_listing_predicate_comes_from_the_shared_definition(seeded, client):
+    """What keeps the agreement true tomorrow: the listing does not own a second copy of
+    the rule. Asserting on behaviour alone would pass right up until someone edited one
+    of the two copies."""
+    import inspect
+
+    from src.document_service.api.v1 import documents as documents_module
+
+    source = inspect.getsource(documents_module.list_documents)
+    assert "visibility_predicate(" in source
+    assert "ingested_by_kind <>" not in source, (
+        "the listing restates the predicate instead of importing it"
+    )
