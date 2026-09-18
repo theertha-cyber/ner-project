@@ -1,21 +1,21 @@
 ## 1. Content resolution extraction
 
-- [ ] 1.1 Create `src/document_service/content_resolution.py` holding `store_for`, `resolve_content`, `resolve_content_for_processing`, the source-reopener registry and `register_source_reopener`, moved from `services/ocr_worker.py`. The module must import without pulling in chunking or the embedding service. (scenarios: "Processing and delivery resolve identically", "Reading bytes does not require the processing pipeline")
-- [ ] 1.2 Re-export the moved names from `ocr_worker` at module level, so `blob_sync/reopen.py`'s `ocr_worker.register_source_reopener(...)` and the existing monkeypatch of `ocr_worker._resolve_content_for_processing` both still resolve. (scenario: "Existing callers are unaffected by the extraction")
-- [ ] 1.3 Add `has_source_reopener(source_type)` so a caller can distinguish "no adapter for this source" from "the adapter failed", which `reopen_azure_blob_content` cannot express because it swallows every exception. (scenario: "An unreachable source is transient and says so")
-- [ ] 1.4 Add `tests/test_content_resolution_module.py` — identity between the worker's names and the shared ones, registration through either path, resolution per retention mode, and an import-isolation assertion. (scenarios: rows for "Processing and delivery resolve identically", "Reading bytes does not require the processing pipeline", "Resolution follows the recorded retention mode")
-- [ ] 1.5 Run `tests/test_retention_lifecycle.py`, `tests/test_ingestion_boundary.py`, `tests/test_data_plane_task_retry.py` and the blob-sync suites unchanged. Their passing is the proof the refactor preserved behaviour. (scenario: "Existing callers are unaffected by the extraction"; Risk 7)
+- [x] 1.1 Create `src/document_service/content_resolution.py` holding `store_for`, `resolve_content`, `resolve_content_for_processing`, the source-reopener registry and `register_source_reopener`, moved from `services/ocr_worker.py`. The module must import without pulling in chunking or the embedding service. (scenarios: "Processing and delivery resolve identically", "Reading bytes does not require the processing pipeline")
+- [x] 1.2 Re-export the moved names from `ocr_worker` at module level, so `blob_sync/reopen.py`'s `ocr_worker.register_source_reopener(...)` and the existing monkeypatch of `ocr_worker._resolve_content_for_processing` both still resolve. (scenario: "Existing callers are unaffected by the extraction")
+- [x] 1.3 Add `has_source_reopener(source_type)` so a caller can distinguish "no adapter for this source" from "the adapter failed", which `reopen_azure_blob_content` cannot express because it swallows every exception. (scenario: "An unreachable source is transient and says so")
+- [x] 1.4 Add `tests/test_content_resolution_module.py` — identity between the worker's names and the shared ones, registration through either path, resolution per retention mode, and an import-isolation assertion. (scenarios: rows for "Processing and delivery resolve identically", "Reading bytes does not require the processing pipeline", "Resolution follows the recorded retention mode")
+- [x] 1.5 Run `tests/test_retention_lifecycle.py`, `tests/test_ingestion_boundary.py`, `tests/test_data_plane_task_retry.py` and the blob-sync suites unchanged. Their passing is the proof the refactor preserved behaviour. (scenario: "Existing callers are unaffected by the extraction"; Risk 7)
 
 ## 2. Adapter registration in the serving process
 
-- [ ] 2.1 Import the Azure reopener during document-service startup, guarded so a missing SDK degrades to "not reopenable" rather than failing the process. (scenarios: "The serving process has its adapters registered", "A missing adapter degrades rather than failing startup")
+- [x] 2.1 Import the Azure reopener during document-service startup, guarded so a missing SDK degrades to "not reopenable" rather than failing the process. (scenarios: "The serving process has its adapters registered", "A missing adapter degrades rather than failing startup")
 - [ ] 2.2 Assert in `tests/test_document_content_endpoint.py` that constructing the application leaves the pull-source adapter registered — checked against the real startup path, not a fixture that registers one. (scenario: "The serving process has its adapters registered"; Risk 2)
 
 ## 3. Telemetry
 
-- [ ] 3.1 Declare content-access and conversion metric families in `src/shared/observability/domain_metrics.py` with enumerated retention-mode, outcome and format-category labels, and named recorders that coerce out-of-set values. No label may carry a stored media type. (scenarios: "Metric labels are finite and declared", "Conversion is observable as shape")
-- [ ] 3.2 Add `tests/test_document_content_telemetry.py` — declared label sets, out-of-set coercion, and that no emitted record contains a filename, storage reference or document content. (scenarios: "An access is recorded as shape", "Metric labels are finite and declared", "Conversion is observable as shape")
-- [ ] 3.3 Confirm `scripts/telemetry_scan.py` passes with the new families and call sites.
+- [x] 3.1 Declare content-access and conversion metric families in `src/shared/observability/domain_metrics.py` with enumerated retention-mode, outcome and format-category labels, and named recorders that coerce out-of-set values. No label may carry a stored media type. (scenarios: "Metric labels are finite and declared", "Conversion is observable as shape")
+- [x] 3.2 Add `tests/test_document_content_telemetry.py` — declared label sets, out-of-set coercion, and that no emitted record contains a filename, storage reference or document content. (scenarios: "An access is recorded as shape", "Metric labels are finite and declared", "Conversion is observable as shape")
+- [x] 3.3 Confirm `scripts/telemetry_scan.py` passes with the new families and call sites.
 
 ## 4. Authorization for content access
 

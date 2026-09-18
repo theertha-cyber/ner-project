@@ -47,6 +47,7 @@ from prometheus_client import REGISTRY, Counter, Gauge, Histogram
 # label value that no longer matches anything the code emits (task 1.2, design Decision 2).
 from src.chat_api.services.entity_resolver import AMBIGUOUS, OVER_CAP, UNIQUE, UNRESOLVED
 from src.chat_api.services.guardrails import GUARDRAIL_RULES
+from src.shared.document_retention import RETENTION_MODES
 from src.chat_api.services.sql_generator import (
     DEFECT_CLASSES,
     SQLAttemptOutcome,
@@ -322,11 +323,47 @@ UPLOADER_SCOPE_OUTCOMES = frozenset({
     OTHER,
 })
 
+# Imported, never restated — a rename in the retention module must break this import
+# rather than leave a label value that matches nothing the code emits.
+RETENTION_MODE_LABELS = frozenset(RETENTION_MODES | {OTHER})
+
+# How a request for a document's original bytes ended. Every value is a category the
+# viewer can act on differently, which is the point of not collapsing them: an original
+# released by the tenant's own retention policy is permanent, an unreachable source is
+# worth retrying, and presenting one as the other misleads the reader.
+DOCUMENT_CONTENT_OUTCOMES = frozenset({
+    "served",
+    "not_found",
+    "not_permitted",
+    # The tenant's retention policy released the original. Permanent, and not an error.
+    "original_released",
+    # A reference exists but the store no longer holds the object. An operational fault.
+    "original_missing",
+    # No adapter is registered for this document's source type — a configuration fact.
+    "source_not_reopenable",
+    # An adapter exists and did not answer. Transient.
+    "source_unavailable",
+    "conversion_failed",
+    "too_large",
+    OTHER,
+})
+
+# The class of document being served, never its media type verbatim: the stored media
+# type is uploader-declared input and belongs nowhere near a label.
+DOCUMENT_CONTENT_CLASSES = frozenset({"pdf", "image", "office", "tabular", OTHER})
+
+CONVERSION_OUTCOMES = frozenset({"converted", "failed", "timed_out", "too_large", OTHER})
+
 _DURATION_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0)
 _LONG_DURATION_BUCKETS = (1.0, 5.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0)
 _COUNT_BUCKETS = (0.0, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 1000.0)
 _SMALL_COUNT_BUCKETS = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0)
 _UNIT_BUCKETS = (0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 1.0)
+# Document sizes, from a one-page scan to the 50MB ingestion ceiling.
+_BYTE_BUCKETS = (
+    64_000.0, 256_000.0, 1_000_000.0, 4_000_000.0,
+    10_000_000.0, 25_000_000.0, 50_000_000.0,
+)
 
 
 FAMILIES: dict[str, Family] = {}
@@ -448,6 +485,46 @@ RERANK_DURATION = _declare(Family(
     "ner_rerank_duration_seconds",
     "histogram",
     "Time spent reranking retrieved passages.",
+    buckets=_DURATION_BUCKETS,
+))
+
+DOCUMENT_CONTENT_REQUESTS = _declare(Family(
+    "ner_document_content_requests_total",
+    "counter",
+    "Requests for a document's original bytes, by retention mode and outcome. Makes the "
+    "share of citations that cannot be opened visible without recording which ones.",
+    labels=(
+        Label("retention_mode", RETENTION_MODE_LABELS),
+        Label("outcome", DOCUMENT_CONTENT_OUTCOMES),
+    ),
+))
+
+DOCUMENT_CONTENT_BYTES = _declare(Family(
+    "ner_document_content_bytes",
+    "histogram",
+    "Size of documents served for viewing, by document class. The memory ceiling this "
+    "feature carries is per concurrent view, so the distribution is the thing to watch.",
+    labels=(Label("content_class", DOCUMENT_CONTENT_CLASSES),),
+    buckets=_BYTE_BUCKETS,
+))
+
+DOCUMENT_CONVERSIONS = _declare(Family(
+    "ner_document_conversions_total",
+    "counter",
+    "Conversions of a non-renderable original into a viewable PDF, by source class and "
+    "outcome.",
+    labels=(
+        Label("content_class", DOCUMENT_CONTENT_CLASSES),
+        Label("outcome", CONVERSION_OUTCOMES),
+    ),
+))
+
+DOCUMENT_CONVERSION_DURATION = _declare(Family(
+    "ner_document_conversion_duration_seconds",
+    "histogram",
+    "Time spent converting an original for display. Bounded by design; this is how the "
+    "bound is chosen from data rather than guessed.",
+    labels=(Label("content_class", DOCUMENT_CONTENT_CLASSES),),
     buckets=_DURATION_BUCKETS,
 ))
 
@@ -1273,6 +1350,56 @@ def record_retrieval_hit_rate(capability: str, hit_rate: float) -> None:
 
 def record_rerank_duration(seconds: float) -> None:
     _record(RERANK_DURATION, float(seconds))
+
+
+def content_class(media_type: str | None) -> str:
+    """The declared class of a document, derived from a media type.
+
+    A category function, not the media type itself: the stored type is uploader-declared
+    input, and Prometheus has no redaction filter on any path. Anything unrecognised
+    lands on `other`, which is exactly what an attacker-chosen value should do.
+    """
+    rendered = (media_type or "").lower()
+    if rendered == "application/pdf":
+        return "pdf"
+    if rendered.startswith("image/"):
+        return "image"
+    if "word" in rendered or rendered == "application/msword":
+        return "office"
+    if "csv" in rendered or "spreadsheet" in rendered or "excel" in rendered:
+        return "tabular"
+    return OTHER
+
+
+def record_document_content_request(
+    retention_mode: str | None, outcome: str,
+    media_type: str | None = None, byte_count: int | None = None,
+) -> None:
+    """One request for a document's original bytes.
+
+    `media_type` is categorised here, once, so no call site is tempted to pass the stored
+    value through as a label. `byte_count` is recorded only on a served response, because
+    a failure has no size and a zero would distort the distribution.
+    """
+    _record(
+        DOCUMENT_CONTENT_REQUESTS, 1,
+        retention_mode=retention_mode, outcome=outcome,
+    )
+    if outcome == "served" and byte_count is not None:
+        _record(
+            DOCUMENT_CONTENT_BYTES, float(byte_count),
+            content_class=content_class(media_type),
+        )
+
+
+def record_document_conversion(
+    media_type: str | None, outcome: str, seconds: float | None = None,
+) -> None:
+    """One conversion of an original into a viewable PDF."""
+    cls = content_class(media_type)
+    _record(DOCUMENT_CONVERSIONS, 1, content_class=cls, outcome=outcome)
+    if seconds is not None:
+        _record(DOCUMENT_CONVERSION_DURATION, float(seconds), content_class=cls)
 
 
 def record_uploader_scope(channel: str, outcome: str) -> None:
