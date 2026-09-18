@@ -54,23 +54,23 @@
 
 ## 9. Portal: fetching and holding the document
 
-- [ ] 9.1 Add `pdfjs-dist` to `src/portal/package.json`, pinned, and configure its worker explicitly rather than relying on a CDN default. (Risk: pdf.js worker bundling)
-- [ ] 9.2 Add `src/portal/src/hooks/use-original-document.ts`: probe, then fetch bytes with `authFetch`, build the Blob using the probe's media type, create an object URL, abort in-flight work on change, and revoke through a ref rather than a closed-over value. The bytes must not enter the React Query cache. (scenarios: the six "fetched as authenticated data" and "releases what it holds" scenarios; Risk 5)
-- [ ] 9.3 Add `src/portal/src/hooks/use-original-document.test.ts` following the `ExportCard.test.tsx` recipe — mock `@/lib/auth-fetch`, stub `URL.createObjectURL`/`revokeObjectURL`, assert one revoke per created URL under rapid reopen. (same scenarios)
+- [x] 9.1 Add `pdfjs-dist` to `src/portal/package.json`, pinned, and configure its worker explicitly rather than relying on a CDN default. (Risk: pdf.js worker bundling)
+- [x] 9.2 Add `src/portal/src/hooks/use-original-document.ts`: probe, then fetch bytes with `authFetch`, build the Blob using the probe's media type, create an object URL, abort in-flight work on change, and revoke through a ref rather than a closed-over value. The bytes must not enter the React Query cache. (scenarios: the six "fetched as authenticated data" and "releases what it holds" scenarios; Risk 5)
+- [x] 9.3 Add `src/portal/src/hooks/use-original-document.test.ts` following the `ExportCard.test.tsx` recipe — mock `@/lib/auth-fetch`, stub `URL.createObjectURL`/`revokeObjectURL`, assert one revoke per created URL under rapid reopen. (same scenarios)
 
 ## 10. Portal: the viewer
 
-- [ ] 10.1 Add `src/portal/src/components/documents/OriginalDocumentViewer.tsx` on `SlideOver` and `useFocusTrap`: PDF via pdf.js, images natively, opening at the cited page and highlighting the cited passage where offsets exist. Place it under `documents/` so the library can reuse it later. (scenarios: the five rendering scenarios)
-- [ ] 10.2 Render each unavailability outcome as its own message, distinguishing permanent from retryable, and offer the extracted text where it exists. (scenarios: the four "states why a document cannot be shown" scenarios)
-- [ ] 10.3 Add `OriginalDocumentViewer.test.tsx` covering rendering, page deep-link, highlight, every unavailable state, Escape, focus return, focus containment and the dialog role. (scenarios: the rendering, unavailability and accessibility rows)
+- [x] 10.1 Add `src/portal/src/components/documents/OriginalDocumentViewer.tsx` on `SlideOver` and `useFocusTrap`: PDF via pdf.js, images natively, opening at the cited page and highlighting the cited passage where offsets exist. Place it under `documents/` so the library can reuse it later. (scenarios: the five rendering scenarios)
+- [x] 10.2 Render each unavailability outcome as its own message, distinguishing permanent from retryable, and offer the extracted text where it exists. (scenarios: the four "states why a document cannot be shown" scenarios)
+- [x] 10.3 Add `OriginalDocumentViewer.test.tsx` covering rendering, page deep-link, highlight, every unavailable state, Escape, focus return, focus containment and the dialog role. (scenarios: the rendering, unavailability and accessibility rows)
 
 ## 11. Portal: chip wiring
 
-- [ ] 11.1 Lift the viewer state above the chip row in `CitationChips.tsx` so one viewer serves every chip in a message; a chip with a `document_id` opens it, one without keeps today's card behaviour. (scenarios: the four "citation chip opens" scenarios)
-- [ ] 11.2 Keep the existing snippet and relevance detail reachable from a chip that also opens a document. (scenario: "The detail card remains reachable")
-- [ ] 11.3 Make attachment chips in `MessageThread.tsx` open the same viewer. (scenarios: "Opening an attachment", "An attachment on a user message offers to open it")
-- [ ] 11.4 Add `CitationChips.test.tsx` covering chip-opens-viewer, the no-document case, detail reachability, one-viewer-per-message and the attachment chip. (scenarios: the chips rows)
-- [ ] 11.5 Confirm the existing chat-ui suites pass unchanged. (scenarios: "Send message and receive response", "Source citations are expandable")
+- [x] 11.1 Lift the viewer state above the chip row in `CitationChips.tsx` so one viewer serves every chip in a message; a chip with a `document_id` opens it, one without keeps today's card behaviour. (scenarios: the four "citation chip opens" scenarios)
+- [x] 11.2 Keep the existing snippet and relevance detail reachable from a chip that also opens a document. (scenario: "The detail card remains reachable")
+- [x] 11.3 Make attachment chips in `MessageThread.tsx` open the same viewer. (scenarios: "Opening an attachment", "An attachment on a user message offers to open it")
+- [x] 11.4 Add `CitationChips.test.tsx` covering chip-opens-viewer, the no-document case, detail reachability, one-viewer-per-message and the attachment chip. (scenarios: the chips rows)
+- [x] 11.5 Confirm the existing chat-ui suites pass unchanged. (scenarios: "Send message and receive response", "Source citations are expandable")
 
 ## 12. End-to-end proof
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Paperclip } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,6 +8,7 @@ import { ChartRenderer, type ChartPayload } from "./ChartRenderer";
 import { CitationChips } from "./CitationChips";
 import { MessageFeedback, type Feedback } from "./MessageFeedback";
 import { ExportCard, type ExportAvailability } from "./ExportCard";
+import { OriginalDocumentViewer } from "@/components/documents/OriginalDocumentViewer";
 import { TruncatableReply } from "./TruncatableReply";
 
 interface Source {
@@ -86,6 +87,12 @@ function toCitation(s: Source | Citation): Citation {
 
 export function MessageThread({ messages, loading, canRate, onRateMessage }: MessageThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  // One viewer for the whole thread. An attachment chip opens the same panel a
+  // citation chip does — they sit a few pixels apart and behaving differently would
+  // read as a bug.
+  const [viewingAttachment, setViewingAttachment] = useState<
+    { documentId: string; documentName: string } | null
+  >(null);
 
   // Depend on a signal describing the *tail* of the thread, not the array itself:
   // rating an old message replaces `messages` with a new array (same length, same
@@ -189,10 +196,21 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
                           }}
                         >
                           {msg.attachments.map((file) => (
-                            <span
+                            <button
                               key={file.id}
-                              title={file.filename}
+                              type="button"
+                              onClick={() =>
+                                setViewingAttachment({
+                                  documentId: file.id,
+                                  documentName: file.filename,
+                                })
+                              }
+                              title={`Open ${file.filename}`}
+                              aria-label={`Open attachment ${file.filename}`}
                               style={{
+                                cursor: "pointer",
+                                color: "inherit",
+                                font: "inherit",
                                 display: "inline-flex",
                                 alignItems: "center",
                                 gap: 6,
@@ -217,7 +235,7 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
                               >
                                 {file.filename}
                               </span>
-                            </span>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -266,6 +284,12 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
       )}
 
       <div ref={bottomRef} />
+
+      <OriginalDocumentViewer
+        documentId={viewingAttachment?.documentId ?? null}
+        documentName={viewingAttachment?.documentName ?? null}
+        onClose={() => setViewingAttachment(null)}
+      />
     </div>
   );
 }
