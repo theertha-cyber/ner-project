@@ -61,6 +61,11 @@ class ToolContext:
     # A tool receives only its own `arguments` — the planner's history never reaches it
     # — so anything a tool must resolve against earlier turns has to arrive here.
     conversation_context: list[dict] | None = None
+    # The conversation this call is answering for. Retrieval admits a chunk only when
+    # the chunk belongs to no conversation or to this one (ADR-014). It is read from
+    # authenticated request state like everything else on this object, and never from a
+    # tool argument — a scope the model can omit would not be a boundary.
+    conversation_id: str | None = None
 
 
 def _render_result_line(item: Any) -> str:

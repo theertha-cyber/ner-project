@@ -102,7 +102,14 @@ async def _embed_chunks(texts: list[str]) -> list[list[float]]:
     return await EmbeddingService().embed_batch(texts)
 
 
-async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], embeddings: list[list[float]], purpose: str):
+async def _store_chunks(
+    document_id: str,
+    tenant_id: str,
+    chunks: list[Chunk],
+    embeddings: list[list[float]],
+    purpose: str,
+    conversation_id: str | None = None,
+):
     engine = await get_resolver().resolve(tenant_id)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     schema = _schema(tenant_id)
@@ -112,8 +119,8 @@ async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], e
             await session.execute(
                 text(f"""
                     INSERT INTO {schema}.document_chunks
-                        (id, document_id, chunk_index, chunk_text, embedding, page_number, char_start, char_end, purpose)
-                    VALUES (:id, :doc_id, :chunk_index, :chunk_text, CAST(:embedding AS vector), :page_number, :char_start, :char_end, :purpose)
+                        (id, document_id, chunk_index, chunk_text, embedding, page_number, char_start, char_end, purpose, conversation_id)
+                    VALUES (:id, :doc_id, :chunk_index, :chunk_text, CAST(:embedding AS vector), :page_number, :char_start, :char_end, :purpose, :conversation_id)
                 """),
                 {
                     "id": str(uuid.uuid4()),
@@ -125,6 +132,9 @@ async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], e
                     "char_start": chunk.char_start,
                     "char_end": chunk.char_end,
                     "purpose": purpose,
+                    # Denormalized from the parent document so retrieval can decide
+                    # conversation visibility from the chunk row alone (ADR-014).
+                    "conversation_id": conversation_id,
                 },
             )
         await session.commit()
@@ -498,7 +508,7 @@ def resolve_content(document) -> bytes | None:
 
 _DOCUMENT_COLUMNS = (
     "id, purpose, status, content_type, filename, blob_path, retention_mode, "
-    "source_type, source_id, external_id"
+    "source_type, source_id, external_id, conversation_id"
 )
 
 
@@ -701,7 +711,10 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
             if chunks:
                 texts = [c.chunk_text for c in chunks]
                 embeddings = await _embed_chunks(texts)
-                await _store_chunks(document_id, tenant_id, chunks, embeddings, purpose)
+                await _store_chunks(
+                    document_id, tenant_id, chunks, embeddings, purpose,
+                    conversation_id=getattr(document, "conversation_id", None),
+                )
         except Exception:
             logger.info(
                 "document_chunking_failed",

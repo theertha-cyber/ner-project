@@ -5,12 +5,6 @@ AnswerKind = Literal["answer", "clarification", "guardrail_blocked", "out_of_dom
 Rating = Literal["up", "down"]
 
 
-class AttachmentInput(BaseModel):
-    filename: str = Field(..., min_length=1, max_length=255)
-    mime_type: str | None = None
-    file_size_bytes: int | None = Field(default=None, ge=0)
-
-
 class AttachmentOut(BaseModel):
     id: str
     filename: str
@@ -21,9 +15,12 @@ class AttachmentOut(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    """The turn itself. Attachment *content* never appears here — an attachment-bearing
+    turn is sent as `multipart/form-data` and its files arrive as upload parts, because
+    a filename and a byte count cannot be retrieved against (ADR-014, CAP-6)."""
+
     message: str = Field(..., min_length=1, max_length=4000)
     conversation_id: str | None = None
-    attachments: list[AttachmentInput] | None = None
 
 
 class Source(BaseModel):

@@ -31,7 +31,7 @@ class SpyRetriever:
         self.results = results
         self.calls: list[dict] = []
 
-    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
         self.calls.append({"query": query, "top_k": top_k, "metadata_filter": metadata_filter})
         if metadata_filter and "document_ids" in metadata_filter:
             allowed = set(metadata_filter["document_ids"])
@@ -44,7 +44,7 @@ class SpyRetriever:
 
 
 class RaisingRetriever:
-    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
         raise RuntimeError("boom")
 
 

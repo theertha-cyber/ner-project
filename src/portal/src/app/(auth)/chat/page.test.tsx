@@ -353,10 +353,19 @@ describe("Chat page — staged attachments", () => {
     const streamCall = mockFetch.mock.calls.find(([u]) =>
       String(u).includes("/api/v1/chat/stream")
     )!;
-    const body = JSON.parse(String(streamCall[1].body));
-    expect(body.attachments).toEqual([
-      { filename: "invoice.pdf", mime_type: "application/pdf", file_size_bytes: 1 },
-    ]);
+    // Multipart, not JSON: the send carries the file itself so the backend can ingest
+    // and index it for this conversation (CAP-6).
+    const body = streamCall[1].body as FormData;
+    expect(body).toBeInstanceOf(FormData);
+    expect(body.get("message")).toBe("Review this");
+    const sent = body.get("attachments") as File;
+    expect(sent).toBeInstanceOf(File);
+    expect(sent.name).toBe("invoice.pdf");
+    expect(sent.size).toBe(1);
+    // The browser must write the multipart boundary itself.
+    expect(
+      (streamCall[1].headers as Record<string, string> | undefined)?.["Content-Type"]
+    ).toBeUndefined();
 
     await waitFor(() => {
       expect(screen.queryByText("invoice.pdf")).not.toBeInTheDocument();
@@ -408,10 +417,12 @@ describe("Chat page — staged attachments", () => {
     const chatCall = mockFetch.mock.calls.find(([u]) =>
       String(u).endsWith("/api/v1/chat")
     )!;
-    const body = JSON.parse(String(chatCall[1].body));
-    expect(body.attachments).toEqual([
-      { filename: "data.csv", mime_type: "text/csv", file_size_bytes: 1 },
-    ]);
+    const body = chatCall[1].body as FormData;
+    expect(body).toBeInstanceOf(FormData);
+    const sent = body.get("attachments") as File;
+    expect(sent).toBeInstanceOf(File);
+    expect(sent.name).toBe("data.csv");
+    expect(sent.size).toBe(1);
 
     await waitFor(() => {
       expect(screen.queryByText("data.csv")).not.toBeInTheDocument();
@@ -470,5 +481,92 @@ describe("Chat page — staged attachments", () => {
     await screen.findByText("invoice.pdf");
 
     expect(mockFetch.mock.calls.length).toBe(before);
+  });
+});
+
+// Covers verification.md rows 37 and 40 (chat-composer-attachments).
+describe("Chat page — transport and attachment availability", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    vi.unstubAllEnvs();
+  });
+
+  it("sends a text-only turn as JSON, not multipart (Scenario 37)", async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/chat/stream")) {
+        return Promise.resolve(
+          sseResponse([
+            'event: done\ndata: {"reply": "ok", "sources": [], "conversation_id": "conv-1", "message_id": "m1", "answer_kind": "answer"}\n\n',
+          ])
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations")) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    const input = await screen.findByPlaceholderText("Type your question...");
+    fireEvent.change(input, { target: { value: "no files here" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(
+        mockFetch.mock.calls.find(([u]) => String(u).includes("/api/v1/chat/stream"))
+      ).toBeDefined();
+    });
+
+    const call = mockFetch.mock.calls.find(([u]) =>
+      String(u).includes("/api/v1/chat/stream")
+    )!;
+    expect(call[1].body).not.toBeInstanceOf(FormData);
+    const body = JSON.parse(String(call[1].body));
+    expect(body.message).toBe("no files here");
+    // No attachment key at all: the text-only body is what it was before CAP-6.
+    expect(Object.keys(body).sort()).toEqual(["conversation_id", "message"]);
+  });
+
+  it("tells the user when an attachment could not be used for the answer (Scenario 40)", async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/chat/stream")) {
+        return Promise.resolve(
+          sseResponse([
+            'event: done\ndata: {"reply": "ok", "sources": [], "conversation_id": "conv-1", "message_id": "m1", "answer_kind": "answer", "unavailable_attachments": ["jd.pdf"]}\n\n',
+          ])
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations")) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    const input = await screen.findByPlaceholderText("Type your question...");
+    const fileInput = view.container.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["x"], "jd.pdf", { type: "application/pdf" })] },
+    });
+    fireEvent.change(input, { target: { value: "score these" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // Queried by content, not by role: the tray's in-flight hint is also a status.
+    const notice = await screen.findByText(/could not be used for this answer/);
+    expect(notice).toHaveTextContent("jd.pdf");
   });
 });

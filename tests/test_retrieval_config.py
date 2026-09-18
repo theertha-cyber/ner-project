@@ -20,7 +20,7 @@ class SpyRetriever:
         self.results = results
         self.calls: list[dict] = []
 
-    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
         self.calls.append({"top_k": top_k, "metadata_filter": metadata_filter})
         return self.results[:top_k] if top_k is not None else self.results
 

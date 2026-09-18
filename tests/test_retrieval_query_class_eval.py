@@ -66,7 +66,7 @@ class SpyRetriever:
     def __init__(self, results=None):
         self.results = results or []
 
-    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
         return self.results
 
 

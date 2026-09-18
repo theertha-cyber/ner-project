@@ -103,7 +103,27 @@ CREATE TABLE IF NOT EXISTS {schema}.documents (
     ocr_applied_flag BOOLEAN DEFAULT false,
     error_message TEXT,
     purpose VARCHAR(20) NOT NULL DEFAULT 'query',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    -- Added by migrations 003 and 038: the columns the ingestion service writes. The
+    -- older mime_type/file_size_bytes/storage_uri above are the pre-003 names and both
+    -- sets exist in the deployed schema, so a fixture carrying only the first set
+    -- cannot run a real ingestion.
+    content_type VARCHAR(255),
+    file_size BIGINT,
+    blob_path VARCHAR(500),
+    uploaded_by VARCHAR,
+    origin VARCHAR(32) NOT NULL DEFAULT 'push',
+    source_type VARCHAR(64) NOT NULL DEFAULT 'platform_upload',
+    source_id VARCHAR(128) NOT NULL DEFAULT 'platform-upload',
+    external_id VARCHAR(512),
+    source_version VARCHAR(256),
+    source_created_at TIMESTAMPTZ,
+    source_modified_at TIMESTAMPTZ,
+    origin_metadata JSONB,
+    retention_mode VARCHAR(32) NOT NULL DEFAULT 'platform_blob'
+        CHECK (retention_mode IN ('platform_blob', 'ephemeral', 'source_only')),
+    ingested_by_kind VARCHAR(32) NOT NULL DEFAULT 'human',
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS {schema}.document_text_spans (
     id VARCHAR PRIMARY KEY,

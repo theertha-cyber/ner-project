@@ -687,6 +687,94 @@ def apply_document_scope(
     return sql, len(references)
 
 
+CONVERSATION_SCOPE_PARAM = "scope_conversation_id"
+
+# How each relation is tied to a conversation. `None` means the relation carries
+# `conversation_id` itself; a string names the column holding the document id, which is
+# resolved against `documents`. Spans, entities and extraction runs have no
+# `conversation_id` of their own, and giving them one would be four more columns to keep
+# correct for a fact `documents` already owns.
+_STATIC_CONVERSATION_SCOPE_COLUMNS = {
+    "documents": None,
+    "document_chunks": None,
+    "document_text_spans": "document_id",
+    "document_entities": "document_id",
+    "extraction_runs": "document_id",
+}
+
+
+def conversation_scope_columns(surface: QuerySurface | None = None) -> dict[str, str | None]:
+    """`relation -> how a conversation scope reaches it`, static tables plus the surface.
+
+    Derived from the resolved relation set for the same reason `document_scope_columns`
+    is: every generated child table declares `document_id VARCHAR NOT NULL`, so a
+    restated map would be a second place to forget a relation. A whitelisted relation
+    missing from this map would be one a conversation scope silently cannot narrow,
+    which is the hole `test_sql_table_whitelist` guards against."""
+    columns: dict[str, str | None] = dict(_STATIC_CONVERSATION_SCOPE_COLUMNS)
+    for relation in (surface.table_names if surface is not None else set()):
+        columns[relation] = "document_id"
+    return columns
+
+
+def _conversation_predicate(conversation_id: str | None, param_name: str) -> str:
+    """A chunk-or-row is in scope when it belongs to no conversation — tenant-library
+    content — or to the one being answered for. Mirrors `_conversation_clause` in
+    `src/shared/retrieval/retriever.py`; both implement ADR-014, one for each channel."""
+    if conversation_id is None:
+        return "conversation_id IS NULL"
+    return f"(conversation_id IS NULL OR conversation_id = :{param_name})"
+
+
+def apply_conversation_scope(
+    sql: str,
+    conversation_id: str | None,
+    scope_columns: dict[str, str | None] | None = None,
+    param_name: str = CONVERSATION_SCOPE_PARAM,
+) -> tuple[str, int]:
+    """Constrains every conversation-reachable relation in an already-validated statement
+    to content this conversation may see (ADR-014).
+
+    Unlike `apply_document_scope`, this runs on *every* statement, not only a scoped one:
+    it is the isolation boundary for the relational answer channel, and a boundary that
+    applies only when someone remembered to ask for it is not a boundary.
+
+    The rewrite is the same inline-view mechanism, for the same reason — the scope has to
+    survive aggregation, grouping and `LIMIT`, which neither an appended `WHERE` nor a
+    post-execution row filter does:
+
+        FROM document_chunks c   ->   FROM (SELECT * FROM document_chunks
+                                            WHERE conversation_id IS NULL
+                                               OR conversation_id = :cid) c
+
+    Relations without their own `conversation_id` are resolved through `documents`.
+    `documents` is unqualified deliberately: `execute_sql` sets `search_path` to the
+    tenant's schema, so it resolves there and nowhere else."""
+    columns = _STATIC_CONVERSATION_SCOPE_COLUMNS if scope_columns is None else scope_columns
+    references = [
+        r for r in iter_table_references(sql)
+        if not r.is_callable and r.start >= 0 and r.name.lower() in columns
+    ]
+    if not references:
+        return sql, 0
+
+    predicate = _conversation_predicate(conversation_id, param_name)
+
+    for reference in sorted(references, key=lambda r: r.start, reverse=True):
+        table = reference.name.lower()
+        link_column = columns[table]
+        if link_column is None:
+            where = predicate
+        else:
+            where = f"{link_column} IN (SELECT id FROM documents WHERE {predicate})"
+        inline = f"(SELECT * FROM {table} WHERE {where})"
+        if not reference.has_alias:
+            inline = f"{inline} AS {table}"
+        sql = sql[: reference.start] + inline + sql[reference.end:]
+
+    return sql, len(references)
+
+
 # `SET ROLE` / `SET SESSION AUTHORIZATION` would let a statement choose the identity it
 # runs under, which is the one thing the execution role in `execute_sql` must decide.
 _ROLE_SWITCH_RE = re.compile(
@@ -1695,12 +1783,14 @@ Return ONLY the SQL query, no explanations:"""
         document_ids: list[str] | None = None,
         completeness_sink: dict | None = None,
         surface: QuerySurface | None = None,
+        conversation_id: str | None = None,
     ) -> tuple[SQLAttempt, list[dict] | None]:
         """One generate -> validate -> execute -> classify pass. `schema` is passed in
         already bound from authenticated request context and is only ever forwarded;
         nothing here derives it from generated SQL or from the question. `document_ids`
         is likewise caller-supplied: it comes from entity resolution, never from the
-        generated statement."""
+        generated statement. `conversation_id` comes from the same authenticated
+        context and bounds every attempt to content this conversation may see."""
         def record(outcome: str, **kw) -> SQLAttempt:
             return SQLAttempt(
                 attempt=attempt_number, max_attempts=self.max_attempts, outcome=outcome, **kw
@@ -1743,6 +1833,16 @@ Return ONLY the SQL query, no explanations:"""
                     defect=f"{_SCOPE_DEFECT_PREFIX}{scopeable}",
                 ), None
             params = {DOCUMENT_SCOPE_PARAM: list(document_ids)}
+
+        # Unconditional, and last, so it holds over whatever the document scope rewrote.
+        # This is the relational half of ADR-014: without it a generated statement could
+        # read another conversation's attachment straight out of `document_chunks` or
+        # `document_text_spans`, which the vector guardrail would never see.
+        scoped_sql, _ = apply_conversation_scope(
+            scoped_sql, conversation_id, conversation_scope_columns(surface)
+        )
+        if conversation_id is not None:
+            params = {**params, CONVERSATION_SCOPE_PARAM: conversation_id}
 
         try:
             rows = await self.execute_sql(scoped_sql, session, schema, params, completeness_sink)
@@ -1795,6 +1895,7 @@ Return ONLY the SQL query, no explanations:"""
         deadline: float | None = None,
         document_ids: list[str] | None = None,
         completeness_sink: dict | None = None,
+        conversation_id: str | None = None,
     ) -> list[dict] | None:
         """Bounded generate/validate/execute recovery loop. Returns rows on the first
         successful attempt — including an empty list for a legitimate zero-row result —
@@ -1866,7 +1967,7 @@ Return ONLY the SQL query, no explanations:"""
             attempt, rows = await self._run_attempt(
                 attempt_number, natural_language_query, session, schema,
                 conversation_context, grounding, attempts, document_ids, attempt_completeness,
-                surface,
+                surface, conversation_id,
             )
             attempt_duration_ms = int((time.monotonic() - attempt_started) * 1000)
             if completeness_sink is not None and attempt.outcome == SQLAttemptOutcome.SUCCESS:

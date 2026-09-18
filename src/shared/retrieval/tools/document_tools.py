@@ -37,15 +37,19 @@ async def _retrieve(query: str, context: ToolContext, top_k: int | None, metadat
         raise RuntimeError("ToolContext has no retriever configured")
 
     degraded_sink: list = []
+    # `conversation_id` comes from the context, never from `args`: `scope` may narrow
+    # what is already visible, and nothing a tool is handed may widen it (ADR-014).
     if isinstance(context.retriever, RerankingRetriever):
         results = await context.retriever.retrieve(
             query, context.session, context.schema,
             top_k=top_k, metadata_filter=metadata_filter,
+            conversation_id=context.conversation_id,
             jwt_token=context.jwt_token, degraded_sink=degraded_sink,
         )
     else:
         results = await context.retriever.retrieve(
-            query, context.session, context.schema, top_k=top_k, metadata_filter=metadata_filter,
+            query, context.session, context.schema, top_k=top_k,
+            metadata_filter=metadata_filter, conversation_id=context.conversation_id,
         )
     return results, bool(degraded_sink)
 

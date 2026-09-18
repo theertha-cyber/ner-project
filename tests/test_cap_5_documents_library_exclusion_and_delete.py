@@ -54,8 +54,11 @@ async def seed_document_with_conversation(
         await session.execute(
             text(
                 f"INSERT INTO {schema}.documents "
-                f"(id, tenant_id, filename, status, purpose, conversation_id, storage_uri, mime_type, file_size_bytes) "
-                f"VALUES (:id, :tid, :fn, 'processed', 'query', :cid, :blob, 'application/pdf', 1000)"
+                f"(id, tenant_id, filename, status, purpose, conversation_id, storage_uri, blob_path, mime_type, file_size_bytes, uploaded_by) "
+                # Both blob columns: `storage_uri` is the pre-003 name and `blob_path` the
+                # one every reader prefers when it exists, so seeding only the first hides
+                # the blob from the delete path under the deployed schema.
+                f"VALUES (:id, :tid, :fn, 'processed', 'query', :cid, :blob, :blob, 'application/pdf', 1000, :uploaded_by)"
             ),
             {
                 "id": document_id,
@@ -63,6 +66,10 @@ async def seed_document_with_conversation(
                 "fn": filename,
                 "cid": conversation_id,
                 "blob": blob_path,
+                # The library listing scopes a human-ingested document to its uploader,
+                # so a seed that leaves this null is invisible to the very listing the
+                # test asserts on.
+                "uploaded_by": uploaded_by,
             },
         )
         # Seed a text span

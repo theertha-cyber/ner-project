@@ -148,6 +148,36 @@ class TestChatEndpointTurnShape:
         monkeypatch.setattr(chat_module.orchestrator, "execute_with_clarification", fake)
         return fake
 
+    @staticmethod
+    def _patch_ingestion(monkeypatch):
+        """Real ingestion over an in-memory store. The default store is object storage,
+        which no unit test has credentials for, and the default dispatcher would kick off
+        OCR and embedding — neither is what these tests are about. `RecordingDispatcher`
+        leaves the row at `pending`, so the wait is shortened to keep the turn quick; the
+        attachment then reports as unavailable, which is the documented degradation."""
+        from src.chat_api.api.v1 import chat as chat_module
+        from src.document_service.ingestion.dispatcher import RecordingDispatcher
+        from src.document_service.ingestion.service import DocumentIngestionService
+
+        class FakeStore:
+            kind = "fake"
+
+            def __init__(self):
+                self.objects: dict[str, bytes] = {}
+
+            def put(self, tenant_id, document_id, data, filename=None):
+                reference = f"{tenant_id}/{document_id}"
+                self.objects[reference] = data
+                return reference
+
+        store = FakeStore()
+        monkeypatch.setattr(
+            chat_module, "ingestion_service",
+            DocumentIngestionService(dispatcher=RecordingDispatcher(), durable_store=store, working_store=store),
+        )
+        monkeypatch.setattr(chat_module, "ATTACHMENT_PROCESSING_TIMEOUT_SECONDS", 0.05)
+        return store
+
     async def test_entity_count_turn_returns_reply_sources_and_conversation_id(
         self, engine, tenant_schema, monkeypatch,
     ):
@@ -225,18 +255,14 @@ class TestChatEndpointTurnShape:
         self._patch(monkeypatch, "Attachment reply.", [
             Citation(document_name="r.pdf", document_id="doc-1", source_type="sql"),
         ])
+        self._patch_ingestion(monkeypatch)
 
         async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/chat",
                 headers=self._auth(tid),
-                json={
-                    "message": "Here is the file",
-                    "conversation_id": None,
-                    "attachments": [
-                        {"filename": "agreement.pdf", "mime_type": "application/pdf", "file_size_bytes": 12},
-                    ],
-                },
+                data={"message": "Here is the file", "conversation_id": ""},
+                files={"attachments": ("agreement.csv", b"role,level\nengineer,senior\n", "text/csv")},
             )
 
         assert resp.status_code == 200
@@ -244,14 +270,54 @@ class TestChatEndpointTurnShape:
         conv_id = body["conversation_id"]
 
         async with engine.begin() as conn:
-            rows = (await conn.execute(text(f"SELECT filename, conversation_id FROM {schema}.documents WHERE conversation_id = :cid"), {"cid": conv_id})).fetchall()
+            rows = (await conn.execute(text(
+                f"SELECT filename, conversation_id, checksum, blob_path, retention_mode "
+                f"FROM {schema}.documents WHERE conversation_id = :cid"
+            ), {"cid": conv_id})).fetchall()
 
-        assert [r[0] for r in rows] == ["agreement.pdf"]
+        assert [r.filename for r in rows] == ["agreement.csv"]
+        # Proof the row came from the ingestion service rather than a direct INSERT:
+        # none of these columns existed on the metadata-only row CAP-3 wrote.
+        assert rows[0].checksum
+        assert rows[0].blob_path
+        assert rows[0].retention_mode == "platform_blob"
+
         async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
             detail_resp = await client.get(f"/api/v1/chat/conversations/{conv_id}", headers=self._auth(tid))
 
         assert detail_resp.status_code == 200
-        assert detail_resp.json()["attachments"][0]["filename"] == "agreement.pdf"
+        attachment = detail_resp.json()["attachments"][0]
+        assert attachment["filename"] == "agreement.csv"
+        assert attachment["mime_type"] == "text/csv"
+
+    async def test_unsupported_attachment_is_rejected_without_creating_a_conversation(
+        self, engine, tenant_schema, monkeypatch,
+    ):
+        from httpx import ASGITransport, AsyncClient
+        from sqlalchemy import text
+
+        tid, schema = tenant_schema
+        self._patch(monkeypatch, "Attachment reply.", [
+            Citation(document_name="r.pdf", document_id="doc-1", source_type="sql"),
+        ])
+        self._patch_ingestion(monkeypatch)
+
+        async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/chat",
+                headers=self._auth(tid),
+                data={"message": "Here is the file", "conversation_id": ""},
+                files={"attachments": ("notes.exe", b"MZ", "application/octet-stream")},
+            )
+
+        assert resp.status_code == 422
+        assert ".exe" in resp.json()["detail"]
+
+        async with engine.begin() as conn:
+            conversations = (await conn.execute(
+                text(f"SELECT id FROM {schema}.conversations")
+            )).fetchall()
+        assert conversations == []
 
     async def test_other_conversation_does_not_return_attachments(
         self, engine, tenant_schema, monkeypatch,
@@ -262,16 +328,14 @@ class TestChatEndpointTurnShape:
         self._patch(monkeypatch, "Attachment reply.", [
             Citation(document_name="r.pdf", document_id="doc-1", source_type="sql"),
         ])
+        self._patch_ingestion(monkeypatch)
 
         async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
             first = await client.post(
                 "/api/v1/chat",
                 headers=self._auth(tid),
-                json={
-                    "message": "First file",
-                    "conversation_id": None,
-                    "attachments": [{"filename": "first.pdf", "mime_type": "application/pdf", "file_size_bytes": 5}],
-                },
+                data={"message": "First file", "conversation_id": ""},
+                files={"attachments": ("first.csv", b"a,b\n1,2\n", "text/csv")},
             )
             first_conv_id = first.json()["conversation_id"]
             second = await client.post(

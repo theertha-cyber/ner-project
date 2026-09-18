@@ -65,7 +65,7 @@ class SpyRetriever:
         self.error = error
         self.calls: list[dict] = []
 
-    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
         self.calls.append({"query": query, "metadata_filter": metadata_filter})
         if self.error is not None:
             raise self.error
@@ -368,7 +368,7 @@ class TestDedupeKeepsBestScore:
             def __init__(self):
                 self.n = 0
 
-            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
                 self.n += 1
                 return [filler, weaker] if self.n == 1 else [stronger]
 
@@ -421,7 +421,7 @@ class TestPartialFailureNoError:
             def __init__(self):
                 self.n = 0
 
-            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
                 self.n += 1
                 if self.n == 1:
                     raise RuntimeError("boom")
@@ -575,7 +575,7 @@ class TestCrossInvocationScoreSemantics:
             def __init__(self):
                 self.n = 0
 
-            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
                 self.n += 1
                 if self.n == 1:
                     # Cross-encoder logits: large, and negative for the weaker result.

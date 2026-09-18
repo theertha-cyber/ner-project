@@ -6,6 +6,9 @@ import logging
 from fastapi import APIRouter, Depends, Request, HTTPException
 from src.shared.data_plane_gate import require_data_plane_ready
 from fastapi.responses import JSONResponse, StreamingResponse, Response
+# Starlette's, not FastAPI's: `request.form()` yields starlette instances, and
+# FastAPI's subclass would fail the isinstance check against them.
+from starlette.datastructures import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
@@ -17,6 +20,28 @@ from src.shared.tenant_context import classify_driver_error, record_health_best_
 from pydantic import ValidationError
 from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut, RetrievalStatusOut, ExportAvailability, ChartPayload, AttachmentOut
 from src.chat_api.services.chart_tool import ChartFrame
+from src.document_service.ingestion.contract import (
+    PLATFORM_UPLOAD_SOURCE_ID,
+    SOURCE_TYPE_PLATFORM_UPLOAD,
+    ActorKind,
+    ContentAccess,
+    ContentAcquisition,
+    IngestingActor,
+    NormalizedDocument,
+    SourceReference,
+)
+from src.document_service.ingestion.errors import (
+    FileTooLarge,
+    IncompatibleRetention,
+    UnsupportedFileType,
+)
+from src.document_service.ingestion.service import DocumentIngestionService
+from src.document_service.services.ocr_worker import (
+    ALLOWED_EXTENSIONS,
+    get_extension,
+    is_allowed_file,
+)
+
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator, STREAM_DONE
 from src.chat_api.services.guardrails import GuardrailService
 from src.chat_api.services.rate_limiter import rate_limiter, INTERNAL_RATE_LIMIT, INTERNAL_WINDOW
@@ -29,6 +54,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"], dependencies=[Depends(require_data_plane_ready)])
 orchestrator = RAGOrchestrator()
 guardrails = GuardrailService()
+# Module-level like `orchestrator`, for the same reason: it owns process-wide content
+# store and dispatcher handles, and tests substitute one built over fakes.
+ingestion_service = DocumentIngestionService()
 
 
 def _parse_persisted_source(s) -> Source | Citation:
@@ -133,25 +161,139 @@ async def _prepare_conversation(
     return conversation_id, conversation_context
 
 
-async def _persist_attachments(session: AsyncSession, schema: str, tenant_id: str, conversation_id: str, attachments: list | None) -> None:
-    if not attachments:
-        return
-    for attachment in attachments:
-        attachment_id = str(uuid.uuid4())
-        await session.execute(
-            text(
-                f"INSERT INTO {schema}.documents (id, tenant_id, filename, mime_type, file_size_bytes, conversation_id, created_at) "
-                "VALUES (:id, :tid, :filename, :mime_type, :file_size_bytes, :conversation_id, clock_timestamp())"
+# How long a turn waits for its own attachments to become retrievable. Long enough for
+# a job description, short enough that a scanned PDF cannot hold the request past a
+# gateway timeout; past it the turn is answered without the attachment and says so.
+ATTACHMENT_PROCESSING_TIMEOUT_SECONDS = 60.0
+_ATTACHMENT_POLL_INTERVAL_SECONDS = 0.25
+
+
+async def _parse_chat_request(request: Request) -> tuple[ChatRequest, list[UploadFile]]:
+    """One turn, two transports. A JSON body is the text-only request this endpoint has
+    always accepted and is parsed exactly as before; `multipart/form-data` additionally
+    carries the attached files' bytes as upload parts (design Decision 1).
+
+    Branching here rather than in two endpoints keeps one URL per path and leaves the
+    text-only request byte-for-byte what it was."""
+    media_type = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+
+    if media_type == "multipart/form-data":
+        form = await request.form()
+        files = [part for part in form.getlist("attachments") if isinstance(part, UploadFile)]
+        raw = {
+            "message": form.get("message") or "",
+            "conversation_id": form.get("conversation_id") or None,
+        }
+    else:
+        try:
+            raw = await request.json()
+        except Exception:
+            raise HTTPException(status_code=422, detail="Request body is not valid JSON")
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=422, detail="Request body must be a JSON object")
+        files = []
+
+    try:
+        return ChatRequest(**raw), files
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=json.loads(e.json()))
+
+
+def _reject_unsupported_attachments(files: list[UploadFile]) -> None:
+    """Runs before the conversation is prepared, so a rejected first send leaves no
+    conversation behind — the spec's "SHALL NOT create a conversation for a first send
+    that was rejected"."""
+    for upload in files:
+        if not is_allowed_file(upload.filename or ""):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Unsupported file type '{get_extension(upload.filename or '')}'. "
+                    f"Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+                ),
+            )
+
+
+async def _ingest_attachments(
+    session: AsyncSession, tenant_id: str, user_id: str | None,
+    conversation_id: str, files: list[UploadFile],
+) -> list[str]:
+    """Ingest each attachment as a conversation-owned document and wait for it to become
+    retrievable. Returns the filenames that did not make it, which the turn reports
+    rather than silently answering without them (design Decision 6).
+
+    Ingestion goes through `DocumentIngestionService` — the one code path permitted to
+    create a `documents` row — so an attachment gets the same checksum, content-store
+    write, retention resolution and processing dispatch as any other document, and
+    `conversation_id` is written by the insert itself rather than by a later UPDATE, so
+    the row is never briefly unowned."""
+    if not files:
+        return []
+
+    document_ids: list[str] = []
+    unavailable: list[str] = []
+
+    for upload in files:
+        data = await upload.read()
+        document = NormalizedDocument(
+            tenant_id=tenant_id,
+            filename=upload.filename or "attachment",
+            content=ContentAccess.from_bytes(data),
+            purpose="query",
+            actor=IngestingActor(kind=ActorKind.HUMAN, user_id=user_id),
+            source=SourceReference(
+                source_type=SOURCE_TYPE_PLATFORM_UPLOAD,
+                source_id=PLATFORM_UPLOAD_SOURCE_ID,
             ),
-            {
-                "id": attachment_id,
-                "tid": tenant_id,
-                "filename": attachment.filename,
-                "mime_type": attachment.mime_type,
-                "file_size_bytes": attachment.file_size_bytes,
-                "conversation_id": conversation_id,
-            },
+            # A browser upload's bytes exist only for this request: there is no one left
+            # to re-ask once it ends.
+            acquisition=ContentAcquisition.SINGLE_USE,
+            declared_media_type=upload.content_type,
+            declared_size=len(data),
+            conversation_id=conversation_id,
         )
+        try:
+            result = await ingestion_service.ingest(session, document)
+        except UnsupportedFileType as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except FileTooLarge as e:
+            raise HTTPException(status_code=413, detail=str(e))
+        except IncompatibleRetention as e:
+            # A browser upload cannot satisfy `source_only` retention: there is no source
+            # to re-ask. Pre-existing platform behaviour, now reachable from chat — say
+            # so rather than surfacing a 500.
+            raise HTTPException(status_code=409, detail=str(e))
+        document_ids.append(result.document_id)
+
+    for document_id, upload in zip(document_ids, files):
+        if not await _await_processed(session, _schema(tenant_id), document_id):
+            unavailable.append(upload.filename or "attachment")
+
+    return unavailable
+
+
+async def _await_processed(session: AsyncSession, schema: str, document_id: str) -> bool:
+    """Poll rather than await the dispatched task: processing is dispatched fire-and-
+    forget (`InProcessDispatcher`) and may run in another process entirely, so the
+    document's own row is the only status both sides agree on."""
+    deadline = time.monotonic() + ATTACHMENT_PROCESSING_TIMEOUT_SECONDS
+    while True:
+        result = await session.execute(
+            text(f"SELECT status FROM {schema}.documents WHERE id = :id"),
+            {"id": document_id},
+        )
+        row = result.fetchone()
+        status = row.status if row else None
+        if status == "processed":
+            return True
+        if status == "failed" or row is None:
+            return False
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "attachment_processing_timeout", extra={"document_id": document_id}
+            )
+            return False
+        await asyncio.sleep(_ATTACHMENT_POLL_INTERVAL_SECONDS)
 
 
 async def _persist_turn_and_respond(
@@ -237,7 +379,17 @@ async def _persist_turn_and_respond(
 
 
 def _conversation_attachments_query(schema: str) -> str:
-    return f"SELECT id, filename, mime_type, file_size_bytes, conversation_id, created_at FROM {schema}.documents WHERE conversation_id = :cid ORDER BY created_at ASC"
+    # `documents` carries two generations of the same two facts: `mime_type` /
+    # `file_size_bytes` from the original table and `content_type` / `file_size` added by
+    # migration 003, which is the pair the ingestion service writes. Coalescing keeps one
+    # response shape over rows from either era.
+    return (
+        "SELECT id, filename, "
+        "COALESCE(mime_type, content_type) AS mime_type, "
+        "COALESCE(file_size_bytes, file_size) AS file_size_bytes, "
+        f"conversation_id, created_at FROM {schema}.documents "
+        "WHERE conversation_id = :cid ORDER BY created_at ASC"
+    )
 
 
 def _response_payload(response: ChatResponse) -> dict:
@@ -262,7 +414,6 @@ def _response_payload(response: ChatResponse) -> dict:
 
 @router.post("", response_model=ChatResponse)
 async def chat(
-    body: ChatRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
@@ -270,8 +421,13 @@ async def chat(
     user_id = getattr(request.state, "user_id", None)
     schema = _schema(tenant_id)
 
+    body, files = await _parse_chat_request(request)
+    _reject_unsupported_attachments(files)
+
     conversation_id, conversation_context = await _prepare_conversation(session, schema, tenant_id, user_id, body)
-    await _persist_attachments(session, schema, tenant_id, conversation_id, getattr(body, "attachments", None))
+    unavailable_attachments = await _ingest_attachments(
+        session, tenant_id, user_id, conversation_id, files
+    )
 
     auth_header = request.headers.get("Authorization", "")
     jwt_token = auth_header.removeprefix("Bearer ")
@@ -288,7 +444,9 @@ async def chat(
     )
 
     headers = rate_limiter.get_headers(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
-    return JSONResponse(content=_response_payload(response), headers=headers)
+    payload = _response_payload(response)
+    payload["unavailable_attachments"] = unavailable_attachments
+    return JSONResponse(content=payload, headers=headers)
 
 
 def _sse_frame(event: str, data: dict) -> str:
@@ -297,7 +455,6 @@ def _sse_frame(event: str, data: dict) -> str:
 
 @router.post("/stream")
 async def chat_stream(
-    body: ChatRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
@@ -309,8 +466,13 @@ async def chat_stream(
     user_id = getattr(request.state, "user_id", None)
     schema = _schema(tenant_id)
 
+    body, files = await _parse_chat_request(request)
+    _reject_unsupported_attachments(files)
+
     conversation_id, conversation_context = await _prepare_conversation(session, schema, tenant_id, user_id, body)
-    await _persist_attachments(session, schema, tenant_id, conversation_id, getattr(body, "attachments", None))
+    unavailable_attachments = await _ingest_attachments(
+        session, tenant_id, user_id, conversation_id, files
+    )
 
     auth_header = request.headers.get("Authorization", "")
     jwt_token = auth_header.removeprefix("Bearer ")
@@ -347,7 +509,9 @@ async def chat_stream(
             pending_clarification, answer_kind, model_version, response_time_ms,
             retrieval_status, sql_results, chart,
         )
-        yield _sse_frame("done", _response_payload(response))
+        done_payload = _response_payload(response)
+        done_payload["unavailable_attachments"] = unavailable_attachments
+        yield _sse_frame("done", done_payload)
 
     headers = rate_limiter.get_headers(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
     headers.update({

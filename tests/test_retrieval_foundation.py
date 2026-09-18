@@ -87,7 +87,8 @@ async def seeded_chunks(tenant_schema, engine):
                     page_number INTEGER,
                     char_start INTEGER,
                     char_end INTEGER,
-                    purpose VARCHAR(20)
+                    purpose VARCHAR(20),
+                    conversation_id VARCHAR
                 )
             """)
         )
@@ -293,7 +294,8 @@ async def seeded_mixed_purpose_chunks(tenant_schema, engine):
                     page_number INTEGER,
                     char_start INTEGER,
                     char_end INTEGER,
-                    purpose VARCHAR(20)
+                    purpose VARCHAR(20),
+                    conversation_id VARCHAR
                 )
             """)
         )

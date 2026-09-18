@@ -58,15 +58,31 @@ const CHAT_API_BASE = "/api/v1/chat";
 const CHAT_ROUTE = "/chat";
 const MAX_STAGED_FILES = 10;
 
-// The chat API carries attachment *metadata* in the same JSON body as the
-// message (src/chat_api/api/v1/schemas.py: AttachmentInput); file bytes are
-// uploaded through a separate path once the conversation is adopted.
-function toChatAttachment(file: StagedFile) {
-  return {
-    filename: file.name,
-    mime_type: file.type || null,
-    file_size_bytes: file.size,
-  };
+// One turn, two transports (CAP-6 design Decision 1). A text-only send keeps the JSON
+// body this endpoint has always taken; an attachment-bearing send carries the files
+// themselves as multipart parts, which the backend ingests so they become answerable in
+// this conversation. `Content-Type` is left unset for FormData so the browser writes the
+// multipart boundary itself.
+function buildSendRequest(
+  text: string,
+  conversationId: string | null,
+  attachments: StagedFile[]
+): RequestInit {
+  if (attachments.length === 0) {
+    return {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, conversation_id: conversationId }),
+    };
+  }
+
+  const form = new FormData();
+  form.append("message", text);
+  form.append("conversation_id", conversationId ?? "");
+  for (const staged of attachments) {
+    form.append("attachments", staged.file, staged.name);
+  }
+  return { method: "POST", body: form };
 }
 
 function ChatPageInner() {
@@ -81,8 +97,10 @@ function ChatPageInner() {
   const [sending, setSending] = useState(false);
   const [creatingConversation, setCreatingConversation] = useState(false);
   const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [noticeToast, setNoticeToast] = useState<string | null>(null);
   const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appliedParamRef = useRef<string | null>(null);
 
   const loadConversations = useCallback(async () => {
@@ -149,6 +167,26 @@ function ChatPageInner() {
     errorTimerRef.current = setTimeout(() => setErrorToast(null), 5000);
   }, []);
 
+  // Distinct from showError: the turn succeeded, but it was answered without an
+  // attachment the user supplied. Saying nothing would present an answer built from
+  // other sources as though it had read their file.
+  const showNotice = useCallback((msg: string) => {
+    setNoticeToast(msg);
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => setNoticeToast(null), 8000);
+  }, []);
+
+  const reportUnavailableAttachments = useCallback((data: Record<string, unknown>) => {
+    const unavailable = data?.unavailable_attachments;
+    if (Array.isArray(unavailable) && unavailable.length > 0) {
+      showNotice(
+        unavailable.join(", ") +
+          (unavailable.length === 1 ? " was" : " were") +
+          " not ready in time and could not be used for this answer."
+      );
+    }
+  }, [showNotice]);
+
   // Staging is client-side only: nothing is reserved or created until send
   // (FR-006 / ADR-011). Dedupe by name+size; keep the queue to a sane bound.
   const handleAttach = useCallback((files: File[]) => {
@@ -164,6 +202,7 @@ function ChatPageInner() {
           name: file.name,
           size: file.size,
           type: file.type,
+          file,
         });
       }
       return next.slice(0, MAX_STAGED_FILES);
@@ -248,17 +287,10 @@ function ChatPageInner() {
     let outcome: "done" | "error" | null = null;
 
     try {
-      const resp = await authFetch(CHAT_API_BASE + "/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          conversation_id: activeConvId,
-          ...(attachments.length > 0
-            ? { attachments: attachments.map(toChatAttachment) }
-            : {}),
-        }),
-      });
+      const resp = await authFetch(
+        CHAT_API_BASE + "/stream",
+        buildSendRequest(text, activeConvId, attachments)
+      );
 
       if (!resp.ok) {
         throw new Error("Streaming request failed with status " + resp.status);
@@ -311,6 +343,7 @@ function ChatPageInner() {
           if (!activeConvId || isFirstMessage) {
             loadConversations();
           }
+          reportUnavailableAttachments(data);
           // The turn was adopted by the backend: the staged tray has served its
           // purpose and is cleared (spec scenario "Send a message with staged
           // attachments").
@@ -332,21 +365,14 @@ function ChatPageInner() {
     } finally {
       setSending(false);
     }
-  }, [activeConvId, loadConversations, showError]);
+  }, [activeConvId, loadConversations, showError, reportUnavailableAttachments]);
 
   const handleSendMessageNonStreaming = useCallback(async (text: string, attachments: StagedFile[], tempId: string, thinkingId: string, isFirstMessage: boolean) => {
     try {
-      const resp = await authFetch(CHAT_API_BASE, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          conversation_id: activeConvId,
-          ...(attachments.length > 0
-            ? { attachments: attachments.map(toChatAttachment) }
-            : {}),
-        }),
-      });
+      const resp = await authFetch(
+        CHAT_API_BASE,
+        buildSendRequest(text, activeConvId, attachments)
+      );
 
       if (resp.ok) {
         const data = await resp.json();
@@ -373,6 +399,7 @@ function ChatPageInner() {
         if (!activeConvId || isFirstMessage) {
           loadConversations();
         }
+        reportUnavailableAttachments(data);
         // Success: the staged tray is cleared; on failure it is preserved so the
         // user can retry without re-picking files (spec scenario "Failed send
         // preserves staged attachments").
@@ -387,7 +414,7 @@ function ChatPageInner() {
     } finally {
       setSending(false);
     }
-  }, [activeConvId, loadConversations, showError]);
+  }, [activeConvId, loadConversations, showError, reportUnavailableAttachments]);
 
   const handleSendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return;
@@ -482,6 +509,29 @@ function ChatPageInner() {
           {errorToast}
         </div>
       )}
+      {noticeToast && (
+        <div
+          role="status"
+          style={{
+            position: "absolute",
+            top: errorToast ? 56 : 8,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 100,
+            background: "var(--surface-3)",
+            color: "var(--ink-2)",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+            padding: "10px 20px",
+            fontSize: 13,
+            fontWeight: 500,
+            maxWidth: 400,
+            textAlign: "center",
+          }}
+        >
+          {noticeToast}
+        </div>
+      )}
       {activeConvId ? (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div
@@ -554,6 +604,7 @@ function ChatPageInner() {
                 stagedFiles={stagedFiles}
                 onAttach={handleAttach}
                 onRemoveFile={handleRemoveFile}
+                uploading={sending && stagedFiles.length > 0}
               />
             </div>
           </div>

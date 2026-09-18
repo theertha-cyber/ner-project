@@ -262,14 +262,14 @@ class DocumentIngestionService:
                 f"""
                 INSERT INTO {schema}.documents (
                     id, tenant_id, filename, content_type, file_size, checksum, status,
-                    blob_path, purpose, uploaded_by,
+                    blob_path, purpose, uploaded_by, conversation_id,
                     origin, source_type, source_id, external_id, source_version,
                     source_created_at, source_modified_at, origin_metadata,
                     retention_mode, ingested_by_kind
                 )
                 VALUES (
                     :id, :tid, :filename, :content_type, :file_size, :checksum, 'pending',
-                    :blob_path, :purpose, :uploaded_by,
+                    :blob_path, :purpose, :uploaded_by, :conversation_id,
                     :origin, :source_type, :source_id, :external_id, :source_version,
                     :source_created_at, :source_modified_at, CAST(:origin_metadata AS JSONB),
                     :retention_mode, :ingested_by_kind
@@ -286,6 +286,7 @@ class DocumentIngestionService:
                 "blob_path": storage_reference,
                 "purpose": document.purpose,
                 "uploaded_by": document.actor.user_id,
+                "conversation_id": document.conversation_id,
                 "origin": source.origin,
                 "source_type": source.source_type,
                 "source_id": source.source_id,

@@ -146,7 +146,8 @@ async def seeded_chunks_with_metadata(tenant_schema, engine):
                     page_number INTEGER,
                     char_start INTEGER,
                     char_end INTEGER,
-                    purpose VARCHAR(20)
+                    purpose VARCHAR(20),
+                    conversation_id VARCHAR
                 )
             """)
         )
@@ -245,7 +246,8 @@ class TestPerSpanIngestionChunkBoundary:
                         page_number INTEGER,
                         char_start INTEGER,
                         char_end INTEGER,
-                        purpose VARCHAR(20)
+                        purpose VARCHAR(20),
+                        conversation_id VARCHAR
                     )
                 """)
             )
@@ -322,7 +324,8 @@ class TestChunkPurposeDenormalization:
                         page_number INTEGER,
                         char_start INTEGER,
                         char_end INTEGER,
-                        purpose VARCHAR(20)
+                        purpose VARCHAR(20),
+                        conversation_id VARCHAR
                     )
                 """)
             )
@@ -349,6 +352,72 @@ class TestChunkPurposeDenormalization:
 
         assert len(rows) == 1
         assert all(r.purpose == "training" for r in rows)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("conversation_id", ["conv-a", None])
+    async def test_store_chunks_persists_conversation_ownership_on_every_row(
+        self, tenant_schema, engine, conversation_id,
+    ):
+        """CAP-6 verification rows 22-23. Ownership is denormalized the same way
+        `purpose` is, so retrieval can decide conversation visibility from the chunk row
+        alone. A document with no conversation leaves it NULL, which is what keeps
+        tenant-library content visible from every conversation."""
+        tenant_id, schema = tenant_schema
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+        from src.document_service.services.ocr_worker import _store_chunks
+
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+        async with session_factory() as session:
+            await session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await session.execute(
+                text(f"""
+                    CREATE TABLE IF NOT EXISTS {schema}.document_chunks (
+                        id VARCHAR PRIMARY KEY,
+                        document_id VARCHAR NOT NULL,
+                        chunk_index INTEGER NOT NULL,
+                        chunk_text TEXT NOT NULL,
+                        embedding vector(1536),
+                        page_number INTEGER,
+                        char_start INTEGER,
+                        char_end INTEGER,
+                        purpose VARCHAR(20),
+                        conversation_id VARCHAR
+                    )
+                """)
+            )
+            if conversation_id is not None:
+                await session.execute(
+                    text(
+                        f"INSERT INTO {schema}.conversations (id, tenant_id, user_id, title) "
+                        "VALUES (:cid, :tid, 'test-user', 'T')"
+                    ),
+                    {"cid": conversation_id, "tid": tenant_id},
+                )
+            doc_id = f"doc-{uuid.uuid4()}"
+            await session.execute(
+                text(f"""
+                    INSERT INTO {schema}.documents (id, tenant_id, filename, status, purpose, conversation_id)
+                    VALUES (:id, :tid, :fn, 'uploaded', 'query', :cid)
+                """),
+                {"id": doc_id, "tid": tenant_id, "fn": "jd.pdf", "cid": conversation_id},
+            )
+            await session.commit()
+
+        chunks = [Chunk(chunk_index=0, chunk_text="job description body", page_number=0, char_start=0, char_end=20)]
+        await _store_chunks(
+            doc_id, tenant_id, chunks, [_fake_vector([0.1, 0.2, 0.3])], "query",
+            conversation_id=conversation_id,
+        )
+
+        async with session_factory() as session:
+            rows = (await session.execute(
+                text(f"SELECT conversation_id FROM {schema}.document_chunks WHERE document_id = :doc_id"),
+                {"doc_id": doc_id},
+            )).fetchall()
+
+        assert len(rows) == 1
+        assert all(r.conversation_id == conversation_id for r in rows)
 
 
 @pytest.mark.integration
@@ -378,7 +447,8 @@ class TestChunkingRestrictedToQueryPurpose:
                         page_number INTEGER,
                         char_start INTEGER,
                         char_end INTEGER,
-                        purpose VARCHAR(20)
+                        purpose VARCHAR(20),
+                        conversation_id VARCHAR
                     )
                 """)
             )

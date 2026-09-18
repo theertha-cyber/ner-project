@@ -175,16 +175,20 @@ class RAGOrchestrator:
                           attempt_sink: list | None = None,
                           deadline: float | None = None,
                           document_ids: list[str] | None = None,
-                          completeness_sink: dict | None = None) -> list[dict] | None:
+                          completeness_sink: dict | None = None,
+                          conversation_id: str | None = None) -> list[dict] | None:
         """`schema` comes from the caller's authenticated request context and is passed
         straight through — the recovery loop never re-derives it. Raises
         `SQLGenerationFailed` when every attempt failed; the tool layer turns that into
-        a `ToolResult` error rather than an empty result."""
+        a `ToolResult` error rather than an empty result.
+
+        `conversation_id` arrives from the same authenticated context and bounds the
+        generated statement to content this conversation may see (ADR-014)."""
         conv_text = render_history(conversation_context)
         return await self.sql_generator.generate_and_execute(
             message, session, schema, conv_text,
             attempt_sink=attempt_sink, deadline=deadline, document_ids=document_ids,
-            completeness_sink=completeness_sink,
+            completeness_sink=completeness_sink, conversation_id=conversation_id,
         )
 
     async def _external_source(self, query: str, session: AsyncSession, tenant_id: str,

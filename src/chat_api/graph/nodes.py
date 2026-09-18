@@ -421,6 +421,9 @@ def build_nodes(orchestrator) -> dict:
         resolved_document_ids = state.get("resolved_document_ids") or []
         conversation_context = state.get("conversation_context")
         registry = state.get("tool_registry") or orchestrator.tool_registry
+        # Read from graph state, which carries it from the authenticated request — not
+        # from the plan, the message, or any tool argument (ADR-014).
+        conversation_id = state.get("conversation_id")
 
         # Routed through EngineResolver (ADR-017): retrieval and generated SQL both run
         # against wherever this tenant's data plane resolves.
@@ -437,6 +440,7 @@ def build_nodes(orchestrator) -> dict:
                     max_top_k=settings.retrieval_top_k, sql_search=orchestrator._sql_source,
                     external_search=orchestrator._external_source,
                     deadline=deadline, conversation_context=conversation_context,
+                    conversation_id=conversation_id,
                 )
 
         budget = OrchestrationBudget(max_invocations=settings.orchestrator_max_invocations, deadline=deadline)

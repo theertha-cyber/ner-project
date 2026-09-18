@@ -83,6 +83,8 @@ class StructuredRetrievalTool:
                 attempt_sink=attempt_sink, deadline=context.deadline,
                 document_ids=_scope_to_document_ids(args.get("scope")),
                 completeness_sink=completeness_sink,
+                # From the context, never from `args` — same rule as semantic retrieval.
+                conversation_id=context.conversation_id,
             )
             return (rows or []), False
 

@@ -7,7 +7,7 @@ function makeFile(name: string, type = "application/pdf", size = 128) {
 }
 
 function staged(id: string, name: string): StagedFile {
-  return { id, name, size: 128, type: "application/pdf" };
+  return { id, name, size: 128, type: "application/pdf", file: makeFile(name) };
 }
 
 const noop = () => undefined;
@@ -188,5 +188,41 @@ describe("ChatInput — attachment staging", () => {
     fireEvent.change(textarea, { target: { value: "hello" } });
 
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  });
+});
+// Covers verification.md row 38 (chat-composer-attachments: in-flight progress).
+describe("ChatInput — attachment send progress", () => {
+  it("replaces the staging hint with an upload status while the send is in flight", () => {
+    const { rerender } = render(
+      <ChatInput
+        onSend={noop}
+        disabled={false}
+        stagedFiles={[staged("1", "jd.pdf")]}
+        onAttach={noop}
+        onRemoveFile={noop}
+      />
+    );
+
+    expect(
+      screen.getByText("Staging does not reserve the conversation until send.")
+    ).toBeInTheDocument();
+
+    rerender(
+      <ChatInput
+        onSend={noop}
+        disabled={true}
+        stagedFiles={[staged("1", "jd.pdf")]}
+        onAttach={noop}
+        onRemoveFile={noop}
+        uploading
+      />
+    );
+
+    expect(
+      screen.getByRole("status")
+    ).toHaveTextContent("Uploading and preparing attachments");
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    // Removing a file mid-flight would desync the tray from the request already sent.
+    expect(screen.getByRole("button", { name: "Remove jd.pdf" })).toBeDisabled();
   });
 });

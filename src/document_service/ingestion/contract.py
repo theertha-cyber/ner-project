@@ -106,6 +106,12 @@ class NormalizedDocument:
     # checksum, and media-type resolution falls back to the filename and then a sniff.
     declared_media_type: str | None = None
     declared_size: int | None = None
+    # The conversation that owns this document, for content attached to a chat turn
+    # (ADR-011). None means tenant-library content, which is what every non-chat source
+    # submits. Set here rather than by a later UPDATE so the row is never briefly
+    # unowned: processing is dispatched immediately after the insert and stamps the
+    # derived chunks from this value (ADR-014).
+    conversation_id: str | None = None
 
 
 @dataclass(frozen=True)

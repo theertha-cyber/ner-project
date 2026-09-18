@@ -120,6 +120,7 @@ def _create_tables_sql(schema: str) -> list:
                 blob_path VARCHAR(500),
                 purpose VARCHAR(20) NOT NULL DEFAULT 'query',
                 uploaded_by VARCHAR,
+                conversation_id VARCHAR,
                 origin VARCHAR(32) NOT NULL DEFAULT 'push',
                 source_type VARCHAR(64) NOT NULL DEFAULT 'platform_upload',
                 source_id VARCHAR(128) NOT NULL DEFAULT 'platform-upload',
@@ -158,6 +159,7 @@ def _create_tables_sql(schema: str) -> list:
                 char_start INTEGER,
                 char_end INTEGER,
                 purpose VARCHAR(20),
+                conversation_id VARCHAR,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """,

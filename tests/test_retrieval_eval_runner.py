@@ -216,7 +216,7 @@ class TestConfigDoesNotLeakToGlobalSettings:
             def __init__(self):
                 self.calls = 0
 
-            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
                 return [RetrievalResult(document_id="doc-a", chunk_index=0, chunk_text="c", similarity_score=0.9)]
 
         class SpyReranker:

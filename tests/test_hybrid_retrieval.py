@@ -39,6 +39,7 @@ async def _create_hybrid_chunks_table(session, schema: str) -> None:
                 char_start INTEGER,
                 char_end INTEGER,
                 purpose VARCHAR(20),
+                conversation_id VARCHAR,
                 chunk_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', chunk_text)) STORED
             )
         """)
@@ -229,7 +230,7 @@ class TestHybridRetrieverFusion:
         captured = {}
 
         class SpyRetriever:
-            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+            async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
                 captured["top_k"] = top_k
                 return []
 

@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS {schema}.documents (
     blob_path VARCHAR(500),
     purpose VARCHAR(20) NOT NULL DEFAULT 'query',
     uploaded_by VARCHAR,
+    conversation_id VARCHAR,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 )

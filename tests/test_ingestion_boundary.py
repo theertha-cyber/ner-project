@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS {schema}.documents (
     blob_path VARCHAR(500),
     purpose VARCHAR(20) NOT NULL DEFAULT 'query',
     uploaded_by VARCHAR,
+    conversation_id VARCHAR,
     origin VARCHAR(32) NOT NULL DEFAULT 'push',
     source_type VARCHAR(64) NOT NULL DEFAULT 'platform_upload',
     source_id VARCHAR(128) NOT NULL DEFAULT 'platform-upload',
@@ -133,7 +134,8 @@ CREATE TABLE IF NOT EXISTS {schema}.document_chunks (
     page_number INTEGER,
     char_start INTEGER,
     char_end INTEGER,
-    purpose VARCHAR(20)
+    purpose VARCHAR(20),
+    conversation_id VARCHAR
 );
 """
 

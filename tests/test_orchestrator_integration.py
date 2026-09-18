@@ -43,6 +43,7 @@ async def _create_chunks_table(session, schema: str) -> None:
                 char_start INTEGER,
                 char_end INTEGER,
                 purpose VARCHAR(20) NOT NULL DEFAULT 'query',
+                conversation_id VARCHAR,
                 chunk_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', chunk_text)) STORED
             )
         """)

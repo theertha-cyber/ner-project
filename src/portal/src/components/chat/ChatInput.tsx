@@ -8,6 +8,10 @@ export interface StagedFile {
   name: string;
   size: number;
   type: string;
+  // The real file. Its content is what the send transmits: the backend ingests the
+  // bytes so the attachment becomes answerable in this conversation (CAP-6), which a
+  // name and a byte count could never do.
+  file: File;
 }
 
 interface ChatInputProps {
@@ -16,6 +20,10 @@ interface ChatInputProps {
   stagedFiles: StagedFile[];
   onAttach: (files: File[]) => void;
   onRemoveFile: (id: string) => void;
+  // True while a send carrying these files is in flight. The upload and the indexing
+  // that follows it both happen inside that request, so the tray says so rather than
+  // looking idle for what can be several seconds.
+  uploading?: boolean;
 }
 
 // Matches the reading column in MessageThread so the composer lines up with the
@@ -44,6 +52,7 @@ export function ChatInput({
   stagedFiles,
   onAttach,
   onRemoveFile,
+  uploading = false,
 }: ChatInputProps) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
@@ -270,6 +279,7 @@ export function ChatInput({
                 <button
                   type="button"
                   onClick={() => onRemoveFile(file.id)}
+                  disabled={uploading}
                   aria-label={"Remove " + file.name}
                   title={"Remove " + file.name}
                   style={{
@@ -293,6 +303,7 @@ export function ChatInput({
               </span>
             ))}
             <span
+              role={uploading ? "status" : undefined}
               style={{
                 color: "var(--ink-2)",
                 fontSize: 12.5,
@@ -300,7 +311,9 @@ export function ChatInput({
                 padding: "2px 2px",
               }}
             >
-              Staging does not reserve the conversation until send.
+              {uploading
+                ? "Uploading and preparing attachments…"
+                : "Staging does not reserve the conversation until send."}
             </span>
           </div>
         )}

@@ -37,7 +37,7 @@ class SpyRetriever:
         self.error = error
         self.calls: list[str] = []
 
-    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None):
+    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
         self.calls.append(query)
         if self.error is not None:
             raise self.error
