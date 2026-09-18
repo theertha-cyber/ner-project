@@ -299,6 +299,29 @@ INFERENCE_PATHS = frozenset({
     OTHER,
 })
 
+# The answer channels that apply the uploader-visibility rule. Enumerated here because a
+# channel that reaches document data without appearing in this set is a channel that
+# escaped the rule — the liability ADR-014 named for conversation scoping and this change
+# inherits. Adding a channel is a reviewed diff in both places.
+UPLOADER_SCOPE_CHANNELS = frozenset({
+    "semantic_retrieval",
+    "relational_sql",
+    "entity_resolution",
+    OTHER,
+})
+
+# How the rule resolved for one answer. Not a count of excluded documents: that number is
+# derived from tenant content, varies per question, and belongs nowhere near a label.
+UPLOADER_SCOPE_OUTCOMES = frozenset({
+    # The requester is a tenant admin; no restriction was applied.
+    "unscoped_admin",
+    # Restricted to the requesting user's own uploads plus source-system content.
+    "scoped_to_user",
+    # No end user at all (the widget); restricted to source-system content only.
+    "scoped_anonymous",
+    OTHER,
+})
+
 _DURATION_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0)
 _LONG_DURATION_BUCKETS = (1.0, 5.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0)
 _COUNT_BUCKETS = (0.0, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 1000.0)
@@ -426,6 +449,17 @@ RERANK_DURATION = _declare(Family(
     "histogram",
     "Time spent reranking retrieved passages.",
     buckets=_DURATION_BUCKETS,
+))
+
+UPLOADER_SCOPE_APPLICATIONS = _declare(Family(
+    "ner_uploader_scope_applications_total",
+    "counter",
+    "Answer-channel invocations by how the uploader-visibility rule resolved. Makes the "
+    "narrowing observable per channel without recording what was narrowed away.",
+    labels=(
+        Label("channel", UPLOADER_SCOPE_CHANNELS),
+        Label("outcome", UPLOADER_SCOPE_OUTCOMES),
+    ),
 ))
 
 # --- SQL generation, execution, LLM usage (section 4) ------------------------------------
@@ -1239,6 +1273,27 @@ def record_retrieval_hit_rate(capability: str, hit_rate: float) -> None:
 
 def record_rerank_duration(seconds: float) -> None:
     _record(RERANK_DURATION, float(seconds))
+
+
+def record_uploader_scope(channel: str, outcome: str) -> None:
+    """One answer-channel invocation and how the uploader-visibility rule resolved.
+
+    Both arguments are coerced to their declared sets by `Label.coerce`, so a caller
+    passing something unenumerated lands under `other` rather than minting a series. No
+    argument may carry a user id, a document id, a filename or a count of excluded rows:
+    the point of the family is that the narrowing is observable and its subject is not.
+    """
+    _record(UPLOADER_SCOPE_APPLICATIONS, 1, channel=channel, outcome=outcome)
+
+
+def uploader_scope_outcome(user) -> str:
+    """The declared outcome for a `RequestingUser`, so the three channels classify the
+    same way rather than each deciding what to pass."""
+    if user is not None and user.is_unscoped:
+        return "unscoped_admin"
+    if user is None or user.user_id is None:
+        return "scoped_anonymous"
+    return "scoped_to_user"
 
 
 def record_sql_attempt(outcome: str, defect: str | None = None) -> None:

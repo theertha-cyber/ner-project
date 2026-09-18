@@ -109,6 +109,8 @@ async def _store_chunks(
     embeddings: list[list[float]],
     purpose: str,
     conversation_id: str | None = None,
+    uploaded_by: str | None = None,
+    ingested_by_kind: str | None = None,
 ):
     engine = await get_resolver().resolve(tenant_id)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -119,8 +121,8 @@ async def _store_chunks(
             await session.execute(
                 text(f"""
                     INSERT INTO {schema}.document_chunks
-                        (id, document_id, chunk_index, chunk_text, embedding, page_number, char_start, char_end, purpose, conversation_id)
-                    VALUES (:id, :doc_id, :chunk_index, :chunk_text, CAST(:embedding AS vector), :page_number, :char_start, :char_end, :purpose, :conversation_id)
+                        (id, document_id, chunk_index, chunk_text, embedding, page_number, char_start, char_end, purpose, conversation_id, uploaded_by, ingested_by_kind)
+                    VALUES (:id, :doc_id, :chunk_index, :chunk_text, CAST(:embedding AS vector), :page_number, :char_start, :char_end, :purpose, :conversation_id, :uploaded_by, :ingested_by_kind)
                 """),
                 {
                     "id": str(uuid.uuid4()),
@@ -135,6 +137,16 @@ async def _store_chunks(
                     # Denormalized from the parent document so retrieval can decide
                     # conversation visibility from the chunk row alone (ADR-014).
                     "conversation_id": conversation_id,
+                    # Denormalized for the same reason and on the same terms: every
+                    # answer channel evaluates the uploader-visibility rule per chunk,
+                    # and a join to `documents` would sit between the hnsw index scan
+                    # and the vector ranking. Both values are immutable after
+                    # ingestion, so the copy cannot drift. `ingested_by_kind` falls
+                    # back to the source-system value rather than to 'human': an
+                    # unknown actor must not be attributed to a person, because that
+                    # person would be the only user who could then see it.
+                    "uploaded_by": uploaded_by,
+                    "ingested_by_kind": ingested_by_kind or "source_system",
                 },
             )
         await session.commit()
@@ -508,7 +520,7 @@ def resolve_content(document) -> bytes | None:
 
 _DOCUMENT_COLUMNS = (
     "id, purpose, status, content_type, filename, blob_path, retention_mode, "
-    "source_type, source_id, external_id, conversation_id"
+    "source_type, source_id, external_id, conversation_id, uploaded_by, ingested_by_kind"
 )
 
 
@@ -714,6 +726,8 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
                 await _store_chunks(
                     document_id, tenant_id, chunks, embeddings, purpose,
                     conversation_id=getattr(document, "conversation_id", None),
+                    uploaded_by=getattr(document, "uploaded_by", None),
+                    ingested_by_kind=getattr(document, "ingested_by_kind", None),
                 )
         except Exception:
             logger.info(

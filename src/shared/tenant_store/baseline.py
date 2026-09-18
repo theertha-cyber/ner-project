@@ -152,6 +152,8 @@ _TABLE_DDL: dict[str, str] = {
         char_start integer,
         char_end integer,
         purpose character varying(20),
+        uploaded_by character varying,
+        ingested_by_kind character varying(32),
         chunk_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english'::regconfig, chunk_text)) STORED,
         PRIMARY KEY (id)
     """,

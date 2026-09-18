@@ -147,7 +147,9 @@ async def seeded_chunks_with_metadata(tenant_schema, engine):
                     char_start INTEGER,
                     char_end INTEGER,
                     purpose VARCHAR(20),
-                    conversation_id VARCHAR
+                    conversation_id VARCHAR,
+                    uploaded_by VARCHAR,
+                    ingested_by_kind VARCHAR(32)
                 )
             """)
         )
@@ -162,16 +164,16 @@ async def seeded_chunks_with_metadata(tenant_schema, engine):
         await session.execute(
             text(f"""
                 INSERT INTO {schema}.document_chunks
-                    (id, document_id, chunk_index, chunk_text, embedding, page_number, char_start, char_end, purpose)
-                VALUES (:id, :doc_id, 0, 'chunk with page metadata', '{emb_str}'::vector, 2, 100, 250, 'query')
+                    (id, document_id, chunk_index, chunk_text, embedding, page_number, char_start, char_end, purpose, ingested_by_kind)
+                VALUES (:id, :doc_id, 0, 'chunk with page metadata', '{emb_str}'::vector, 2, 100, 250, 'query', 'source_system')
             """),
             {"id": str(uuid.uuid4()), "doc_id": doc_id},
         )
         await session.execute(
             text(f"""
                 INSERT INTO {schema}.document_chunks
-                    (id, document_id, chunk_index, chunk_text, embedding, page_number, char_start, char_end, purpose)
-                VALUES (:id, :doc_id, 1, 'chunk without page metadata', '{emb_str}'::vector, NULL, NULL, NULL, 'query')
+                    (id, document_id, chunk_index, chunk_text, embedding, page_number, char_start, char_end, purpose, ingested_by_kind)
+                VALUES (:id, :doc_id, 1, 'chunk without page metadata', '{emb_str}'::vector, NULL, NULL, NULL, 'query', 'source_system')
             """),
             {"id": str(uuid.uuid4()), "doc_id": doc_id},
         )
@@ -247,7 +249,9 @@ class TestPerSpanIngestionChunkBoundary:
                         char_start INTEGER,
                         char_end INTEGER,
                         purpose VARCHAR(20),
-                        conversation_id VARCHAR
+                        conversation_id VARCHAR,
+                        uploaded_by VARCHAR,
+                        ingested_by_kind VARCHAR(32)
                     )
                 """)
             )
@@ -325,7 +329,9 @@ class TestChunkPurposeDenormalization:
                         char_start INTEGER,
                         char_end INTEGER,
                         purpose VARCHAR(20),
-                        conversation_id VARCHAR
+                        conversation_id VARCHAR,
+                        uploaded_by VARCHAR,
+                        ingested_by_kind VARCHAR(32)
                     )
                 """)
             )
@@ -382,7 +388,9 @@ class TestChunkPurposeDenormalization:
                         char_start INTEGER,
                         char_end INTEGER,
                         purpose VARCHAR(20),
-                        conversation_id VARCHAR
+                        conversation_id VARCHAR,
+                        uploaded_by VARCHAR,
+                        ingested_by_kind VARCHAR(32)
                     )
                 """)
             )
@@ -421,6 +429,265 @@ class TestChunkPurposeDenormalization:
 
 
 @pytest.mark.integration
+@pytest.mark.verification
+class TestChunkUploaderDenormalization:
+    """Verification rows 28-29. The uploader-visibility rule is evaluated per chunk by
+    every answer channel, so the ingesting actor and uploading user are denormalized
+    from the parent document exactly as `purpose` and `conversation_id` already are.
+    A join to `documents` would sit between the hnsw index scan and the vector ranking.
+    """
+
+    async def _chunks_table(self, session, schema):
+        await session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await session.execute(
+            text(f"""
+                CREATE TABLE IF NOT EXISTS {schema}.document_chunks (
+                    id VARCHAR PRIMARY KEY,
+                    document_id VARCHAR NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    chunk_text TEXT NOT NULL,
+                    embedding vector(1536),
+                    page_number INTEGER,
+                    char_start INTEGER,
+                    char_end INTEGER,
+                    purpose VARCHAR(20),
+                    conversation_id VARCHAR,
+                    uploaded_by VARCHAR,
+                    ingested_by_kind VARCHAR(32)
+                )
+            """)
+        )
+
+    @pytest.mark.asyncio
+    async def test_human_ingested_chunks_carry_the_uploader(self, tenant_schema, engine):
+        """Row 28."""
+        tenant_id, schema = tenant_schema
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+        from src.document_service.services.ocr_worker import _store_chunks
+
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        doc_id = f"doc-{uuid.uuid4()}"
+
+        async with session_factory() as session:
+            await self._chunks_table(session, schema)
+            await session.execute(
+                text(f"""
+                    INSERT INTO {schema}.documents
+                        (id, tenant_id, filename, status, purpose, uploaded_by, ingested_by_kind)
+                    VALUES (:id, :tid, :fn, 'uploaded', 'query', 'recruiter-1', 'human')
+                """),
+                {"id": doc_id, "tid": tenant_id, "fn": "resume.pdf"},
+            )
+            await session.commit()
+
+        chunks = [
+            Chunk(chunk_index=i, chunk_text=f"resume body {i}", page_number=0, char_start=0, char_end=13)
+            for i in range(3)
+        ]
+        await _store_chunks(
+            doc_id, tenant_id, chunks, [_fake_vector([0.1, 0.2, 0.3]) for _ in chunks], "query",
+            uploaded_by="recruiter-1", ingested_by_kind="human",
+        )
+
+        async with session_factory() as session:
+            rows = (await session.execute(
+                text(
+                    f"SELECT uploaded_by, ingested_by_kind FROM {schema}.document_chunks "
+                    "WHERE document_id = :doc_id"
+                ),
+                {"doc_id": doc_id},
+            )).fetchall()
+
+        assert len(rows) == 3, "every chunk carries the actor, not just the first"
+        assert all(r.uploaded_by == "recruiter-1" for r in rows)
+        assert all(r.ingested_by_kind == "human" for r in rows)
+
+    @pytest.mark.asyncio
+    async def test_source_system_chunks_are_marked_as_such(self, tenant_schema, engine):
+        """Row 29. A synced document has no human uploader; its chunks must say so,
+        because that is what keeps them visible to every user of the tenant."""
+        tenant_id, schema = tenant_schema
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+        from src.document_service.services.ocr_worker import _store_chunks
+
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        doc_id = f"doc-{uuid.uuid4()}"
+
+        async with session_factory() as session:
+            await self._chunks_table(session, schema)
+            await session.execute(
+                text(f"""
+                    INSERT INTO {schema}.documents
+                        (id, tenant_id, filename, status, purpose, uploaded_by, ingested_by_kind)
+                    VALUES (:id, :tid, :fn, 'uploaded', 'query', NULL, 'source_system')
+                """),
+                {"id": doc_id, "tid": tenant_id, "fn": "synced.pdf"},
+            )
+            await session.commit()
+
+        chunks = [Chunk(chunk_index=0, chunk_text="synced body", page_number=0, char_start=0, char_end=11)]
+        await _store_chunks(
+            doc_id, tenant_id, chunks, [_fake_vector([0.1, 0.2, 0.3])], "query",
+            uploaded_by=None, ingested_by_kind="source_system",
+        )
+
+        async with session_factory() as session:
+            rows = (await session.execute(
+                text(
+                    f"SELECT uploaded_by, ingested_by_kind FROM {schema}.document_chunks "
+                    "WHERE document_id = :doc_id"
+                ),
+                {"doc_id": doc_id},
+            )).fetchall()
+
+        assert len(rows) == 1
+        assert rows[0].uploaded_by is None
+        assert rows[0].ingested_by_kind == "source_system"
+
+    @pytest.mark.asyncio
+    async def test_unknown_actor_is_never_attributed_to_a_person(self, tenant_schema, engine):
+        """A caller that supplies no actor must not produce a chunk that looks
+        human-ingested: the fallback decides who can see it, and defaulting to 'human'
+        with a NULL uploader would hide the chunk from everyone including its owner."""
+        tenant_id, schema = tenant_schema
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+        from src.document_service.services.ocr_worker import _store_chunks
+
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        doc_id = f"doc-{uuid.uuid4()}"
+
+        async with session_factory() as session:
+            await self._chunks_table(session, schema)
+            await session.execute(
+                text(f"""
+                    INSERT INTO {schema}.documents (id, tenant_id, filename, status, purpose)
+                    VALUES (:id, :tid, :fn, 'uploaded', 'query')
+                """),
+                {"id": doc_id, "tid": tenant_id, "fn": "legacy.pdf"},
+            )
+            await session.commit()
+
+        chunks = [Chunk(chunk_index=0, chunk_text="legacy body", page_number=0, char_start=0, char_end=11)]
+        await _store_chunks(doc_id, tenant_id, chunks, [_fake_vector([0.1, 0.2, 0.3])], "query")
+
+        async with session_factory() as session:
+            row = (await session.execute(
+                text(
+                    f"SELECT ingested_by_kind FROM {schema}.document_chunks "
+                    "WHERE document_id = :doc_id"
+                ),
+                {"doc_id": doc_id},
+            )).fetchone()
+
+        assert row.ingested_by_kind == "source_system"
+
+    @pytest.mark.asyncio
+    async def test_process_document_carries_the_actor_from_the_document_row(
+        self, tenant_schema, engine, monkeypatch,
+    ):
+        """Rows 28 and 31 end to end: the values on the chunk are the values on the
+        document, taken from the real processing path rather than passed by the test."""
+        tenant_id, schema = tenant_schema
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+        from src.document_service.services import ocr_worker
+
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        doc_id = f"doc-{uuid.uuid4()}"
+
+        async with session_factory() as session:
+            await self._chunks_table(session, schema)
+            # conftest's tables are the `002` shape; the worker reads the `003` columns
+            # and writes the migration-defined span columns. Same rebuild the
+            # purpose-restriction harness below performs, for the same reason.
+            await session.execute(text(f"DROP TABLE IF EXISTS {schema}.document_text_spans CASCADE"))
+            await session.execute(
+                text(f"""
+                    CREATE TABLE {schema}.document_text_spans (
+                        id VARCHAR PRIMARY KEY,
+                        document_id VARCHAR NOT NULL,
+                        span_index INTEGER,
+                        text TEXT,
+                        char_start INTEGER,
+                        char_end INTEGER,
+                        page_number INTEGER
+                    )
+                """)
+            )
+            await session.execute(
+                text(f"""
+                    ALTER TABLE {schema}.documents
+                        ADD COLUMN IF NOT EXISTS content_type VARCHAR(255),
+                        ADD COLUMN IF NOT EXISTS blob_path VARCHAR(500),
+                        ADD COLUMN IF NOT EXISTS retention_mode VARCHAR(32)
+                            NOT NULL DEFAULT 'platform_blob',
+                        ADD COLUMN IF NOT EXISTS source_type VARCHAR(64),
+                        ADD COLUMN IF NOT EXISTS source_id VARCHAR(128),
+                        ADD COLUMN IF NOT EXISTS external_id VARCHAR(512)
+                """)
+            )
+            await session.execute(
+                text(f"""
+                    INSERT INTO {schema}.documents
+                        (id, tenant_id, filename, status, purpose, uploaded_by,
+                         ingested_by_kind, content_type, blob_path)
+                    VALUES (:id, :tid, :fn, 'pending', 'query', 'recruiter-2', 'human',
+                            'application/pdf', :blob)
+                """),
+                {
+                    "id": doc_id,
+                    "tid": tenant_id,
+                    "fn": "resume.pdf",
+                    "blob": f"tenants/{tenant_id}/documents/{doc_id}.pdf",
+                },
+            )
+            await session.commit()
+
+        body = "Python and Django experience across several teams. " * 8
+
+        class FakeStore:
+            def open(self, reference):
+                return b"%PDF-1.4 fake"
+
+            def delete(self, reference):
+                pass
+
+        monkeypatch.setattr(ocr_worker, "_store_for", lambda mode: FakeStore())
+        monkeypatch.setattr(ocr_worker, "_embed_chunks", _async_embed())
+        monkeypatch.setattr(
+            ocr_worker, "extract_text_pdf",
+            lambda data: [{"span_index": 0, "text": body, "char_start": 0,
+                           "char_end": len(body), "page_number": 0}],
+        )
+
+        await ocr_worker.process_document(doc_id, tenant_id)
+
+        async with session_factory() as session:
+            rows = (await session.execute(
+                text(
+                    f"SELECT uploaded_by, ingested_by_kind FROM {schema}.document_chunks "
+                    "WHERE document_id = :doc_id"
+                ),
+                {"doc_id": doc_id},
+            )).fetchall()
+
+        assert rows, "processing produced no chunks to check"
+        assert all(r.uploaded_by == "recruiter-2" for r in rows)
+        assert all(r.ingested_by_kind == "human" for r in rows)
+
+
+def _async_return(value):
+    async def _inner(*args, **kwargs):
+        return value
+    return _inner
+
+
+def _async_embed():
+    async def _inner(texts):
+        return [_fake_vector([0.1, 0.2, 0.3]) for _ in texts]
+    return _inner
+
+
+@pytest.mark.integration
 class TestChunkingRestrictedToQueryPurpose:
     """Only purpose='query' documents feed retrieval. Training documents must still
     get their text spans extracted (annotation/extraction need them) but must never
@@ -448,7 +715,9 @@ class TestChunkingRestrictedToQueryPurpose:
                         char_start INTEGER,
                         char_end INTEGER,
                         purpose VARCHAR(20),
-                        conversation_id VARCHAR
+                        conversation_id VARCHAR,
+                        uploaded_by VARCHAR,
+                        ingested_by_kind VARCHAR(32)
                     )
                 """)
             )
