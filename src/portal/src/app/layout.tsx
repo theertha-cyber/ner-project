@@ -8,9 +8,10 @@ import { ToastProvider } from "@/hooks";
 import "./globals.css";
 // Theme entry point (docs/design/ui-contract.md): loads the installed design
 // tokens so every var(--...) reference across the portal resolves. CAP-3 moved
-// these tokens out of globals.css into design-system/chat-attachment-upload/
-// tokens.css; this is the load that makes that file live again.
-import "../../../../design-system/chat-attachment-upload/tokens.css";
+// these tokens out of globals.css into design-system/ner-portal/tokens.css
+// (merged with the ner-portal token contract brought in from main); this is
+// the load that makes that file live again.
+import "../../design-system/ner-portal/tokens.css";
 
 const hankenGrotesk = Hanken_Grotesk({
   subsets: ["latin"],
