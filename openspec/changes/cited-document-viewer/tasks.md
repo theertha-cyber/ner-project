@@ -9,7 +9,7 @@
 ## 2. Adapter registration in the serving process
 
 - [x] 2.1 Import the Azure reopener during document-service startup, guarded so a missing SDK degrades to "not reopenable" rather than failing the process. (scenarios: "The serving process has its adapters registered", "A missing adapter degrades rather than failing startup")
-- [ ] 2.2 Assert in `tests/test_document_content_endpoint.py` that constructing the application leaves the pull-source adapter registered — checked against the real startup path, not a fixture that registers one. (scenario: "The serving process has its adapters registered"; Risk 2)
+- [x] 2.2 Assert in `tests/test_document_content_endpoint.py` that constructing the application leaves the pull-source adapter registered — checked against the real startup path, not a fixture that registers one. (scenario: "The serving process has its adapters registered"; Risk 2)
 
 ## 3. Telemetry
 
@@ -19,22 +19,22 @@
 
 ## 4. Authorization for content access
 
-- [ ] 4.1 Add a shared document-loading helper for the content routes: tenant predicate, the uploader-visibility predicate imported from `src/shared/document_visibility.py`, and for a conversation-owned row a check against `uploaded_by` on that same row. No join to `conversations`, no control-plane table. Do not apply the blanket `conversation_id IS NULL` clause the other routes use. (scenarios: all six authorization scenarios, "The rule has one definition")
-- [ ] 4.2 Add `tests/test_document_content_authorization.py` — own document, another user's, own attachment, another user's attachment, another tenant, missing-vs-forbidden distinction, and a captured-SQL assertion that no statement names a `public.` table or `conversations`. (scenarios: rows 14–20 of the content-access capability; Risk 6)
+- [x] 4.1 Add a shared document-loading helper for the content routes: tenant predicate, the uploader-visibility predicate imported from `src/shared/document_visibility.py`, and for a conversation-owned row a check against `uploaded_by` on that same row. No join to `conversations`, no control-plane table. Do not apply the blanket `conversation_id IS NULL` clause the other routes use. (scenarios: all six authorization scenarios, "The rule has one definition")
+- [x] 4.2 Add `tests/test_document_content_authorization.py` — own document, another user's, own attachment, another user's attachment, another tenant, missing-vs-forbidden distinction, and a captured-SQL assertion that no statement names a `public.` table or `conversations`. (scenarios: rows 14–20 of the content-access capability; Risk 6)
 
 ## 5. The availability probe
 
-- [ ] 5.1 Add `GET /api/v1/documents/{id}/content/status` returning availability, render mode, size and — when unavailable — the enumerated reason. It must not open the content store. (scenarios: "The probe describes a viewable document", "The probe reports a released original without transferring anything", "The probe reports that conversion is required")
-- [ ] 5.2 Derive `render_mode` from the coerced media type, not the stored one, so the client is told how to render by the same authority that decides what is served. (scenario: "The rendered type is the one the system declared")
+- [x] 5.1 Add `GET /api/v1/documents/{id}/content/status` returning availability, render mode, size and — when unavailable — the enumerated reason. It must not open the content store. (scenarios: "The probe describes a viewable document", "The probe reports a released original without transferring anything", "The probe reports that conversion is required")
+- [x] 5.2 Derive `render_mode` from the coerced media type, not the stored one, so the client is told how to render by the same authority that decides what is served. (scenario: "The rendered type is the one the system declared")
 
 ## 6. The bytes route
 
-- [ ] 6.1 Add `GET /api/v1/documents/{id}/content` returning the bytes with `Content-Disposition: inline`, a coerced `Content-Type` from a closed allow-list, `X-Content-Type-Options: nosniff` and a restrictive `Content-Security-Policy`. Never echo `documents.content_type`. (scenarios: "A retained original is returned byte for byte", "A stored active-content type is not served as active content", "Content-type sniffing is disabled", "A supported format is served as itself"; Risk 1)
-- [ ] 6.2 Resolve bytes through `content_resolution` for all three retention modes, including the source reopen path, and assert nothing is written to a platform store on the source-only path. (scenarios: "A source-only document is viewable", "No bytes are retained after a source-only view", "Resolution follows the recorded retention mode")
-- [ ] 6.3 Implement the closed failure taxonomy — not found, not permitted, original released, original missing, source not reopenable, source unreachable, conversion failed, too large — each with its own machine-readable code, and none altering the document's derived data. (scenarios: the four failure scenarios plus "Existing derived data survives a failed view")
-- [ ] 6.4 Assert no response is a redirect and none carries a storage location header. (scenarios: "The response discloses no storage detail", "A content response carries bytes, not a location")
-- [ ] 6.5 Add `tests/test_document_content_endpoint.py` covering the above against real Postgres and a stub content store, including the HTML-typed document and the byte-identical round trip. (scenarios: the content-access rows not covered by 4.2)
-- [ ] 6.6 Add a guard test asserting no caller of the content store produces a URL for a client. (scenario: "No pre-authorized URL is minted")
+- [x] 6.1 Add `GET /api/v1/documents/{id}/content` returning the bytes with `Content-Disposition: inline`, a coerced `Content-Type` from a closed allow-list, `X-Content-Type-Options: nosniff` and a restrictive `Content-Security-Policy`. Never echo `documents.content_type`. (scenarios: "A retained original is returned byte for byte", "A stored active-content type is not served as active content", "Content-type sniffing is disabled", "A supported format is served as itself"; Risk 1)
+- [x] 6.2 Resolve bytes through `content_resolution` for all three retention modes, including the source reopen path, and assert nothing is written to a platform store on the source-only path. (scenarios: "A source-only document is viewable", "No bytes are retained after a source-only view", "Resolution follows the recorded retention mode")
+- [x] 6.3 Implement the closed failure taxonomy — not found, not permitted, original released, original missing, source not reopenable, source unreachable, conversion failed, too large — each with its own machine-readable code, and none altering the document's derived data. (scenarios: the four failure scenarios plus "Existing derived data survives a failed view")
+- [x] 6.4 Assert no response is a redirect and none carries a storage location header. (scenarios: "The response discloses no storage detail", "A content response carries bytes, not a location")
+- [x] 6.5 Add `tests/test_document_content_endpoint.py` covering the above against real Postgres and a stub content store, including the HTML-typed document and the byte-identical round trip. (scenarios: the content-access rows not covered by 4.2)
+- [x] 6.6 Add a guard test asserting no caller of the content store produces a URL for a client. (scenario: "No pre-authorized URL is minted")
 
 ## 7. PDF rendition
 

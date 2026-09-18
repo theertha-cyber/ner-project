@@ -1,4 +1,8 @@
+import logging
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, UploadFile, File, Form
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
@@ -6,6 +10,21 @@ from src.shared.data_plane import DataPlaneUnavailable
 from src.shared.data_plane_gate import require_data_plane_ready
 from src.shared.database import get_engine, get_resolver
 from src.shared.document_visibility import RequestingUser, visibility_predicate
+from src.shared.document_retention import (
+    RETENTION_EPHEMERAL,
+    RETENTION_PLATFORM_BLOB,
+    RETENTION_SOURCE_ONLY,
+)
+from src.document_service.content_resolution import (
+    has_source_reopener,
+    reopen_source_content,
+    resolve_content,
+)
+from src.document_service.media_types import render_mode, servable_media_type
+from src.shared.observability.domain_metrics import (
+    content_class,
+    record_document_content_request,
+)
 from src.shared.tenant_context import classify_driver_error, record_health_best_effort
 from src.shared.exceptions import NotFoundError
 from src.document_service.ingestion import (
@@ -30,6 +49,8 @@ from src.shared.entity_views import (
     load_definition_specs,
 )
 from src.shared.tenant_schema import schema_for_tenant as _schema
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/documents",
@@ -505,3 +526,287 @@ async def delete_document(
         )
 
     return {"status": "deleted", "id": doc_id}
+
+
+# --- Original document content (cited-document-viewer) ----------------------------------
+#
+# Two routes: a probe that says whether the original can be produced and how to render
+# it, and the bytes themselves. The probe exists so the portal does not download up to
+# 50MB to discover the original was released or the format needs converting.
+#
+# Both reach conversation-owned rows, unlike every other route in this module. That is
+# deliberate: a chat attachment is exactly the kind of document a reader wants to open
+# from the thread, and the blanket `conversation_id IS NULL` clause elsewhere is what
+# keeps attachments out of the tenant-wide *library*, not out of their own conversation.
+
+# Machine-readable outcomes. The viewer renders each differently, so they must not be
+# collapsed: a released original is permanent and a consequence of the tenant's own
+# retention policy, while an unreachable source is worth retrying.
+CONTENT_NOT_FOUND = "DOCUMENT_NOT_FOUND"
+CONTENT_NOT_PERMITTED = "DOCUMENT_NOT_PERMITTED"
+CONTENT_ORIGINAL_RELEASED = "ORIGINAL_RELEASED"
+CONTENT_ORIGINAL_MISSING = "ORIGINAL_MISSING"
+CONTENT_SOURCE_NOT_REOPENABLE = "SOURCE_NOT_REOPENABLE"
+CONTENT_SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
+CONTENT_CONVERSION_FAILED = "CONVERSION_FAILED"
+CONTENT_TOO_LARGE = "ORIGINAL_TOO_LARGE"
+
+# Outcome -> (HTTP status, metric outcome). 410 for a released original because it is
+# gone and will not come back; 503 for an unreachable source because it may.
+_CONTENT_STATUS = {
+    CONTENT_NOT_FOUND: (404, "not_found"),
+    CONTENT_NOT_PERMITTED: (403, "not_permitted"),
+    CONTENT_ORIGINAL_RELEASED: (410, "original_released"),
+    CONTENT_ORIGINAL_MISSING: (410, "original_missing"),
+    CONTENT_SOURCE_NOT_REOPENABLE: (409, "source_not_reopenable"),
+    CONTENT_SOURCE_UNAVAILABLE: (503, "source_unavailable"),
+    CONTENT_CONVERSION_FAILED: (422, "conversion_failed"),
+    CONTENT_TOO_LARGE: (413, "too_large"),
+}
+
+_CONTENT_MESSAGES = {
+    CONTENT_NOT_FOUND: "This document no longer exists.",
+    CONTENT_NOT_PERMITTED: "You do not have access to this document.",
+    CONTENT_ORIGINAL_RELEASED: (
+        "The original was not retained after processing, under this tenant's retention "
+        "policy."
+    ),
+    CONTENT_ORIGINAL_MISSING: "The stored original could not be found.",
+    CONTENT_SOURCE_NOT_REOPENABLE: "This document's source cannot be re-read.",
+    CONTENT_SOURCE_UNAVAILABLE: "The source system could not be reached.",
+    CONTENT_CONVERSION_FAILED: "This document could not be prepared for display.",
+    CONTENT_TOO_LARGE: "This document is too large to preview.",
+}
+
+
+class _ContentUnavailable(Exception):
+    """A document whose bytes cannot be produced, carrying which of the enumerated
+    reasons applies."""
+
+    def __init__(self, code: str, retention_mode: str | None = None):
+        super().__init__(code)
+        self.code = code
+        self.retention_mode = retention_mode
+
+
+def _content_error(exc: "_ContentUnavailable") -> HTTPException:
+    status, outcome = _CONTENT_STATUS[exc.code]
+    record_document_content_request(exc.retention_mode, outcome)
+    logger.info(
+        "document_content_unavailable",
+        extra={"retention_mode": exc.retention_mode, "reason": outcome},
+    )
+    return HTTPException(
+        status_code=status,
+        detail={"code": exc.code, "message": _CONTENT_MESSAGES[exc.code]},
+    )
+
+
+_CONTENT_COLUMNS = (
+    "id, filename, content_type, file_size, status, retention_mode, "
+    "blob_path, source_type, source_id, external_id, uploaded_by, ingested_by_kind, "
+    "conversation_id"
+)
+
+
+async def _load_document_for_content(session, request, doc_id: str):
+    """The document row, if this caller may see its content.
+
+    Three checks, all expressible inside the tenant's own schema:
+
+    - the tenant predicate every route in this module applies;
+    - the uploader-visibility rule, imported from `src.shared.document_visibility` rather
+      than restated, so the content boundary cannot drift from the listing and the chat
+      answer channels that apply the same rule;
+    - for a conversation-owned row, that this caller is the one who attached it.
+
+    The attachment check reads `uploaded_by` on the document row rather than joining
+    `conversations`. ADR-017 allows `documents` to resolve to a tenant-owned database
+    where that table is not present, and ingestion writes the uploader and the
+    conversation in the same insert, so the row already knows. It is also stricter than a
+    conversation-ownership check, since a conversation has exactly one owner.
+    """
+    tenant_id = get_tenant_id(request)
+    schema = _schema(tenant_id)
+    role = getattr(request.state, "role", None)
+    user_id = getattr(request.state, "user_id", None)
+    user = RequestingUser(user_id=user_id, role=role)
+
+    has_conversation = await has_column(session, schema, "documents", "conversation_id")
+    has_actor = await has_column(session, schema, "documents", "ingested_by_kind")
+
+    columns = _CONTENT_COLUMNS
+    if not has_conversation:
+        columns = columns.replace(", conversation_id", ", NULL AS conversation_id")
+    if not has_actor:
+        columns = columns.replace(", ingested_by_kind", ", NULL AS ingested_by_kind")
+
+    result = await session.execute(
+        text(f"SELECT {columns} FROM {schema}.documents WHERE id = :id AND tid_match"
+             .replace("tid_match", "tenant_id = :tid")),
+        {"id": doc_id, "tid": tenant_id},
+    )
+    row = result.fetchone()
+    if row is None:
+        # Not found and forbidden are different outcomes, but a document belonging to
+        # another tenant is genuinely not found from inside this one.
+        raise _ContentUnavailable(CONTENT_NOT_FOUND)
+
+    if has_actor:
+        predicate, params = visibility_predicate(user)
+        if predicate is not None:
+            visible = await session.execute(
+                text(
+                    f"SELECT 1 FROM {schema}.documents "
+                    f"WHERE id = :id AND tenant_id = :tid AND {predicate}"
+                ),
+                {"id": doc_id, "tid": tenant_id, **params},
+            )
+            if visible.fetchone() is None:
+                raise _ContentUnavailable(CONTENT_NOT_PERMITTED, row.retention_mode)
+
+    conversation_id = getattr(row, "conversation_id", None)
+    if conversation_id is not None:
+        # A conversation-owned attachment belongs to whoever attached it, and this check
+        # is deliberately *not* relaxed for a tenant admin: an admin sees the tenant's
+        # library, but a colleague's private chat attachment is not library content.
+        # (The uploader predicate above does exempt admins, which is why this has to be
+        # its own check rather than a stricter version of that one.)
+        if row.uploaded_by is None or row.uploaded_by != user_id:
+            raise _ContentUnavailable(CONTENT_NOT_PERMITTED, row.retention_mode)
+
+    return row
+
+
+async def _resolve_original(row, tenant_id: str) -> bytes:
+    """The document's bytes, or the enumerated reason they cannot be produced."""
+    retention_mode = row.retention_mode or RETENTION_PLATFORM_BLOB
+
+    if retention_mode == RETENTION_SOURCE_ONLY:
+        if not has_source_reopener(row.source_type):
+            raise _ContentUnavailable(CONTENT_SOURCE_NOT_REOPENABLE, retention_mode)
+        data = await reopen_source_content(row, tenant_id)
+        if data is None:
+            # The adapter exists and did not answer. Transient, and distinct from having
+            # no adapter at all.
+            raise _ContentUnavailable(CONTENT_SOURCE_UNAVAILABLE, retention_mode)
+        return data
+
+    if not row.blob_path:
+        # An ephemeral document past its terminal state: its working copy was released
+        # and the reference nulled. Permanent, and a consequence of the tenant's own
+        # retention policy rather than a fault.
+        raise _ContentUnavailable(
+            CONTENT_ORIGINAL_RELEASED
+            if retention_mode == RETENTION_EPHEMERAL
+            else CONTENT_ORIGINAL_MISSING,
+            retention_mode,
+        )
+
+    data = resolve_content(row)
+    if data is None:
+        # A reference exists but the store no longer holds the object. An operational
+        # fault, not a retention outcome.
+        raise _ContentUnavailable(CONTENT_ORIGINAL_MISSING, retention_mode)
+    return data
+
+
+@router.get("/{doc_id}/content/status")
+async def get_document_content_status(
+    doc_id: str,
+    request: Request = None,
+    session: AsyncSession = Depends(get_session),
+):
+    """Whether this document's original can be produced, and how to render it.
+
+    Answers from the document row alone — the content store is never opened — so a
+    client can decide before committing to a transfer. Authorization is enforced here as
+    well as on the bytes route; the probe is not a way to learn a document exists.
+    """
+    tenant_id = get_tenant_id(request)
+    try:
+        row = await _load_document_for_content(session, request, doc_id)
+    except _ContentUnavailable as exc:
+        raise _content_error(exc) from None
+
+    retention_mode = row.retention_mode or RETENTION_PLATFORM_BLOB
+    media_type = servable_media_type(row.filename, row.content_type)
+
+    reason = None
+    if retention_mode == RETENTION_SOURCE_ONLY:
+        if not has_source_reopener(row.source_type):
+            reason = CONTENT_SOURCE_NOT_REOPENABLE
+    elif not row.blob_path:
+        reason = (
+            CONTENT_ORIGINAL_RELEASED
+            if retention_mode == RETENTION_EPHEMERAL
+            else CONTENT_ORIGINAL_MISSING
+        )
+
+    return {
+        "document_id": row.id,
+        "filename": row.filename,
+        "media_type": media_type,
+        "render_mode": render_mode(media_type),
+        "file_size": row.file_size,
+        "retention_mode": retention_mode,
+        "available": reason is None,
+        "reason": reason,
+        "message": _CONTENT_MESSAGES[reason] if reason else None,
+    }
+
+
+@router.get("/{doc_id}/content")
+async def get_document_content(
+    doc_id: str,
+    request: Request = None,
+    session: AsyncSession = Depends(get_session),
+):
+    """The document's original bytes, for display.
+
+    The bytes pass through this application; no storage URL, bucket, endpoint or
+    credential reaches the client, and the response is never a redirect. That is not a
+    stylistic choice — the content-store boundary permits exactly three operations, and a
+    pre-authorized URL is unimplementable for a document whose bytes live in no platform
+    store at all.
+    """
+    tenant_id = get_tenant_id(request)
+    try:
+        row = await _load_document_for_content(session, request, doc_id)
+        data = await _resolve_original(row, tenant_id)
+    except _ContentUnavailable as exc:
+        raise _content_error(exc) from None
+
+    retention_mode = row.retention_mode or RETENTION_PLATFORM_BLOB
+
+    # The served type is decided here, from the extension ingestion validated -- never
+    # echoed from `documents.content_type`, which is whatever the uploading client
+    # declared. A blob URL inherits the portal's origin, where the access token lives, so
+    # serving a stored `text/html` would run script beside it.
+    media_type = servable_media_type(row.filename, row.content_type)
+
+    record_document_content_request(
+        retention_mode, "served", media_type=media_type, byte_count=len(data)
+    )
+    logger.info(
+        "document_content_served",
+        extra={
+            "retention_mode": retention_mode,
+            "media_class": content_class(media_type),
+            "byte_count": len(data),
+        },
+    )
+
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            # Inline: the point is to display it, not to download it.
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(row.filename or 'document')}",
+            # The browser must not second-guess the type just decided above.
+            "X-Content-Type-Options": "nosniff",
+            # Neuters script in anything that reaches a renderer despite the allow-list.
+            "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self' data:; object-src 'none'",
+            "Cache-Control": "private, no-store",
+        },
+    )
