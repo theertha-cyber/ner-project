@@ -118,10 +118,23 @@ class GuardrailService:
             return RULE_PII
         return None
 
-    async def _classify_once(self, message: str, history: list[dict], llm_client, llm_model: str) -> bool:
+    async def _classify_once(self, message: str, history: list[dict], llm_client, llm_model: str,
+                             attachment_filenames: list[str] | None = None) -> bool:
         """One classifier call. Returns True (in-domain) on any error, so a provider
         failure never manifests as a decline."""
-        messages = [{"role": "system", "content": DOMAIN_CLASSIFIER_SYSTEM_PROMPT}]
+        system_prompt = DOMAIN_CLASSIFIER_SYSTEM_PROMPT
+        if attachment_filenames:
+            # Without this the classifier cannot tell that "what does this role require?"
+            # is a question about the user's own document rather than general knowledge:
+            # a person who has just attached a file refers to it deictically, and the
+            # attachment is invisible in the message text.
+            system_prompt += (
+                "\n\nThe user has attached the following documents to this conversation: "
+                + ", ".join(attachment_filenames)
+                + ". A question about \"this\"/\"the\" document, role, file or its contents "
+                "refers to one of them and is therefore in_domain."
+            )
+        messages = [{"role": "system", "content": system_prompt}]
         for turn in history:
             messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": message})
@@ -147,7 +160,8 @@ class GuardrailService:
             _metrics().record_guardrail_fail_open(e)
             return True
 
-    async def classify_domain(self, message: str, conversation_context: list[dict] | None, llm_client, llm_model: str) -> bool:
+    async def classify_domain(self, message: str, conversation_context: list[dict] | None, llm_client, llm_model: str,
+                              attachment_filenames: list[str] | None = None) -> bool:
         """Returns True if the query is in-domain. Fails open (treats the query as
         in-domain) on any classifier error, since tenant isolation is enforced
         structurally elsewhere and an unsourced answer is already refused downstream —
@@ -167,15 +181,15 @@ class GuardrailService:
         resolves to admit. Only unanimous out-of-domain declines."""
         history = recent_messages(conversation_context)
         if not history:
-            in_domain = await self._classify_once(message, [], llm_client, llm_model)
+            in_domain = await self._classify_once(message, [], llm_client, llm_model, attachment_filenames)
             _metrics().record_guardrail_decision(
                 RULE_DOMAIN, "admitted" if in_domain else "blocked"
             )
             return in_domain
 
         with_history, without_history = await asyncio.gather(
-            self._classify_once(message, history, llm_client, llm_model),
-            self._classify_once(message, [], llm_client, llm_model),
+            self._classify_once(message, history, llm_client, llm_model, attachment_filenames),
+            self._classify_once(message, [], llm_client, llm_model, attachment_filenames),
         )
         if with_history != without_history:
             logger.info(

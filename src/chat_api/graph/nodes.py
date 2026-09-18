@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from functools import wraps
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.extraction_service.services.entity_normalizer import canonicalize
@@ -189,6 +190,27 @@ def _candidates_to_schema(candidates: list[entity_resolver.Candidate]) -> list[C
     ]
 
 
+async def _conversation_attachment_filenames(session, schema: str, conversation_id: str | None) -> list[str]:
+    """The filenames this conversation owns, for the domain guardrail.
+
+    Read here rather than threaded down from the route because this node already holds
+    the session, schema and conversation — and because a person attaches once and then
+    asks about it over several turns, so the later turns carry no files of their own.
+    Best-effort: a failed lookup must never turn into a declined question.
+    """
+    if not conversation_id or session is None:
+        return []
+    try:
+        result = await session.execute(
+            text(f"SELECT filename FROM {schema}.documents WHERE conversation_id = :cid ORDER BY created_at ASC"),
+            {"cid": conversation_id},
+        )
+        return [r.filename for r in result.fetchall()]
+    except Exception:
+        logger.info("attachment_filenames_lookup_failed")
+        return []
+
+
 def build_nodes(orchestrator) -> dict:
     """Returns a dict of node-name -> async callable, each closing over the given
     RAGOrchestrator instance so its attributes (retriever, sql_generator, guardrails,
@@ -206,8 +228,12 @@ def build_nodes(orchestrator) -> dict:
             reply = DECLINE_MESSAGES.get(blocked_reason, "I'm sorry, I cannot answer that type of question.")
             return {"blocked_reason": blocked_reason, "reply": reply, "sources": []}
 
+        attachment_filenames = await _conversation_attachment_filenames(
+            state.get("session"), state["schema"], state.get("conversation_id"),
+        )
         is_in_domain = await orchestrator.guardrails.classify_domain(
             message, conversation_context, orchestrator.llm_client, orchestrator.llm_model,
+            attachment_filenames,
         )
         if not is_in_domain:
             return {
