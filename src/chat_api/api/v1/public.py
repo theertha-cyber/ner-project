@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.data_plane import DataPlaneUnavailable
 from src.shared.database import get_resolver
 from src.shared.auth import create_service_token
+from src.shared.document_visibility import NO_REQUESTING_USER
 from src.shared.tenant_context import classify_driver_error, record_health_best_effort
 from src.chat_api.api.v1.schemas import WidgetChatRequest, WidgetChatResponse, Source
 from src.chat_api.services.rag_orchestrator import RAGOrchestrator
@@ -190,7 +191,15 @@ async def widget_chat(
 
     schema = _schema(tenant_id)
     service_token = create_service_token(tenant_id)
-    reply, sources = await orchestrator.execute(body.message, session, schema, tenant_id, service_token)
+    # The widget answers under a tenant service identity with no end user behind it, so
+    # the uploader-visibility rule resolves to source-system content only: an anonymous
+    # visitor must not be able to pull a staff member's uploaded document out of the
+    # tenant's library. Passed explicitly rather than left to the default — the absence
+    # of an identity is the decision here, and a reader should see it made.
+    reply, sources = await orchestrator.execute(
+        body.message, session, schema, tenant_id, service_token,
+        requesting_user=NO_REQUESTING_USER,
+    )
     disclaimer = guardrails.inject_disclaimer()
 
     headers = rate_limiter.get_headers(f"widget:{tenant_id}", WIDGET_RATE_LIMIT, WIDGET_WINDOW)

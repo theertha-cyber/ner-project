@@ -5,6 +5,7 @@ from sqlalchemy.exc import DBAPIError, OperationalError
 from src.shared.data_plane import DataPlaneUnavailable
 from src.shared.data_plane_gate import require_data_plane_ready
 from src.shared.database import get_engine, get_resolver
+from src.shared.document_visibility import RequestingUser, visibility_predicate
 from src.shared.tenant_context import classify_driver_error, record_health_best_effort
 from src.shared.exceptions import NotFoundError
 from src.document_service.ingestion import (
@@ -262,11 +263,20 @@ async def list_documents(
     if role != "tenant_admin":
         if await has_column(session, _schema(tenant_id), "documents", "uploaded_by") and await has_column(session, _schema(tenant_id), "documents", "ingested_by_kind"):
             # Ownership scoping applies only to documents a *person* ingested. A
-            # system-ingested document is visible tenant-wide, because retrieval filters on
-            # purpose alone (`retriever.py`) and would otherwise cite a document this listing
-            # denied existed.
-            conditions.append("({p}ingested_by_kind <> 'human' OR {p}uploaded_by = :uploaded_by)")
-            params["uploaded_by"] = user_id
+            # system-ingested document is visible tenant-wide.
+            #
+            # The predicate comes from `src/shared/document_visibility.py` rather than
+            # being written here, because every chat answer channel now applies the same
+            # rule and this listing is where it originally lived. Two copies of it is
+            # exactly the defect the uploader-scoping change existed to remove: listing
+            # enforced the rule, retrieval did not, and an answer could cite a document
+            # this listing denied existed.
+            predicate, visibility_params = visibility_predicate(
+                RequestingUser(user_id=user_id, role=role), prefix="{p}"
+            )
+            if predicate is not None:
+                conditions.append(predicate)
+                params.update(visibility_params)
 
     if status_filter:
         conditions.append("{p}status = :status")

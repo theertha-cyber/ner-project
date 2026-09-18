@@ -15,6 +15,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable
 from src.shared.database import get_resolver
+from src.shared.document_visibility import RequestingUser
 from src.shared.exceptions import NotFoundError
 from src.shared.tenant_context import classify_driver_error, record_health_best_effort
 from pydantic import ValidationError
@@ -406,6 +407,21 @@ def _conversation_attachments_query(schema: str) -> str:
     )
 
 
+
+def _requesting_user(request: Request) -> RequestingUser:
+    """Who this turn is answered for, from authenticated request state.
+
+    Built here and passed as a call argument rather than stored anywhere: the
+    orchestrator and its collaborators are shared across concurrent requests, and per-
+    request authorization context on a shared instance is exactly what the
+    "Per-request authorization context isolation" requirement forbids.
+    """
+    return RequestingUser(
+        user_id=getattr(request.state, "user_id", None),
+        role=getattr(request.state, "role", None),
+    )
+
+
 def _response_payload(response: ChatResponse) -> dict:
     # pending_clarification is additive: omit it entirely from the payload when
     # absent instead of serializing it as null, so existing clients see no change.
@@ -448,6 +464,7 @@ async def chat(
     started_at = time.monotonic()
     reply, sources, pending_clarification, answer_kind, model_version, retrieval_status, sql_results, chart = await orchestrator.execute_with_clarification(
         body.message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id,
+        requesting_user=_requesting_user(request),
     )
     response_time_ms = round((time.monotonic() - started_at) * 1000)
 
@@ -497,6 +514,7 @@ async def chat_stream(
         task = asyncio.create_task(
             orchestrator.execute_with_clarification_stream(
                 body.message, session, schema, tenant_id, sink, jwt_token, conversation_context, conversation_id,
+                requesting_user=_requesting_user(request),
             )
         )
         try:

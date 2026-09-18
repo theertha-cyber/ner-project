@@ -7,6 +7,10 @@ from langsmith.wrappers import wrap_openai
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.shared.config import settings
+from src.shared.document_visibility import (
+    visibility_predicate,
+    visibility_predicate_via_document,
+)
 from src.shared.database import get_engine
 from src.shared.entity_views import (
     CHILD_VALUE_COLUMNS,
@@ -689,6 +693,10 @@ def apply_document_scope(
 
 CONVERSATION_SCOPE_PARAM = "scope_conversation_id"
 
+# The uploader scope binds its own parameter name, distinct from the retrievers'
+# so a statement carrying both cannot collide.
+UPLOADER_SCOPE_PARAM = "scope_uploader_user_id"
+
 # How each relation is tied to a conversation. `None` means the relation carries
 # `conversation_id` itself; a string names the column holding the document id, which is
 # resolved against `documents`. Spans, entities and extraction runs have no
@@ -773,6 +781,86 @@ def apply_conversation_scope(
         sql = sql[: reference.start] + inline + sql[reference.end:]
 
     return sql, len(references)
+
+
+# How each relation is tied to an uploader. `None` means the relation carries the
+# denormalized columns itself; a string names the column holding the document id, which
+# is resolved against `documents`. Identical in shape to the conversation map above, and
+# for the same reason: `document_chunks` was denormalized (migration 056) so the vector
+# path can filter without a join, and the relations that were not are reached through
+# `documents`, which owns the fact.
+_STATIC_UPLOADER_SCOPE_COLUMNS = {
+    "documents": None,
+    "document_chunks": None,
+    "document_text_spans": "document_id",
+    "document_entities": "document_id",
+    "extraction_runs": "document_id",
+}
+
+
+def uploader_scope_columns(surface: QuerySurface | None = None) -> dict[str, str | None]:
+    """`relation -> how an uploader scope reaches it`, static tables plus the surface.
+
+    Derived from the resolved relation set for the same reason the other two maps are: a
+    relation missing from this map is one the scope silently cannot narrow, which is the
+    hole `test_sql_table_whitelist` guards against."""
+    columns: dict[str, str | None] = dict(_STATIC_UPLOADER_SCOPE_COLUMNS)
+    for relation in (surface.table_names if surface is not None else set()):
+        columns[relation] = "document_id"
+    return columns
+
+
+def apply_uploader_scope(
+    sql: str,
+    requesting_user,
+    scope_columns: dict[str, str | None] | None = None,
+) -> tuple[str, int, dict]:
+    """Constrains every uploader-reachable relation to documents this user may see.
+
+    Like `apply_conversation_scope` and unlike `apply_document_scope`, this runs on
+    *every* statement rather than only on one the caller asked to scope: a boundary that
+    applies only when someone remembered to ask for it is not a boundary. It is the
+    relational half of the uploader-visibility rule — without it a generated `COUNT` over
+    `document_entities` would count another user's documents, which the vector guardrail
+    would never see.
+
+    The predicate comes from `src/shared/document_visibility.py`, the same definition
+    document listing and the retrievers use, so the three cannot drift.
+
+    Returns the rewritten statement, how many references it touched, and the bound
+    parameters to pass with it. A `None` predicate (a tenant admin) leaves the statement
+    untouched and returns no parameters."""
+    columns = _STATIC_UPLOADER_SCOPE_COLUMNS if scope_columns is None else scope_columns
+    references = [
+        r for r in iter_table_references(sql)
+        if not r.is_callable and r.start >= 0 and r.name.lower() in columns
+    ]
+    if not references:
+        return sql, 0, {}
+
+    own_predicate, params = visibility_predicate(
+        requesting_user, param_name=UPLOADER_SCOPE_PARAM
+    )
+    if own_predicate is None:
+        return sql, 0, {}
+
+    via_document, _ = visibility_predicate_via_document(
+        requesting_user, "__link__", param_name=UPLOADER_SCOPE_PARAM
+    )
+
+    for reference in sorted(references, key=lambda r: r.start, reverse=True):
+        table = reference.name.lower()
+        link_column = columns[table]
+        if link_column is None:
+            where = own_predicate
+        else:
+            where = via_document.replace("__link__", link_column, 1)
+        inline = f"(SELECT * FROM {table} WHERE {where})"
+        if not reference.has_alias:
+            inline = f"{inline} AS {table}"
+        sql = sql[: reference.start] + inline + sql[reference.end:]
+
+    return sql, len(references), params
 
 
 # `SET ROLE` / `SET SESSION AUTHORIZATION` would let a statement choose the identity it
@@ -1784,6 +1872,7 @@ Return ONLY the SQL query, no explanations:"""
         completeness_sink: dict | None = None,
         surface: QuerySurface | None = None,
         conversation_id: str | None = None,
+        requesting_user=None,
     ) -> tuple[SQLAttempt, list[dict] | None]:
         """One generate -> validate -> execute -> classify pass. `schema` is passed in
         already bound from authenticated request context and is only ever forwarded;
@@ -1844,6 +1933,15 @@ Return ONLY the SQL query, no explanations:"""
         if conversation_id is not None:
             params = {**params, CONVERSATION_SCOPE_PARAM: conversation_id}
 
+        # Unconditional, on the same terms and for the same reason as the
+        # conversation scope above, and conjoined with it rather than replacing it:
+        # a statement may be narrowed by both, and each rewrite wraps whatever the
+        # previous one produced.
+        scoped_sql, _, uploader_params = apply_uploader_scope(
+            scoped_sql, requesting_user, uploader_scope_columns(surface)
+        )
+        params = {**params, **uploader_params}
+
         try:
             rows = await self.execute_sql(scoped_sql, session, schema, params, completeness_sink)
         except Exception as e:
@@ -1896,6 +1994,7 @@ Return ONLY the SQL query, no explanations:"""
         document_ids: list[str] | None = None,
         completeness_sink: dict | None = None,
         conversation_id: str | None = None,
+        requesting_user=None,
     ) -> list[dict] | None:
         """Bounded generate/validate/execute recovery loop. Returns rows on the first
         successful attempt — including an empty list for a legitimate zero-row result —
@@ -1967,7 +2066,7 @@ Return ONLY the SQL query, no explanations:"""
             attempt, rows = await self._run_attempt(
                 attempt_number, natural_language_query, session, schema,
                 conversation_context, grounding, attempts, document_ids, attempt_completeness,
-                surface, conversation_id,
+                surface, conversation_id, requesting_user,
             )
             attempt_duration_ms = int((time.monotonic() - attempt_started) * 1000)
             if completeness_sink is not None and attempt.outcome == SQLAttemptOutcome.SUCCESS:

@@ -6,6 +6,7 @@ from langsmith.wrappers import wrap_openai
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.shared.config import settings
+from src.shared.document_visibility import RequestingUser, visibility_predicate
 from src.shared.database import get_engine
 from src.shared.conversation_history import render_history
 from src.shared.retrieval import DenseRetriever, SparseRetriever, HybridRetriever, RerankingRetriever, CrossEncoderReranker
@@ -49,14 +50,16 @@ class RAGOrchestrator:
             self.llm_model = "gpt-4o"
 
     async def execute(self, message: str, session: AsyncSession, schema: str, tenant_id: str,
-                      jwt_token: str | None = None, conversation_context: list[dict] | None = None) -> tuple[str, list[Source | Citation]]:
-        result = await self._run_graph(message, session, schema, tenant_id, jwt_token, conversation_context)
+                      jwt_token: str | None = None, conversation_context: list[dict] | None = None,
+                      requesting_user: RequestingUser | None = None) -> tuple[str, list[Source | Citation]]:
+        result = await self._run_graph(message, session, schema, tenant_id, jwt_token, conversation_context,
+                                       requesting_user=requesting_user)
         return result["reply"], result.get("sources", [])
 
     async def execute_with_clarification(
         self, message: str, session: AsyncSession, schema: str, tenant_id: str,
         jwt_token: str | None = None, conversation_context: list[dict] | None = None,
-        conversation_id: str | None = None,
+        conversation_id: str | None = None, requesting_user: RequestingUser | None = None,
     ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None, list[dict] | None, dict | None]:
         """Same as `execute`, but additionally surfaces `pending_clarification`,
         `answer_kind`, `model_version`, the turn's `retrieval_status`, the full,
@@ -66,7 +69,8 @@ class RAGOrchestrator:
         one. Requires `conversation_id` so entity resolution can read and persist its
         per-conversation state. Used by `src/chat_api/api/v1/chat.py`; the widget
         endpoint keeps calling `execute`, whose signature is unchanged."""
-        result = await self._run_graph(message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id)
+        result = await self._run_graph(message, session, schema, tenant_id, jwt_token, conversation_context,
+                                       conversation_id, requesting_user=requesting_user)
         sources = result.get("sources", [])
         return (
             result["reply"],
@@ -83,6 +87,7 @@ class RAGOrchestrator:
         self, message: str, session: AsyncSession, schema: str, tenant_id: str,
         token_sink: asyncio.Queue, jwt_token: str | None = None,
         conversation_context: list[dict] | None = None, conversation_id: str | None = None,
+        requesting_user: RequestingUser | None = None,
     ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None, list[dict] | None, dict | None]:
         """Same as `execute_with_clarification`, but threads `token_sink` into the
         graph's initial state (design.md Decision 2) so `generation_node` can stream
@@ -94,7 +99,7 @@ class RAGOrchestrator:
         try:
             result = await self._run_graph(
                 message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id,
-                token_sink=token_sink,
+                token_sink=token_sink, requesting_user=requesting_user,
             )
         finally:
             await token_sink.put(STREAM_DONE)
@@ -150,7 +155,8 @@ class RAGOrchestrator:
 
     async def _run_graph(self, message: str, session: AsyncSession, schema: str, tenant_id: str,
                          jwt_token: str | None = None, conversation_context: list[dict] | None = None,
-                         conversation_id: str | None = None, token_sink: asyncio.Queue | None = None) -> dict:
+                         conversation_id: str | None = None, token_sink: asyncio.Queue | None = None,
+                         requesting_user: RequestingUser | None = None) -> dict:
         if getattr(self, "_graph", None) is None:
             self._graph = build_chat_graph(self)
 
@@ -161,6 +167,11 @@ class RAGOrchestrator:
             "jwt_token": jwt_token,
             "conversation_context": conversation_context,
             "conversation_id": conversation_id,
+            # Who the turn is answered for. Carried in per-request state, never on
+            # the orchestrator instance, for the reason the "Per-request
+            # authorization context isolation" requirement gives. `None` is the
+            # widget's no-end-user case, not "unscoped".
+            "requesting_user": requesting_user,
             "session": session,
             "token_sink": token_sink,
         }
@@ -176,7 +187,8 @@ class RAGOrchestrator:
                           deadline: float | None = None,
                           document_ids: list[str] | None = None,
                           completeness_sink: dict | None = None,
-                          conversation_id: str | None = None) -> list[dict] | None:
+                          conversation_id: str | None = None,
+                          requesting_user: RequestingUser | None = None) -> list[dict] | None:
         """`schema` comes from the caller's authenticated request context and is passed
         straight through — the recovery loop never re-derives it. Raises
         `SQLGenerationFailed` when every attempt failed; the tool layer turns that into
@@ -189,6 +201,7 @@ class RAGOrchestrator:
             message, session, schema, conv_text,
             attempt_sink=attempt_sink, deadline=deadline, document_ids=document_ids,
             completeness_sink=completeness_sink, conversation_id=conversation_id,
+            requesting_user=requesting_user,
         )
 
     async def _external_source(self, query: str, session: AsyncSession, tenant_id: str,
@@ -201,14 +214,29 @@ class RAGOrchestrator:
             query, session, tenant_id, conversation_context, deadline,
         )
 
-    async def _resolve_document_names(self, sources: list[Source], session: AsyncSession, schema: str) -> dict[str, str]:
+    async def _resolve_document_names(self, sources: list[Source], session: AsyncSession, schema: str,
+                                      requesting_user=None) -> dict[str, str]:
+        """Filenames for the documents behind a turn's sources.
+
+        The ids arriving here were produced by channels that already applied the
+        uploader-visibility rule, so this lookup should be a no-op for anything
+        invisible. It applies the rule anyway: a filename is itself tenant content — it
+        is the one part of a document the citation chip shows verbatim — and this is the
+        last place before it reaches the user. Relying on upstream filtering would make
+        correctness here depend on every present and future caller getting it right.
+        """
         doc_ids = {s.document_id for s in sources if s.document_id}
         doc_map: dict[str, str] = {}
         if doc_ids:
+            visibility, visibility_params = visibility_predicate(requesting_user)
+            visibility_sql = f" AND {visibility}" if visibility else ""
             try:
                 result = await session.execute(
-                    text(f"SELECT id, filename FROM {schema}.documents WHERE id = ANY(:ids)"),
-                    {"ids": list(doc_ids)},
+                    text(
+                        f"SELECT id, filename FROM {schema}.documents "
+                        f"WHERE id = ANY(:ids){visibility_sql}"
+                    ),
+                    {"ids": list(doc_ids), **visibility_params},
                 )
                 for row in result.fetchall():
                     doc_map[row[0]] = row[1]
