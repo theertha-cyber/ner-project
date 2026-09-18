@@ -8,7 +8,7 @@ import { DataPlaneGate } from "@/components/data-plane/data-plane-gate";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { ConversationSwitcher } from "@/components/chat/ConversationSwitcher";
 import { MessageThread } from "@/components/chat/MessageThread";
-import { ChatInput, type StagedFile } from "@/components/chat/ChatInput";
+import { ChatInput, type StagedFile, type ConversationAttachment } from "@/components/chat/ChatInput";
 import type { ChartPayload } from "@/components/chat/ChartRenderer";
 import { authFetch } from "@/lib/auth-fetch";
 import { useAuth } from "@/lib/auth";
@@ -34,6 +34,7 @@ interface Message {
   feedback?: Feedback | null;
   export?: ExportAvailability | null;
   chart?: ChartPayload | null;
+  attachments?: ConversationAttachment[] | null;
 }
 
 interface Source {
@@ -99,6 +100,9 @@ function ChatPageInner() {
   const [errorToast, setErrorToast] = useState<string | null>(null);
   const [noticeToast, setNoticeToast] = useState<string | null>(null);
   const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
+  // Everything this conversation owns, from the API — so the chips survive a reload
+  // and a conversation switch rather than living only in send-time memory.
+  const [conversationAttachments, setConversationAttachments] = useState<ConversationAttachment[]>([]);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appliedParamRef = useRef<string | null>(null);
@@ -126,6 +130,7 @@ function ChatPageInner() {
       if (resp.ok) {
         const data = await resp.json();
         setMessages(data.messages || []);
+        setConversationAttachments(data.attachments || []);
       }
     } catch {
       /* ignore */
@@ -143,6 +148,7 @@ function ChatPageInner() {
   const handleBackToList = useCallback(() => {
     setActiveConvId(null);
     setMessages([]);
+    setConversationAttachments([]);
     appliedParamRef.current = null;
     router.replace(CHAT_ROUTE);
     // The list shows per-conversation message counts and auto-generated titles,
@@ -231,6 +237,7 @@ function ChatPageInner() {
         setActiveConvId(data.id);
         appliedParamRef.current = data.id;
         setMessages([]);
+        setConversationAttachments([]);
         setErrorToast(null);
         router.replace(CHAT_ROUTE + "?conversation=" + data.id);
       } else {
@@ -273,6 +280,7 @@ function ChatPageInner() {
         if (activeConvId === convId) {
           setActiveConvId(null);
           setMessages([]);
+          setConversationAttachments([]);
           appliedParamRef.current = null;
           router.replace(CHAT_ROUTE);
         }
@@ -348,6 +356,10 @@ function ChatPageInner() {
           // purpose and is cleared (spec scenario "Send a message with staged
           // attachments").
           setStagedFiles([]);
+          setConversationAttachments((prev) => [
+            ...prev,
+            ...attachments.map((f) => ({ id: f.id, filename: f.name })),
+          ]);
         },
         onError: () => {
           outcome = "error";
@@ -404,6 +416,10 @@ function ChatPageInner() {
         // user can retry without re-picking files (spec scenario "Failed send
         // preserves staged attachments").
         setStagedFiles([]);
+        setConversationAttachments((prev) => [
+          ...prev,
+          ...attachments.map((f) => ({ id: f.id, filename: f.name })),
+        ]);
       } else {
         setMessages((prev) => prev.filter((m) => m.id !== tempId && m.id !== thinkingId));
         showError("Failed to get a response. Please try again.");
@@ -428,6 +444,9 @@ function ChatPageInner() {
       role: "user",
       content: text,
       created_at: new Date().toISOString(),
+      // Rendered straight away so the file does not vanish between send and reply; the
+      // reload path gets the same shape back from the message's own row.
+      attachments: attachments.map((f) => ({ id: f.id, filename: f.name })),
     };
     const thinking: Message = {
       id: thinkingId,
@@ -605,6 +624,7 @@ function ChatPageInner() {
                 onAttach={handleAttach}
                 onRemoveFile={handleRemoveFile}
                 uploading={sending && stagedFiles.length > 0}
+                conversationAttachments={conversationAttachments}
               />
             </div>
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Paperclip } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChartRenderer, type ChartPayload } from "./ChartRenderer";
@@ -45,6 +46,14 @@ interface Message {
   feedback?: Feedback | null;
   export?: ExportAvailability | null;
   chart?: ChartPayload | null;
+  attachments?: MessageAttachment[] | null;
+}
+
+export interface MessageAttachment {
+  id: string;
+  filename: string;
+  mime_type?: string | null;
+  file_size_bytes?: number | null;
 }
 
 interface MessageThreadProps {
@@ -168,6 +177,50 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
                         wordBreak: "break-word",
                       }}
                     >
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div
+                          aria-label="Message attachments"
+                          role="group"
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 6,
+                            marginBottom: 8,
+                          }}
+                        >
+                          {msg.attachments.map((file) => (
+                            <span
+                              key={file.id}
+                              title={file.filename}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                maxWidth: 220,
+                                padding: "3px 10px",
+                                borderRadius: "var(--radius-pill)",
+                                // Sits inside the primary-filled user bubble, so the chip
+                                // is a translucent overlay rather than a surface token.
+                                background: "rgba(255, 255, 255, 0.18)",
+                                border: "1px solid rgba(255, 255, 255, 0.35)",
+                                fontSize: 12.5,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <Paperclip size={12} aria-hidden="true" />
+                              <span
+                                style={{
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {file.filename}
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {msg.content}
                     </div>
                   </div>

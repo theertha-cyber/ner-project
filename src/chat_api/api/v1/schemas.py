@@ -169,6 +169,13 @@ class FeedbackOut(BaseModel):
     created_at: str
 
 
+class MessageAttachment(BaseModel):
+    id: str
+    filename: str
+    mime_type: str | None = None
+    file_size_bytes: int | None = None
+
+
 class MessageResponse(BaseModel):
     id: str
     role: str
@@ -180,6 +187,9 @@ class MessageResponse(BaseModel):
     feedback: FeedbackOut | None = None
     export: ExportAvailability | None = None
     chart: ChartPayload | None = None
+    # The files the user attached on this turn. Metadata only, recorded on the message
+    # so the thread still shows them after a reload or a conversation switch.
+    attachments: list[MessageAttachment] | None = None
 
 
 class ConversationDetail(BaseModel):

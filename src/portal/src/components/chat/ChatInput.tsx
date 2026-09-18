@@ -24,6 +24,15 @@ interface ChatInputProps {
   // that follows it both happen inside that request, so the tray says so rather than
   // looking idle for what can be several seconds.
   uploading?: boolean;
+  // Files already sent and owned by this conversation. Shown persistently because they
+  // stay queryable for the whole session — clearing them on send hid the fact that the
+  // conversation still has them (CAP-6).
+  conversationAttachments?: ConversationAttachment[];
+}
+
+export interface ConversationAttachment {
+  id: string;
+  filename: string;
 }
 
 // Matches the reading column in MessageThread so the composer lines up with the
@@ -53,6 +62,7 @@ export function ChatInput({
   onAttach,
   onRemoveFile,
   uploading = false,
+  conversationAttachments = [],
 }: ChatInputProps) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
@@ -314,6 +324,61 @@ export function ChatInput({
               {uploading
                 ? "Uploading and preparing attachments…"
                 : "Staging does not reserve the conversation until send."}
+            </span>
+          </div>
+        )}
+
+        {conversationAttachments.length > 0 && (
+          <div
+            role="region"
+            aria-label="Conversation attachments"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 8,
+              paddingTop: 10,
+            }}
+          >
+            {conversationAttachments.map((file) => (
+              <span
+                key={file.id}
+                title={file.filename}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  maxWidth: 240,
+                  padding: "4px 10px",
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "var(--radius-pill)",
+                  color: "var(--ink-2)",
+                  fontSize: 13,
+                  lineHeight: 1.4,
+                }}
+              >
+                <Paperclip size={12} aria-hidden="true" />
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {file.filename}
+                </span>
+              </span>
+            ))}
+            <span
+              style={{
+                color: "var(--ink-3)",
+                fontSize: 12.5,
+                lineHeight: 1.4,
+                padding: "2px 2px",
+              }}
+            >
+              Available to this conversation.
             </span>
           </div>
         )}

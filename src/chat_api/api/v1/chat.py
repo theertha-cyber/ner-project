@@ -18,7 +18,7 @@ from src.shared.database import get_resolver
 from src.shared.exceptions import NotFoundError
 from src.shared.tenant_context import classify_driver_error, record_health_best_effort
 from pydantic import ValidationError
-from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut, RetrievalStatusOut, ExportAvailability, ChartPayload, AttachmentOut
+from src.chat_api.api.v1.schemas import ChatRequest, ChatResponse, Source, Citation, ConversationSummary, ConversationDetail, MessageResponse, MessageAttachment, ConversationCreateResponse, ConversationRenameRequest, ConversationRenameResponse, FeedbackCreate, FeedbackOut, RetrievalStatusOut, ExportAvailability, ChartPayload, AttachmentOut
 from src.chat_api.services.chart_tool import ChartFrame
 from src.document_service.ingestion.contract import (
     PLATFORM_UPLOAD_SOURCE_ID,
@@ -217,10 +217,12 @@ def _reject_unsupported_attachments(files: list[UploadFile]) -> None:
 async def _ingest_attachments(
     session: AsyncSession, tenant_id: str, user_id: str | None,
     conversation_id: str, files: list[UploadFile],
-) -> list[str]:
+) -> tuple[list[str], list[dict]]:
     """Ingest each attachment as a conversation-owned document and wait for it to become
-    retrievable. Returns the filenames that did not make it, which the turn reports
-    rather than silently answering without them (design Decision 6).
+    retrievable. Returns `(unavailable_filenames, attachment_records)` — the first is
+    reported to the user rather than silently answering without them (design Decision
+    6); the second is recorded on the user's message so the thread can show the file on
+    the turn that carried it.
 
     Ingestion goes through `DocumentIngestionService` — the one code path permitted to
     create a `documents` row — so an attachment gets the same checksum, content-store
@@ -228,10 +230,11 @@ async def _ingest_attachments(
     `conversation_id` is written by the insert itself rather than by a later UPDATE, so
     the row is never briefly unowned."""
     if not files:
-        return []
+        return [], []
 
     document_ids: list[str] = []
     unavailable: list[str] = []
+    records: list[dict] = []
 
     for upload in files:
         data = await upload.read()
@@ -264,12 +267,18 @@ async def _ingest_attachments(
             # so rather than surfacing a 500.
             raise HTTPException(status_code=409, detail=str(e))
         document_ids.append(result.document_id)
+        records.append({
+            "id": result.document_id,
+            "filename": document.filename,
+            "mime_type": upload.content_type,
+            "file_size_bytes": result.file_size,
+        })
 
     for document_id, upload in zip(document_ids, files):
         if not await _await_processed(session, _schema(tenant_id), document_id):
             unavailable.append(upload.filename or "attachment")
 
-    return unavailable
+    return unavailable, records
 
 
 async def _await_processed(session: AsyncSession, schema: str, document_id: str) -> bool:
@@ -301,7 +310,7 @@ async def _persist_turn_and_respond(
     reply: str, sources: list[Source | Citation], pending_clarification: dict | None,
     answer_kind: str, model_version: str | None, response_time_ms: int,
     retrieval_status: dict | None = None, sql_results: list[dict] | None = None,
-    chart: dict | None = None,
+    chart: dict | None = None, attachments: list[dict] | None = None,
 ) -> ChatResponse:
     """User row insert, assistant row insert, `updated_at` bump, and commit —
     identical for the streaming and non-streaming routes. Runs once, after the RAG
@@ -339,10 +348,15 @@ async def _persist_turn_and_respond(
     # and `ORDER BY created_at` could hand the assistant row back before the user row.
     await session.execute(
         text(
-            f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources, created_at) "
-            "VALUES (:id, :cid, 'user', :content, NULL, clock_timestamp())"
+            f"INSERT INTO {schema}.chat_messages (id, conversation_id, role, content, sources, attachments, created_at) "
+            "VALUES (:id, :cid, 'user', :content, NULL, CAST(:attachments AS JSONB), clock_timestamp())"
         ),
-        {"id": str(uuid.uuid4()), "cid": conversation_id, "content": user_message},
+        {
+            "id": str(uuid.uuid4()), "cid": conversation_id, "content": user_message,
+            # On the user row, not the assistant's: the attachment belongs to the turn
+            # the person sent, which is what the thread renders it against.
+            "attachments": json.dumps(attachments) if attachments else None,
+        },
     )
     await session.execute(
         text(
@@ -425,7 +439,7 @@ async def chat(
     _reject_unsupported_attachments(files)
 
     conversation_id, conversation_context = await _prepare_conversation(session, schema, tenant_id, user_id, body)
-    unavailable_attachments = await _ingest_attachments(
+    unavailable_attachments, attachment_records = await _ingest_attachments(
         session, tenant_id, user_id, conversation_id, files
     )
 
@@ -440,7 +454,7 @@ async def chat(
     response = await _persist_turn_and_respond(
         session, schema, conversation_id, body.message, reply, sources,
         pending_clarification, answer_kind, model_version, response_time_ms,
-        retrieval_status, sql_results, chart,
+        retrieval_status, sql_results, chart, attachment_records,
     )
 
     headers = rate_limiter.get_headers(f"internal:{tenant_id}", INTERNAL_RATE_LIMIT, INTERNAL_WINDOW)
@@ -470,7 +484,7 @@ async def chat_stream(
     _reject_unsupported_attachments(files)
 
     conversation_id, conversation_context = await _prepare_conversation(session, schema, tenant_id, user_id, body)
-    unavailable_attachments = await _ingest_attachments(
+    unavailable_attachments, attachment_records = await _ingest_attachments(
         session, tenant_id, user_id, conversation_id, files
     )
 
@@ -507,7 +521,7 @@ async def chat_stream(
         response = await _persist_turn_and_respond(
             session, schema, conversation_id, body.message, reply, sources,
             pending_clarification, answer_kind, model_version, response_time_ms,
-            retrieval_status, sql_results, chart,
+            retrieval_status, sql_results, chart, attachment_records,
         )
         done_payload = _response_payload(response)
         done_payload["unavailable_attachments"] = unavailable_attachments
@@ -613,7 +627,7 @@ async def get_conversation(
     msg_result = await session.execute(
         text(f"""
             SELECT m.id, m.role, m.content, m.sources, m.created_at, m.answer_kind, m.model_version,
-                   m.export_row_count, m.chart,
+                   m.export_row_count, m.chart, m.attachments,
                    f.rating AS feedback_rating, f.created_at AS feedback_created_at
             FROM {schema}.chat_messages m
             LEFT JOIN {schema}.chat_message_feedback f ON f.message_id = m.id
@@ -643,6 +657,16 @@ async def get_conversation(
                 chart = ChartPayload.model_validate(raw)
             except (json.JSONDecodeError, TypeError, ValidationError):
                 pass
+        # Rows written before this column existed read back NULL, which renders as a
+        # message with no attachment — the same as a turn that carried none.
+        message_attachments = None
+        if r.attachments:
+            import json
+            try:
+                raw_atts = json.loads(r.attachments) if isinstance(r.attachments, str) else r.attachments
+                message_attachments = [MessageAttachment(**a) for a in raw_atts] or None
+            except (json.JSONDecodeError, TypeError, ValidationError):
+                pass
         feedback = None
         if r.feedback_rating:
             feedback = FeedbackOut(message_id=r.id, rating=r.feedback_rating, created_at=str(r.feedback_created_at))
@@ -653,6 +677,7 @@ async def get_conversation(
             feedback=feedback,
             export=ExportAvailability(message_id=r.id, row_count=r.export_row_count) if r.export_row_count is not None else None,
             chart=chart,
+            attachments=message_attachments,
         ))
 
     att_result = await session.execute(text(_conversation_attachments_query(schema)), {"cid": conv_id})

@@ -290,6 +290,35 @@ class TestChatEndpointTurnShape:
         assert attachment["filename"] == "agreement.csv"
         assert attachment["mime_type"] == "text/csv"
 
+        # The turn that carried the file records it on the user's own message, so the
+        # thread can still show it against that turn after a reload.
+        user_msg = next(m for m in detail_resp.json()["messages"] if m["role"] == "user")
+        assert [a["filename"] for a in (user_msg["attachments"] or [])] == ["agreement.csv"]
+        assistant_msg = next(m for m in detail_resp.json()["messages"] if m["role"] == "assistant")
+        assert not assistant_msg["attachments"]
+
+    async def test_text_only_turn_records_no_message_attachments(
+        self, engine, tenant_schema, monkeypatch,
+    ):
+        from httpx import ASGITransport, AsyncClient
+
+        tid, _ = tenant_schema
+        self._patch(monkeypatch, "Plain reply.", [
+            Citation(document_name="r.pdf", document_id="doc-1", source_type="sql"),
+        ])
+
+        async with AsyncClient(transport=ASGITransport(app=self._app()), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/chat", headers=self._auth(tid),
+                json={"message": "no files here", "conversation_id": None},
+            )
+            conv_id = resp.json()["conversation_id"]
+            detail = await client.get(f"/api/v1/chat/conversations/{conv_id}", headers=self._auth(tid))
+
+        assert detail.status_code == 200
+        assert detail.json()["attachments"] == []
+        assert all(not m["attachments"] for m in detail.json()["messages"])
+
     async def test_unsupported_attachment_is_rejected_without_creating_a_conversation(
         self, engine, tenant_schema, monkeypatch,
     ):

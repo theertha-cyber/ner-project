@@ -243,6 +243,7 @@ CREATE TABLE IF NOT EXISTS {schema}.chat_messages (
     export_rows JSONB,
     export_row_count INTEGER,
     chart JSONB,
+    attachments JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS {schema}.chat_message_feedback (

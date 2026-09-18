@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const mockReplace = vi.fn();
@@ -368,11 +368,14 @@ describe("Chat page — staged attachments", () => {
     ).toBeUndefined();
 
     await waitFor(() => {
-      expect(screen.queryByText("invoice.pdf")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: "Staged attachments" })
+      ).not.toBeInTheDocument();
     });
-    expect(
-      screen.queryByRole("region", { name: "Staged attachments" })
-    ).not.toBeInTheDocument();
+    // The staged tray clears, but the file does not vanish: it stays queryable for the
+    // whole conversation, so it moves into the conversation attachment row.
+    const conversationTray = screen.getByRole("region", { name: "Conversation attachments" });
+    expect(within(conversationTray).getByText("invoice.pdf")).toBeInTheDocument();
   });
 
   it("sends attachment metadata on the non-streaming path and clears the tray (Scenario 4)", async () => {
@@ -425,8 +428,12 @@ describe("Chat page — staged attachments", () => {
     expect(sent.size).toBe(1);
 
     await waitFor(() => {
-      expect(screen.queryByText("data.csv")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: "Staged attachments" })
+      ).not.toBeInTheDocument();
     });
+    const conversationTray = screen.getByRole("region", { name: "Conversation attachments" });
+    expect(within(conversationTray).getByText("data.csv")).toBeInTheDocument();
   });
 
   it("preserves staged files and shows an error when the send fails (Scenario 5)", async () => {
@@ -568,5 +575,57 @@ describe("Chat page — transport and attachment availability", () => {
     // Queried by content, not by role: the tray's in-flight hint is also a status.
     const notice = await screen.findByText(/could not be used for this answer/);
     expect(notice).toHaveTextContent("jd.pdf");
+  });
+});
+
+// Covers the attachment-persistence request: a sent file stays visible both on the
+// message that carried it and in the conversation row under the composer.
+describe("Chat page — attachments persist after send", () => {
+  it("shows the file on the user message and in the conversation row", async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/chat/stream")) {
+        return Promise.resolve(
+          sseResponse([
+            'event: done\ndata: {"reply": "ok", "sources": [], "conversation_id": "conv-1", "message_id": "m1", "answer_kind": "answer"}\n\n',
+          ]),
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations")) return Promise.resolve(jsonResponse([]));
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    await screen.findByPlaceholderText("Type your question...");
+    const fileInput = view.container.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["x"], "jd.pdf", { type: "application/pdf" })] },
+    });
+    const input = screen.getByPlaceholderText("Type your question...");
+    fireEvent.change(input, { target: { value: "what does it require?" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // On the turn that carried it. Re-queried inside waitFor rather than held as a
+    // reference: the turn re-renders on the done frame, detaching the earlier node.
+    await waitFor(() => {
+      const onMessage = screen.getByRole("group", { name: "Message attachments" });
+      expect(within(onMessage).getByText("jd.pdf")).toBeInTheDocument();
+    });
+
+    // ...and in the conversation row, which the staged tray hands off to.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("region", { name: "Staged attachments" })
+      ).not.toBeInTheDocument();
+    });
+    const conversationRow = screen.getByRole("region", { name: "Conversation attachments" });
+    expect(within(conversationRow).getByText("jd.pdf")).toBeInTheDocument();
   });
 });
