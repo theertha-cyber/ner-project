@@ -111,4 +111,33 @@ describe("TenantDetailPage (System Admin cross-tenant onboarding)", () => {
     await waitFor(() => expect(screen.getByText(/Tenant deactivated/)).toBeInTheDocument());
     expect(screen.queryByText("late@acme-corp.io")).not.toBeInTheDocument();
   });
+
+  // Scenario #77 (admin-console) — task 13.7: registry-based document counts
+  // stay visible even while a tenant_owned tenant's own store is unreachable.
+  it("shows the registry document count while the tenant's store is unreachable", async () => {
+    const residencyTenant = {
+      ...TENANT,
+      id: "tid-456",
+      name: "Residency Co",
+      slug: "residency-co",
+      data_plane: { mode: "tenant_owned", status: "ready", health: "unreachable" },
+      document_count: 42,
+    };
+    mockAuthFetch.mockImplementation((url: string) => {
+      if (String(url).endsWith(`/api/v1/admin/tenants/${residencyTenant.id}`)) {
+        return Promise.resolve(jsonResponse({ tenant: residencyTenant }));
+      }
+      if (String(url).endsWith(`/api/v1/admin/tenants/${residencyTenant.id}/users`)) {
+        return Promise.resolve(jsonResponse({ users: [] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<TenantDetailPage params={{ id: residencyTenant.id }} />);
+    await waitFor(() => expect(screen.getByText("Residency Co")).toBeInTheDocument());
+
+    expect(screen.getByText("42 / 1000")).toBeInTheDocument();
+    expect(screen.getByText("Tenant-owned PostgreSQL")).toBeInTheDocument();
+    expect(screen.getByText("unreachable")).toBeInTheDocument();
+  });
 });

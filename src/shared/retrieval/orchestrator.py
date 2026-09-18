@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 SEMANTIC_CAPABILITY_NAME = "semantic_retrieval"
 STRUCTURED_CAPABILITY_NAME = "structured_retrieval"
+# Offered only per turn, and only to a tenant with an executable external
+# capability (ADR-016); never part of `build_default_registry()`.
+EXTERNAL_CAPABILITY_NAME = "external_database"
 
 ORCHESTRATION_SYSTEM_PROMPT = (
     "You are a retrieval orchestrator for a tenant knowledge base assistant. Given the "
@@ -216,6 +219,14 @@ class OrchestrationResult:
     # `{"returned": int, "matched": int | None, "truncated": bool}` across every
     # structured invocation, or None when none reported it.
     sql_completeness: dict | None = None
+    # External evidence has its own channel (ADR-015, ADR-016 Decision 6): rows
+    # never join `sql_results`, which platform citation assembly serializes
+    # verbatim into persisted sources. `external_relations` is the set of
+    # contract relation *names* the accepted statement used — never a row value.
+    external_results: list[dict] = field(default_factory=list)
+    external_relations: list[str] = field(default_factory=list)
+    external_truncated: bool = False
+    external_failure_reason: str | None = None
 
     # Views onto `status`, not a second channel: there is one stored value and these
     # read and write it. Kept because callers and the eval runner speak in these terms.
@@ -288,8 +299,14 @@ def _resolve_entry(entry: PlanEntry, registry: ToolRegistry):
     return tool, None
 
 
-def _build_messages(message: str, conversation_context: list[dict] | None) -> list[dict]:
-    messages = [{"role": "system", "content": ORCHESTRATION_SYSTEM_PROMPT}]
+def _build_messages(
+    message: str, conversation_context: list[dict] | None,
+    system_prompt_addendum: str | None = None,
+) -> list[dict]:
+    system_content = ORCHESTRATION_SYSTEM_PROMPT
+    if system_prompt_addendum:
+        system_content += "\n\n" + system_prompt_addendum
+    messages = [{"role": "system", "content": system_content}]
     for turn in recent_messages(conversation_context):
         messages.append({"role": turn["role"], "content": turn["content"]})
     messages.append({"role": "user", "content": message})
@@ -302,12 +319,16 @@ async def plan_retrieval(
     llm_client,
     llm_model: str,
     registry: ToolRegistry,
+    system_prompt_addendum: str | None = None,
 ) -> RetrievalPlan:
     """Makes exactly one planning LLM call and returns the resulting plan. Entries are
     validated against their capability's `args_schema` here; invalid entries are marked
     rejected but kept in the plan so the caller can trace them. Raises whatever the LLM
-    client raises — the caller is responsible for the degraded fallback."""
-    messages = _build_messages(message, conversation_context)
+    client raises — the caller is responsible for the degraded fallback.
+
+    `system_prompt_addendum` is appended only when given — omitted (the default),
+    planner input is byte-identical to before this parameter existed."""
+    messages = _build_messages(message, conversation_context, system_prompt_addendum)
     async with _metrics().measure_llm_call("rag_orchestration") as call:
         response = await llm_client.chat.completions.create(
             model=llm_model, messages=messages, tools=registry.export_schemas(), tool_choice="auto", temperature=0,
@@ -441,20 +462,43 @@ def _merge_completeness(existing: dict | None, incoming: dict | None) -> dict | 
 
 def _accumulate(
     entries_and_results: list[tuple[PlanEntry, ToolResult | None]]
-) -> tuple[list[RetrievalResult], list[dict], list[CapabilityStatus], dict | None]:
+) -> tuple[list[RetrievalResult], list[dict], list[CapabilityStatus], dict | None, dict]:
     """Merges evidence and classifies every entry. One status per entry, in plan order.
 
     Nothing here collapses several entries into one signal: a plan whose first
     structured invocation failed and whose second returned rows reports both, and the
-    rows from the second are still accumulated."""
+    rows from the second are still accumulated.
+
+    External evidence is accumulated separately (last element of the returned tuple:
+    `{"results", "relations", "truncated", "failure_reason"}`) — it never joins
+    `sql_results`, which platform citation assembly serializes verbatim into
+    persisted sources (ADR-015, ADR-016 Decision 6)."""
     chunks_by_key: dict[tuple[str, int], RetrievalResult] = {}
     sql_results: list[dict] = []
     statuses: list[CapabilityStatus] = []
     completeness: dict | None = None
+    external_rows: list[dict] = []
+    external_relations: set[str] = set()
+    external_truncated = False
+    external_failure_reason: str | None = None
 
     for entry, result in entries_and_results:
         statuses.append(_entry_status(entry, result))
-        if result is None or result.error:
+        if result is None:
+            continue
+        if entry.capability_name == EXTERNAL_CAPABILITY_NAME:
+            if result.error:
+                if external_failure_reason is None:
+                    external_failure_reason = result.error
+            else:
+                external_rows.extend(result.results)
+                external_completeness = result.result_completeness or {}
+                external_truncated = external_truncated or bool(external_completeness.get("truncated"))
+                for diagnostic in result.diagnostics:
+                    if isinstance(diagnostic, dict):
+                        external_relations.update(diagnostic.get("relations") or [])
+            continue
+        if result.error:
             continue
         if entry.capability_name == SEMANTIC_CAPABILITY_NAME:
             basis = "fusion" if result.degraded else "reranker"
@@ -477,14 +521,21 @@ def _accumulate(
     # merge cap. A retrieval that returns fifty chunks of which two are kept is doing
     # different work from one that returns three and keeps three, and a duration
     # histogram cannot tell them apart.
-    _record_hit_rates(entries_and_results, kept, sql_results)
-    return kept, sql_results, statuses, completeness
+    _record_hit_rates(entries_and_results, kept, sql_results, external_rows)
+    external_evidence = {
+        "results": external_rows,
+        "relations": sorted(external_relations),
+        "truncated": external_truncated,
+        "failure_reason": external_failure_reason,
+    }
+    return kept, sql_results, statuses, completeness, external_evidence
 
 
 def _record_hit_rates(
     entries_and_results: list[tuple[PlanEntry, ToolResult | None]],
     kept_chunks: list[RetrievalResult],
     sql_results: list[dict],
+    external_rows: list[dict] | None = None,
 ) -> None:
     returned: dict[str, int] = {}
     for entry, result in entries_and_results:
@@ -495,6 +546,7 @@ def _record_hit_rates(
     survived = {
         SEMANTIC_CAPABILITY_NAME: len(kept_chunks),
         STRUCTURED_CAPABILITY_NAME: len(sql_results),
+        EXTERNAL_CAPABILITY_NAME: len(external_rows or []),
     }
     for capability, total in returned.items():
         if total:
@@ -608,7 +660,7 @@ async def execute_plan(
     # first.
     entries_and_results = [(entries[i], results_by_index.get(i)) for i in range(len(entries))]
 
-    chunks, sql_results, statuses, completeness = _accumulate(entries_and_results)
+    chunks, sql_results, statuses, completeness, external_evidence = _accumulate(entries_and_results)
 
     # One fixed recovery invocation. Not a loop, not a re-plan, not an observe/act
     # cycle: exactly one `semantic_retrieval` call on the turn's original question,
@@ -645,7 +697,7 @@ async def execute_plan(
             statuses.append(recovery_status)
 
             if recovery_result is not None and not recovery_result.error:
-                recovered_chunks, _, _, _ = _accumulate([(recovery_entry, recovery_result)])
+                recovered_chunks, _, _, _, _ = _accumulate([(recovery_entry, recovery_result)])
                 chunks = recovered_chunks
             logger.info(
                 "orchestrator: structured-only plan returned nothing, semantic recovery "
@@ -657,6 +709,10 @@ async def execute_plan(
     return OrchestrationResult(
         chunks=chunks, sql_results=sql_results, status=status,
         plan_trace=trace, plan_truncated=truncated, sql_completeness=completeness,
+        external_results=external_evidence["results"],
+        external_relations=external_evidence["relations"],
+        external_truncated=external_evidence["truncated"],
+        external_failure_reason=external_evidence["failure_reason"],
     )
 
 

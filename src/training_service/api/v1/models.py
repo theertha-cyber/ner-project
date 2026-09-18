@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Request, HTTPException, Query
+from src.shared.data_plane_gate import require_data_plane_ready
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy import text
-from src.shared.database import get_engine
+from src.shared.database import get_engine, get_resolver
 from src.shared.config import settings
 from src.training_service.api.v1.schemas import ModelVersionResponse, ModelVersionListResponse
 from src.training_service.infra.mlflow_registry import (
@@ -20,7 +21,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/models", tags=["model-registry"])
+router = APIRouter(prefix="/api/v1/models", tags=["model-registry"], dependencies=[Depends(require_data_plane_ready)])
 
 CONLL_LABELS = ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-MISC", "I-MISC"]
 
@@ -57,8 +58,11 @@ def get_tenant_id(request: Request) -> str:
     return tid
 
 
-async def get_session() -> AsyncSession:
-    factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+async def get_session(request: Request) -> AsyncSession:
+    """Routed through EngineResolver (ADR-017)."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    engine = await get_resolver().resolve(tenant_id)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         try:
             yield session

@@ -78,6 +78,54 @@ TABLES = [
         document_id VARCHAR
     )
     """,
+    # CAP-3 durable Blob sync ledger (alembic 041). Test-only mirror: the suite
+    # runs DDL, not alembic, so the tables the migration creates are restated
+    # here. Opaque source identity, version tokens, finite outcome classes, and
+    # document linkage only.
+    """
+    CREATE TABLE IF NOT EXISTS "{schema}".azure_blob_sync_runs (
+        id VARCHAR PRIMARY KEY,
+        tenant_id VARCHAR(64) NOT NULL,
+        connection_id VARCHAR NOT NULL,
+        trigger VARCHAR(32) NOT NULL,
+        outcome VARCHAR(32) NOT NULL DEFAULT 'started',
+        reason VARCHAR(64) NOT NULL DEFAULT 'none',
+        objects_seen INTEGER NOT NULL DEFAULT 0,
+        objects_ingested INTEGER NOT NULL DEFAULT 0,
+        objects_skipped INTEGER NOT NULL DEFAULT 0,
+        objects_failed INTEGER NOT NULL DEFAULT 0,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS "{schema}".azure_blob_source_objects (
+        connection_id VARCHAR NOT NULL,
+        object_identity VARCHAR(1024) NOT NULL,
+        source_version VARCHAR(256),
+        document_id VARCHAR,
+        missing_sightings INTEGER NOT NULL DEFAULT 0,
+        confirmed_missing BOOLEAN NOT NULL DEFAULT FALSE,
+        last_seen_at TIMESTAMPTZ,
+        PRIMARY KEY (connection_id, object_identity)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS "{schema}".azure_blob_sync_leases (
+        connection_id VARCHAR PRIMARY KEY,
+        run_id VARCHAR NOT NULL,
+        acquired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS "{schema}".azure_blob_hidden_documents (
+        document_id VARCHAR PRIMARY KEY,
+        connection_id VARCHAR NOT NULL,
+        cause VARCHAR(32) NOT NULL,
+        hidden_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
 ]
 
 PUBLIC_TABLES = [
@@ -116,6 +164,9 @@ PUBLIC_TABLES = [
         validation_rule VARCHAR(500),
         target_table VARCHAR(255),
         base_label_mapping JSON,
+        -- Added by migration 038. Few-shot question/answer context for LLM pre-labeling;
+        -- nullable, because an entity type without QA pairs is fully eligible for extraction.
+        qa_examples JSONB,
         value_kind VARCHAR(32),
         value_unit VARCHAR(32),
         -- Both added by migration 037. Restated here rather than left out because the tests
@@ -126,6 +177,8 @@ PUBLIC_TABLES = [
         version INTEGER NOT NULL DEFAULT 1,
         required_flag BOOLEAN DEFAULT FALSE,
         is_active BOOLEAN DEFAULT TRUE,
+        provenance VARCHAR(16) NOT NULL DEFAULT 'manual',
+        provenance_ref VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )
@@ -135,7 +188,10 @@ PUBLIC_TABLES = [
     """
     ALTER TABLE public.entity_definitions
         ADD COLUMN IF NOT EXISTS cardinality VARCHAR(16) NOT NULL DEFAULT 'multi',
-        ADD COLUMN IF NOT EXISTS sql_identifier VARCHAR(63)
+        ADD COLUMN IF NOT EXISTS sql_identifier VARCHAR(63),
+        ADD COLUMN IF NOT EXISTS qa_examples JSONB,
+        ADD COLUMN IF NOT EXISTS provenance VARCHAR(16) NOT NULL DEFAULT 'manual',
+        ADD COLUMN IF NOT EXISTS provenance_ref VARCHAR(255)
     """,
     """
     DO $$
@@ -168,6 +224,143 @@ PUBLIC_TABLES = [
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
     """,
+    # CAP-2 control plane (alembic 040). Test-only mirror: the suite runs DDL, not
+    # alembic, so the tables the migration creates are restated here. Non-secret
+    # metadata, secret references, and finite safe evidence only.
+    """
+    CREATE TABLE IF NOT EXISTS public.tenant_data_source_connections (
+        id UUID PRIMARY KEY,
+        tenant_id VARCHAR(64) NOT NULL,
+        provider VARCHAR(32) NOT NULL
+            CHECK (provider IN ('azure_blob', 'azure_postgresql')),
+        configuration JSONB NOT NULL DEFAULT '{}'::jsonb,
+        secret_references JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status VARCHAR(32) NOT NULL DEFAULT 'draft'
+            CHECK (status IN ('draft', 'validated', 'active', 'paused', 'error', 'retired')),
+        last_test_outcome VARCHAR(32) NOT NULL DEFAULT 'not_run',
+        last_test_reason VARCHAR(64) NOT NULL DEFAULT 'none',
+        last_test_at TIMESTAMPTZ,
+        test_config_digest VARCHAR(64),
+        activation_outcome VARCHAR(32) NOT NULL DEFAULT 'inactive',
+        activation_reason VARCHAR(64) NOT NULL DEFAULT 'none',
+        activated_at TIMESTAMPTZ,
+        activation_evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+        replaces_connection_id UUID
+            REFERENCES public.tenant_data_source_connections (id)
+            ON DELETE SET NULL,
+        replaced_by_connection_id UUID
+            REFERENCES public.tenant_data_source_connections (id)
+            ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_data_source_active_provider
+        ON public.tenant_data_source_connections (tenant_id, provider)
+        WHERE status = 'active'
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_data_source_connections_tenant
+        ON public.tenant_data_source_connections (tenant_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS public.tenant_data_source_idempotency (
+        tenant_id VARCHAR(64) NOT NULL,
+        method VARCHAR(16) NOT NULL,
+        path TEXT NOT NULL,
+        idempotency_key VARCHAR(128) NOT NULL,
+        body_digest VARCHAR(64) NOT NULL,
+        response_status INTEGER NOT NULL,
+        response_body JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (tenant_id, method, path, idempotency_key)
+    )
+    """,
+    # ADR-017 control plane (alembic 043). Test-only mirror, same convention as CAP-2/3
+    # above: the suite runs DDL, not alembic, so the tables and trigger the migration
+    # creates are restated here.
+    """
+    CREATE TABLE IF NOT EXISTS public.tenant_data_planes (
+        tenant_id VARCHAR(64) PRIMARY KEY
+            REFERENCES public.tenants (id) ON DELETE CASCADE,
+        mode VARCHAR(32) NOT NULL
+            CHECK (mode IN ('platform', 'tenant_owned')),
+        status VARCHAR(32) NOT NULL
+            CHECK (status IN (
+                'awaiting_store', 'provisioning', 'provisioning_failed', 'ready',
+                'migration_required', 'paused', 'store_retired'
+            )),
+        connection_id UUID
+            REFERENCES public.tenant_data_source_connections (id) ON DELETE SET NULL,
+        store_id UUID,
+        schema_revision INTEGER,
+        status_reason VARCHAR(64) NOT NULL DEFAULT 'none',
+        health_outcome VARCHAR(32)
+            CHECK (health_outcome IN ('healthy', 'unreachable', 'auth_failed', 'timeout')),
+        health_checked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE OR REPLACE FUNCTION public.reject_tenant_data_plane_mode_change()
+    RETURNS trigger AS $$
+    BEGIN
+        IF NEW.mode IS DISTINCT FROM OLD.mode THEN
+            RAISE EXCEPTION 'DATA_PLANE_MODE_IMMUTABLE'
+                USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+    """,
+    """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger WHERE tgname = 'trg_tenant_data_plane_mode_immutable'
+        ) THEN
+            CREATE TRIGGER trg_tenant_data_plane_mode_immutable
+            BEFORE UPDATE ON public.tenant_data_planes
+            FOR EACH ROW EXECUTE FUNCTION public.reject_tenant_data_plane_mode_change();
+        END IF;
+    END $$;
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS public.tenant_document_registry (
+        document_id VARCHAR(64) NOT NULL,
+        tenant_id VARCHAR(64) NOT NULL
+            REFERENCES public.tenants (id) ON DELETE CASCADE,
+        source_type VARCHAR(64) NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        file_size_bytes BIGINT,
+        checksum VARCHAR(64),
+        retention_mode VARCHAR(32) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (tenant_id, document_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_tenant_document_registry_tenant
+        ON public.tenant_document_registry (tenant_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS public.notifications (
+        id VARCHAR PRIMARY KEY,
+        tenant_id VARCHAR NOT NULL,
+        recipient_role VARCHAR(50),
+        recipient_user_id VARCHAR,
+        kind VARCHAR(64) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        body TEXT,
+        resource_type VARCHAR(64),
+        resource_id VARCHAR,
+        read_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+    """,
 ]
 
 
@@ -185,6 +378,30 @@ RECONCILE = [
     """,
 ]
 
+# Per-schema DDL and per-database-once reconciliation for tables that predate this
+# revision and whose `CREATE TABLE IF NOT EXISTS` above is therefore a no-op against an
+# already-created fixture database.
+PUBLIC_RECONCILE = [
+    """
+    ALTER TABLE public.tenant_data_source_connections
+        DROP CONSTRAINT IF EXISTS tenant_data_source_connections_provider_check
+    """,
+    """
+    ALTER TABLE public.tenant_data_source_connections
+        ADD CONSTRAINT tenant_data_source_connections_provider_check
+        CHECK (provider IN ('azure_blob', 'azure_postgresql', 'azure_postgresql_data_plane'))
+    """,
+]
+
+TENANT_STORE_META_DDL = """
+    CREATE TABLE IF NOT EXISTS "{schema}".platform_store_meta (
+        store_id UUID NOT NULL,
+        tenant_id VARCHAR(64) NOT NULL,
+        schema_revision INTEGER NOT NULL,
+        provisioned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+"""
+
 
 async def main():
     _assert_test_database(DATABASE_URL)
@@ -193,6 +410,8 @@ async def main():
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS public"))
         for ddl in PUBLIC_TABLES:
             await conn.execute(text(ddl))
+        for reconcile_ddl in PUBLIC_RECONCILE:
+            await conn.execute(text(reconcile_ddl))
         print("  Created public tables")
 
         for schema in SCHEMAS:
@@ -201,6 +420,7 @@ async def main():
                 await conn.execute(text(table_ddl.format(schema=schema)))
             for reconcile_ddl in RECONCILE:
                 await conn.execute(text(reconcile_ddl.format(schema=schema)))
+            await conn.execute(text(TENANT_STORE_META_DDL.format(schema=schema)))
             print(f"  Created tables in schema {schema}")
 
         await conn.execute(text("""
@@ -213,6 +433,13 @@ async def main():
             ON CONFLICT (id) DO NOTHING
         """))
         print("  Inserted test tenants")
+
+        await conn.execute(text("""
+            INSERT INTO public.tenant_data_planes (tenant_id, mode, status, schema_revision)
+            SELECT id, 'platform', 'ready', 1 FROM public.tenants
+            ON CONFLICT (tenant_id) DO NOTHING
+        """))
+        print("  Backfilled tenant data-plane records")
 
         await conn.commit()
     await engine.dispose()

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
+from src.shared.data_plane_gate import install_data_plane_exception_handlers
 from src.shared.config import settings
 from src.shared.database import get_engine, wait_for_database
 from src.shared.readiness import check_database, check_redis, build_readiness_body
@@ -11,7 +12,7 @@ from src.training_service.middleware.tenant_context import TenantContextMiddlewa
 from src.shared.observability import init_observability
 from src.shared.observability.propagation import register_queue_depth
 from src.training_service.celery_app import celery_app
-from src.training_service.api.v1 import training_jobs, models
+from src.training_service.api.v1 import training_jobs, models, retrain_request, promotion_evidence
 
 
 @asynccontextmanager
@@ -81,8 +82,12 @@ async def app_error_handler(request: Request, exc: AppError):
     )
 
 
+
+install_data_plane_exception_handlers(app)
 app.include_router(training_jobs.router)
 app.include_router(models.router)
+app.include_router(retrain_request.router)
+app.include_router(promotion_evidence.router)
 
 
 @app.get("/health")

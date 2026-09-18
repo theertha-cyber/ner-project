@@ -4,8 +4,10 @@ import re
 import uuid
 import requests
 from datetime import datetime, timezone
-from sqlalchemy import text, create_engine
+from sqlalchemy import text
 from src.shared.config import settings
+from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable, data_plane_retry_countdown
+from src.shared.database import get_resolver
 from src.extraction_service.celery_app import celery_app
 from src.extraction_service.services.document_entity_store import (
     delete_document_entities,
@@ -19,6 +21,10 @@ from src.extraction_service.services.entity_normalizer import (
 )
 from src.extraction_service.services.entity_postprocessor import postprocess_document
 from src.extraction_service.services.entity_store import get_already_extracted
+from src.extraction_service.services.prediction_routing import (
+    purge_expired_predictions,
+    record_routed_predictions,
+)
 from src.extraction_service.services.processing_modes import (
     DEFAULT_PROCESSING_MODE,
     ProcessingMode,
@@ -114,12 +120,16 @@ def _align_predictions_with_offsets(predictions: list[dict], token_records: list
     return aligned
 
 
-def _get_sync_engine():
-    return create_engine(settings.database_url_sync)
+def _get_sync_engine(tenant_id: str):
+    """The one place this worker obtains a tenant-schema engine — routed through
+    `EngineResolver` (ADR-017) so a `tenant_owned` tenant's data never touches the
+    platform database. Never construct an engine from `settings.database_url_sync`
+    for tenant-schema access anywhere else in this file."""
+    return get_resolver().resolve_sync(tenant_id)
 
 
 def _get_documents_to_process(tenant_id: str, doc_ids: list[str]) -> list[str]:
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     placeholders = ", ".join(f"'{d}'" for d in doc_ids)
     with engine.connect() as conn:
@@ -141,7 +151,7 @@ def _get_document_filenames(tenant_id: str, doc_ids: list[str]) -> dict[str, str
     get right on every question that mentions a file."""
     if not doc_ids:
         return {}
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     with engine.connect() as conn:
         result = conn.execute(
@@ -157,7 +167,7 @@ def _get_cached_model_version(tenant_id: str) -> str:
     silently produced the version string "None", matching no extraction run and making
     every document look never-extracted. Only reached when the registry is unreachable;
     the cache can lag MLflow, so it is the fallback, not the authority."""
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     with engine.connect() as conn:
         result = conn.execute(
@@ -223,7 +233,7 @@ def _accumulate_entity_counts(entities, counts: dict) -> None:
 
 
 def _update_run_status(tenant_id: str, run_id: str, status: str, **kwargs):
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     set_clauses = [f"status = :status"]
     params = {"id": run_id, "status": status}
@@ -264,6 +274,17 @@ def run_batch_extraction(
             outcome = _run_batch_extraction(
                 self, tenant_id, run_id, doc_ids, processing_mode, span
             )
+        except (DataPlaneUnavailable, DataPlaneNotReady) as exc:
+            if self.request.retries < settings.data_plane_task_max_retries:
+                span.set("outcome", "retrying")
+                raise self.retry(
+                    exc=exc,
+                    countdown=data_plane_retry_countdown(self.request.retries),
+                    max_retries=settings.data_plane_task_max_retries,
+                )
+            span.set("outcome", "failed_retryable")
+            record_extraction_job(tenant_id, "failed_retryable")
+            return None
         except Exception as exc:
             span.set("outcome", "failed")
             span.record_error(exc)
@@ -309,10 +330,13 @@ def _run_batch_extraction(
     # `TenantService.create_tenant` clones `tenant_template` via `pg_tables` + `CREATE TABLE
     # (LIKE ...)`, so a freshly provisioned tenant starts with zero generated tables and its
     # first run would otherwise fail every document.
-    engine = _get_sync_engine()
+    engine = _get_sync_engine(tenant_id)
     schema = _schema(tenant_id)
     try:
-        with engine.connect() as conn:
+        # entity_definitions is a control-plane table (Design D10) — read it from the
+        # platform engine, never the tenant-resolved one, which for a tenant_owned
+        # tenant is a different server entirely.
+        with get_resolver().resolve_sync(None).connect() as conn:
             entity_specs = load_entity_definition_specs(conn, tenant_id)
         with engine.begin() as conn:
             reconcile_entity_tables_sync(conn, schema, entity_specs)
@@ -327,6 +351,21 @@ def _run_batch_extraction(
         record_extraction_failure(e)
         record_extraction_stage("persist", time.monotonic() - run_started)
         return "failed"
+
+    # The age half of the retention bound (design.md Decision 11), run once per run in its own
+    # transaction. A resolved prediction is already deleted when its outcome is recorded; this
+    # covers the abandoned path. Deliberately inline rather than on a schedule — a periodic task
+    # registration is machinery this change does not introduce. A failure here is logged and
+    # ignored: cleanup falling behind must never fail an extraction run.
+    try:
+        with engine.begin() as conn:
+            purged = purge_expired_predictions(
+                conn, schema, settings.retained_prediction_max_age_days
+            )
+        if purged:
+            print(f"WORKER: run={run_id} purged_expired_predictions={purged}", flush=True)
+    except Exception as e:
+        print(f"EXTRACTION_WORKER_WARN run={run_id} purge_failed: {e}", flush=True)
 
     filenames = _get_document_filenames(tenant_id, to_process)
 
@@ -344,7 +383,7 @@ def _run_batch_extraction(
         try:
             from src.shared.auth import create_access_token
 
-            engine = _get_sync_engine()
+            engine = _get_sync_engine(tenant_id)
             schema = _schema(tenant_id)
 
             with engine.connect() as conn:
@@ -401,7 +440,7 @@ def _run_batch_extraction(
             # text ("two and a half years") rather than the labelled fragments.
             normalized_entities = reconstruct_entities(merged_predictions, token_records)
 
-            with engine.connect() as conn:
+            with get_resolver().resolve_sync(None).connect() as conn:
                 type_config = load_entity_type_config(conn, tenant_id)
             normalized_entities, unparseable_count = apply_semantic_normalization(normalized_entities, type_config)
             if unparseable_count:
@@ -479,6 +518,27 @@ def _run_batch_extraction(
                             "confidence": pred.get("confidence", 0.0),
                         },
                     )
+                # Routing writes the same list `document_entities` gets, in the same
+                # transaction, from predictions this run already produced — no second
+                # inference pass (design.md Decision 2). `routed_predictions` is a separate
+                # store no business-facing surface reads, so retaining the below-threshold
+                # part of it changes nothing a business consumer sees.
+                routing_counts = record_routed_predictions(
+                    conn,
+                    schema,
+                    run_id,
+                    doc_id,
+                    normalized_entities,
+                    model_version,
+                    settings.review_confidence_threshold,
+                    settings.confidence_threshold,
+                )
+                print(
+                    f"WORKER: doc={doc_id} routed_accepted={routing_counts['accepted']} "
+                    f"routed_queued={routing_counts['queued']}",
+                    flush=True,
+                )
+
                 insert_document_entities(conn, schema, doc_id, normalized_entities)
                 # Same list, same transaction. The relational surface is either consistent with
                 # `document_entities` or absent for this document — never partially written. A

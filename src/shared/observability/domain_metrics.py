@@ -262,6 +262,10 @@ LLM_OPERATIONS = frozenset({
     "entity_selection",
     "rag_orchestration",
     "entity_postprocess",
+    # The generation node's chart-decision call. Declared separately from
+    # `answer_generation` because it is the extra round trip chart-eligible turns pay,
+    # and the whole point of measuring it is to see that cost on its own.
+    "chart_decision",
     OTHER,
 })
 
@@ -820,6 +824,153 @@ TRAINING_FAILURES = _declare(Family(
 ))
 
 
+# --- Tenant data-source control plane (CAP-2, ADR-011) -------------------------------------
+
+# The value sets mirror `src.shared.data_sources.lifecycle` exactly; a drift test in
+# `tests/test_tenant_data_source_control_plane.py` fails the build if they diverge.
+# Literals rather than imports: `data_sources.service` imports this module's recorders,
+# so importing the lifecycle constants here would close a package import cycle.
+# No family here carries `tenant_id` — per-connection attribution joins the trace,
+# where the tenant already lives. Metric labels carry finite outcome classes only:
+# no endpoints, credentials, provider diagnostics, or tenant content.
+DATA_SOURCE_PROVIDERS = frozenset(
+    {"azure_blob", "azure_postgresql", "azure_postgresql_data_plane", OTHER}
+)
+
+DATA_SOURCE_ACTIONS = frozenset({
+    "create",
+    "update",
+    "test",
+    "activate",
+    "pause",
+    "replace",
+    "retire",
+    "sync",
+    OTHER,
+})
+
+DATA_SOURCE_ACTION_OUTCOMES = frozenset({"success", "rejected", "error", OTHER})
+
+DATA_SOURCE_TEST_OUTCOMES = frozenset({"passed", "failed", "not_run", OTHER})
+
+DATA_SOURCE_TEST_REASONS = frozenset({
+    "none",
+    "validation_failed",
+    "secret_unavailable",
+    "connection_failed",
+    "tls_validation_failed",
+    "authorization_failed",
+    "prerequisite_missing",
+    # ADR-017 `azure_postgresql_data_plane` residency-specific test checks.
+    "server_version_unsupported",
+    "vector_extension_unavailable",
+    "insufficient_privilege",
+    "query_role_unavailable",
+    "target_schema_not_empty",
+    "store_identity_mismatch",
+    OTHER,
+})
+
+DATA_SOURCE_LIFECYCLE = _declare(Family(
+    "ner_data_source_lifecycle_total",
+    "counter",
+    "Tenant data-source connection lifecycle actions by provider, action, and "
+    "finite outcome. Per-connection detail joins the trace by connection id.",
+    labels=(
+        Label("provider", DATA_SOURCE_PROVIDERS),
+        Label("action", DATA_SOURCE_ACTIONS),
+        Label("outcome", DATA_SOURCE_ACTION_OUTCOMES),
+    ),
+))
+
+DATA_SOURCE_TESTS = _declare(Family(
+    "ner_data_source_tests_total",
+    "counter",
+    "Secure connection-test executions by provider, finite outcome, and finite "
+    "reason class. No endpoint, credential, or provider diagnostic is a label.",
+    labels=(
+        Label("provider", DATA_SOURCE_PROVIDERS),
+        Label("outcome", DATA_SOURCE_TEST_OUTCOMES),
+        Label("reason", DATA_SOURCE_TEST_REASONS),
+    ),
+))
+
+
+# --- Durable Azure Blob sync (CAP-3, ADR-012) ------------------------------------------
+#
+# The value sets mirror `src.document_service.blob_sync.sync` exactly; a drift
+# test in `tests/test_azure_blob_source_sync.py` fails the build if they
+# diverge. Literals rather than imports: `blob_sync.sync` imports this module's
+# recorder, so importing the sync constants here would close a package import
+# cycle. No family here carries `tenant_id` — per-run attribution joins the
+# trace, where the tenant already lives.
+BLOB_SYNC_TRIGGERS = frozenset({"manual", "scheduled", "retry", "catchup", OTHER})
+
+BLOB_SYNC_OUTCOMES = frozenset(
+    {"succeeded", "failed", "blocked", "lease_held", OTHER}
+)
+
+BLOB_SYNC = _declare(Family(
+    "ner_blob_sync_total",
+    "counter",
+    "Durable Azure Blob synchronizations by trigger class and finite terminal "
+    "outcome. No content, endpoint, credential, or provider diagnostic is a label.",
+    labels=(
+        Label("trigger", BLOB_SYNC_TRIGGERS),
+        Label("outcome", BLOB_SYNC_OUTCOMES),
+    ),
+))
+
+
+# --- Contract-governed external PostgreSQL query path (CAP-4, ADR-013) -----------
+#
+# The value sets mirror `src.shared.external_postgres.connector` and
+# `drift`/`validator` exactly; a drift test in
+# `tests/test_external_postgresql_chat.py` fails the build if they diverge.
+# Literals rather than imports: the external_postgres modules import this
+# module's recorder, so importing their constants here would close a package
+# import cycle. No family here carries `tenant_id`.
+EXTERNAL_PG_OUTCOMES = frozenset(
+    {"success", "drift_blocked", "validation_rejected", "execution_failed", OTHER}
+)
+
+EXTERNAL_PG_REASONS = frozenset(
+    {
+        "none",
+        "clean",
+        "drift_mismatch",
+        "metadata_unavailable",
+        "fingerprint_failure",
+        "not_single_select",
+        "write_or_ddl",
+        "multiple_statements",
+        "subquery",
+        "cte",
+        "union_or_setop",
+        "window_function",
+        "unapproved_relation",
+        "unapproved_column",
+        "unapproved_join",
+        "unapproved_function",
+        "inline_literal",
+        "role_switch",
+        OTHER,
+    }
+)
+
+EXTERNAL_PG_QUERY = _declare(Family(
+    "ner_external_pg_query_total",
+    "counter",
+    "Drift-gated external PostgreSQL executions by finite terminal outcome and "
+    "reason class. No SQL text, literal, row value, endpoint, or credential is "
+    "a label.",
+    labels=(
+        Label("outcome", EXTERNAL_PG_OUTCOMES),
+        Label("reason", EXTERNAL_PG_REASONS),
+    ),
+))
+
+
 # --------------------------------------------------------------------------------------
 # The tenant-label allowlist
 # --------------------------------------------------------------------------------------
@@ -1346,7 +1497,7 @@ def record_document_ingestion(
     """Record which adapters served one ingestion.
 
     All three values are coerced against their declared sets, so a value from outside them
-    lands under `other` rather than widening cardinality — and a tenant's configuration
+    lands under `other` rather than widening cardinality ?" and a tenant's configuration
     cannot reach a metric label even by mistake.
     """
     _record(
@@ -1356,3 +1507,23 @@ def record_document_ingestion(
         content_store_kind=content_store_kind,
         retention_mode=retention_mode,
     )
+
+
+def record_data_source_lifecycle(provider: str, action: str, outcome: str) -> None:
+    """Record one control-plane lifecycle action. Finite classes only, coerced."""
+    _record(DATA_SOURCE_LIFECYCLE, 1, provider=provider, action=action, outcome=outcome)
+
+
+def record_data_source_test(provider: str, outcome: str, reason: str) -> None:
+    """Record one secure connection-test execution. Finite classes only, coerced."""
+    _record(DATA_SOURCE_TESTS, 1, provider=provider, outcome=outcome, reason=reason)
+
+
+def record_blob_sync(trigger: str, outcome: str) -> None:
+    """Record one terminal Blob sync run. Finite classes only, coerced."""
+    _record(BLOB_SYNC, 1, trigger=trigger, outcome=outcome)
+
+
+def record_external_pg_query(outcome: str, reason: str) -> None:
+    """Record one external-query terminal outcome. Finite classes only, coerced."""
+    _record(EXTERNAL_PG_QUERY, 1, outcome=outcome, reason=reason)

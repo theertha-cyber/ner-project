@@ -4,14 +4,22 @@ import { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { RequireAuth } from "@/components/require-auth";
+import { DataPlaneGate } from "@/components/data-plane/data-plane-gate";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { ConversationSwitcher } from "@/components/chat/ConversationSwitcher";
 import { MessageThread } from "@/components/chat/MessageThread";
 import { ChatInput, type StagedFile } from "@/components/chat/ChatInput";
+import type { ChartPayload } from "@/components/chat/ChartRenderer";
 import { authFetch } from "@/lib/auth-fetch";
 import { useAuth } from "@/lib/auth";
 import { readChatStream } from "@/lib/chat-stream";
 import type { Feedback } from "@/components/chat/MessageFeedback";
+
+interface ExportAvailability {
+  message_id: string;
+  row_count: number;
+  formats: string[];
+}
 
 interface Message {
   id: string;
@@ -24,6 +32,8 @@ interface Message {
   answer_kind?: "answer" | "clarification" | "guardrail_blocked" | "out_of_domain" | null;
   model_version?: string | null;
   feedback?: Feedback | null;
+  export?: ExportAvailability | null;
+  chart?: ChartPayload | null;
 }
 
 interface Source {
@@ -254,7 +264,15 @@ function ChatPageInner() {
         throw new Error("Streaming request failed with status " + resp.status);
       }
 
+      let streamedChart: ChartPayload | null = null;
+
       await readChatStream(resp, {
+        onChart: (chart) => {
+          streamedChart = chart as unknown as ChartPayload;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === thinkingId ? { ...m, chart: streamedChart } : m))
+          );
+        },
         onToken: (delta) => {
           accumulated += delta;
           setMessages((prev) =>
@@ -276,6 +294,10 @@ function ChatPageInner() {
             created_at: new Date().toISOString(),
             answer_kind: data.answer_kind as Message["answer_kind"],
             model_version: (data.model_version as string | null) ?? null,
+            export: data.export as ExportAvailability | null | undefined,
+            // The completion payload is authoritative; the streamed event only gets
+            // the chart on screen sooner.
+            chart: (data.chart as ChartPayload | undefined) ?? streamedChart,
           };
           setMessages((prev) =>
             prev
@@ -336,6 +358,8 @@ function ChatPageInner() {
           created_at: new Date().toISOString(),
           answer_kind: data.answer_kind,
           model_version: data.model_version,
+          export: data.export,
+          chart: data.chart ?? null,
         };
         setMessages((prev) =>
           prev
@@ -553,9 +577,11 @@ function ChatPageInner() {
 export default function ChatPage() {
   return (
     <RequireAuth roles={["tenant_admin", "business_user"]}>
-      <Suspense fallback={null}>
-        <ChatPageInner />
-      </Suspense>
+      <DataPlaneGate>
+        <Suspense fallback={null}>
+          <ChatPageInner />
+        </Suspense>
+      </DataPlaneGate>
     </RequireAuth>
   );
 }

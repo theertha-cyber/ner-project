@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const mockReplace = vi.fn();
 
@@ -60,7 +61,18 @@ afterEach(() => {
 });
 
 async function renderChatAndWaitForInput() {
-  render(<ChatPage />);
+  // ChatPage now renders through DataPlaneGate (ADR-017, task 13.3), which
+  // queries `/api/v1/data-plane` via react-query — a QueryClientProvider is
+  // required for that hook to run at all, and the shared `mockFetch`
+  // implementation above already answers any URL it doesn't recognize with a
+  // 200 `{}` (no `status` field), which `DATA_PLANE_BLOCKING_STATUSES` never
+  // matches, so the gate lets the page's real content straight through.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ChatPage />
+    </QueryClientProvider>,
+  );
   return screen.findByPlaceholderText("Type your question...");
 }
 
@@ -205,12 +217,97 @@ describe("Chat page — streaming kill switch", () => {
     });
   });
 });
+// Covers verification.md rows 45-46 (chat-chart-generation task 4.8).
+describe("Chat page — charts", () => {
+  const CHART = {
+    chart_type: "bar",
+    title: "Billed per quarter",
+    categories: ["Q1", "Q2"],
+    series: [{ name: "amount", data: [120000, 95000] }],
+  };
+
+  it("renders a persisted chart when a past conversation is reopened (row 46)", async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/chat/conversations/conv-1")) {
+        return Promise.resolve(
+          jsonResponse({
+            id: "conv-1",
+            title: "Test",
+            created_at: "2026-01-01",
+            messages: [
+              {
+                id: "m1",
+                role: "assistant",
+                content: "Billing rose through the year.",
+                created_at: "2026-01-01",
+                answer_kind: "answer",
+                chart: CHART,
+              },
+            ],
+          }),
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations")) return Promise.resolve(jsonResponse([]));
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Billed per quarter")).toBeInTheDocument();
+  });
+
+  it("takes the chart from the completion payload as authoritative (row 45)", async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/chat/stream")) {
+        return Promise.resolve(
+          sseResponse([
+            "event: chart\ndata: " + JSON.stringify(CHART) + "\n\n",
+            'event: token\ndata: {"delta": "Billing rose."}\n\n',
+            "event: done\ndata: " +
+              JSON.stringify({
+                reply: "Billing rose.",
+                sources: [],
+                conversation_id: "conv-1",
+                message_id: "m1",
+                answer_kind: "answer",
+                chart: { ...CHART, title: "Final title" },
+              }) +
+              "\n\n",
+          ]),
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations/conv-1")) {
+        return Promise.resolve(
+          jsonResponse({ id: "conv-1", title: "Test", created_at: "2026-01-01", messages: [] }),
+        );
+      }
+      if (url.includes("/api/v1/chat/conversations")) return Promise.resolve(jsonResponse([]));
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    await sendMessage("how much did we bill per quarter?");
+
+    expect(await screen.findByText("Final title")).toBeInTheDocument();
+  });
+});
 
 // Covers verification.md rows for chat-composer-attachments scenarios 4, 5 and
 // the ADR-011 no-reservation rule.
 describe("Chat page — staged attachments", () => {
   async function stageFile(file: File) {
-    const view = render(<ChatPage />);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     await screen.findByPlaceholderText("Type your question...");
     const fileInput = view.container.querySelector(
       'input[type="file"]'
@@ -355,7 +452,12 @@ describe("Chat page — staged attachments", () => {
   });
 
   it("fires no additional API call when files are staged (ADR-011 / FR-006)", async () => {
-    const view = render(<ChatPage />);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     await screen.findByPlaceholderText("Type your question...");
     const before = mockFetch.mock.calls.length;
 

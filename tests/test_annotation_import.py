@@ -26,7 +26,7 @@ def auth_header(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def make_token(tid, role="admin"):
+def make_token(tid, role="tenant_admin"):
     return create_access_token(tenant_id=tid, user_id="test-user", role=role)
 
 
@@ -79,7 +79,18 @@ def _create_tables_sql(schema: str) -> list:
                 tags TEXT[] NOT NULL,
                 source_file VARCHAR NOT NULL,
                 row_index INTEGER NOT NULL,
+                reviewed BOOLEAN NOT NULL DEFAULT FALSE,
+                pending_mapping BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """,
+        f"""
+            CREATE TABLE IF NOT EXISTS {schema}.annotation_imports (
+                source_file VARCHAR PRIMARY KEY,
+                row_count INTEGER NOT NULL DEFAULT 0,
+                type_map JSONB,
+                training_eligible_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """,
     ]
@@ -134,12 +145,19 @@ async def seeded_tenant():
                 name VARCHAR(255) NOT NULL,
                 description TEXT,
                 examples JSON,
+                qa_examples JSONB,
                 validation_rule VARCHAR(500),
                 target_table VARCHAR(255),
                 base_label_mapping JSON,
+                value_kind VARCHAR(32),
+                value_unit VARCHAR(32),
+                cardinality VARCHAR(16) NOT NULL DEFAULT 'multi',
+                sql_identifier VARCHAR(63),
                 version INTEGER DEFAULT 1,
                 required_flag BOOLEAN DEFAULT false,
                 is_active BOOLEAN DEFAULT true,
+                provenance VARCHAR(16) NOT NULL DEFAULT 'manual',
+                provenance_ref VARCHAR(255),
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -348,11 +366,10 @@ async def test_import_partial_skip_unknown(seeded_entity_types, client):
 
     assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
     data = resp.json()
+    # Every row is stored; the PRODUCT row is held pending a type mapping, not dropped.
     assert data["imported_count"] == 2
-    assert data["skipped_count"] == 1
-    assert len(data["warnings"]) == 1
-    assert data["warnings"][0]["row_index"] == 1
-    assert "PRODUCT" in data["warnings"][0]["message"]
+    assert data["pending_count"] == 1
+    assert data["unmapped_types"] == [{"type": "PRODUCT", "row_count": 1}]
     assert "entity_type_counts" in data
 
 
@@ -397,8 +414,8 @@ async def test_import_all_rows_unknown(seeded_entity_types, client):
     assert resp.status_code == 201
     data = resp.json()
     assert data["imported_count"] == 0
-    assert data["skipped_count"] == 2
-    assert len(data["warnings"]) == 2
+    assert data["pending_count"] == 2
+    assert sorted(u["type"] for u in data["unmapped_types"]) == ["FOO", "PRODUCT"]
 
 
 # ── Entity type breakdown in response ─────────────────────────────────────
@@ -581,3 +598,152 @@ async def test_export_empty(seeded_entity_types, client):
 
     assert resp.status_code == 200
     assert resp.text.strip() == ""
+
+
+# ── import-annotation-training-eligibility: RBAC, type mapping, eligibility ──
+
+
+@pytest.mark.asyncio
+async def test_import_requires_tenant_admin(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    resp = await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("t.jsonl", '{"tokens": ["a"], "tags": ["B-PER"]}\n', "application/jsonl")},
+        headers=auth_header(make_token(tid, "annotator")),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_known_file_is_training_eligible(seeded_entity_types, client):
+    tid, schema = seeded_entity_types["tid"], seeded_entity_types["schema"]
+    resp = await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("known.jsonl", '{"tokens": ["a", "b"], "tags": ["B-PER", "O"]}\n', "application/jsonl")},
+        headers=auth_header(make_token(tid)),
+    )
+    assert resp.json()["unmapped_types"] == []
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.connect() as conn:
+        eligible = (
+            await conn.execute(
+                text(f"SELECT training_eligible_at FROM {schema}.annotation_imports WHERE source_file = 'known.jsonl'")
+            )
+        ).scalar()
+    await engine.dispose()
+    assert eligible is not None
+
+
+@pytest.mark.asyncio
+async def test_type_map_to_existing_rewrites_and_makes_eligible(seeded_entity_types, client):
+    tid, schema = seeded_entity_types["tid"], seeded_entity_types["schema"]
+    await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("m.jsonl", '{"tokens": ["x", "y"], "tags": ["B-JOB_TITLE", "I-JOB_TITLE"]}\n', "application/jsonl")},
+        headers=auth_header(make_token(tid)),
+    )
+    resp = await client.post(
+        "/api/v1/annotation-imports/m.jsonl/type-map",
+        json={"JOB_TITLE": {"to": "LOC"}},
+        headers=auth_header(make_token(tid)),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["training_eligible"] is True
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(f"SELECT tags, pending_mapping FROM {schema}.imported_annotations WHERE source_file = 'm.jsonl'")
+            )
+        ).fetchone()
+    await engine.dispose()
+    assert list(row[0]) == ["B-LOC", "I-LOC"]
+    assert row[1] is False
+
+
+@pytest.mark.asyncio
+async def test_type_map_create_new_uses_imported_provenance(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("c.jsonl", '{"tokens": ["z"], "tags": ["B-contract_id"]}\n', "application/jsonl")},
+        headers=auth_header(make_token(tid)),
+    )
+    resp = await client.post(
+        "/api/v1/annotation-imports/c.jsonl/type-map",
+        json={"contract_id": {"create": True}},
+        headers=auth_header(make_token(tid)),
+    )
+    assert resp.status_code == 201, resp.text
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    async with engine.connect() as conn:
+        prov = (
+            await conn.execute(
+                text("SELECT provenance, provenance_ref FROM public.entity_definitions WHERE tenant_id = :t AND name = 'contract_id'"),
+                {"t": tid},
+            )
+        ).fetchone()
+    await engine.dispose()
+    assert prov[0] == "imported"
+    assert prov[1] == "c.jsonl"
+
+
+@pytest.mark.asyncio
+async def test_type_map_requires_tenant_admin(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("r.jsonl", '{"tokens": ["z"], "tags": ["B-FOO"]}\n', "application/jsonl")},
+        headers=auth_header(make_token(tid)),
+    )
+    resp = await client.post(
+        "/api/v1/annotation-imports/r.jsonl/type-map",
+        json={"FOO": {"to": "LOC"}},
+        headers=auth_header(make_token(tid, "annotator")),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_export_excludes_pending_file(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("p.jsonl", '{"tokens": ["z"], "tags": ["B-UNMAPPED"]}\n', "application/jsonl")},
+        headers=auth_header(make_token(tid)),
+    )
+    export_resp = await client.get("/api/v1/annotation-export", headers=auth_header(make_token(tid)))
+    assert export_resp.text.strip() == ""
+
+
+@pytest.mark.asyncio
+async def test_list_import_files(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("known.jsonl", '{"tokens": ["a"], "tags": ["B-PER"]}\n', "application/jsonl")},
+        headers=auth_header(make_token(tid)),
+    )
+    await client.post(
+        "/api/v1/annotation-import",
+        files={"file": ("pending.jsonl", '{"tokens": ["a"], "tags": ["B-XX"]}\n', "application/jsonl")},
+        headers=auth_header(make_token(tid)),
+    )
+    resp = await client.get("/api/v1/annotation-imports", headers=auth_header(make_token(tid)))
+    assert resp.status_code == 200
+    by_name = {f["source_file"]: f for f in resp.json()["files"]}
+    assert by_name["known.jsonl"]["training_eligible"] is True
+    assert by_name["pending.jsonl"]["training_eligible"] is False
+    assert by_name["pending.jsonl"]["pending_count"] == 1
+    assert by_name["known.jsonl"]["unmapped_types"] == []
+    assert by_name["pending.jsonl"]["unmapped_types"] == [{"type": "XX", "row_count": 1}]
+
+
+@pytest.mark.asyncio
+async def test_list_import_files_requires_tenant_admin(seeded_entity_types, client):
+    tid = seeded_entity_types["tid"]
+    resp = await client.get(
+        "/api/v1/annotation-imports", headers=auth_header(make_token(tid, "annotator"))
+    )
+    assert resp.status_code == 403

@@ -1,0 +1,77 @@
+{
+  "login": {
+    "url": "http://localhost:3000/login",
+    "violations": [
+      {
+        "id": "document-title",
+        "impact": "serious",
+        "nodes": 1,
+        "targets": [
+          [
+            "html"
+          ]
+        ]
+      },
+      {
+        "id": "landmark-one-main",
+        "impact": "moderate",
+        "nodes": 1,
+        "targets": [
+          [
+            "html"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "nodes": 8,
+        "targets": [
+          [
+            "body > div:nth-child(1) > div:nth-child(2)"
+          ],
+          [
+            "div:nth-child(3) > div:nth-child(1)"
+          ],
+          [
+            "h2"
+          ]
+        ]
+      }
+    ],
+    "passes": 29
+  },
+  "authed": true,
+  "dataSources": {
+    "url": "http://localhost:3000/settings/data-sources",
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/color-contrast?application=playwright",
+        "nodes": 1,
+        "targets": [
+          [
+            "button[aria-haspopup=\"true\"] > div:nth-child(2) > div:nth-child(2)"
+          ]
+        ],
+        "html": "<div style=\"font-family: var(--font-mono, monospace); font-size: 10px; color: var(--ink-3);\">tenant admin</div>"
+      },
+      {
+        "id": "document-title",
+        "impact": "serious",
+        "description": "Ensure each HTML document contains a non-empty <title> element",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/document-title?application=playwright",
+        "nodes": 1,
+        "targets": [
+          [
+            "html"
+          ]
+        ],
+        "html": "<html lang=\"en\" class=\"__variable_9c618b __variable_f367f3 __variable_3c557b\" style=\"\">"
+      }
+    ],
+    "passes": 22
+  }
+}

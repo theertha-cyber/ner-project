@@ -1,12 +1,14 @@
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy import text
-from src.shared.database import get_engine
+from src.shared.database import get_resolver
 from src.shared.observability.domain_metrics import assert_tenant_schema
 
 
 async def get_db(request: Request) -> AsyncSession:
-    engine = get_engine()
+    """Routed through EngineResolver (ADR-017)."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    engine = await get_resolver().resolve(tenant_id)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         try:

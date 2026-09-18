@@ -3,6 +3,7 @@ import csv
 import io
 import asyncio
 from fastapi import APIRouter, Depends, Request, HTTPException
+from src.shared.data_plane_gate import require_data_plane_ready
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -16,7 +17,7 @@ from src.analytics_service.dependencies import get_db
 from src.analytics_service.services.query_service import build_where_clause, validate_filter
 from src.analytics_service.common import QUERY_TIMEOUT_SECONDS, MAX_EXPORT_ROWS
 
-router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
+router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"], dependencies=[Depends(require_data_plane_ready)])
 
 
 @router.post("/query")

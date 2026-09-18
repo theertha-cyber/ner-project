@@ -1,0 +1,100 @@
+/* NER Portal token contract. Clean structural foundation; existing portal brand values preserved. */
+:root {
+  --color-brand-primary: #a60000;
+  --color-brand-hover: #800000;
+  --color-surface: rgba(255, 255, 255, 0.85);
+  --color-surface-raised: rgba(255, 255, 255, 0.95);
+  --color-surface-overlay: rgba(255, 255, 255, 0.98);
+  --color-text-primary: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-disabled: #d1d5db;
+  --color-border: #e5e7eb;
+  --color-border-focus: #a60000;
+  --color-status-active: #22c55e;
+  --color-status-inactive: #9ca3af;
+  --color-status-running: #3b82f6;
+  --color-status-completed: #10b981;
+  --color-status-failed: #ef4444;
+  --color-status-pending_approval: #f59e0b;
+  --color-status-queued: #8b5cf6;
+  --color-status-rejected: #dc2626;
+  --color-status-cancelled: #6b7280;
+  --color-status-promoted: #0ea5e9;
+  --color-status-training: #d97706;
+  --color-status-archived: #9ca3af;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-error: #dc2626;
+  --color-info: #2563eb;
+  /* Chart series — fixed categorical order, never cycled. Teal leads so charts do not
+     compete with the red brand. This is the validated eight-hue sequence rotated, not
+     re-picked: rotating preserves every adjacent pair the ordering was chosen for, and
+     re-running the validator gives the same worst-case separation as before. Three
+     slots sit below 3:1 on the light surface, so charts always ship a legend and
+     labels rather than relying on colour alone. */
+  --chart-series-1: #1baf7a;
+  --chart-series-2: #eda100;
+  --chart-series-3: #e87ba4;
+  --chart-series-4: #008300;
+  --chart-series-5: #4a3aa7;
+  --chart-series-6: #e34948;
+  --chart-series-7: #2a78d6;
+  --chart-series-8: #eb6834;
+  --color-delta-up: #16a34a;
+  --color-delta-warn: #d97706;
+  --color-delta-neutral: #6b7280;
+  --color-surface-page: #f1f3f7;
+  --color-glass: rgba(255, 255, 255, 0.62);
+  --color-glass-border: rgba(255, 255, 255, 0.7);
+  --surface: #f1f3f7;
+  --surface-2: #ffffff;
+  --surface-3: #f8fafc;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #94a3b8;
+  --line: #e4e8ef;
+  --line-2: #eef1f6;
+  --primary: #a60000;
+  --primary-2: #800000;
+  --primary-soft: rgba(166, 0, 0, 0.09);
+  --primary-line: rgba(166, 0, 0, 0.22);
+  --bad: #b91c1c;
+  --bad-soft: rgba(185, 28, 28, 0.10);
+  --good: #15803d;
+  --good-soft: rgba(21, 128, 61, 0.10);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+  --shadow-card: 0 4px 24px 0 rgba(0, 0, 0, 0.06), 0 1px 4px 0 rgba(0, 0, 0, 0.04);
+  --shadow-overlay: 0 20px 60px 0 rgba(0, 0, 0, 0.15), 0 4px 16px 0 rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 24px 60px -24px rgba(15, 23, 42, 0.3);
+  --hero-orb-blue: #475569;
+  --login-card-bg: rgba(255, 255, 255, 0.72);
+  --login-card-border: rgba(255, 255, 255, 0.8);
+  --login-heading: #0f172a;
+  --login-muted: #475569;
+  --login-input-bg: rgba(255, 255, 255, 0.9);
+  --login-input-border: #e2e8f0;
+  --login-input-text: #0f172a;
+  --login-eye-icon: #94a3b8;
+  --login-chip-bg: rgba(255, 255, 255, 0.8);
+  --login-divider: #e2e8f0;
+}
+:root.dark {
+  --color-brand-primary: #a60000; --color-brand-hover: #cc0000;
+  --color-surface: rgba(24, 24, 24, 0.85); --color-surface-raised: rgba(24, 24, 24, 0.92); --color-surface-overlay: rgba(56, 56, 53, 0.97);
+  --color-text-primary: #ededec; --color-text-secondary: #a8a8a4; --color-text-disabled: #55554f;
+  --color-border: rgba(255, 255, 255, 0.09); --color-border-focus: #a60000;
+  --color-status-active: #4fbf82; --color-status-inactive: #86867f; --color-status-running: #6ea8e0; --color-status-completed: #4fbf9a; --color-status-failed: #e2685f; --color-status-pending_approval: #d9a94e; --color-status-queued: #a68fdb; --color-status-rejected: #e2685f; --color-status-cancelled: #86867f; --color-status-promoted: #5bb3d9; --color-status-training: #d9a94e; --color-status-archived: #77776f;
+  --color-success: #4fbf82; --color-warning: #d9a94e; --color-error: #e2685f; --color-info: #6ea8e0; --color-delta-up: #4fbf82; --color-delta-warn: #d9a94e; --color-delta-neutral: #86867f;
+  /* Chart series (dark mode) — the same eight hues re-stepped for the dark
+     surface, validated as a set rather than flipped automatically. */
+  --chart-series-1: #199e70; --chart-series-2: #c98500; --chart-series-3: #d55181; --chart-series-4: #008300; --chart-series-5: #9085e9; --chart-series-6: #e66767; --chart-series-7: #3987e5; --chart-series-8: #d95926;
+  --color-surface-page: #1a1a19; --color-glass: rgba(24, 24, 24, 0.55); --color-glass-border: rgba(255, 255, 255, 0.08);
+  --surface: #1a1a19; --surface-2: #181818; --surface-3: #383835; --ink: #ededec; --ink-2: #a8a8a4; --ink-3: #7a7a76; --line: rgba(255, 255, 255, 0.09); --line-2: rgba(255, 255, 255, 0.05);
+  --primary: #a60000; --primary-2: #cc0000; --primary-soft: rgba(166, 0, 0, 0.14); --primary-line: rgba(166, 0, 0, 0.32); --bad: #e2685f; --bad-soft: rgba(226, 104, 95, 0.13); --good: #4bbd7a; --good-soft: rgba(75, 189, 122, 0.13);
+  --login-card-bg: rgba(24, 24, 24, 0.72); --login-card-border: rgba(255, 255, 255, 0.10); --login-heading: #ededec; --login-muted: #a8a8a4; --login-input-bg: #383835; --login-input-border: rgba(255, 255, 255, 0.12); --login-input-text: #ededec; --login-eye-icon: #7a7a76; --login-chip-bg: #383835; --login-divider: rgba(255, 255, 255, 0.09);
+  --shadow-card: 0 4px 24px 0 rgba(0, 0, 0, 0.3), 0 1px 4px 0 rgba(0, 0, 0, 0.2); --shadow-overlay: 0 20px 60px 0 rgba(0, 0, 0, 0.5), 0 4px 16px 0 rgba(0, 0, 0, 0.3); --shadow-lg: 0 24px 60px -24px rgba(0, 0, 0, 0.6); --hero-orb-blue: #7c93b8;
+}

@@ -15,6 +15,8 @@ interface Tenant {
   max_documents: number;
   max_storage_gb: number;
   created_at: string;
+  data_plane?: { mode: string; status: string };
+  document_count?: number;
 }
 
 interface TenantsResponse {
@@ -69,7 +71,13 @@ export default function TenantsPage() {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
+                    Data plane
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
                     Users
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
+                    Documents
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
                     Created
@@ -96,7 +104,15 @@ export default function TenantsPage() {
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm" style={{ color: "var(--ink-3)" }}>
+                      {t.data_plane?.mode === "tenant_owned"
+                        ? `Tenant-owned (${t.data_plane.status})`
+                        : "Platform"}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm" style={{ color: "var(--ink-3)" }}>
                       {t.max_users}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm" style={{ color: "var(--ink-3)" }}>
+                      {t.document_count ?? 0} / {t.max_documents}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm" style={{ color: "var(--ink-3)" }}>
                       {new Date(t.created_at).toLocaleDateString()}

@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from src.shared.data_plane_gate import require_data_plane_ready
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.extraction_service.api.v1.schemas import (
@@ -32,7 +33,7 @@ from src.extraction_service.dependencies import get_db
 from src.shared.config import settings
 from src.shared.tenant_schema import schema_for_tenant as _schema
 
-router = APIRouter(prefix="/api/v1", tags=["extraction"])
+router = APIRouter(prefix="/api/v1", tags=["extraction"], dependencies=[Depends(require_data_plane_ready)])
 
 
 def _get_tenant_id(request: Request) -> str:

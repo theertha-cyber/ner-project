@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, UploadFile, File, Form
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy import text
-from src.shared.database import get_engine
+from sqlalchemy.exc import DBAPIError, OperationalError
+from src.shared.data_plane import DataPlaneUnavailable
+from src.shared.data_plane_gate import require_data_plane_ready
+from src.shared.database import get_engine, get_resolver
+from src.shared.tenant_context import classify_driver_error, record_health_best_effort
 from src.shared.exceptions import NotFoundError
 from src.document_service.ingestion import (
     PLATFORM_UPLOAD_SOURCE_ID,
@@ -26,15 +30,20 @@ from src.shared.entity_views import (
 )
 from src.shared.tenant_schema import schema_for_tenant as _schema
 
-router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+router = APIRouter(
+    prefix="/api/v1/documents",
+    tags=["documents"],
+    dependencies=[Depends(require_data_plane_ready)],
+)
 
-VALID_PURPOSES = {"query", "training"}
+VALID_PURPOSES = {"query", "training", "qa_pair"}
 
 # Upload purpose is a role capability, not an uploader choice: tenant admins upload
-# documents for annotation, business users upload documents for querying. Roles absent
-# from this map (system_admin, annotator) keep both purposes.
+# documents for annotation (and optional Q&A-pair guidance for schema proposal), business
+# users upload documents for querying. Roles absent from this map (system_admin, annotator)
+# keep every purpose.
 ROLE_ALLOWED_PURPOSES = {
-    "tenant_admin": {"training"},
+    "tenant_admin": {"training", "qa_pair"},
     "business_user": {"query"},
 }
 
@@ -75,8 +84,44 @@ def get_tenant_id(request: Request) -> str:
     return tid
 
 
-async def get_session() -> AsyncSession:
-    from sqlalchemy.ext.asyncio import async_sessionmaker
+async def get_session(request: Request) -> AsyncSession:
+    """Routed through EngineResolver (ADR-017): a `tenant_owned` tenant's documents
+    live wherever its data plane resolves, never the platform database.
+
+    Unlike `tenant_context.tenant_session`, this never narrows `search_path` — every
+    query on this session names its schema explicitly (tenant-schema tables via
+    `_schema`, control-plane tables via `public.`), and routes in this module rely
+    on being able to do both on one session.
+
+    A body-carrying request pre-probes with `SELECT 1`, because proving the store
+    reachable *before* bytes are accepted is the point (tenant-data-plane-failure-
+    isolation spec's "Uploads are rejected before bytes are accepted when the store
+    is unavailable" — this dependency resolves, and so runs, before the route body
+    ever reads upload bytes off the wire). A read has no bytes to refuse and its own
+    first query proves the same thing one round trip later, so it skips the probe;
+    against a remote store that round trip is a third of the request. Either way a
+    driver failure classifies into `DataPlaneUnavailable` the same way
+    `tenant_session` does, without adopting its search_path narrowing."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    engine = await get_resolver().resolve(tenant_id)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        try:
+            if request.method in ("POST", "PUT", "PATCH"):
+                await session.execute(text("SELECT 1"))
+            yield session
+        except (DBAPIError, OperationalError, OSError) as exc:
+            reason = classify_driver_error(exc)
+            await record_health_best_effort(tenant_id, reason)
+            raise DataPlaneUnavailable(reason) from exc
+        finally:
+            await session.close()
+
+
+async def _platform_session() -> AsyncSession:
+    """A session on the platform database, for control-plane reads that must never run
+    on a tenant session (Design D10) — e.g. resolving an uploader's email from
+    `public.tenant_users`, which does not exist in a `tenant_owned` store."""
     factory = async_sessionmaker(get_engine(), expire_on_commit=False)
     async with factory() as session:
         try:
@@ -100,7 +145,7 @@ async def upload_document(
     if purpose not in VALID_PURPOSES:
         raise HTTPException(
             status_code=422,
-            detail={"code": "VALIDATION_ERROR", "message": "purpose must be 'query' or 'training'"},
+            detail={"code": "VALIDATION_ERROR", "message": "purpose must be 'query', 'training', or 'qa_pair'"},
         )
 
     role = getattr(request.state, "role", None) if request is not None else None
@@ -140,11 +185,17 @@ async def upload_document(
     try:
         result = await ingestion_service.ingest(session, normalized)
     except UnsupportedFileType as exc:
+        allowed_msg = (
+            ".pdf, .txt, .docx" if purpose == "qa_pair"
+            # `.csv` is in the general allow-list (CAP-4 / ADR-012); the message has to
+            # name it or the rejection tells the user the wrong thing.
+            else ".pdf, .jpg, .jpeg, .png, .tif, .tiff, .doc, .docx, .csv"
+        )
         raise HTTPException(
             status_code=422,
             detail={
                 "code": "VALIDATION_ERROR",
-                "message": f"File type '{exc.extension}' is not supported. Allowed: .pdf, .jpg, .jpeg, .png, .tif, .tiff, .doc, .docx, .csv",
+                "message": f"File type '{exc.extension}' is not supported. Allowed: {allowed_msg}",
             },
         )
     except FileTooLarge as exc:
@@ -178,9 +229,12 @@ async def list_documents(
     purpose: str | None = Query(None),
     search: str | None = Query(None),
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
+    # Ceiling is high because the annotation console's batch and schema-proposal document
+    # pickers pull the whole processed set in one page rather than paginating a checkbox list.
+    per_page: int = Query(20, ge=1, le=1000),
     request: Request = None,
     session: AsyncSession = Depends(get_session),
+    platform_session: AsyncSession = Depends(_platform_session),
 ):
     tenant_id = get_tenant_id(request)
     role = getattr(request.state, "role", None)
@@ -229,28 +283,19 @@ async def list_documents(
     where = " AND ".join(c.format(p="") for c in conditions)
     offset = (page - 1) * per_page
 
-    schema = _schema(tenant_id)
-    use_content_type = await has_column(session, schema, "documents", "content_type")
-    use_file_size = await has_column(session, schema, "documents", "file_size")
-    use_uploaded_by = await has_column(session, schema, "documents", "uploaded_by")
-    use_updated_at = await has_column(session, schema, "documents", "updated_at")
-
-    content_type_col = "d.content_type" if use_content_type else "d.mime_type AS content_type"
-    file_size_col = "d.file_size" if use_file_size else "d.file_size_bytes AS file_size"
-    uploaded_by_col = "d.uploaded_by" if use_uploaded_by else "NULL AS uploaded_by"
-    uploaded_by_join = "d.uploaded_by" if use_uploaded_by else "NULL"
-    updated_at_col = "d.updated_at" if use_updated_at else "d.created_at AS updated_at"
-
-    # LEFT JOIN so a document whose uploader was deleted (or that predates the
-    # uploaded_by column) still lists, with a null email the client renders as unknown.
+    # No cross-schema join to `public.tenant_users` (Design D10): that table does not
+    # exist in a `tenant_owned` store. The tenant session reads documents alone; the
+    # uploader email is a second, control-plane lookup on the platform session.
     document_where = " AND ".join(c.format(p="d.") for c in conditions)
+    # `COUNT(*) OVER ()` carries the unpaginated total on each row, so the listing and
+    # its total are one round trip rather than two — the difference is a whole query's
+    # latency when the store is remote.
     result = await session.execute(
         text(f"""
-            SELECT d.id, d.filename, {content_type_col}, {file_size_col}, d.status, d.error_message,
-                   d.purpose, {uploaded_by_col}, u.email AS uploaded_by_email,
-                   d.created_at, {updated_at_col}
-            FROM {schema}.documents d
-            LEFT JOIN public.tenant_users u ON u.id = {uploaded_by_join}
+            SELECT d.id, d.filename, d.content_type, d.file_size, d.status, d.error_message,
+                   d.purpose, d.uploaded_by, d.created_at, d.updated_at,
+                   COUNT(*) OVER () AS total
+            FROM {_schema(tenant_id)}.documents d
             WHERE {document_where}
             ORDER BY d.created_at DESC
             LIMIT :limit OFFSET :offset
@@ -259,11 +304,27 @@ async def list_documents(
     )
     rows = result.fetchall()
 
-    count_result = await session.execute(
-        text(f"SELECT COUNT(*) FROM {_schema(tenant_id)}.documents WHERE {where}"),
-        params,
-    )
-    total = count_result.scalar()
+    if rows:
+        total = rows[0].total
+    elif page > 1:
+        # A page past the end returns no rows, so the windowed count has nothing to
+        # report — the standalone count still has to answer how many there really are.
+        count_result = await session.execute(
+            text(f"SELECT COUNT(*) FROM {_schema(tenant_id)}.documents WHERE {where}"),
+            params,
+        )
+        total = count_result.scalar()
+    else:
+        total = 0
+
+    uploader_ids = {r.uploaded_by for r in rows if r.uploaded_by}
+    uploader_emails: dict[str, str] = {}
+    if uploader_ids:
+        uploader_rows = await platform_session.execute(
+            text("SELECT id, email FROM public.tenant_users WHERE id = ANY(:ids)"),
+            {"ids": list(uploader_ids)},
+        )
+        uploader_emails = {u.id: u.email for u in uploader_rows.fetchall()}
 
     documents_list = [
         {
@@ -275,7 +336,7 @@ async def list_documents(
             "error_message": r.error_message,
             "purpose": r.purpose,
             "uploaded_by": r.uploaded_by,
-            "uploaded_by_email": r.uploaded_by_email,
+            "uploaded_by_email": uploader_emails.get(r.uploaded_by),
             "created_at": str(r.created_at),
             "updated_at": str(r.updated_at),
         }
@@ -409,7 +470,12 @@ async def delete_document(
     # builder the extraction worker uses, so the sync and async callers cannot diverge into a
     # half-deleted document. Inactive definitions are covered too: their tables are retained,
     # so their rows would otherwise survive.
-    specs = await load_definition_specs(session, tenant_id)
+    #
+    # `entity_definitions` is a control-plane table (Design D10) — read on a fresh
+    # *platform* session, never `session` (which for a `tenant_owned` tenant is
+    # resolved to their own store, where `public.entity_definitions` does not exist).
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        specs = await load_definition_specs(platform_session, tenant_id)
     existing = await list_existing_generated_tables(session, _schema(tenant_id))
     for statement, params in build_relational_delete_statements(
         _schema(tenant_id), doc_id, specs, existing
@@ -420,5 +486,12 @@ async def delete_document(
         {"id": doc_id},
     )
     await session.commit()
+
+    from src.shared import tenant_document_registry as registry
+
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        await registry.update_status(
+            platform_session, tenant_id=tenant_id, document_id=doc_id, status="deleted"
+        )
 
     return {"status": "deleted", "id": doc_id}

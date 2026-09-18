@@ -11,12 +11,14 @@ Inline task assignment form within the annotation workspace, allowing `tenant_ad
 ### Requirement: Task Assignment Form
 
 The annotation workspace SHALL render a role-gated "＋ Assign Task" button at the top of the Task Queue panel. The button SHALL be visible only when the authenticated user's role is `tenant_admin`. Clicking the button SHALL expand an inline assignment form below the Task Queue header, within the same panel. The form SHALL contain:
-- A **Document** dropdown populated by `GET /api/v1/documents`, filtered client-side to documents with `status: "processed"` only.
+- A **Documents** checkbox list, populated by `GET /api/v1/documents`, filtered client-side to documents with `status: "processed"` only, supporting selection of more than one document at once. "Select all" and "Clear" controls SHALL be available above the list.
 - An **Annotator** dropdown populated by `GET /api/v1/users`, filtered client-side to users with `role: "annotator"` only.
-- A **Assign** submit button (disabled until both dropdowns have a selection).
+- An **Assign** submit button (disabled until at least one document and an annotator are selected).
 - A **Cancel** link/button to collapse the form without submitting.
 
-Both dropdowns SHALL be fetched only when the form is opened (lazy fetch). While either dropdown is loading, a loading indicator SHALL be shown in place of that dropdown. If both dropdowns return empty results, the form SHALL display a descriptive empty state message.
+Both the document list and the annotator dropdown SHALL be fetched only when the form is opened (lazy fetch). While either is loading, a loading indicator SHALL be shown in its place. If both return empty results, the form SHALL display a descriptive empty state message.
+
+Submitting the form SHALL create one task per selected document for the chosen annotator, sent as one `POST /api/v1/annotation-tasks` request per document — each document remains independently subject to the existing "one active task per document" conflict rule. When every request in the batch succeeds, the form SHALL close and every created task SHALL be prepended to the Task Queue in one update. When any request in the batch fails, the form SHALL remain open and show a per-document result (which succeeded, and why any others did not) instead of silently dropping the failures or closing over them; a "Done" action SHALL close the form at that point, prepending whichever tasks did succeed.
 
 #### Scenario: Assign Task button visible for tenant admin
 
@@ -35,13 +37,13 @@ Both dropdowns SHALL be fetched only when the form is opened (lazy fetch). While
 - **GIVEN** the authenticated user is a tenant admin and the assignment form is currently collapsed
 - **WHEN** the user clicks the "＋ Assign Task" button
 - **THEN** an inline form SHALL expand below the Task Queue header within the left panel
-- **AND** the Document dropdown and Annotator dropdown SHALL begin loading
+- **AND** the Documents list and Annotator dropdown SHALL begin loading
 
 #### Scenario: Document dropdown lists only processed documents
 
 - **GIVEN** the assignment form is open and the tenant has 3 documents: one with status `processed`, one `pending`, one `failed`
-- **WHEN** the Document dropdown renders
-- **THEN** only the `processed` document SHALL appear as a selectable option
+- **WHEN** the Documents list renders
+- **THEN** only the `processed` document SHALL appear as a selectable checkbox
 - **AND** the `pending` and `failed` documents SHALL NOT appear
 
 #### Scenario: Annotator dropdown lists only annotator-role users
@@ -53,25 +55,26 @@ Both dropdowns SHALL be fetched only when the form is opened (lazy fetch). While
 #### Scenario: Assign button disabled until both fields are selected
 
 - **GIVEN** the assignment form is open
-- **WHEN** only one of Document or Annotator has been selected
+- **WHEN** no document is checked, or no annotator is selected
 - **THEN** the "Assign" submit button SHALL be disabled and non-interactive
+- **AND** it SHALL become enabled once at least one document is checked and an annotator is selected, regardless of how many documents are checked
 
 #### Scenario: Successful task creation adds task to queue
 
-- **GIVEN** the tenant admin has selected a document and an annotator in the assignment form
+- **GIVEN** the tenant admin has selected one or more documents and an annotator in the assignment form
 - **WHEN** the admin clicks "Assign"
-- **THEN** a `POST /api/v1/annotation-tasks` request SHALL be sent with `{ document_id, annotator_user_id }`
-- **AND** on a 201 response, the new task SHALL be prepended to the Task Queue list
+- **THEN** one `POST /api/v1/annotation-tasks` request SHALL be sent per selected document, each with `{ document_id, annotator_user_id }`
+- **AND** if every request returns 201, every new task SHALL be prepended to the Task Queue list
 - **AND** the assignment form SHALL collapse
-- **AND** a success toast SHALL be shown
+- **AND** a success toast SHALL be shown naming how many tasks were assigned
 
 #### Scenario: Duplicate assignment (409) shows inline error
 
-- **GIVEN** the tenant admin selects a document that already has an active (non-completed) task
-- **WHEN** the admin clicks "Assign" and the backend returns a 409
+- **GIVEN** the tenant admin selects one or more documents, at least one of which already has an active (non-completed) task
+- **WHEN** the admin clicks "Assign" and the backend returns 409 for that document
 - **THEN** the form SHALL remain open
-- **AND** an inline error message SHALL appear within the form indicating the document already has an active task
-- **AND** the Task Queue list SHALL NOT be updated
+- **AND** a per-document result line SHALL appear for that document indicating it already has an active task
+- **AND** the Task Queue SHALL NOT be updated with a task for that document
 
 #### Scenario: Cancel collapses form without submitting
 
@@ -86,3 +89,86 @@ Both dropdowns SHALL be fetched only when the form is opened (lazy fetch). While
 - **WHEN** the Annotator dropdown renders
 - **THEN** a message SHALL appear stating "No annotators available — invite users first"
 - **AND** the Assign button SHALL remain disabled
+
+#### Scenario: Multiple documents can be selected and assigned together
+
+- **GIVEN** the assignment form is open and the tenant has 5 processed documents
+- **WHEN** the tenant admin checks 3 of them, selects an annotator, and clicks "Assign"
+- **AND** all 3 requests succeed
+- **THEN** 3 tasks SHALL be created, one per selected document, all for that annotator
+- **AND** all 3 SHALL be prepended to the Task Queue in one update
+- **AND** the form SHALL collapse
+
+#### Scenario: Select all checks every visible processed document
+
+- **GIVEN** the assignment form is open and the tenant has processed documents in the list
+- **WHEN** the tenant admin clicks "Select all"
+- **THEN** every processed document's checkbox SHALL become checked
+- **AND** the selected count SHALL update to match
+
+#### Scenario: A partially-failed batch shows per-document results and requires Done to close
+
+- **GIVEN** the tenant admin selects 2 documents and an annotator, and one document's request
+  returns 201 while the other returns 409
+- **WHEN** the batch finishes submitting
+- **THEN** the form SHALL remain open, showing a result line for each of the 2 documents
+- **AND** the successfully created task SHALL NOT yet be prepended to the Task Queue
+- **AND** clicking "Done" SHALL close the form and prepend the one task that succeeded
+
+### Requirement: Annotation Task Endpoint Role Gates
+
+The annotation-task endpoints SHALL enforce roles in the backend, not only by hiding UI:
+
+- `POST /api/v1/annotation-tasks` SHALL require the `tenant_admin` role.
+- `GET /api/v1/annotation-tasks` SHALL require `tenant_admin` or `annotator`; a
+  `business_user` SHALL receive 403.
+- `PATCH /api/v1/annotation-tasks/{id}` SHALL require `tenant_admin` or `annotator`.
+
+#### Scenario: An annotator cannot create a task
+
+- **GIVEN** an authenticated user with role `annotator`
+- **WHEN** they call `POST /api/v1/annotation-tasks`
+- **THEN** the response SHALL be 403
+
+#### Scenario: A business user cannot create or list tasks
+
+- **GIVEN** an authenticated user with role `business_user`
+- **WHEN** they call `POST /api/v1/annotation-tasks` or `GET /api/v1/annotation-tasks`
+- **THEN** each response SHALL be 403
+
+#### Scenario: A tenant admin can create a task
+
+- **GIVEN** an authenticated `tenant_admin` and a processed training-purpose document
+- **WHEN** they call `POST /api/v1/annotation-tasks` with a valid body
+- **THEN** the response SHALL be 201
+
+### Requirement: Task Completion Is Final Approval
+
+When a task transitions to `completed` (from a non-`completed` state), the system SHALL
+stamp `annotation_tasks.training_eligible_at`, and SHALL write a persistent notification for
+the tenant addressed to `recipient_role = "tenant_admin"` with kind
+`annotation_task_completed`, naming the document. There SHALL be no further Tenant Admin
+annotation-review step; the response SHALL indicate `training_eligible: true`.
+
+#### Scenario: Completing a task marks it training-eligible and notifies the tenant admin
+
+- **GIVEN** a task in `in-progress` with at least one confirmed span
+- **WHEN** an `annotator` PATCHes its status to `completed`
+- **THEN** the response SHALL include `training_eligible: true`
+- **AND** `annotation_tasks.training_eligible_at` SHALL be set
+- **AND** a `public.notifications` row SHALL exist for that tenant with
+  `recipient_role = "tenant_admin"` and kind `annotation_task_completed`
+
+#### Scenario: Re-completing an already-completed task does not re-notify
+
+- **GIVEN** a task already in `completed`
+- **WHEN** its status is PATCHed to `completed` again
+- **THEN** no second notification SHALL be written
+- **AND** `training_eligible_at` SHALL be unchanged
+
+#### Scenario: A completion has no Tenant Admin review step
+
+- **GIVEN** a task an annotator has marked `completed`
+- **WHEN** the Tenant Admin views the resulting notification and the task
+- **THEN** the only available onward action SHALL be to request training — there SHALL be
+  no "review annotations" action for the Tenant Admin

@@ -123,7 +123,7 @@ describe("useUpload", () => {
     const { result } = renderHook(() => useUpload(), { wrapper: createWrapper() });
     const file = new File(["content"], "test.pdf", { type: "application/pdf" });
 
-    let uploadPromise: Promise<void>;
+    let uploadPromise: Promise<unknown>;
     act(() => {
       uploadPromise = result.current.upload(file);
     });

@@ -177,3 +177,33 @@ describe("BatchRunsTab", () => {
     await waitFor(() => expect(triggerBatch).toHaveBeenCalledWith(["doc-1"]));
   });
 });
+
+describe("BatchRunsTab list states", () => {
+  beforeEach(() => {
+    mockUseModelVersions.mockReturnValue({ activeModel: { version_number: 2 } });
+    mockUseEligibleDocuments.mockReturnValue({ documents: [], isLoading: false });
+  });
+
+  it("shows loading, not the empty-state prompt, while runs are loading", () => {
+    mockUseBatchRuns.mockReturnValue({ runs: [], isLoading: true, error: null, triggerBatch: vi.fn() });
+    render(<BatchRunsTab />);
+
+    expect(screen.getByText(/loading batch runs/i)).toBeDefined();
+    expect(screen.queryByText(/no batch runs yet/i)).toBeNull();
+  });
+
+  it("shows an error, not the empty-state prompt, when runs failed to load", () => {
+    mockUseBatchRuns.mockReturnValue({ runs: [], isLoading: false, error: new Error("503"), triggerBatch: vi.fn() });
+    render(<BatchRunsTab />);
+
+    expect(screen.getByRole("alert").textContent).toMatch(/couldn.t load batch runs/i);
+    expect(screen.queryByText(/no batch runs yet/i)).toBeNull();
+  });
+
+  it("shows the empty-state prompt only once a load has succeeded with no runs", () => {
+    mockUseBatchRuns.mockReturnValue({ runs: [], isLoading: false, error: null, triggerBatch: vi.fn() });
+    render(<BatchRunsTab />);
+
+    expect(screen.getByText(/no batch runs yet/i)).toBeDefined();
+  });
+});

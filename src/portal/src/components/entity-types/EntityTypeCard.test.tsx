@@ -30,6 +30,30 @@ describe("EntityTypeCard", () => {
     expect(screen.getByText("Name of a vendor")).toBeDefined();
   });
 
+  it("renders a provenance chip", () => {
+    render(
+      <EntityTypeCard
+        entityType={{ ...baseEntityType, provenance: "manual" }}
+        index={0}
+        onEdit={vi.fn()}
+        onToggle={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("manual")).toBeDefined();
+  });
+
+  it("renders a suggested provenance chip with its reference", () => {
+    render(
+      <EntityTypeCard
+        entityType={{ ...baseEntityType, provenance: "suggested", provenance_ref: "schema v3" }}
+        index={0}
+        onEdit={vi.fn()}
+        onToggle={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("suggested · schema v3")).toBeDefined();
+  });
+
   it("renders Required pill for required entity type", () => {
     render(<EntityTypeCard entityType={baseEntityType} index={0} onEdit={vi.fn()} onToggle={vi.fn()} />);
     expect(screen.getByText("Required")).toBeDefined();

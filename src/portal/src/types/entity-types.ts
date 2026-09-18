@@ -9,6 +9,16 @@
  */
 export type EntityCardinality = "single" | "multi";
 
+/**
+ * Few-shot context for LLM pre-labeling only. Optional on an entity type — a type with no
+ * QA pairs is still fully eligible for extraction, so this must never be treated as a
+ * precondition for anything.
+ */
+export interface QaExample {
+  question: string;
+  answer: string;
+}
+
 export interface EntityType {
   id: string;
   name: string;
@@ -22,6 +32,10 @@ export interface EntityType {
   cardinality: EntityCardinality;
   value_kind: string;
   sql_identifier: string | null;
+  qa_examples?: QaExample[] | null;
+  /** How the type came to exist — assigned at creation, immutable. */
+  provenance?: "manual" | "suggested" | "imported";
+  provenance_ref?: string | null;
 }
 
 export interface EntityTypeListResponse {

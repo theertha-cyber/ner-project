@@ -5,8 +5,9 @@ from dataclasses import dataclass, field
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 from langsmith.wrappers import wrap_openai
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.shared.config import settings
+from src.shared.database import get_engine
 from src.shared.entity_views import (
     CHILD_VALUE_COLUMNS,
     SUBJECT_TABLE_NAME,
@@ -694,6 +695,81 @@ _ROLE_SWITCH_RE = re.compile(
 )
 
 
+_ALIAS_DEF_RE = re.compile(
+    r"\b(?:FROM|JOIN)\s+([A-Za-z_]\w*)(?:\s+AS)?\s+([A-Za-z_]\w*)\b", re.IGNORECASE
+)
+_BARE_RELATION_RE = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_]\w*)", re.IGNORECASE)
+_QUALIFIER_RE = re.compile(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b")
+# Words that can precede an identifier in FROM/JOIN position without being a table name.
+_NOT_AN_ALIAS = frozenset({
+    "as", "on", "where", "group", "order", "limit", "having", "join", "inner",
+    "left", "right", "full", "outer", "cross", "lateral", "using", "select",
+})
+
+
+def _fix_undefined_alias(sql: str, surface: QuerySurface | None) -> str:
+    """Deterministically repairs a qualifier the model never bound to a relation.
+
+    The generator reliably produces the right shape for an aggregate — `GROUP BY` on a period,
+    `SUM` on the typed column — and then refers to the aggregated relation by an alias it did
+    not declare, most often `d`: `FROM e_money e ... SUM(d.value_number)`. Postgres answers with
+    `missing FROM-clause entry for table "d"`, the attempt is classified as an execution error,
+    and the retry is told to reconsider every relation, column, filter and join. It duly rewrites
+    the query into a different shape — reading the display text instead of the typed column, or
+    dropping the grouping — and a question that was one character from correct comes back wrong.
+
+    So the repair is narrow on purpose. An unbound qualifier is rebound only when exactly one
+    relation in scope declares the column being referenced; two candidates, or none, leave the
+    SQL untouched for the validator and the retry to handle. Rebinding on a guess would turn a
+    loud failure into a quiet wrong answer, which is the trade this function exists to avoid."""
+    if surface is None:
+        return sql
+
+    defined: dict[str, str] = {}
+    for relation, alias in _ALIAS_DEF_RE.findall(sql):
+        if alias.lower() in _NOT_AN_ALIAS:
+            continue
+        defined[alias.lower()] = relation.lower()
+    # A relation queried without an alias is referenced by its own name. One that *was*
+    # aliased is not also addressable by name, and adding it would make every lookup below
+    # look ambiguous against itself.
+    aliased_relations = set(defined.values())
+    for relation in _BARE_RELATION_RE.findall(sql):
+        if relation.lower() not in aliased_relations:
+            defined.setdefault(relation.lower(), relation.lower())
+
+    if not defined:
+        return sql
+
+    columns_by_relation = {
+        relation.lower(): {column.lower() for column in columns}
+        for relation, columns in surface.columns_by_relation().items()
+    }
+
+    unresolved: dict[str, set[str]] = {}
+    for qualifier, column in _QUALIFIER_RE.findall(sql):
+        if qualifier.lower() in defined:
+            continue
+        unresolved.setdefault(qualifier, set()).add(column.lower())
+
+    for qualifier, columns in unresolved.items():
+        owners = {
+            alias: relation
+            for alias, relation in defined.items()
+            if columns <= columns_by_relation.get(relation, set())
+        }
+        # Ambiguity is about the relation, not the name it was given.
+        if len({relation for relation in owners.values()}) != 1:
+            continue
+        target = sorted(owners)[0]
+        sql = re.sub(rf"\b{re.escape(qualifier)}\.", f"{target}.", sql)
+        logger.info(
+            "sql_repair rebound undefined alias %r to %r", qualifier, target,
+        )
+
+    return sql
+
+
 def _fix_document_name_reference(sql: str) -> str:
     """Deterministically repairs a `document_name` reference the LLM forgot to alias.
     A statement over `document_entities` needs a `documents` join to resolve a filename, and
@@ -1049,6 +1125,14 @@ above:
   available for "today"); comparing or ordering the raw text instead gives wrong results. They
   are NULL wherever a value could not be parsed, so a subject with several such rows is best
   summarised with an aggregate (`MAX(value_number)`) rather than read from an arbitrary row.
+- **A date in the question is the fact's date, not the file's.** When a question asks *when*
+  something happened, or groups by month, quarter or year, the date it means is `value_date` on
+  the fact itself — the date printed on the invoice, the date a certification expires. The
+  `created_at` / `updated_at` columns on `documents` record only when a file was ingested into
+  this system, which is usually the day someone uploaded a batch and says nothing about the
+  business event. Grouping a period question by `created_at` collapses a whole history into
+  whenever the files happened to be loaded, and the result looks plausible while being wrong.
+  Reach for `created_at` only when the question is explicitly about upload or ingestion.
 
 Prefer the simplest query that faithfully expresses the question. Whenever the result is a list of
 facts or subjects, every row needs two separate things, and a row is useless without either:
@@ -1106,6 +1190,7 @@ Return ONLY the SQL query, no explanations:"""
 
     def validate_sql(self, sql: str, surface: QuerySurface | None = None) -> str:
         sql = _fix_document_name_reference(sql)
+        sql = _fix_undefined_alias(sql, surface)
         sql = _force_nulls_last_on_desc(sql)
 
         if len(sql) > MAX_SQL_LENGTH:
@@ -1377,6 +1462,12 @@ Return ONLY the SQL query, no explanations:"""
             "a promoted model version to populate it"
         )
 
+    def _open_platform_session(self):
+        """The platform session `_fetch_query_surface` reads `public.entity_definitions`
+        on (Design D10). Its own method so tests can swap in the fake tenant session they
+        already control, instead of standing up a real engine."""
+        return async_sessionmaker(get_engine(), expire_on_commit=False)()
+
     async def _fetch_query_surface(self, session: AsyncSession, schema: str) -> QuerySurface:
         """The querying tenant's relational surface, from the shared resolver.
 
@@ -1386,9 +1477,15 @@ Return ONLY the SQL query, no explanations:"""
 
         Best-effort: a failure here must not turn a working question into a 500. The
         consequence of an empty surface is only that a generated statement naming a generated
-        relation is rejected — the same outcome as before those tables existed."""
+        relation is rejected — the same outcome as before those tables existed.
+
+        `resolve_query_surface` reads `public.entity_definitions` — control-plane
+        (Design D10) — so it gets its own platform session, never `session`, which
+        for a `tenant_owned` tenant is their own store where no `public.*` table
+        exists."""
         try:
-            resolved = await resolve_query_surface(session, [schema])
+            async with self._open_platform_session() as platform_session:
+                resolved = await resolve_query_surface(platform_session, [schema])
         except Exception as e:
             logger.warning(
                 "query_surface_resolution_failed",

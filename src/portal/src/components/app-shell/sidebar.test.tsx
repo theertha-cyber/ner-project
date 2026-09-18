@@ -1,8 +1,18 @@
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import type { AuthUser } from "@/lib/auth";
+
+function renderTopbar() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <Topbar />
+    </QueryClientProvider>,
+  );
+}
 
 const mockPush = vi.fn();
 
@@ -50,24 +60,27 @@ describe("Sidebar", () => {
     expect(within(nav).queryByText("Platform Settings")).not.toBeInTheDocument();
   });
 
-  it("renders nav items for tenant_admin without Settings", () => {
+  it("renders grouped nav for tenant_admin with section headers", () => {
     mockUser = createUser("tenant_admin");
     render(<Sidebar effectiveRole="tenant_admin" />);
     const nav = screen.getByRole("navigation");
     expect(within(nav).getByText("Dashboard")).toBeInTheDocument();
-    expect(within(nav).getByText("Documents")).toBeInTheDocument();
+    expect(within(nav).getByText("Annotate")).toBeInTheDocument();
+    expect(within(nav).getByText("Manual")).toBeInTheDocument();
+    expect(within(nav).getByText("Setup")).toBeInTheDocument();
+    expect(within(nav).getByText("Uploaded Documents")).toBeInTheDocument();
     expect(within(nav).getByText("Create User")).toBeInTheDocument();
     expect(within(nav).queryByText("Settings")).not.toBeInTheDocument();
   });
 
-  it("renders nav items for annotator (3 items, no Settings)", () => {
+  it("renders nav items for annotator (Manual + Import, no Automated)", () => {
     mockUser = createUser("annotator");
     render(<Sidebar effectiveRole="annotator" />);
     const nav = screen.getByRole("navigation");
-    const navItems = ["My Work", "Annotation", "Documents"];
-    for (const label of navItems) {
+    for (const label of ["Dashboard", "Annotate", "Manual", "Import"]) {
       expect(within(nav).getByText(label)).toBeInTheDocument();
     }
+    expect(within(nav).queryByText("Automated")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Settings")).not.toBeInTheDocument();
   });
 
@@ -75,7 +88,7 @@ describe("Sidebar", () => {
     mockUser = createUser("business_user");
     render(<Sidebar effectiveRole="business_user" />);
     const nav = screen.getByRole("navigation");
-    const navItems = ["Overview", "Documents", "Extractions", "Models & Training"];
+    const navItems = ["Dashboard", "Documents", "Extractions", "Chat"];
     for (const label of navItems) {
       expect(within(nav).getByText(label)).toBeInTheDocument();
     }
@@ -96,8 +109,11 @@ describe("Sidebar", () => {
     mockUser = createUser("annotator");
     render(<Sidebar effectiveRole="annotator" />);
     expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    // Only the user strip button renders ▾ now that the tenant pill is gone
-    expect(screen.getAllByText("▾").length).toBe(1);
+    // Exactly one popup trigger (the user strip) — no separate tenant-pill trigger.
+    const triggers = screen
+      .getAllByRole("button")
+      .filter((b) => b.getAttribute("aria-haspopup") === "true");
+    expect(triggers.length).toBe(1);
   });
 
   // ── User strip trigger ───────────────────────────────────────────────────────
@@ -110,10 +126,10 @@ describe("Sidebar", () => {
       (b) => b.getAttribute("aria-haspopup") === "true",
     )!;
 
-    // The chevron ▾ span lives inside the trigger button
+    // The chevron span (wrapping the ChevronDown icon) lives inside the trigger button
     const getChevron = () =>
       Array.from(trigger.querySelectorAll("span")).find(
-        (el) => el.textContent === "▾",
+        (el) => el.style.transform.startsWith("rotate"),
       ) as HTMLElement;
 
     expect(getChevron().style.transform).toBe("rotate(0deg)");
@@ -159,7 +175,7 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Settings")).not.toBeInTheDocument();
   });
 
-  it("Logout menu item uses ⎋ icon", () => {
+  it("menu exposes Settings and Logout", () => {
     mockUser = createUser("annotator");
     render(<Sidebar effectiveRole="annotator" />);
 
@@ -168,7 +184,8 @@ describe("Sidebar", () => {
     )!;
     fireEvent.click(trigger);
 
-    expect(screen.getByText("⎋")).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByText("Logout")).toBeInTheDocument();
   });
 });
 
@@ -180,7 +197,7 @@ describe("Topbar — no search box or role-switcher", () => {
     const original = process.env.NEXT_PUBLIC_DEMO_MODE;
     process.env.NEXT_PUBLIC_DEMO_MODE = "true";
 
-    render(<Topbar />);
+    renderTopbar();
     expect(screen.queryByText(/search/i)).not.toBeInTheDocument();
     expect(screen.queryByText("⌘K")).not.toBeInTheDocument();
 
@@ -192,7 +209,7 @@ describe("Topbar — no search box or role-switcher", () => {
     const original = process.env.NEXT_PUBLIC_DEMO_MODE;
     process.env.NEXT_PUBLIC_DEMO_MODE = "true";
 
-    render(<Topbar />);
+    renderTopbar();
     expect(screen.queryByText("AS")).not.toBeInTheDocument();
     expect(screen.queryByText("SA")).not.toBeInTheDocument();
     expect(screen.queryByText("TA")).not.toBeInTheDocument();
@@ -207,7 +224,7 @@ describe("Topbar — no search box or role-switcher", () => {
     const original = process.env.NEXT_PUBLIC_DEMO_MODE;
     delete process.env.NEXT_PUBLIC_DEMO_MODE;
 
-    render(<Topbar />);
+    renderTopbar();
     expect(screen.queryByText("AS")).not.toBeInTheDocument();
     expect(screen.queryByText("SA")).not.toBeInTheDocument();
 

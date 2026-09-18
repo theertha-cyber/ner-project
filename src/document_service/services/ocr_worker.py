@@ -1,9 +1,9 @@
 import asyncio
-import traceback
+import logging
 import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from src.shared.database import get_engine
+from src.shared.database import get_engine, get_resolver
 from src.shared.retrieval import Chunk, chunk_text as _shared_chunk_text
 from src.shared.tenant_schema import schema_for_tenant as _schema
 from src.shared.document_retention import (
@@ -11,6 +11,88 @@ from src.shared.document_retention import (
     RETENTION_PLATFORM_BLOB,
     RETENTION_SOURCE_ONLY,
 )
+
+logger = logging.getLogger(__name__)
+
+
+# --- Safe structured processing-error classes (CAP-3) ----------------------------------
+#
+# Failure records (log lines, document error fields, metrics, traces) carry only
+# these finite classes plus correlation metadata. No stack-trace printing, no
+# interpolated exception message, no exception object: a driver error quotes the
+# offending literal back, so the message itself is untrusted content.
+
+PROCESSING_ERROR_CONTENT_UNRESOLVABLE = "content_unresolvable"
+PROCESSING_ERROR_UNSUPPORTED_MEDIA = "unsupported_media"
+PROCESSING_ERROR_CHUNKING_FAILED = "chunking_failed"
+PROCESSING_ERROR_PROCESSING_FAILED = "processing_failed"
+
+PROCESSING_ERROR_CLASSES = frozenset({
+    PROCESSING_ERROR_CONTENT_UNRESOLVABLE,
+    PROCESSING_ERROR_UNSUPPORTED_MEDIA,
+    PROCESSING_ERROR_CHUNKING_FAILED,
+    PROCESSING_ERROR_PROCESSING_FAILED,
+})
+
+
+class UnsupportedMediaType(ValueError):
+    """The resolved media type has no extraction path. A ValueError subclass so
+    existing handlers keep working; classified to a finite class at the edge."""
+
+
+def classify_processing_error(exc: BaseException) -> str:
+    if isinstance(exc, ContentUnresolvable):
+        return PROCESSING_ERROR_CONTENT_UNRESOLVABLE
+    if isinstance(exc, UnsupportedMediaType):
+        return PROCESSING_ERROR_UNSUPPORTED_MEDIA
+    return PROCESSING_ERROR_PROCESSING_FAILED
+
+
+# --- Source-content reopeners (CAP-3) ---------------------------------------------------
+#
+# `source_only` retention stores no bytes, so processing re-acquires them through
+# a registered per-source-type reopener. The registry (not imports) connects the
+# worker to source runtimes: `blob_sync.reopen` registers the Azure Blob
+# reopener, and with none registered the worker raises exactly as before.
+
+_SOURCE_REOPENERS: dict = {}
+
+
+def register_source_reopener(source_type: str, reopen) -> None:
+    _SOURCE_REOPENERS[source_type] = reopen
+
+
+async def _reopen_source_content(document, tenant_id: str):
+    source_type = getattr(document, "source_type", None)
+    reopen = _SOURCE_REOPENERS.get(source_type)
+    if reopen is None:
+        return None
+    try:
+        return await reopen(
+            tenant_id,
+            getattr(document, "source_id", None),
+            getattr(document, "external_id", None),
+        )
+    except Exception as exc:
+        logger.info(
+            "source_reopen_failed",
+            extra={"error_class": classify_processing_error(exc)},
+        )
+        return None
+
+
+async def _resolve_content_for_processing(document, tenant_id: str):
+    """Resolve bytes, re-acquiring source-only content through its reopener.
+
+    Anything unresolvable raises `ContentUnresolvable`, exactly as
+    `resolve_content` does when no reopener can supply the bytes.
+    """
+    retention_mode = getattr(document, "retention_mode", None) or RETENTION_PLATFORM_BLOB
+    if retention_mode == RETENTION_SOURCE_ONLY:
+        reopened = await _reopen_source_content(document, tenant_id)
+        if reopened is not None:
+            return reopened
+    return resolve_content(document)
 
 
 async def _embed_chunks(texts: list[str]) -> list[list[float]]:
@@ -21,7 +103,7 @@ async def _embed_chunks(texts: list[str]) -> list[list[float]]:
 
 
 async def _store_chunks(document_id: str, tenant_id: str, chunks: list[Chunk], embeddings: list[list[float]], purpose: str):
-    engine = get_engine()
+    engine = await get_resolver().resolve(tenant_id)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     schema = _schema(tenant_id)
     async with session_factory() as session:
@@ -54,6 +136,13 @@ ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".doc", 
 # for tesseract on typical document scans.
 OCR_DPI = 200
 
+# Q&A-pair documents are guidance text, not scanned pages, so they additionally accept the
+# text-bearing office formats a team is likely to have written one in. `.doc` (the legacy
+# binary format) is deliberately excluded: it cannot be parsed without a heavyweight
+# dependency, and asking for a re-save as .docx/.pdf/.txt is the honest failure.
+QA_PAIR_EXTRA_EXTENSIONS = {".txt", ".docx"}
+QA_PAIR_ALLOWED_EXTENSIONS = (ALLOWED_EXTENSIONS - {".doc"}) | QA_PAIR_EXTRA_EXTENSIONS
+
 
 def get_extension(filename: str) -> str:
     dot = filename.rfind(".")
@@ -62,26 +151,35 @@ def get_extension(filename: str) -> str:
     return filename[dot:].lower()
 
 
-def is_allowed_file(filename: str) -> bool:
-    return get_extension(filename) in ALLOWED_EXTENSIONS
+def is_allowed_file(filename: str, purpose: str | None = None) -> bool:
+    allowed = QA_PAIR_ALLOWED_EXTENSIONS if purpose == "qa_pair" else ALLOWED_EXTENSIONS
+    return get_extension(filename) in allowed
 
 
 def extract_text_pdf(file_bytes: bytes) -> list[dict]:
-    import fitz
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    """Rasterise every page and OCR it with Tesseract — one span per page.
+
+    PyMuPDF's text-layer extraction is deliberately not used: its default reader inserts
+    layout-driven whitespace and keeps line-break hyphenation, which breaks the exact-match
+    grounding the automated-annotation and schema-proposal paths rely on. OCR of a clean
+    300-DPI render gives text closer to what a reader sees.
+    """
+    from pdf2image import convert_from_bytes
+    import pytesseract
+
+    images = convert_from_bytes(file_bytes, dpi=300)
     spans = []
     char_offset = 0
-    for page_num, page in enumerate(doc):
-        text = page.get_text()
+    for page_num, image in enumerate(images):
+        page_text = pytesseract.image_to_string(image)
         spans.append({
             "span_index": page_num,
-            "text": text,
+            "text": page_text,
             "char_start": char_offset,
-            "char_end": char_offset + len(text),
+            "char_end": char_offset + len(page_text),
             "page_number": page_num,
         })
-        char_offset += len(text) + 1
-    doc.close()
+        char_offset += len(page_text) + 1
     return spans
 
 
@@ -210,8 +308,37 @@ def extract_text_csv(file_bytes: bytes) -> list[dict]:
     return spans
 
 
+def _single_span(text_value: str) -> list[dict]:
+    return [{
+        "span_index": 0,
+        "text": text_value,
+        "char_start": 0,
+        "char_end": len(text_value),
+        "page_number": 0,
+    }]
+
+
+def extract_text_plain(file_bytes: bytes) -> list[dict]:
+    """A .txt Q&A-pair document. UTF-8 with a lenient fallback so a stray byte does not
+    fail the whole upload."""
+    try:
+        text_value = file_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        text_value = file_bytes.decode("utf-8", errors="replace")
+    return _single_span(text_value)
+
+
+# extract_text_docx and extract_text_doc are defined above (python-docx / antiword) and
+# cover the Q&A-pair .docx/.doc case too — no separate hand-rolled parser needed here.
+
+
 def extract_text_pdf_as_image(file_bytes: bytes) -> list[dict]:
-    """OCR a scanned PDF by rasterising pages with PyMuPDF (no poppler needed)."""
+    """OCR a scanned PDF by rasterising pages with PyMuPDF (no poppler needed).
+
+    Fallback for `extract_text_pdf`: a genuinely different rasterisation path (PyMuPDF
+    instead of pdf2image/poppler), not a retry of the same one, so a PDF that defeats one
+    approach has a real second chance rather than failing identically twice.
+    """
     import fitz
     from PIL import Image
     import io
@@ -244,6 +371,7 @@ MEDIA_TYPE_PDF = "application/pdf"
 MEDIA_TYPE_DOC = "application/msword"
 MEDIA_TYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 MEDIA_TYPE_CSV = "text/csv"
+MEDIA_TYPE_TXT = "text/plain"
 IMAGE_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/tiff"})
 
 # Types a client sends when it does not know or does not care. Treating one of these as
@@ -262,6 +390,7 @@ _EXTENSION_MEDIA_TYPES = {
     ".doc": MEDIA_TYPE_DOC,
     ".docx": MEDIA_TYPE_DOCX,
     ".csv": MEDIA_TYPE_CSV,
+    ".txt": MEDIA_TYPE_TXT,
 }
 
 _MAGIC_PREFIXES = (
@@ -279,7 +408,7 @@ def _media_type_from_declaration(declared: str | None) -> str | None:
     value = declared.split(";")[0].strip().lower()
     if value in _UNINFORMATIVE_MEDIA_TYPES:
         return None
-    if value in {MEDIA_TYPE_PDF, MEDIA_TYPE_DOC, MEDIA_TYPE_DOCX, MEDIA_TYPE_CSV} or value in IMAGE_MEDIA_TYPES:
+    if value in {MEDIA_TYPE_PDF, MEDIA_TYPE_DOC, MEDIA_TYPE_DOCX, MEDIA_TYPE_CSV, MEDIA_TYPE_TXT} or value in IMAGE_MEDIA_TYPES:
         return value
     # Aliases real clients send.
     if value in ("image/jpg", "image/pjpeg"):
@@ -367,7 +496,10 @@ def resolve_content(document) -> bytes | None:
 
 # --- Processing ------------------------------------------------------------------------
 
-_DOCUMENT_COLUMNS = "id, purpose, status, content_type, filename, blob_path, retention_mode"
+_DOCUMENT_COLUMNS = (
+    "id, purpose, status, content_type, filename, blob_path, retention_mode, "
+    "source_type, source_id, external_id"
+)
 
 
 async def _load_document(session, schema: str, document_id: str):
@@ -387,10 +519,13 @@ async def _release_working_copy(session_factory, schema: str, document) -> None:
     if reference:
         try:
             _store_for(RETENTION_EPHEMERAL).delete(reference)
-        except Exception:
+        except Exception as exc:
             # The working store's own expiry is the backstop. A failed delete must not
             # turn a processed document into a failed one.
-            traceback.print_exc()
+            logger.info(
+                "working_copy_delete_failed",
+                extra={"error_class": classify_processing_error(exc)},
+            )
     async with session_factory() as session:
         await session.execute(
             text(f"UPDATE {schema}.documents SET blob_path = NULL WHERE id = :id"),
@@ -420,7 +555,7 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
     read from persisted state, so a dispatch is replayable after a restart or through a
     queue.
     """
-    engine = get_engine()
+    engine = await get_resolver().resolve(tenant_id)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     schema = _schema(tenant_id)
 
@@ -458,7 +593,7 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
     # whenever the bytes turn out to be gone, converting a recoverable state into
     # permanent loss.
     try:
-        file_data = resolve_content(document)
+        file_data = await _resolve_content_for_processing(document, tenant_id)
     except ContentUnresolvable:
         if reprocess:
             raise
@@ -475,7 +610,7 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
         async with session_factory() as session:
             await session.execute(
                 text(f"UPDATE {schema}.documents SET status = 'failed', error_message = :msg WHERE id = :id"),
-                {"id": document_id, "msg": "File not found in storage"},
+                {"id": document_id, "msg": PROCESSING_ERROR_CONTENT_UNRESOLVABLE},
             )
             await session.commit()
         await _release_working_copy(session_factory, schema, document)
@@ -485,7 +620,10 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
         await _purge_derived_data(session_factory, schema, document_id)
         async with session_factory() as session:
             await session.execute(
-                text(f"UPDATE {schema}.documents SET status = 'processing' WHERE id = :id"),
+                text(
+                    f"UPDATE {schema}.documents SET status = 'processing', "
+                    "error_message = NULL WHERE id = :id"
+                ),
                 {"id": document_id},
             )
             await session.commit()
@@ -504,8 +642,10 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
             spans = await asyncio.to_thread(extract_text_doc, file_data)
         elif media_type == MEDIA_TYPE_CSV:
             spans = await asyncio.to_thread(extract_text_csv, file_data)
+        elif media_type == MEDIA_TYPE_TXT:
+            spans = await asyncio.to_thread(extract_text_plain, file_data)
         else:
-            raise ValueError(f"Unsupported media type: {media_type or 'unresolved'}")
+            raise UnsupportedMediaType(f"Unsupported media type: {media_type or 'unresolved'}")
 
         async with session_factory() as session:
             for span in spans:
@@ -527,10 +667,14 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
                 )
 
             await session.execute(
-                text(f"UPDATE {schema}.documents SET status = 'processed' WHERE id = :id"),
+                text(
+                    f"UPDATE {schema}.documents SET status = 'processed', "
+                    "ocr_applied_flag = true, error_message = NULL WHERE id = :id"
+                ),
                 {"id": document_id},
             )
             await session.commit()
+            await _record_registry_status(tenant_id, document_id, "processed")
 
         # Only query documents feed retrieval. Training documents stop after text
         # spans are stored: they are annotated/extracted, never embedded.
@@ -558,21 +702,43 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
                 texts = [c.chunk_text for c in chunks]
                 embeddings = await _embed_chunks(texts)
                 await _store_chunks(document_id, tenant_id, chunks, embeddings, purpose)
-        except Exception as chunk_err:
-            traceback.print_exc()
+        except Exception:
+            logger.info(
+                "document_chunking_failed",
+                extra={"error_class": PROCESSING_ERROR_CHUNKING_FAILED},
+            )
 
         await _release_working_copy(session_factory, schema, document)
 
     except Exception as exc:
-        error_msg = f"{type(exc).__name__}: {str(exc)}"
-        traceback.print_exc()
+        error_class = classify_processing_error(exc)
+        logger.info(
+            "document_processing_failed", extra={"error_class": error_class}
+        )
         async with session_factory() as session:
             await session.execute(
-                text(f"UPDATE {schema}.documents SET status = 'failed', error_message = :msg WHERE id = :id"),
-                {"id": document_id, "msg": error_msg},
+                text(
+                    f"UPDATE {schema}.documents SET status = 'failed', "
+                    "ocr_applied_flag = false, error_message = :msg WHERE id = :id"
+                ),
+                {"id": document_id, "msg": error_class},
             )
             await session.commit()
+        await _record_registry_status(tenant_id, document_id, "failed")
         await _release_working_copy(session_factory, schema, document)
+
+
+async def _record_registry_status(tenant_id: str, document_id: str, status: str) -> None:
+    """Updates `public.tenant_document_registry` on a fresh *platform* session
+    (Design D10) after an OCR terminal status transition — never the tenant
+    session the transition itself committed on."""
+    from src.shared import tenant_document_registry as registry
+
+    platform_sessions = async_sessionmaker(get_engine(), expire_on_commit=False)
+    async with platform_sessions() as platform_session:
+        await registry.update_status(
+            platform_session, tenant_id=tenant_id, document_id=document_id, status=status
+        )
 
 
 def trigger_ocr(document_id: str, tenant_id: str):

@@ -1,7 +1,7 @@
 # Run: deploy-platform-kubernetes-azure-20260908
 
 ## Source
-- Session: ses_f80db3506ffexAOELOi2MeSdxq
+- Session: ses_f802536d9ffeK7EaRt37HXwUmS
 - Requirement document: repository itself — PROJECT.md, docker-compose.yml, root Dockerfile, src/*/Dockerfile, deploy/k8s/ (no external document; user confirmed all code and artifacts are in the repo)
 - Target: full
 - Track: full

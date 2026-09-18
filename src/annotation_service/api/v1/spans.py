@@ -1,13 +1,15 @@
 import uuid
 from fastapi import APIRouter, Depends, Query, Request
+from src.shared.data_plane_gate import require_data_plane_ready
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from src.shared.database import get_engine
+from src.shared.database import get_engine, get_resolver
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.shared.exceptions import NotFoundError
+from src.annotation_service.services.llm_prelabel import SUGGESTION_SOURCE_KEYWORD
 from src.shared.tenant_schema import schema_for_tenant as _schema
 
-router = APIRouter(tags=["spans"])
+router = APIRouter(tags=["spans"], dependencies=[Depends(require_data_plane_ready)])
 
 
 def get_tenant_id(request: Request) -> str:
@@ -18,8 +20,11 @@ def get_tenant_id(request: Request) -> str:
     return tid
 
 
-async def get_session() -> AsyncSession:
-    factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+async def get_session(request: Request) -> AsyncSession:
+    """Routed through EngineResolver (ADR-017)."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    engine = await get_resolver().resolve(tenant_id)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         try:
             yield session
@@ -50,12 +55,17 @@ def _compute_bio_tags(doc_text: str, char_start: int, char_end: int, entity_type
 
 
 async def validate_entity_type(session: AsyncSession, tenant_id: str, entity_type: str) -> None:
+    """`entity_definitions` is a control-plane table (Design D10) — always read on a
+    fresh *platform* session, never `session` (which for a `tenant_owned` tenant is
+    resolved to their own store, where `public.entity_definitions` does not exist)."""
     from fastapi import HTTPException
-    result = await session.execute(
-        text("SELECT id FROM public.entity_definitions WHERE tenant_id = :tenant_id AND LOWER(name) = LOWER(:name) LIMIT 1"),
-        {"tenant_id": tenant_id, "name": entity_type},
-    )
-    if not result.fetchone():
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        result = await platform_session.execute(
+            text("SELECT id FROM public.entity_definitions WHERE tenant_id = :tenant_id AND LOWER(name) = LOWER(:name) LIMIT 1"),
+            {"tenant_id": tenant_id, "name": entity_type},
+        )
+        found = result.fetchone()
+    if not found:
         raise HTTPException(
             status_code=422,
             detail={"code": "VALIDATION_ERROR", "message": f"Entity type '{entity_type}' is not configured for this tenant"},
@@ -142,20 +152,23 @@ async def list_spans(
     tenant_id = get_tenant_id(request)
     schema = _schema(tenant_id)
 
+    # `source` is selected only for suggested spans: a confirmed span has passed through a
+    # human, so which mechanism first proposed it is no longer what the row is about.
     if type_filter == "suggested":
         result = await session.execute(
-            text(f"SELECT id, entity_type, char_start, char_end, text_content, confidence, created_at FROM {schema}.suggested_spans WHERE document_id = :doc_id ORDER BY char_start"),
+            text(f"SELECT id, entity_type, char_start, char_end, text_content, confidence, created_at, source FROM {schema}.suggested_spans WHERE document_id = :doc_id ORDER BY char_start"),
             {"doc_id": doc_id},
         )
     else:
         result = await session.execute(
-            text(f"SELECT id, entity_type, char_start, char_end, text_content, confidence, created_at FROM {schema}.spans WHERE document_id = :doc_id ORDER BY char_start"),
+            text(f"SELECT id, entity_type, char_start, char_end, text_content, confidence, created_at, NULL AS source FROM {schema}.spans WHERE document_id = :doc_id ORDER BY char_start"),
             {"doc_id": doc_id},
         )
 
     rows = result.fetchall()
-    return [
-        {
+    spans = []
+    for r in rows:
+        span = {
             "id": r[0],
             "entity_type": r[1],
             "char_start": r[2],
@@ -164,8 +177,10 @@ async def list_spans(
             "confidence": float(r[5]),
             "created_at": str(r[6]),
         }
-        for r in rows
-    ]
+        if type_filter == "suggested":
+            span["source"] = r[7]
+        spans.append(span)
+    return spans
 
 
 @router.patch("/api/v1/documents/{doc_id}/spans/{span_id}")
@@ -283,11 +298,15 @@ async def prelabel_document(
 
     doc_text = row[1] or ""
 
-    result = await session.execute(
-        text("SELECT name, examples, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tenant_id"),
-        {"tenant_id": tenant_id},
-    )
-    entity_rows = result.fetchall()
+    # `entity_definitions` is a control-plane table (Design D10) — always read on a
+    # fresh *platform* session, never `session` (which for a `tenant_owned` tenant is
+    # resolved to their own store, where `public.entity_definitions` does not exist).
+    async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+        result = await platform_session.execute(
+            text("SELECT name, examples, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tenant_id"),
+            {"tenant_id": tenant_id},
+        )
+        entity_rows = result.fetchall()
 
     import re
     keyword_to_type = {}
@@ -318,6 +337,7 @@ async def prelabel_document(
                 "char_end": end,
                 "text": match.group(),
                 "confidence": 0.85,
+                "source": SUGGESTION_SOURCE_KEYWORD,
             })
 
     await session.execute(
@@ -328,8 +348,8 @@ async def prelabel_document(
     for s in suggested:
         await session.execute(
             text(f"""
-                INSERT INTO {schema}.suggested_spans (id, document_id, entity_type, char_start, char_end, text_content, confidence)
-                VALUES (:id, :doc_id, :entity_type, :char_start, :char_end, :text_val, :confidence)
+                INSERT INTO {schema}.suggested_spans (id, document_id, entity_type, char_start, char_end, text_content, confidence, source)
+                VALUES (:id, :doc_id, :entity_type, :char_start, :char_end, :text_val, :confidence, :source)
             """),
             {
                 "id": s["id"],
@@ -339,6 +359,10 @@ async def prelabel_document(
                 "char_end": s["char_end"],
                 "text_val": s["text"],
                 "confidence": s["confidence"],
+                # Written explicitly rather than left to the column default: a suggestion's
+                # provenance is a fact this path knows, and relying on the default would make
+                # the value correct only for as long as nobody changes it.
+                "source": s["source"],
             },
         )
 

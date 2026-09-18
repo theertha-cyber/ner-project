@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS {schema}.annotation_tasks (
     status VARCHAR(20) DEFAULT 'unannotated',
     reviewer VARCHAR,
     dataset_version INTEGER,
+    training_eligible_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );
@@ -146,7 +147,21 @@ CREATE TABLE IF NOT EXISTS {schema}.suggested_spans (
     char_end INTEGER NOT NULL,
     text_content VARCHAR NOT NULL,
     confidence FLOAT NOT NULL,
+    source VARCHAR(16) NOT NULL DEFAULT 'keyword',
     created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS {schema}.llm_prelabel_jobs (
+    id VARCHAR PRIMARY KEY,
+    document_id VARCHAR NOT NULL REFERENCES {schema}.documents(id) ON DELETE CASCADE,
+    status VARCHAR(16) NOT NULL DEFAULT 'queued',
+    content_hash VARCHAR(64) NOT NULL,
+    config_version VARCHAR(64) NOT NULL,
+    served_from_cache BOOLEAN NOT NULL DEFAULT false,
+    spans JSONB,
+    counts JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
 );
 CREATE TABLE IF NOT EXISTS {schema}.training_jobs (
     id VARCHAR PRIMARY KEY,
@@ -205,6 +220,9 @@ CREATE TABLE IF NOT EXISTS {schema}.chat_messages (
     answer_kind TEXT NOT NULL DEFAULT 'answer',
     model_version TEXT,
     response_time_ms INTEGER,
+    export_rows JSONB,
+    export_row_count INTEGER,
+    chart JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS {schema}.chat_message_feedback (
@@ -214,6 +232,15 @@ CREATE TABLE IF NOT EXISTS {schema}.chat_message_feedback (
     user_id VARCHAR NOT NULL,
     rating TEXT NOT NULL CHECK (rating IN ('up', 'down')),
     created_at TIMESTAMPTZ DEFAULT NOW()
+);
+-- CAP-3 (alembic 041) retrieval-hiding list. The retrievers' exclusion
+-- predicate plans against this table unconditionally, so every tenant schema
+-- the suite creates must carry it, mirroring production post-migration.
+CREATE TABLE IF NOT EXISTS {schema}.azure_blob_hidden_documents (
+    document_id VARCHAR PRIMARY KEY,
+    connection_id VARCHAR NOT NULL,
+    cause VARCHAR(32) NOT NULL,
+    hidden_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 """
 
@@ -277,6 +304,29 @@ async def client(engine, setup_database):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture(autouse=True)
+def _platform_session_is_fake_session(monkeypatch):
+    """Every offline `SQLGenerator` test models a single fake database, via
+    `tests.test_chat_api_sql_retry.FakeSession`. `SQLGenerator._fetch_query_surface`'s
+    Design D10 platform-session read must not stand up a real engine against that fake,
+    so this routes it back to whichever `FakeSession` instance is current.
+
+    Autouse and global (not just in `test_chat_api_sql_retry.py`) because several other
+    test modules build a `SQLGenerator`/`FakeSession` pair of their own via local
+    imports, which can't otherwise pick up a fixture defined in that leaf module."""
+    from src.chat_api.services.sql_generator import SQLGenerator
+    from tests.test_chat_api_sql_retry import FakeSession
+
+    class _FakePlatformSessionCtx:
+        async def __aenter__(self):
+            return FakeSession.current
+
+        async def __aexit__(self, *exc_info):
+            return False
+
+    monkeypatch.setattr(SQLGenerator, "_open_platform_session", lambda self: _FakePlatformSessionCtx())
 
 
 @pytest.fixture

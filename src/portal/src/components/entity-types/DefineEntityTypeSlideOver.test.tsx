@@ -67,6 +67,10 @@ describe("DefineEntityTypeSlideOver", () => {
     const nameInput = screen.getByPlaceholderText("vendor_name") as HTMLInputElement;
     expect(nameInput.value).toBe("");
     expect(nameInput.disabled).toBe(false);
+    // Spec Alignment row 17: the EXAMPLE Q&A section is present but holds no rows yet.
+    expect(screen.getByText("Example Q&A")).toBeDefined();
+    expect(screen.getByRole("button", { name: "+ Add Q&A pair" })).toBeDefined();
+    expect(screen.queryByLabelText("Question 1")).toBeNull();
   });
 
   it("pre-fills fields and disables NAME in edit mode", () => {

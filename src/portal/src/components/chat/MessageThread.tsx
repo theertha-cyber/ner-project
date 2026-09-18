@@ -3,8 +3,11 @@
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ChartRenderer, type ChartPayload } from "./ChartRenderer";
 import { CitationChips } from "./CitationChips";
 import { MessageFeedback, type Feedback } from "./MessageFeedback";
+import { ExportCard, type ExportAvailability } from "./ExportCard";
+import { TruncatableReply } from "./TruncatableReply";
 
 interface Source {
   source_type: string;
@@ -40,6 +43,8 @@ interface Message {
   answer_kind?: "answer" | "clarification" | "guardrail_blocked" | "out_of_domain" | null;
   model_version?: string | null;
   feedback?: Feedback | null;
+  export?: ExportAvailability | null;
+  chart?: ChartPayload | null;
 }
 
 interface MessageThreadProps {
@@ -171,17 +176,27 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
             }
 
             const showTrailers = !msg.isThinking && !msg.isStreaming;
+
             return (
               <div key={msg.id} style={{ marginBottom: 36 }}>
                 {msg.isThinking ? (
                   <span style={{ color: "var(--ink-3)", fontSize: 15 }} className="thinking-dots">
                     Thinking...
                   </span>
+                ) : showTrailers ? (
+                  <TruncatableReply content={msg.content} />
                 ) : (
                   <div className="chat-markdown chat-doc">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                   </div>
                 )}
+
+                {/* Chart and export both hang off the same structured rows, so a turn
+                    with results can show both. Truncation (above, via TruncatableReply)
+                    and the export offer (below) are independent: a turn's reply may
+                    truncate, may have an export, both, or neither, in any combination. */}
+                {msg.chart && <ChartRenderer chart={msg.chart} />}
+                {showTrailers && msg.export && <ExportCard export_={msg.export} />}
 
                 {showTrailers && msg.sources && msg.sources.length > 0 && (
                   <div style={{ marginTop: 14 }}>

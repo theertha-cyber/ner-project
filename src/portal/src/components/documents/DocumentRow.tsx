@@ -25,6 +25,7 @@ function formatDate(dateStr: string): string {
 function purposeLabel(purpose: string | null | undefined): string {
   if (purpose === "training") return "Annotation";
   if (purpose === "query") return "Query";
+  if (purpose === "qa_pair") return "Q&A pair";
   return "—";
 }
 

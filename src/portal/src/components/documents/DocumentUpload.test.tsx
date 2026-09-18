@@ -21,18 +21,19 @@ function useUploadMock() {
 
   const upload = useCallback((file: File, purpose: "query" | "training" = "query") => {
     uploadCalls.push({ name: file.name, purpose });
+    const docId = `doc-${uploadCalls.length}`;
     inFlightCount += 1;
     maxInFlight = Math.max(maxInFlight, inFlightCount);
     setIsUploading(true);
     setProgress(0);
 
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<{ id: string }>((resolve, reject) => {
       deferreds.push({
         resolve: () => {
           inFlightCount -= 1;
           setProgress(100);
           setIsUploading(false);
-          resolve();
+          resolve({ id: docId });
         },
         reject: (err: Error) => {
           inFlightCount -= 1;
@@ -104,17 +105,23 @@ describe("DocumentUpload", () => {
   it("renders upload zone with instructions", () => {
     render(<DocumentUpload />, { wrapper: createWrapper() });
     expect(screen.getByText(/Click to upload/)).toBeDefined();
-    expect(screen.getByText(/PDF, JPEG, PNG, or TIFF/)).toBeDefined();
+    expect(screen.getByText(/PDF, DOC, DOCX, JPEG, PNG, or TIFF/)).toBeDefined();
   });
 
   it("offers no purpose choice — the caller fixes it from the role", () => {
+    // The annotation-mode radios added by `annotation-mode-selection` are *not* a purpose
+    // choice, so this asserts against the purpose radio group by name rather than against
+    // every radio on the screen.
+    const purposeRadios = () =>
+      screen.queryAllByRole("radio").filter((el) => el.getAttribute("name") === "purpose");
+
     const { unmount } = render(<DocumentUpload purpose="training" />, { wrapper: createWrapper() });
-    expect(screen.queryAllByRole("radio").length).toBe(0);
+    expect(purposeRadios().length).toBe(0);
     expect(screen.getByText(/uploaded for annotation/)).toBeDefined();
     unmount();
 
     render(<DocumentUpload purpose="query" />, { wrapper: createWrapper() });
-    expect(screen.queryAllByRole("radio").length).toBe(0);
+    expect(purposeRadios().length).toBe(0);
     expect(screen.getByText(/uploaded for querying/)).toBeDefined();
   });
 

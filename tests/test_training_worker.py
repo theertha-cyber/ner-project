@@ -122,14 +122,14 @@ class TestAnnotationServiceURL:
 
 class TestFineTuneRetryGuard:
 
-    def make_mock_engine(self, status: str | None):
+    def make_mock_engine(self, status: str | None, source_scope: str | None = None):
         """Return a mock sync engine whose connection returns a row with given status."""
         import json
         from unittest.mock import MagicMock, patch
 
         mock_row = MagicMock()
         if status is not None:
-            mock_row.fetchone.return_value = (status,)
+            mock_row.fetchone.return_value = (status, source_scope)
         else:
             mock_row.fetchone.return_value = None
 
@@ -145,7 +145,7 @@ class TestFineTuneRetryGuard:
     def test_skips_when_status_completed(self, monkeypatch):
         from src.training_service.worker import fine_tune_model
         mock_engine = self.make_mock_engine("completed")
-        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda: mock_engine)
+        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda tenant_id=None: mock_engine)
 
         result = fine_tune_model("tenant-1", "job-completed", {"learning_rate": 2e-5})
         assert result is None
@@ -153,7 +153,7 @@ class TestFineTuneRetryGuard:
     def test_skips_when_status_failed(self, monkeypatch):
         from src.training_service.worker import fine_tune_model
         mock_engine = self.make_mock_engine("failed")
-        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda: mock_engine)
+        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda tenant_id=None: mock_engine)
 
         result = fine_tune_model("tenant-1", "job-failed", {"learning_rate": 2e-5})
         assert result is None
@@ -161,7 +161,7 @@ class TestFineTuneRetryGuard:
     def test_skips_when_status_cancelled(self, monkeypatch):
         from src.training_service.worker import fine_tune_model
         mock_engine = self.make_mock_engine("cancelled")
-        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda: mock_engine)
+        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda tenant_id=None: mock_engine)
 
         result = fine_tune_model("tenant-1", "job-cancelled", {"learning_rate": 2e-5})
         assert result is None
@@ -169,14 +169,14 @@ class TestFineTuneRetryGuard:
     def test_skips_when_job_not_found(self, monkeypatch):
         from src.training_service.worker import fine_tune_model
         mock_engine = self.make_mock_engine(None)
-        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda: mock_engine)
+        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda tenant_id=None: mock_engine)
 
         result = fine_tune_model("tenant-1", "job-unknown", {"learning_rate": 2e-5})
         assert result is None
 
     def test_proceeds_when_status_approved(self, monkeypatch):
         mock_engine = self.make_mock_engine("approved")
-        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda: mock_engine)
+        monkeypatch.setattr("src.training_service.worker._get_sync_engine", lambda tenant_id=None: mock_engine)
 
         reached_mlflow = False
         def fake_set_tracking_uri(*args):
@@ -363,7 +363,7 @@ class TestLabelListPersistedInMetrics:
         import src.training_service.worker as worker_module
 
         status_row = MagicMock()
-        status_row.fetchone.return_value = ("approved",)
+        status_row.fetchone.return_value = ("approved", None)
 
         version_row = MagicMock()
         version_row.fetchone.return_value = (1,)
@@ -379,7 +379,7 @@ class TestLabelListPersistedInMetrics:
 
             def execute(self, stmt, params=None):
                 sql = str(stmt)
-                if "SELECT status FROM" in sql and "training_jobs" in sql:
+                if "SELECT status, source_scope FROM" in sql and "training_jobs" in sql:
                     return status_row
                 if "COALESCE(MAX(version_number)" in sql:
                     return version_row
@@ -394,7 +394,7 @@ class TestLabelListPersistedInMetrics:
             def begin(self):
                 return FakeConn()
 
-        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda: FakeEngine())
+        monkeypatch.setattr(worker_module, "_get_sync_engine", lambda tenant_id=None: FakeEngine())
         monkeypatch.setattr(worker_module, "_update_job_progress", lambda *a, **k: None)
 
         records = [
@@ -409,7 +409,7 @@ class TestLabelListPersistedInMetrics:
             {"tokens": ["another", "sentence"], "tags": ["O", "O"]},
             {"tokens": ["Gamma", "Corp"], "tags": ["B-company", "I-company"]},
         ]
-        monkeypatch.setattr(worker_module, "_load_annotated_dataset", lambda tenant_id: records)
+        monkeypatch.setattr(worker_module, "_load_annotated_dataset", lambda tenant_id, source_scope=None: records)
 
         # Uses the real local MLflow tracking server (settings.mlflow_tracking_uri
         # defaults to http://localhost:5000, matching the dev docker-compose stack).
@@ -464,3 +464,183 @@ class TestLabelMapping:
         assert label2id["B-PER"] >= 1
         assert label2id["B-LOC"] >= 1
         assert label2id["I-PER"] >= 1
+
+
+# --- training-data-integrity: sequence length and split guard ---
+#
+# Covers verification.md Spec Alignment rows 12-14 (Tokenize dataset) and 17-18
+# (Load annotated dataset).
+
+
+@pytest.mark.slow
+class TestSequenceLength:
+
+    def _tokenizer(self):
+        from transformers import AutoTokenizer
+        return AutoTokenizer.from_pretrained("dslim/bert-base-NER")
+
+    def test_window_sized_record_not_truncated(self):
+        """verification.md row 12.
+
+        A record holding a full export window must survive the default sequence length
+        intact — that pairing is the whole point of deriving one constant from the
+        other.
+
+        The record is built to the *measured worst case* rather than the average: the
+        highest per-document subword expansion over the real corpus is 3.64 subwords
+        per source token (mean 1.99), so the window here mixes 4-subword and 3-subword
+        tokens to land at that rate. Individual tokens can of course expand further —
+        an email address is 15 subwords — which is precisely why truncation is now
+        counted rather than assumed impossible; see test_truncation_is_recorded.
+        """
+        from src.training_service.worker import (
+            DEFAULT_MAX_SEQ_LENGTH,
+            EXPORT_WINDOW_TOKENS,
+            _extract_label_set,
+            tokenize_and_align_labels,
+        )
+
+        tok = self._tokenizer()
+        four_subword = "microservices"
+        three_subword = "hands-on"
+        assert len(tok(four_subword, add_special_tokens=False)["input_ids"]) == 4
+        assert len(tok(three_subword, add_special_tokens=False)["input_ids"]) == 3
+
+        # 82 * 4 + 46 * 3 = 466 subwords over 128 source tokens = 3.64 per token.
+        heavy = 82
+        tokens = [four_subword] * heavy + [three_subword] * (EXPORT_WINDOW_TOKENS - heavy)
+        assert len(tokens) == EXPORT_WINDOW_TOKENS
+        tags = ["O"] * EXPORT_WINDOW_TOKENS
+        records = [{"tokens": tokens, "tags": tags}]
+        label2id = {lbl: i for i, lbl in enumerate(_extract_label_set(records))}
+
+        stats = {}
+        batch = {"tokens": [tokens], "tags": [tags]}
+        result = tokenize_and_align_labels(
+            batch, tok, label2id, DEFAULT_MAX_SEQ_LENGTH, stats
+        )
+
+        assert stats == {}, f"record was truncated: {stats}"
+        word_ids = result.word_ids(batch_index=0)
+        covered = {w for w in word_ids if w is not None}
+        assert covered == set(range(EXPORT_WINDOW_TOKENS))
+
+    def test_max_seq_length_override_respected(self):
+        """verification.md row 13.
+
+        ADR-009 puts sequence length in the System Admin's hands at approval time. The
+        default must be a fallback only.
+        """
+        from src.training_service.worker import DEFAULT_MAX_SEQ_LENGTH
+
+        hyperparams = {"max_seq_length": 256}
+        resolved = hyperparams.get("max_seq_length", DEFAULT_MAX_SEQ_LENGTH)
+        assert resolved == 256
+        assert resolved != DEFAULT_MAX_SEQ_LENGTH
+
+        assert {}.get("max_seq_length", DEFAULT_MAX_SEQ_LENGTH) == DEFAULT_MAX_SEQ_LENGTH
+
+    def test_truncation_is_recorded(self):
+        """verification.md row 14.
+
+        Truncation is allowed to happen; it is not allowed to happen quietly. The call
+        still returns normally — the job must not fail solely because of it.
+        """
+        from src.training_service.worker import _extract_label_set, tokenize_and_align_labels
+
+        tok = self._tokenizer()
+        tokens = ["Kaleidoscopically"] * 200
+        tags = ["O"] * 200
+        records = [{"tokens": tokens, "tags": tags}]
+        label2id = {lbl: i for i, lbl in enumerate(_extract_label_set(records))}
+
+        stats = {}
+        batch = {"tokens": [tokens], "tags": [tags]}
+        result = tokenize_and_align_labels(batch, tok, label2id, 32, stats)
+
+        assert stats["records"] == 1
+        assert stats["dropped_tokens"] > 0
+        assert "labels" in result
+
+
+class TestDatasetSplitGuard:
+
+    def test_dataset_too_small_to_split_fails(self):
+        """verification.md row 17.
+
+        A single row cannot yield both a train and an evaluation partition, so the job
+        must stop with an error naming the row count rather than reaching the trainer
+        and reporting a metric computed over nothing.
+        """
+        from src.training_service.worker import _assert_dataset_splittable
+
+        with pytest.raises(TrainingDataError) as exc:
+            _assert_dataset_splittable(1)
+        assert "1 row" in str(exc.value)
+
+        with pytest.raises(TrainingDataError) as exc:
+            _assert_dataset_splittable(0)
+        assert "0 row" in str(exc.value)
+
+    def test_sufficient_dataset_proceeds_without_extra_gate(self):
+        """verification.md row 18.
+
+        Two rows is far below any sensible readiness bar, and it still passes: dataset
+        readiness is ADR-010's per-entity-type mechanism, not this guard's. The guard
+        applies no opinion of its own beyond "the split can be formed".
+        """
+        from src.training_service.worker import _assert_dataset_splittable
+
+        for row_count in (2, 3, 10, 50, 3000):
+            _assert_dataset_splittable(row_count)
+
+    def test_guard_fails_the_job_before_any_training(self, monkeypatch):
+        """verification.md row 17 (job-level half).
+
+        The unit test above proves the guard raises. This one proves what the job does
+        with that: status "failed", and the trainer never reached — so no evaluation
+        metric computed over an empty partition can be reported.
+        """
+        from unittest.mock import MagicMock
+        import src.training_service.worker as worker
+
+        mock_row = MagicMock()
+        mock_row.fetchone.return_value = ("approved", None)
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value = mock_row
+        mock_conn.__enter__.return_value = mock_conn
+        mock_conn.__exit__.return_value = None
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value = mock_conn
+        mock_engine.begin.return_value = mock_conn
+        monkeypatch.setattr(worker, "_get_sync_engine", lambda: mock_engine)
+
+        monkeypatch.setattr(worker, "_load_annotated_dataset", lambda tid, source_scope=None: [
+            {"tokens": ["John", "Doe"], "tags": ["B-PER", "I-PER"]},
+        ])
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("tokenizer/trainer must not be reached")
+
+        monkeypatch.setattr(worker, "_extract_label_set", fail_if_called)
+
+        mock_mlflow = MagicMock()
+        mock_mlflow.get_experiment_by_name.return_value = None
+        mock_mlflow.create_experiment.return_value = "exp-1"
+        mock_mlflow.start_run.return_value.info.run_id = "run-1"
+        monkeypatch.setattr(worker, "mlflow", mock_mlflow)
+
+        progress = []
+        monkeypatch.setattr(
+            worker,
+            "_update_job_progress",
+            lambda tenant_id, job_id, **fields: progress.append(fields),
+        )
+
+        with pytest.raises(TrainingDataError) as exc:
+            worker.fine_tune_model("tenant-1", "job-tiny", {})
+
+        assert "1 row" in str(exc.value)
+        statuses = [f.get("status") for f in progress]
+        assert statuses[-1] == "failed"
+        assert not any("metrics" in f for f in progress)

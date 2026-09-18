@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
+from src.shared.data_plane_gate import require_data_plane_ready
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.analytics_service.dependencies import get_db
@@ -12,7 +13,7 @@ from src.analytics_service.api.v1.schemas import (
     DocumentEntityCountsWidget,
 )
 
-router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
+router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"], dependencies=[Depends(require_data_plane_ready)])
 
 
 async def fetch_widget_data(db: AsyncSession, mv_name: str):

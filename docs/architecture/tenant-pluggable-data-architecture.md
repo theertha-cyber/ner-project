@@ -1,6 +1,6 @@
 # Tenant-Pluggable Data Architecture — Assessment Report
 
-> **Status:** Architecture assessment for review. No code, no migrations, no OpenSpec artifacts created.
+> **Status:** Architecture assessment. §9's "tenant-managed relational store" recommendation (this section's own preferred option, over §11's separate-vector-store and §10's business-database-querying alternatives) has since been implemented as **ADR-017: Tenant-Owned PostgreSQL Data Plane** (`docs/adr/017-tenant-owned-postgresql-data-plane.md`, OpenSpec change `tenant-postgresql-data-plane`) — see the update at the end of §8 and §9 for what shipped versus what this assessment only proposed.
 > **Question answered:** How does this stay *one product* with *one* document-processing and chatbot core, while each tenant can use an approved combination of their own document source, blob storage, relational database, vector store, and existing business database?
 > **Evidence convention:** `Confirmed` = verified in this repository. `Inferred` = reasoned from confirmed facts. `Open` = needs product, security, or customer agreement.
 > **Related documents:** `external-data-source-architecture.md` (full external-sync engine design) and `document-ingestion-source-boundary.md` (the ingestion seam). This report is the wider frame both sit inside. Section 17 reconciles all three.
@@ -308,7 +308,7 @@ One record per tenant, in **control-plane storage**, naming the adapters and poi
 
 **Rules.**
 
-1. Profiles are **developer-managed**. No customer-facing self-service. This is a deliberate product constraint and it is what makes the supported matrix finite.
+1. Profiles are **developer-managed**, except for the feature-authorized tenant-admin lifecycle for Azure Blob Storage and Azure Database for PostgreSQL connections. That exception is governed by ADR-011 and `docs/design/tenant-self-service-data-sources.md`; it grants no access to platform-default profiles or other adapter types.
 2. **Secret references only.** `AGENTS.md` invariant 3 forbids secrets in source, config, or committed `.env`, and forbids defaults for secret-class settings. A tenant credential in an ordinary database row would violate its spirit and would expose secrets to every admin endpoint that returns a profile. `Confirmed` (invariant) / `Inferred` (application).
 3. **One honest deviation to record.** The invariant's fail-fast-at-startup rule cannot fully apply: profiles are per-tenant rows created at runtime, so the process cannot enumerate required secrets at boot. Failure surfaces at resolution time and moves the profile to an error state with an operator-visible message. Better acknowledged than silently excepted.
 4. **Resolution happens once, at the edge**, and flows down as an immutable, tenant-bound context. Adapters receive resolved values and never learn where they came from — so an adapter has no API with which to ask for another tenant's credentials.
@@ -339,6 +339,8 @@ One record per tenant, in **control-plane storage**, naming the adapters and poi
 
 **Recommendation:** keep a minimal, content-free **document registry** in the control plane — document id, tenant id, source type and instance, status, size, checksum, timestamps, retention mode. Everything with content in it — filename, OCR text, chunks, entities, projections — follows the tenant's chosen store. Checksum and size are metadata about content, not content. `Open` — filename is the boundary case and needs a privacy ruling.
 
+**Implemented (ADR-017):** `public.tenant_document_registry(document_id, tenant_id, source_type, status, file_size_bytes, checksum, retention_mode, created_at, updated_at)` — exactly this recommendation, filename excluded (the boundary case above was resolved by simply not carrying it). Written after every tenant-store commit (`src/shared/tenant_document_registry.py`), reconciled every 5 minutes (`reconcile_tenant_document_registry`, skipping any `tenant_owned` tenant whose store is unreachable that cycle rather than clearing its rows), and read by the tenant-admin and system-admin document counts instead of the tenant's own store.
+
 ---
 
 ## 9. Hosting the platform's own schema in a tenant-managed database
@@ -362,6 +364,19 @@ This is the realistic version of "tenant-managed relational store", and it is **
 | **Cross-plane reads** | The projection reconciler reads `public.entity_definitions` (control plane) and writes to the tenant store. That cross-plane read must be explicit and resilient, not incidental. |
 
 **The honest summary:** technically this is the *smallest* of the tenant-hosting options and the one with the least code change. Operationally it is the *largest*, because it multiplies migrations, monitoring, network paths, and support surface by the number of such tenants. Price it accordingly.
+
+**Implemented (ADR-017):** every row of the table above shipped. `EngineResolver` (`src/shared/database.py`) replaced the single global engine — `resolve()`/`resolve_sync()` are the one place a tenant's engine is chosen, backed by a bounded LRU per process, never falling back to the platform engine for a `tenant_owned` tenant. Migrations are per-store: a checked-in baseline plus ordered idempotent revisions (`src/shared/tenant_store/`), applied by `migrate.py` after `alembic upgrade head`, tolerating a version window via `migration_required`. Provisioning is a durable Celery task (`provision_tenant_data_plane`) rather than inline at request time, driven by a control-plane status machine on `public.tenant_data_planes`:
+
+```
+awaiting_store → provisioning → ready
+                      ↑              ↓
+              provisioning_failed   paused ⇄ ready
+                                     ↓
+                              store_retired (terminal)
+                      ready ⇄ migration_required
+```
+
+Privileges follow the documented fallback exactly — the secure tester checks for `CREATEROLE` or a pre-created `NOLOGIN` query role and fails closed with a finite reason otherwise. The `vector` extension is a documented prerequisite, verified by the same tester before activation, not a runtime surprise. Failure isolation is real: a health-outcome column plus a periodic probe (`probe_tenant_data_plane_health`) let one tenant's store go down without affecting `/health` or any other tenant, and content routes fail closed with 503 `TENANT_DATA_PLANE_UNAVAILABLE` rather than a raw driver error. The cross-plane read this section calls out (the projection reconciler reading `public.entity_definitions` while writing to the tenant store) is Design D10 in the OpenSpec change's `design.md` — enforced by an architecture test (`tests/test_tenant_engine_construction_boundary.py`) that fails the build if a cross-schema `public.` join reaches a tenant-resolved session.
 
 ---
 

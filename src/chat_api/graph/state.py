@@ -5,6 +5,7 @@ from src.chat_api.api.v1.schemas import Source, Citation
 from src.chat_api.services.context_assembler import AdmittedEvidence
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.orchestrator import RetrievalPlan, RetrievalStatus
+from src.shared.retrieval.tools.registry import ToolRegistry
 
 
 class ChatState(TypedDict, total=False):
@@ -32,6 +33,12 @@ class ChatState(TypedDict, total=False):
 
     # orchestrator outcome
     retrieval_plan: RetrievalPlan
+    # The turn's tool registry: platform tools, plus `external_database` only
+    # when `resolve_external_capability` said this tenant is executable
+    # (design.md Decision 5). Lives only here — `orchestrator.tool_registry`
+    # itself is never reassigned, so it stays the byte-identical fallback for
+    # every tenant without a connection.
+    tool_registry: ToolRegistry
 
     # entity resolution outcome (present only when entity_resolution_enabled)
     entity_resolution_outcome: str | None
@@ -41,12 +48,21 @@ class ChatState(TypedDict, total=False):
 
     # stage outputs
     sql_results: list[dict] | None
+    chart: dict | None
     chunks: list[RetrievalResult]
 
     # `{"returned": int, "matched": int | None, "truncated": bool}` for the structured
     # rows above, so prompt assembly can tell a complete answer from the first page of
     # a longer one and stop asserting a truncated list is exhaustive.
     sql_completeness: dict | None
+
+    # External evidence has its own channel (ADR-015, ADR-016 Decision 6):
+    # rows here never join `sql_results`, so they can never be serialized into
+    # a persisted citation the way `sql_results` rows are.
+    external_results: list[dict] | None
+    external_relations: list[str] | None
+    external_truncated: bool
+    external_failure_reason: str | None
 
     # The turn's retrieval outcome, one entry per plan entry. Replaces `sql_error` and
     # `retrieval_error`, which were written here every turn and read nowhere: they

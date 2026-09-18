@@ -4,10 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from src.shared.exceptions import AppError
+from src.shared.data_plane_gate import install_data_plane_exception_handlers
 from src.shared.config import settings
 from src.annotation_service.middleware.tenant_context import TenantContextMiddleware
 from src.shared.observability import init_observability
-from src.annotation_service.api.v1 import spans, tasks, export, import_, review
+from src.annotation_service.api.v1 import spans, tasks, export, import_, review, llm_prelabel, seed_bootstrap, review_queue, retraining_decision
 
 
 def add_bearer_security(app: FastAPI):
@@ -70,11 +71,17 @@ async def app_error_handler(request: Request, exc: AppError):
     )
 
 
+
+install_data_plane_exception_handlers(app)
 app.include_router(spans.router)
 app.include_router(tasks.router)
 app.include_router(export.router)
 app.include_router(import_.router)
 app.include_router(review.router)
+app.include_router(llm_prelabel.router)
+app.include_router(seed_bootstrap.router)
+app.include_router(review_queue.router)
+app.include_router(retraining_decision.router)
 
 
 @app.get("/health")

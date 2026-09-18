@@ -4,12 +4,14 @@ import logging
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 from langsmith.wrappers import wrap_openai
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.shared.config import settings
+from src.shared.database import get_engine
 from src.shared.conversation_history import render_history
 from src.shared.retrieval import DenseRetriever, SparseRetriever, HybridRetriever, RerankingRetriever, CrossEncoderReranker
 from src.shared.retrieval.tools import build_default_registry
 from src.chat_api.api.v1.schemas import Source, Citation
+from src.chat_api.services.external_sql_generator import ExternalAnswer, ExternalSQLGenerator
 from src.chat_api.services.sql_generator import SQLGenerator
 from src.chat_api.services.embedding_service import EmbeddingService
 from src.chat_api.services.guardrails import GuardrailService
@@ -29,6 +31,7 @@ STREAM_DONE = object()
 class RAGOrchestrator:
     def __init__(self):
         self.sql_generator = SQLGenerator()
+        self.external_sql_generator = ExternalSQLGenerator()
         self.embedding_service = EmbeddingService()
         base_retriever = HybridRetriever(DenseRetriever(self.embedding_service), SparseRetriever())
         self.retriever = RerankingRetriever(base_retriever, CrossEncoderReranker())
@@ -54,12 +57,15 @@ class RAGOrchestrator:
         self, message: str, session: AsyncSession, schema: str, tenant_id: str,
         jwt_token: str | None = None, conversation_context: list[dict] | None = None,
         conversation_id: str | None = None,
-    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None]:
+    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None, list[dict] | None, dict | None]:
         """Same as `execute`, but additionally surfaces `pending_clarification`,
-        `answer_kind`, `model_version`, and the turn's `retrieval_status`, and requires
-        `conversation_id` so entity resolution can read and persist its per-conversation
-        state. Used by `src/chat_api/api/v1/chat.py`; the widget endpoint keeps calling
-        `execute`, whose signature is unchanged."""
+        `answer_kind`, `model_version`, the turn's `retrieval_status`, the full,
+        pre-token-budget `sql_results` (export-chat-results design.md Decision 2 — kept
+        distinct from `AdmittedEvidence.rows`, the prompt-budget-truncated subset used
+        to build the LLM prompt), and its `chart` when the generation model produced
+        one. Requires `conversation_id` so entity resolution can read and persist its
+        per-conversation state. Used by `src/chat_api/api/v1/chat.py`; the widget
+        endpoint keeps calling `execute`, whose signature is unchanged."""
         result = await self._run_graph(message, session, schema, tenant_id, jwt_token, conversation_context, conversation_id)
         sources = result.get("sources", [])
         return (
@@ -69,13 +75,15 @@ class RAGOrchestrator:
             self._classify_answer_kind(result),
             self._extract_model_version(sources),
             self._retrieval_status_payload(result),
+            result.get("sql_results"),
+            result.get("chart"),
         )
 
     async def execute_with_clarification_stream(
         self, message: str, session: AsyncSession, schema: str, tenant_id: str,
         token_sink: asyncio.Queue, jwt_token: str | None = None,
         conversation_context: list[dict] | None = None, conversation_id: str | None = None,
-    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None]:
+    ) -> tuple[str, list[Source | Citation], dict | None, str, str | None, dict | None, list[dict] | None, dict | None]:
         """Same as `execute_with_clarification`, but threads `token_sink` into the
         graph's initial state (design.md Decision 2) so `generation_node` can stream
         content deltas onto it as they arrive. Returns the identical tuple once the
@@ -99,6 +107,8 @@ class RAGOrchestrator:
             self._classify_answer_kind(result),
             self._extract_model_version(sources),
             self._retrieval_status_payload(result),
+            result.get("sql_results"),
+            result.get("chart"),
         )
 
     @staticmethod
@@ -177,6 +187,16 @@ class RAGOrchestrator:
             completeness_sink=completeness_sink,
         )
 
+    async def _external_source(self, query: str, session: AsyncSession, tenant_id: str,
+                               conversation_context: list[dict] | None,
+                               deadline: float | None = None) -> ExternalAnswer:
+        """`ToolContext.external_search`: passthrough to the generator. `tenant_id`
+        here is the authenticated tenant from `ToolContext`, never a tool argument
+        (ADR-001) — the generator re-resolves the capability from it itself."""
+        return await self.external_sql_generator.answer(
+            query, session, tenant_id, conversation_context, deadline,
+        )
+
     async def _resolve_document_names(self, sources: list[Source], session: AsyncSession, schema: str) -> dict[str, str]:
         doc_ids = {s.document_id for s in sources if s.document_id}
         doc_map: dict[str, str] = {}
@@ -203,11 +223,17 @@ class RAGOrchestrator:
         conll_to_name: dict[str, str] = {}
         if conll_types:
             try:
-                result = await session.execute(
-                    text("SELECT name, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tid"),
-                    {"tid": tenant_id},
-                )
-                for row in result.fetchall():
+                # `entity_definitions` is a control-plane table (Design D10) — always
+                # read on a fresh *platform* session, never `session` (which for a
+                # `tenant_owned` tenant is resolved to their own store, where
+                # `public.entity_definitions` does not exist).
+                async with async_sessionmaker(get_engine(), expire_on_commit=False)() as platform_session:
+                    result = await platform_session.execute(
+                        text("SELECT name, base_label_mapping FROM public.entity_definitions WHERE tenant_id = :tid"),
+                        {"tid": tenant_id},
+                    )
+                    rows = result.fetchall()
+                for row in rows:
                     mapping = row[1]
                     if isinstance(mapping, str):
                         import json

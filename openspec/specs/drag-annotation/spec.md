@@ -5,18 +5,16 @@
 TBD — support click-and-drag multi-token span creation in the annotation workspace, with live drag-preview highlighting and direction-agnostic range selection.
 
 ---
-
 ## Requirements
-
 ### Requirement: Multi-Token Drag Span Creation
 
-The annotation workspace SHALL support click-and-drag span creation across multiple tokens. When an entity type is armed, pressing the mouse button down on a token and releasing it on a different token SHALL create a span covering all tokens in the range (inclusive). The span's `char_start` SHALL be the `charStart` of the first token in the range and `char_end` SHALL be the `charEnd` of the last token. During the drag, all tokens in the current drag range SHALL show a live preview highlight using the armed entity type's color. A single mousedown-and-mouseup on the same token SHALL continue to behave as a single-token click (existing single-token span creation and inspector-open behaviors are preserved).
+The annotation workspace SHALL support click-and-drag span creation across multiple tokens. When an entity type is armed, pressing the mouse button down on a token and releasing it on a different token SHALL create a span covering all tokens in the range (inclusive). The span's `char_start` SHALL be the `charStart` of the first token in the range and `char_end` SHALL be the `charEnd` of the last token. During the drag, all tokens in the current drag range SHALL show a live preview highlight using the armed entity type's color. A single mousedown-and-mouseup on the same token SHALL continue to behave as a single-token click, and the combined click/mouseup browser sequence SHALL emit exactly one create-span request.
 
 #### Scenario: Drag across tokens creates a multi-token span
 
 - **GIVEN** the entity type "PER" is armed and the document text is "John Smith works here"
 - **WHEN** the user presses the mouse button down on the token "John" and releases on the token "Smith"
-- **THEN** a `POST /documents/{id}/spans` request SHALL be sent with `{entity_type: "PER", char_start: 0, char_end: 10, text: "John Smith"}`
+- **THEN** exactly one `POST /documents/{id}/spans` request SHALL be sent with `{entity_type: "PER", char_start: 0, char_end: 10, text: "John Smith"}`
 - **AND** on success, tokens "John" and "Smith" SHALL be highlighted with the PER color (confirmed)
 
 #### Scenario: Drag preview highlights range during drag
@@ -29,8 +27,8 @@ The annotation workspace SHALL support click-and-drag span creation across multi
 #### Scenario: Single-click (same token mousedown and mouseup) still creates a single-token span
 
 - **GIVEN** the entity type "ORG" is armed and the document token "Acme" is not yet spanned
-- **WHEN** the user clicks the token "Acme" (mousedown and mouseup on the same token)
-- **THEN** a `POST /documents/{id}/spans` request SHALL be sent with the single token's char range
+- **WHEN** the user clicks the token "Acme" (mousedown, click, and mouseup on the same token)
+- **THEN** exactly one `POST /documents/{id}/spans` request SHALL be sent with the single token's char range
 - **AND** the behavior SHALL be identical to the pre-drag single-click span creation
 
 #### Scenario: Drag while unarmed does not create a span
@@ -53,3 +51,4 @@ The annotation workspace SHALL support click-and-drag span creation across multi
 - **WHEN** the user presses down on token index 5 and releases on token index 2
 - **THEN** the span SHALL cover tokens 2 through 5 (min-to-max, not start-to-end)
 - **AND** `char_start` SHALL be the charStart of token 2 and `char_end` SHALL be the charEnd of token 5
+

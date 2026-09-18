@@ -22,19 +22,47 @@ services:
       timeout: 5s
       retries: 5
 
+  # Local stand-in for a customer's Azure Database for PostgreSQL – Flexible Server
+  # (ADR-017). A separate server, credentials, and database from postgres-test so
+  # routing a `tenant_owned` tenant here and never falling back to postgres-test is
+  # actually exercised locally, not merely asserted.
+  postgres-tenant-store:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${NER_TENANT_STORE_DB_USER:-ner_tenant_store}
+      POSTGRES_PASSWORD: ${NER_TENANT_STORE_DB_PASSWORD:-ner_tenant_store}
+      POSTGRES_DB: ${NER_TENANT_STORE_DB_NAME:-ner_tenant_store}
+    ports:
+      # Published on 55433 — same host-vs-container-network caveat as postgres-test
+      # on 55432 (see its comment above). Container-to-container traffic uses
+      # postgres-tenant-store:5432 over the compose network.
+      - "55433:5432"
+    volumes:
+      - postgres-tenant-store-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NER_TENANT_STORE_DB_USER:-ner_tenant_store} -d ${NER_TENANT_STORE_DB_NAME:-ner_tenant_store}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   db-init:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "python -m src.gateway.ensure_mlflow_db && alembic upgrade head && python -m src.gateway.seed && python -m src.gateway.verify_schema"
+    command: sh -c "python -m src.gateway.ensure_mlflow_db && alembic upgrade head && python -m src.gateway.seed && python -m src.gateway.verify_schema && python -m src.shared.tenant_store.migrate"
     restart: "no"
     env_file: .env
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
       NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
+      NER_TENANT_STORE_DB_USER: ${NER_TENANT_STORE_DB_USER:-ner_tenant_store}
+      NER_TENANT_STORE_DB_PASSWORD: ${NER_TENANT_STORE_DB_PASSWORD:-ner_tenant_store}
+      NER_TENANT_STORE_DB_NAME: ${NER_TENANT_STORE_DB_NAME:-ner_tenant_store}
     depends_on:
       postgres-test:
+        condition: service_healthy
+      postgres-tenant-store:
         condition: service_healthy
 
   minio:
@@ -99,6 +127,10 @@ services:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
       NER_OTLP_ENDPOINT: "otel-collector:4317"
       NER_REDIS_URL: "redis://redis:6379/0"
+      # Manual Blob sync enqueues `blob_sync_run` from the gateway; it must
+      # publish to the same broker the blob_sync worker consumes.
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_DOCUMENT_SERVICE_URL: "http://document_service:8000"
       NER_EXTRACTION_SERVICE_URL: "http://extraction_service:8000"
@@ -217,8 +249,16 @@ services:
     environment:
       NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
       NER_OTLP_ENDPOINT: "otel-collector:4317"
+      # Without these, .env's `redis://localhost` is used inside the container, so
+      # `celery_app.send_task` in the schema-proposal / prelabel endpoints hangs
+      # trying to reach a Redis that isn't there and the browser sees "Failed to fetch".
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     depends_on:
       postgres-test:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       db-init:
         condition: service_completed_successfully
@@ -281,6 +321,32 @@ services:
       db-init:
         condition: service_completed_successfully
 
+  celery_worker_annotation_llm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Its own queue, not the default and not `extraction`: LLM pre-labeling is network I/O and
+    # must not queue behind — or autoscale — the GPU-bound training work (ADR-006). The queue
+    # name mirrors `settings.annotation_llm_celery_queue`.
+    command: celery -A src.annotation_service.celery_app worker -Q annotation.llm_jobs --pool=solo --loglevel=info
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      NER_ANNOTATION_SERVICE_URL: "http://annotation_service:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+
   analytics_service:
     build:
       context: .
@@ -326,6 +392,49 @@ services:
         condition: service_started
       model_serving:
         condition: service_started
+      db-init:
+        condition: service_completed_successfully
+
+  celery_worker_blob_sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A src.document_service.blob_sync.tasks worker -Q blob_sync,data_plane --pool=solo --loglevel=info
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
+      NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      NER_MINIO_ENDPOINT: "minio:9000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+
+  celery_beat_blob_sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A src.document_service.blob_sync.tasks beat --loglevel=info
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
+      NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       db-init:
         condition: service_completed_successfully
 
@@ -418,4 +527,5 @@ services:
 volumes:
   minio-data:
   postgres-data:
+  postgres-tenant-store-data:
   tempo-data:

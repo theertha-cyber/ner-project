@@ -66,6 +66,22 @@ export function EntityTypeCard({ entityType, index, onEdit, onToggle }: EntityTy
             >
               v{entityType.version}
             </span>
+            {entityType.provenance && (
+              <span
+                className="shrink-0 rounded px-1.5 py-0.5"
+                title="Where this entity type came from"
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 10,
+                  background: "var(--surface-3)",
+                  color: "var(--ink-3)",
+                }}
+              >
+                {entityType.provenance_ref
+                  ? `${entityType.provenance} · ${entityType.provenance_ref}`
+                  : entityType.provenance}
+              </span>
+            )}
           </div>
           <p className="text-secondary truncate" style={{ fontSize: 12.5 }}>
             {entityType.description}

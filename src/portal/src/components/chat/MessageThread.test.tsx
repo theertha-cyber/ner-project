@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MessageThread } from "./MessageThread";
 
 beforeAll(() => {
@@ -193,5 +193,220 @@ describe("MessageThread streaming lifecycle", () => {
     expect(screen.getByText("Based on the documents, there are 5.")).toBeInTheDocument();
     expect(screen.getByText("report.pdf")).toBeInTheDocument();
     expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
+  });
+
+  describe("overflow-based truncation, decoupled from export availability", () => {
+    // jsdom never lays out real boxes, so scrollHeight/clientHeight are always
+    // 0 — stub them to simulate whether the reply's rendered content actually
+    // overflows its clamped bounds.
+    function mockOverflow(overflowing: boolean) {
+      Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+        configurable: true,
+        value: overflowing ? 400 : 100,
+      });
+      Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+        configurable: true,
+        value: 100,
+      });
+    }
+
+    afterEach(() => {
+      // @ts-expect-error -- restore jsdom's own definitions
+      delete HTMLElement.prototype.scrollHeight;
+      // @ts-expect-error
+      delete HTMLElement.prototype.clientHeight;
+    });
+
+    const longContent = [
+      "**Name One** - Engineer",
+      "**Name Two** - Developer",
+      "**Name Three** - Engineer",
+      "**Name Four** - Developer",
+      "**Name Five** - Engineer",
+      "**Name Six** - Developer",
+      "**Name Seven** - Engineer",
+      "**Name Eight** - Developer",
+    ].join("\n\n");
+    const shortContent = ["**Name One** - Engineer", "**Name Two** - Developer"].join("\n\n");
+
+    it("truncates with a See more toggle when the reply visually overflows", () => {
+      mockOverflow(true);
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: longContent,
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 8, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.getByText("See more")).toBeInTheDocument();
+    });
+
+    it("reveals the full answer and switches the toggle to See less when clicked", () => {
+      mockOverflow(true);
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: longContent,
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 8, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      fireEvent.click(screen.getByText("See more"));
+      expect(screen.getByText("Name Eight", { exact: false })).toBeInTheDocument();
+      expect(screen.getByText("See less")).toBeInTheDocument();
+    });
+
+    it("does not truncate a reply that fits, regardless of export.row_count", () => {
+      mockOverflow(false);
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: shortContent,
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 250, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
+    });
+
+    it("truncates a long reply that has no export data at all, exactly as it would with one", () => {
+      mockOverflow(true);
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: longContent,
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.getByText("See more")).toBeInTheDocument();
+    });
+
+    it("suppresses truncation while the message is still streaming", () => {
+      mockOverflow(true);
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: longContent,
+          created_at: "2026-01-01", isStreaming: true,
+          export: { message_id: "a1", row_count: 8, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("export offer, decoupled from truncation and result count", () => {
+    it("offers an export for a small result, even though the reply itself is not truncated", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const,
+          content: "The most apt candidate is **Allwin J Andrews**.",
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 1, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.getByText(/1 result\b/)).toBeInTheDocument();
+      expect(screen.queryByText(/See more/)).not.toBeInTheDocument();
+    });
+
+    it("states the count for a large result", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: "Here are the candidates.",
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 45, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.getByText(/45 results/)).toBeInTheDocument();
+    });
+
+    it("shows no export offer when there is no structured result", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: "There are five organizations.",
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
+      expect(screen.queryByText(/want a downloadable version/)).not.toBeInTheDocument();
+    });
+
+    it("suppresses the export offer while the message is still streaming", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: "Here are the candidates.",
+          created_at: "2026-01-01", isStreaming: true,
+          export: { message_id: "a1", row_count: 8, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.queryByText(/want a downloadable version/)).not.toBeInTheDocument();
+    });
+
+    it("the export offer requires a click before download actions appear, independent of truncation", () => {
+      const messages = [
+        {
+          id: "a1", role: "assistant" as const, content: "Here are the candidates.",
+          created_at: "2026-01-01", answer_kind: "answer" as const,
+          export: { message_id: "a1", row_count: 8, formats: ["csv", "xlsx"] },
+        },
+      ];
+      render(<MessageThread messages={messages} loading={false} />);
+      expect(screen.queryByLabelText("Download CSV")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByText(/8 results/));
+      expect(screen.getByLabelText("Download CSV")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("MessageThread charts", () => {
+  const chart = {
+    chart_type: "bar" as const,
+    title: "Billed per quarter",
+    categories: ["Q1", "Q2"],
+    series: [{ name: "amount", data: [120000, 95000] }],
+  };
+
+  const withChart = [
+    {
+      id: "a1",
+      role: "assistant" as const,
+      content: "Billing rose through the year.",
+      created_at: "2026-01-01",
+      answer_kind: "answer" as const,
+      sources: [{ source_type: "sql", document_id: "d1", chunk_text: "Q1 120000" }],
+      chart,
+    },
+  ];
+
+  it("renders the chart between the answer text and its citations (row 36)", () => {
+    const { container } = render(<MessageThread messages={withChart} loading={false} />);
+
+    const figure = container.querySelector("figure");
+    expect(figure).toBeTruthy();
+    expect(screen.getByText("Billed per quarter")).toBeInTheDocument();
+
+    const markdown = container.querySelector(".chat-markdown");
+    expect(markdown).toBeTruthy();
+    // Document order: text, then chart.
+    expect(markdown!.compareDocumentPosition(figure!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("renders no chart container for a message without one (row 41)", () => {
+    const chartless = [
+      {
+        id: "a2",
+        role: "assistant" as const,
+        content: "There were five organizations.",
+        created_at: "2026-01-01",
+        answer_kind: "answer" as const,
+      },
+    ];
+    const { container } = render(<MessageThread messages={chartless} loading={false} />);
+    expect(container.querySelector("figure")).toBeNull();
   });
 });

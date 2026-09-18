@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-fetch";
 import { GATEWAY_URL } from "@/lib/api";
 
+type DataPlaneMode = "platform" | "tenant_owned";
+
 export default function NewTenantPage() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [dataPlaneMode, setDataPlaneMode] = useState<DataPlaneMode>("platform");
   const [maxUsers, setMaxUsers] = useState(10);
   const [maxDocuments, setMaxDocuments] = useState(1000);
   const [maxStorageGb, setMaxStorageGb] = useState(5);
@@ -28,6 +31,7 @@ export default function NewTenantPage() {
         body: JSON.stringify({
           name,
           slug: slug || undefined,
+          data_plane_mode: dataPlaneMode,
           max_users: maxUsers,
           max_documents: maxDocuments,
           max_storage_gb: maxStorageGb,
@@ -95,6 +99,44 @@ export default function NewTenantPage() {
               Auto-generated from name. Used in tenant URL.
             </p>
           </div>
+
+          <hr className="border-gray-200" />
+          <fieldset>
+            <legend className="text-sm font-medium text-gray-700">Data plane</legend>
+            <p className="mt-1 text-xs text-gray-500">
+              Where this tenant&apos;s documents, extracted data, and conversations live.
+            </p>
+            <div className="mt-2 space-y-2">
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="radio"
+                  name="data_plane_mode"
+                  value="platform"
+                  checked={dataPlaneMode === "platform"}
+                  onChange={() => setDataPlaneMode("platform")}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">Platform-hosted</span> — the tenant&apos;s schema lives on the
+                  shared platform database. Ready immediately.
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="radio"
+                  name="data_plane_mode"
+                  value="tenant_owned"
+                  checked={dataPlaneMode === "tenant_owned"}
+                  onChange={() => setDataPlaneMode("tenant_owned")}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">Tenant-owned PostgreSQL</span> — the tenant hosts its own store.
+                  No platform schema is created; a tenant admin connects and provisions the store after creation.
+                </span>
+              </label>
+            </div>
+          </fieldset>
 
           <hr className="border-gray-200" />
           <p className="text-sm font-medium text-gray-700">Initial Tenant Admin</p>

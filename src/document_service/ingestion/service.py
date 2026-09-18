@@ -68,7 +68,7 @@ class DocumentIngestionService:
         return self._working_store if self._working_store is not None else get_working_store()
 
     async def ingest(self, session, document: NormalizedDocument) -> IngestionResult:
-        if not is_allowed_file(document.filename or ""):
+        if not is_allowed_file(document.filename or "", document.purpose):
             raise UnsupportedFileType(get_extension(document.filename or ""))
 
         data = document.content.read()
@@ -105,6 +105,16 @@ class DocumentIngestionService:
         )
         await session.commit()
 
+        await self._record_registry(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            source_type=document.source.source_type,
+            status="uploaded",
+            retention_mode=retention_mode,
+            file_size_bytes=len(data),
+            checksum=checksum,
+        )
+
         content_store_kind = getattr(store, "kind", None)
         # Which adapters served this ingestion. Three values, each from a declared set;
         # nothing the tenant configured reaches a label.
@@ -136,6 +146,41 @@ class DocumentIngestionService:
             duplicate_of=duplicate_of,
             content_store_kind=content_store_kind,
         )
+
+    async def _record_registry(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        source_type: str,
+        status: str,
+        retention_mode: str,
+        file_size_bytes: int | None = None,
+        checksum: str | None = None,
+    ) -> None:
+        """Writes `public.tenant_document_registry` on a fresh *platform* session
+        (Design D10 — never the tenant session `ingest` was called with, since this
+        table lives in `public` and a `tenant_owned` tenant's session may not even
+        have a `public` schema). Best-effort: `registry.record` itself swallows a
+        write failure, so this never turns a successful tenant-store commit into a
+        failed request."""
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+
+        from src.shared import tenant_document_registry as registry
+        from src.shared.database import get_engine
+
+        factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+        async with factory() as platform_session:
+            await registry.record(
+                platform_session,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                source_type=source_type,
+                status=status,
+                retention_mode=retention_mode,
+                file_size_bytes=file_size_bytes,
+                checksum=checksum,
+            )
 
     # --- steps ------------------------------------------------------------------------
 

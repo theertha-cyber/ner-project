@@ -1,13 +1,9 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import text, create_engine
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.shared.config import settings
+from src.shared.database import get_resolver
 from src.shared.tenant_schema import schema_for_tenant as _schema
-
-
-def _get_sync_engine():
-    return create_engine(settings.database_url_sync)
 
 
 def get_already_extracted(tenant_id: str, doc_ids: list[str], model_version: str) -> set[str]:
@@ -18,7 +14,7 @@ def get_already_extracted(tenant_id: str, doc_ids: list[str], model_version: str
     (to decide what to disable), so both agree on what "already extracted" means."""
     if not doc_ids:
         return set()
-    engine = _get_sync_engine()
+    engine = get_resolver().resolve_sync(tenant_id)
     schema = _schema(tenant_id)
     placeholders = ", ".join(f"'{d}'" for d in doc_ids)
     with engine.connect() as conn:

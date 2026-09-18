@@ -10,6 +10,12 @@ class AuthService:
         self.db = db
 
     async def login(self, email: str, password: str) -> dict:
+        # Email is unique per tenant, not globally (`uq_email_per_tenant`), so the same address
+        # can be a legitimate account in more than one tenant with two different passwords.
+        # Every matching row is fetched, ordered active-tenant-and-user first, and the password
+        # decides which one the caller meant — never `fetchone()`'s arbitrary pick of whichever
+        # row Postgres returns first, which could resolve a login to an unrelated deactivated
+        # tenant even though the account the person actually typed the password for is active.
         result = await self.db.execute(
             text("""
                 SELECT u.id, u.password_hash, u.role, u.status, u.tenant_id,
@@ -17,12 +23,14 @@ class AuthService:
                 FROM public.tenant_users u
                 JOIN public.tenants t ON t.id = u.tenant_id
                 WHERE u.email = :email
+                ORDER BY (u.status = 'active' AND t.status = 'active') DESC
             """),
             {"email": email},
         )
-        row = result.fetchone()
+        rows = result.fetchall()
 
-        if not row or not verify_password(password, row.password_hash):
+        row = next((r for r in rows if verify_password(password, r.password_hash)), None)
+        if row is None:
             raise AuthError("Invalid email or password")
 
         if row.status != "active":

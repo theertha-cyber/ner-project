@@ -11,7 +11,7 @@ def _schema(tenant_id: str) -> str:
 class TrainingJobRepository:
 
     @staticmethod
-    async def create(session: AsyncSession, tenant_id: str, job_id: str, hyperparams: dict | None, celery_task_id: str | None = None) -> dict:
+    async def create(session: AsyncSession, tenant_id: str, job_id: str, hyperparams: dict | None, celery_task_id: str | None = None, source_scope: str | None = None) -> dict:
         schema = _schema(tenant_id)
         now = datetime.now(timezone.utc)
         # Serialize run_number assignment per tenant so concurrent submissions can't collide.
@@ -23,13 +23,13 @@ class TrainingJobRepository:
         run_number = run_number_result.scalar()
         await session.execute(
             text(f"""
-                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, celery_task_id, run_number, created_at)
-                VALUES (:id, :tenant_id, 'pending_approval', CAST(:hyperparams AS jsonb), :celery_task_id, :run_number, :created_at)
+                INSERT INTO {schema}.training_jobs (id, tenant_id, status, hyperparams, celery_task_id, run_number, source_scope, created_at)
+                VALUES (:id, :tenant_id, 'pending_approval', CAST(:hyperparams AS jsonb), :celery_task_id, :run_number, :source_scope, :created_at)
             """),
-            {"id": job_id, "tenant_id": tenant_id, "hyperparams": json.dumps(hyperparams), "celery_task_id": celery_task_id, "run_number": run_number, "created_at": now},
+            {"id": job_id, "tenant_id": tenant_id, "hyperparams": json.dumps(hyperparams), "celery_task_id": celery_task_id, "run_number": run_number, "source_scope": source_scope, "created_at": now},
         )
         await session.commit()
-        return {"id": job_id, "tenant_id": tenant_id, "status": "pending_approval", "hyperparams": hyperparams, "celery_task_id": celery_task_id, "run_number": run_number}
+        return {"id": job_id, "tenant_id": tenant_id, "status": "pending_approval", "hyperparams": hyperparams, "celery_task_id": celery_task_id, "run_number": run_number, "source_scope": source_scope}
 
     @staticmethod
     async def get_by_id(session: AsyncSession, tenant_id: str, job_id: str) -> dict | None:

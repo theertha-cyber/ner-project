@@ -10,7 +10,7 @@ import { BatchDocumentSelectModal } from "./BatchDocumentSelectModal";
 import type { BatchRun } from "@/types/extraction";
 
 export function BatchRunsTab() {
-  const { runs, triggerBatch } = useBatchRuns();
+  const { runs, isLoading, error, triggerBatch } = useBatchRuns();
   const { activeModel, data: modelVersions } = useModelVersions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
@@ -97,7 +97,13 @@ export function BatchRunsTab() {
       >
         {/* Left: run list — bounded height, scrolls independently of the page */}
         <div className="flex flex-col gap-2 overflow-y-auto" style={{ height: "100%" }}>
-          {runs.length === 0 ? (
+          {runs.length === 0 && isLoading ? (
+            <p className="py-12 text-center text-sm text-text-secondary">Loading batch runs…</p>
+          ) : runs.length === 0 && error ? (
+            <p role="alert" className="py-12 text-center text-sm text-text-secondary">
+              Couldn&apos;t load batch runs. Try again shortly.
+            </p>
+          ) : runs.length === 0 ? (
             <p className="py-12 text-center text-sm text-text-secondary">
               No batch runs yet. Click &quot;New batch run&quot; to start.
             </p>
