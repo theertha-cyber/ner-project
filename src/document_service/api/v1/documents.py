@@ -1,4 +1,5 @@
 import logging
+import time
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, UploadFile, File, Form
@@ -20,10 +21,22 @@ from src.document_service.content_resolution import (
     reopen_source_content,
     resolve_content,
 )
-from src.document_service.media_types import render_mode, servable_media_type
+from src.document_service.media_types import (
+    render_mode,
+    requires_conversion,
+    servable_media_type,
+)
+from src.document_service.rendition import (
+    PDF_MEDIA_TYPE,
+    ConversionFailed,
+    ConversionTimedOut,
+    ConversionTooLarge,
+    to_pdf,
+)
 from src.shared.observability.domain_metrics import (
     content_class,
     record_document_content_request,
+    record_document_conversion,
 )
 from src.shared.tenant_context import classify_driver_error, record_health_best_effort
 from src.shared.exceptions import NotFoundError
@@ -784,6 +797,36 @@ async def get_document_content(
     # declared. A blob URL inherits the portal's origin, where the access token lives, so
     # serving a stored `text/html` would run script beside it.
     media_type = servable_media_type(row.filename, row.content_type)
+
+    if requires_conversion(media_type):
+        # Converted per request and never persisted: a stored rendition of an `ephemeral`
+        # or `source_only` document would durably recreate what that tenant's retention
+        # policy deleted or declined to store.
+        started = time.monotonic()
+        try:
+            data = to_pdf(data, media_type)
+        except ConversionTooLarge:
+            record_document_conversion(media_type, "too_large", time.monotonic() - started)
+            raise _content_error(
+                _ContentUnavailable(CONTENT_TOO_LARGE, retention_mode)
+            ) from None
+        except ConversionTimedOut:
+            record_document_conversion(media_type, "timed_out", time.monotonic() - started)
+            raise _content_error(
+                _ContentUnavailable(CONTENT_CONVERSION_FAILED, retention_mode)
+            ) from None
+        except ConversionFailed:
+            # Never fall back to the unconverted bytes under a PDF media type: pdf.js
+            # would fail to parse them and the reader would see a blank panel with no
+            # explanation of why.
+            record_document_conversion(media_type, "failed", time.monotonic() - started)
+            raise _content_error(
+                _ContentUnavailable(CONTENT_CONVERSION_FAILED, retention_mode)
+            ) from None
+
+        record_document_conversion(media_type, "converted", time.monotonic() - started)
+        # The rendition is what is served; the original's own record is untouched.
+        media_type = PDF_MEDIA_TYPE
 
     record_document_content_request(
         retention_mode, "served", media_type=media_type, byte_count=len(data)

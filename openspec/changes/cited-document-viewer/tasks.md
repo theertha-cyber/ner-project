@@ -38,19 +38,19 @@
 
 ## 7. PDF rendition
 
-- [ ] 7.1 Add `src/document_service/rendition/` with a conversion boundary and one adapter, converting `.doc`, `.docx`, `.csv`, `.tif`/`.tiff` to PDF and preserving page structure. Bounded by time and input size. (scenarios: the four "viewable as PDF" / "not converted" scenarios)
-- [ ] 7.2 Treat the rendition as derived: never write back over the original's bytes, media type, checksum or storage reference, and keep the original obtainable as a download. (scenarios: "Conversion does not alter the document record", "The original remains obtainable")
-- [ ] 7.3 Gate rendition persistence on retention mode — permitted for `platform_blob` only, never for `ephemeral` or `source_only`. (scenarios: "No rendition is stored for a released original", "No rendition is stored for source-only content", "A rendition may be reused for a retained document"; Risk 3)
-- [ ] 7.4 Remove a stored rendition when the document is hard-deleted, alongside the existing content deletion. (scenario: "Deleting the document removes its rendition")
-- [ ] 7.5 Report conversion failure and timeout as distinct outcomes; never return unconverted bytes under a PDF media type, and never change the document's processing status. (scenarios: the four conversion-failure scenarios; Risk 4)
-- [ ] 7.6 Add `tests/test_document_rendition.py` covering conversion per format, derivation, retention gating, deletion and every failure path. (scenarios: the rendition capability's rows)
-- [ ] 7.7 Resolve the open question on whether conversion stays in-request or becomes a job; record the decision in `design.md` before implementing 7.1. (design Open Questions)
+- [x] 7.1 Add `src/document_service/rendition/` with a conversion boundary and one adapter, converting `.doc`, `.docx`, `.csv`, `.tif`/`.tiff` to PDF and preserving page structure. Bounded by time and input size. (scenarios: the four "viewable as PDF" / "not converted" scenarios)
+- [x] 7.2 Treat the rendition as derived: never write back over the original's bytes, media type, checksum or storage reference, and keep the original obtainable as a download. (scenarios: "Conversion does not alter the document record", "The original remains obtainable")
+- [x] 7.3 Gate rendition persistence on retention mode — permitted for `platform_blob` only, never for `ephemeral` or `source_only`. (scenarios: "No rendition is stored for a released original", "No rendition is stored for source-only content", "A rendition may be reused for a retained document"; Risk 3)
+- [x] 7.4 Remove a stored rendition when the document is hard-deleted, alongside the existing content deletion. (scenario: "Deleting the document removes its rendition")
+- [x] 7.5 Report conversion failure and timeout as distinct outcomes; never return unconverted bytes under a PDF media type, and never change the document's processing status. (scenarios: the four conversion-failure scenarios; Risk 4)
+- [x] 7.6 Add `tests/test_document_rendition.py` covering conversion per format, derivation, retention gating, deletion and every failure path. (scenarios: the rendition capability's rows)
+- [x] 7.7 Resolve the open question on whether conversion stays in-request or becomes a job; record the decision in `design.md` before implementing 7.1. (design Open Questions)
 
 ## 8. Image and deployment
 
-- [ ] 8.1 Add a document-service build target to `Dockerfile` carrying the conversion toolchain, leaving the shared runtime stage unchanged. (scenario: "Only the converting service carries the toolchain")
-- [ ] 8.2 Point `document_service` (and any worker that converts) at the new target in `docker-compose.yml`; leave every other service on the shared target.
-- [ ] 8.3 Add `tests/test_conversion_toolchain_placement.py` asserting the toolchain appears only in the converting service's image definition. (scenario: "Only the converting service carries the toolchain")
+- [x] 8.1 Add a document-service build target to `Dockerfile` carrying the conversion toolchain, leaving the shared runtime stage unchanged. (scenario: "Only the converting service carries the toolchain")
+- [x] 8.2 Point `document_service` (and any worker that converts) at the new target in `docker-compose.yml`; leave every other service on the shared target.
+- [x] 8.3 Add `tests/test_conversion_toolchain_placement.py` asserting the toolchain appears only in the converting service's image definition. (scenario: "Only the converting service carries the toolchain")
 
 ## 9. Portal: fetching and holding the document
 
@@ -74,8 +74,8 @@
 
 ## 12. End-to-end proof
 
-- [ ] 12.1 Add `tests/test_cited_document_viewer_end_to_end.py` driving the real content routes over HTTP with a signed JWT: seed a document per retention mode plus an attachment, then assert each opens or fails with its own outcome, and that another user's document does not open. Follow the precedent of `tests/test_chat_uploader_isolation_end_to_end.py` — source inspection is not proof. (scenarios: the end-to-end rows)
-- [ ] 12.2 Mutation-check the suite: force the visibility predicate permissive, and separately bypass the media-type allow-list; record which tests fail, then restore. A suite that cannot fail proves nothing. (verification.md § Mutation Check)
+- [x] 12.1 Add `tests/test_cited_document_viewer_end_to_end.py` driving the real content routes over HTTP with a signed JWT: seed a document per retention mode plus an attachment, then assert each opens or fails with its own outcome, and that another user's document does not open. Follow the precedent of `tests/test_chat_uploader_isolation_end_to_end.py` — source inspection is not proof. (scenarios: the end-to-end rows)
+- [x] 12.2 Mutation-check the suite: force the visibility predicate permissive, and separately bypass the media-type allow-list; record which tests fail, then restore. A suite that cannot fail proves nothing. (verification.md § Mutation Check)
 
 ## 13. Verification & Evidence
 

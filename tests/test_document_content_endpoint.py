@@ -178,14 +178,25 @@ async def test_the_response_is_not_cached(docs):
 
 
 async def test_no_response_is_a_redirect_or_names_a_storage_location(docs):
+    """Asserted for failures as well as successes: an error path is exactly where a
+    storage detail tends to leak out in a message or a header."""
     tenant_id, _schema, ids, _store = docs
-    for key in ("pdf", "png", "docx"):
+    for key in ("pdf", "png", "docx", "released", "missing", "no_adapter"):
         response = await _content(tenant_id, ids[key])
-        assert response.status_code == 200
-        assert not response.is_redirect
+        assert not response.is_redirect, key
         joined = " ".join(f"{k}: {v}" for k, v in response.headers.items()).lower()
         for leak in ("location", "x-amz", "amazonaws", "blob.core.windows.net", "minio"):
             assert leak not in joined, f"{leak} disclosed in headers for {key}"
+        if response.headers.get("content-type", "").startswith("application/json"):
+            assert "tenants/" not in response.text, f"storage reference leaked in body for {key}"
+
+
+async def test_the_natively_renderable_formats_are_served_unconverted(docs):
+    tenant_id, _schema, ids, _store = docs
+    for key in ("pdf", "png"):
+        response = await _content(tenant_id, ids[key])
+        assert response.status_code == 200, key
+        assert response.content == PDF_BYTES, f"{key} was altered on the way out"
 
 
 # --- The probe ------------------------------------------------------------------------
