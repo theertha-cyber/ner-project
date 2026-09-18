@@ -3,28 +3,27 @@
  *
  * The worker is configured explicitly rather than left to a CDN default. A misconfigured
  * worker is the classic pdf.js failure under a bundler: nothing breaks at build time, and
- * the viewer fails at runtime in the browser with an opaque error. Pointing it at the
- * copy in `node_modules` means the version serving the worker and the version parsing the
- * document cannot drift.
+ * the viewer fails at runtime in the browser with an opaque error. The file is copied
+ * from the installed package at build time, so the worker and the library parsing the
+ * document cannot be different versions.
  *
  * Imported lazily by the viewer so the ~1MB library is not in the initial bundle for
  * every page of the portal — only the chat thread ever opens a document.
  */
 
-export const PDF_WORKER_PATH = "pdfjs-dist/build/pdf.worker.min.mjs";
+export const PDF_WORKER_PATH = "/pdf.worker.min.mjs";
 
 let configured = false;
 
 export async function loadPdfjs() {
   const pdfjs = await import("pdfjs-dist");
   if (!configured) {
-    // `new URL(..., import.meta.url)` is what lets the bundler emit the worker as an
-    // asset and rewrite this to its real path. A bare string would resolve at runtime
-    // against the page's origin and 404.
-    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url,
-    ).toString();
+    // Served as a static file, deliberately not bundled. Referencing it with
+    // `new URL(..., import.meta.url)` makes webpack emit it as an asset, and Terser then
+    // minifies it as a classic script and fails the build on its ESM syntax. The file is
+    // copied into `public/` from the installed package by `scripts/copy-pdf-worker.mjs`,
+    // so the worker and the library parsing the document are always the same version.
+    pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_PATH;
     configured = true;
   }
   return pdfjs;

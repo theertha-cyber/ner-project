@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prebuild": "node scripts/copy-pdf-worker.mjs",
+    "predev": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.0",
