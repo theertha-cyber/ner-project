@@ -88,3 +88,28 @@ def test_pending_revisions_filters_by_current_revision(monkeypatch):
 def test_latest_revision_defaults_to_baseline_when_no_revisions_exist(monkeypatch):
     monkeypatch.setattr(revisions_module, "_discover", lambda: [])
     assert revisions_module.latest_revision() == revisions_module.BASELINE_REVISION
+
+
+def test_revision_003_adds_attachments_column_and_is_idempotent(engine, scratch_schema):
+    """Revision 003 is what `alembic/versions/055_chat_messages_attachments.py`
+    delegates to for its `upgrade()` DDL — this exercises it directly, applied
+    twice, against a schema that already has `chat_messages` (via the baseline)."""
+    with engine.begin() as conn:
+        apply_module.apply(conn, scratch_schema, "revtest-tenant")
+        apply_module.apply(conn, scratch_schema, "revtest-tenant")
+
+    with engine.connect() as conn:
+        column = conn.execute(
+            text(
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_schema = :s AND table_name = 'chat_messages' "
+                "AND column_name = 'attachments'"
+            ),
+            {"s": scratch_schema},
+        ).scalar_one()
+        revision = conn.execute(
+            text(f"SELECT schema_revision FROM {scratch_schema}.platform_store_meta")
+        ).scalar_one()
+
+    assert column == "jsonb"
+    assert revision == revisions_module.latest_revision()

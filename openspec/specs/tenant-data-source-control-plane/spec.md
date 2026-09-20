@@ -5,7 +5,7 @@ TBD - created by archiving change cap-2-tenant-scoped-connection-control-plane. 
 ## Requirements
 ### Requirement: Tenant-admin-managed finite Azure connections
 
-The system SHALL allow only an authenticated tenant administrator to create, read, update, test, activate, pause, replace, or retire a tenant-bound Azure Blob Storage or Azure Database for PostgreSQL connection. The server SHALL derive the owning tenant from authenticated context, SHALL accept only the two approved provider types and typed non-sensitive configuration with a secret reference, and SHALL return and record only finite safe lifecycle/test outcome classes and correlation metadata.
+The system SHALL allow only an authenticated tenant administrator to create, read, update, test, activate, pause, replace, or retire a tenant-bound Azure Blob Storage, Azure Database for PostgreSQL (read-only source), or Azure Database for PostgreSQL data-plane connection. The server SHALL derive the owning tenant from authenticated context, SHALL accept only the three approved provider types (`azure_blob`, `azure_postgresql`, `azure_postgresql_data_plane`) and typed non-sensitive configuration with a secret reference, and SHALL return and record only finite safe lifecycle/test outcome classes and correlation metadata. The `azure_postgresql_data_plane` provider SHALL be accepted only for a tenant whose data-plane mode is `tenant_owned`.
 
 #### Scenario: Tenant administrator tests a supported Azure Blob draft
 
@@ -28,9 +28,18 @@ The system SHALL allow only an authenticated tenant administrator to create, rea
 - **THEN** the system SHALL deny access
 - **AND** it SHALL not disclose connection metadata or lifecycle evidence
 
+#### Scenario: Platform-plane tenant cannot create a data-plane connection
+
+- **GIVEN** an authenticated tenant administrator of a tenant with data-plane mode `platform`
+- **WHEN** the administrator creates an `azure_postgresql_data_plane` draft
+- **THEN** the system SHALL reject it with finite safe code `DATA_PLANE_NOT_TENANT_OWNED`
+- **AND** no connection row SHALL be created
+
 ### Requirement: Safe activation and concurrent capability limits
 
-The system SHALL activate an approved Azure connection only after finite typed configuration validation, resolvable secret reference, successful TLS-validated secure test, required customer network evidence, and applicable governance approval. The system SHALL permit at most one active Azure Blob document source and one active Azure PostgreSQL connection per tenant concurrently; unmet prerequisites SHALL leave the connection inactive and expose only a finite safe blocking outcome class.
+The system SHALL activate an approved Azure connection only after finite typed configuration validation, resolvable secret reference, successful TLS-validated secure test, required customer network evidence, and applicable governance approval. The system SHALL permit at most one active Azure Blob document source, one active read-only Azure PostgreSQL connection, and one active Azure PostgreSQL data-plane connection per tenant concurrently; unmet prerequisites SHALL leave the connection inactive and expose only a finite safe blocking outcome class.
+
+For `azure_postgresql_data_plane`, the secure test SHALL additionally verify, each as a finite outcome class: server major version 16 or later; the `vector` extension is installed or creatable; the connecting role can create a schema in the configured database; the chat query role can be created or already exists and can be granted; and the target `tenant_<id>` schema is absent, empty, or carries the store identity recorded for this tenant. A read-only `azure_postgresql` connection and an `azure_postgresql_data_plane` connection of the same tenant SHALL NOT share the same secret reference.
 
 #### Scenario: Failed prerequisite blocks activation
 
@@ -41,10 +50,10 @@ The system SHALL activate an approved Azure connection only after finite typed c
 
 #### Scenario: Independent approved connections activate concurrently
 
-- **GIVEN** a tenant has activation-ready Azure Blob and Azure PostgreSQL drafts
-- **WHEN** the tenant administrator activates both connections
+- **GIVEN** a `tenant_owned` tenant has activation-ready Azure Blob, read-only Azure PostgreSQL, and Azure PostgreSQL data-plane drafts
+- **WHEN** the tenant administrator activates all three connections
 - **THEN** the system SHALL permit one active connection of each approved provider class
-- **AND** platform upload SHALL remain available
+- **AND** platform upload SHALL remain available once the data plane is `ready`
 
 #### Scenario: Duplicate active provider is rejected
 
@@ -52,6 +61,19 @@ The system SHALL activate an approved Azure connection only after finite typed c
 - **WHEN** a tenant administrator activates another Azure Blob connection
 - **THEN** the system SHALL reject the activation with a finite safe outcome class
 - **AND** the existing active connection SHALL remain unchanged
+
+#### Scenario: Data-plane test reports a missing vector extension
+
+- **GIVEN** an `azure_postgresql_data_plane` draft for a server where `VECTOR` is not allow-listed
+- **WHEN** the tenant administrator tests the connection
+- **THEN** the outcome SHALL be failed with reason class `vector_extension_unavailable`
+- **AND** activation SHALL be blocked
+
+#### Scenario: Shared secret reference between source and data plane is rejected
+
+- **GIVEN** an active read-only `azure_postgresql` connection using secret reference R
+- **WHEN** a tenant administrator saves an `azure_postgresql_data_plane` draft using R
+- **THEN** the system SHALL reject it with finite safe code `SECRET_REFERENCE_SHARED_ACROSS_PURPOSES`
 
 ### Requirement: Manual Blob sync trigger action
 
@@ -99,3 +121,20 @@ The system SHALL expose `POST /api/v1/data-sources/{connection_id}/sync` allowin
 - **THEN** the server SHALL replay the original safe result with a replay marker
 - **AND** no duplicate sync job SHALL be enqueued for the replay.
 
+### Requirement: Data-plane connection pause and retirement drive data-plane status
+
+Pausing a tenant's active `azure_postgresql_data_plane` connection SHALL set the tenant's data-plane status to `paused`; resuming by re-activation SHALL restore `ready` when the store identity and revision checks pass. Retiring it without an activated same-store replacement SHALL set the tenant's data-plane status to `store_retired`, which is terminal for content access. Retirement SHALL NOT drop, truncate, or delete any object in the tenant store, and the response SHALL state that content remaining in the tenant store is the customer's to delete.
+
+#### Scenario: Pausing the data-plane connection stops content access
+
+- **GIVEN** a `ready` residency tenant
+- **WHEN** the tenant administrator pauses its data-plane connection
+- **THEN** the tenant's data-plane status SHALL be `paused`
+- **AND** content routes SHALL return 409 `TENANT_DATA_PLANE_NOT_READY` with status class `paused`
+
+#### Scenario: Retirement leaves the tenant store untouched
+
+- **GIVEN** a paused data-plane connection with no replacement
+- **WHEN** the tenant administrator retires it with confirmation
+- **THEN** the tenant's data-plane status SHALL be `store_retired`
+- **AND** no DDL or DML SHALL be executed against the tenant store

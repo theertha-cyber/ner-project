@@ -112,11 +112,11 @@ The migration chain SHALL include a reconciliation migration that brings every e
 
 ### Requirement: Tenant provisioning clones the template atomically
 
-Provisioning a new tenant SHALL create the tenant's schema and every table present in `tenant_template` as a single atomic unit. If any table fails to be created, the whole provisioning SHALL be rolled back so that no tenant row, schema, or partially-populated schema survives. A tenant SHALL NOT exist in `public.tenants` with a schema that is missing tables present in `tenant_template`.
+Provisioning a new `platform` data-plane tenant SHALL create the tenant's schema and every table present in `tenant_template` as a single atomic unit. If any table fails to be created, the whole provisioning SHALL be rolled back so that no tenant row, schema, or partially-populated schema survives. A `platform` tenant SHALL NOT exist in `public.tenants` with a schema that is missing tables present in `tenant_template`. A `tenant_owned` data-plane tenant SHALL NOT have its schema cloned on the platform database; its schema is provisioned into its own store under `tenant-residency-store-provisioning`.
 
 #### Scenario: A failed table clone rolls back the whole tenant
 
-- **GIVEN** tenant provisioning is in progress
+- **GIVEN** tenant provisioning is in progress for a `platform` tenant
 - **WHEN** creation of one tenant-scoped table fails
 - **THEN** no row for that tenant SHALL remain in `public.tenants`
 - **AND** no schema for that tenant SHALL remain in the database
@@ -125,9 +125,15 @@ Provisioning a new tenant SHALL create the tenant's schema and every table prese
 #### Scenario: A provisioned tenant has the full template table set
 
 - **GIVEN** `tenant_template` contains N tables
-- **WHEN** a new tenant is provisioned successfully
+- **WHEN** a new `platform` tenant is provisioned successfully
 - **THEN** that tenant's schema SHALL contain all N tables
 - **AND** listing documents for that tenant SHALL return an empty list rather than an error
+
+#### Scenario: A tenant-owned tenant is not cloned on the platform
+
+- **GIVEN** `tenant_template` contains N tables
+- **WHEN** a new `tenant_owned` tenant is created
+- **THEN** no `tenant_<id>` schema SHALL be created on the platform database
 
 ### Requirement: The `document_entities` table exists on the template and every tenant schema
 
@@ -224,3 +230,53 @@ The system SHALL add the nullable columns `value_kind` and `value_unit` to `publ
 - **THEN** `value_kind` and `value_unit` SHALL be removed
 - **AND** the remaining columns and rows SHALL be unchanged
 
+### Requirement: Tenant-scoped migration DDL is authored once and delegated to
+
+A tenant-scoped Alembic migration (one that adds or alters a table/column that exists in `tenant_template` and per-tenant `tenant_%` schemas) SHALL NOT define its DDL inline. It SHALL instead import a `src/shared/tenant_store/revisions/NNNN_<name>.py` module and call that module's `statements(schema)` (and, if the migration supports downgrade, a corresponding reverse statement source) inside its own per-schema loop. The same revision module SHALL be the one `src/shared/tenant_store/migrate.py` applies to `tenant_owned` (e.g. Azure-hosted) tenant stores, so a single authored DDL definition reaches both platform-hosted and tenant-owned tenant schemas.
+
+#### Scenario: A tenant-scoped migration delegates its upgrade DDL
+
+- **GIVEN** a new Alembic migration that adds a column to a tenant-scoped table
+- **WHEN** the migration's `upgrade()` is inspected
+- **THEN** it SHALL contain a call to a `src/shared/tenant_store/revisions` module's `statements(schema)` function for that DDL
+- **AND** it SHALL NOT contain the column-adding DDL written out as a literal SQL string
+
+#### Scenario: The same revision reaches a tenant-owned Azure store
+
+- **GIVEN** a tenant in `mode: tenant_owned` whose data plane is `ready`
+- **AND** a tenant-scoped migration that delegates to revision module `NNNN`
+- **WHEN** `alembic upgrade head` is run against the platform database and `src/shared/tenant_store/migrate.py` is subsequently run
+- **THEN** the platform's `tenant_template` and every platform-hosted `tenant_%` schema SHALL reflect revision `NNNN`'s DDL
+- **AND** the tenant-owned tenant's remote schema SHALL also reflect revision `NNNN`'s DDL, without requiring any DDL beyond what revision `NNNN` defines
+
+#### Scenario: A migration with inline tenant-scoped DDL and no matching revision fails the check
+
+- **GIVEN** a new Alembic migration whose `upgrade()` executes DDL against `tenant_template` or a `tenant_%`-pattern schema directly, with no import from `src/shared/tenant_store/revisions`
+- **WHEN** the tenant-store delegation check runs
+- **THEN** the check SHALL fail
+- **AND** the failure SHALL name the offending migration file
+
+#### Scenario: A migration exempted from delegation is not flagged
+
+- **GIVEN** a migration that touches only platform-only (non-tenant-scoped) tables, or a tenant-scoped migration carrying an explicit exemption comment with a stated reason
+- **WHEN** the tenant-store delegation check runs
+- **THEN** the check SHALL NOT fail for that migration
+
+#### Scenario: Re-applying a delegated migration is a no-op
+
+- **GIVEN** a tenant schema already in the shape a delegated migration's revision module produces
+- **WHEN** that revision module's `statements(schema)` is executed against the schema again, whether via the Alembic migration's loop or via `migrate.py`
+- **THEN** no error SHALL occur
+- **AND** the schema's shape SHALL be unchanged
+
+### Requirement: Tenant-scoped migrations also reach residency stores
+
+A migration that changes a tenant-scoped table SHALL continue to propagate to every tenant schema on the platform database, and SHALL additionally be delivered to `tenant_owned` tenant stores as a tenant-store revision applied per store by the deploy migration step. Per-tenant-schema loops over `pg_namespace` on the platform database SHALL NOT be relied upon to reach residency tenants.
+
+#### Scenario: A column added by migration reaches both planes
+
+- **GIVEN** a `platform` tenant and a `ready` `tenant_owned` tenant
+- **AND** a migration adds column `foo` to `tenant_template.some_table` with its tenant-store revision
+- **WHEN** the deploy migration step runs
+- **THEN** `tenant_<platform id>.some_table` on the platform database SHALL have column `foo`
+- **AND** `tenant_<owned id>.some_table` in the tenant store SHALL have column `foo`

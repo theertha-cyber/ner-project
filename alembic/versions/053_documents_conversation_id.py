@@ -17,48 +17,57 @@ Revision ID: 053
 Revises: 052
 Create Date: 2026-09-14
 """
+import importlib
+
 from alembic import op
+from sqlalchemy import text
 
 revision = "053"
 down_revision = "052"
 branch_labels = None
 depends_on = None
 
+# Leading-digit module name -- can't `from ... import` it by identifier, so
+# import_module by string (same approach `revisions/__init__.py::_discover` uses).
+_revision_004 = importlib.import_module(
+    "src.shared.tenant_store.revisions.004_documents_conversation_id"
+)
+
 
 def upgrade() -> None:
-    # Template schema first. New tenants inherit it via
-    # `LIKE tenant_template.documents INCLUDING ALL` in tenant_service.py.
-    op.execute("""
-        ALTER TABLE tenant_template.documents
-            ADD COLUMN IF NOT EXISTS conversation_id VARCHAR
-            REFERENCES tenant_template.conversations(id) ON DELETE CASCADE
-    """)
+    # DDL lives in `_revision_004.statements()` -- the same function
+    # `src/shared/tenant_store/migrate.py` calls for `tenant_owned` Azure data
+    # planes -- so platform and tenant-owned stores get identical DDL from one
+    # authored source (ADR-017 Design Decision 5).
+    bind = op.get_bind()
+    for statement in _revision_004.statements("tenant_template"):
+        op.execute(statement)
 
     # Already-provisioned tenant schemas were copied from tenant_template before
     # this column existed, so they need it applied directly — same shape as
     # migrations 022 and 034. `conversations` exists in every tenant schema
     # created by migration 010 or cloned after it; the to_regclass guards keep
     # the migration from failing on a schema missing either table.
-    op.execute("""
-        DO $$
-        DECLARE
-            schema_name TEXT;
-        BEGIN
-            FOR schema_name IN
-                SELECT nspname FROM pg_namespace
-                WHERE nspname LIKE 'tenant\_%' AND nspname != 'tenant_template'
-            LOOP
-                IF to_regclass(format('%I.documents', schema_name)) IS NOT NULL
-                   AND to_regclass(format('%I.conversations', schema_name)) IS NOT NULL THEN
-                    EXECUTE format('
-                        ALTER TABLE %I.documents
-                            ADD COLUMN IF NOT EXISTS conversation_id VARCHAR
-                            REFERENCES %I.conversations(id) ON DELETE CASCADE
-                    ', schema_name, schema_name);
-                END IF;
-            END LOOP;
-        END $$;
-    """)
+    schema_names = bind.execute(
+        text(
+            "SELECT nspname FROM pg_namespace "
+            "WHERE nspname LIKE 'tenant\\_%' AND nspname != 'tenant_template'"
+        )
+    ).scalars().all()
+
+    for schema_name in schema_names:
+        has_documents = bind.execute(
+            text("SELECT to_regclass(:table_name)"),
+            {"table_name": f"{schema_name}.documents"},
+        ).scalar()
+        has_conversations = bind.execute(
+            text("SELECT to_regclass(:table_name)"),
+            {"table_name": f"{schema_name}.conversations"},
+        ).scalar()
+        if has_documents is None or has_conversations is None:
+            continue
+        for statement in _revision_004.statements(schema_name):
+            op.execute(statement)
 
 
 def downgrade() -> None:
