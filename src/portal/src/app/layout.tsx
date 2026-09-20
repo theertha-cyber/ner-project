@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Hanken_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/lib/auth";
 import { ToastProvider } from "@/hooks";
@@ -13,22 +13,33 @@ import "./globals.css";
 // the load that makes that file live again.
 import "../../design-system/ner-portal/tokens.css";
 
-const hankenGrotesk = Hanken_Grotesk({
-  subsets: ["latin"],
+// Self-hosted rather than `next/font/google`. That helper fetches from
+// fonts.gstatic.com at build time, and the build container cannot resolve it — the same
+// DNS gap that breaks `db-init`. Every request failed, retried three times, and Next
+// fell back silently, so the shipped image rendered in fallback fonts. The files are
+// fetched by `scripts/fetch-fonts.mjs` and committed; all three are OFL-licensed, which
+// permits redistribution.
+//
+// Variable fonts, so one file covers the whole weight axis each family declares.
+const hankenGrotesk = localFont({
+  src: "../fonts/hanken-grotesk.woff2",
   variable: "--font-display",
   display: "swap",
+  weight: "100 900",
 });
 
-const inter = Inter({
-  subsets: ["latin"],
+const inter = localFont({
+  src: "../fonts/inter.woff2",
   variable: "--font-body",
   display: "swap",
+  weight: "100 900",
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
+const jetbrainsMono = localFont({
+  src: "../fonts/jetbrains-mono.woff2",
   variable: "--font-mono",
   display: "swap",
+  weight: "100 800",
 });
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
