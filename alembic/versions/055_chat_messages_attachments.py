@@ -21,40 +21,50 @@ Revision ID: 055
 Revises: 054
 Create Date: 2026-09-18
 """
+import importlib
+
 from alembic import op
+from sqlalchemy import text
 
 revision = "055"
 down_revision = "054"
 branch_labels = None
 depends_on = None
 
+# Leading-digit module name -- can't `from ... import` it by identifier, so
+# import_module by string (same approach `revisions/__init__.py::_discover` uses).
+_revision_003 = importlib.import_module(
+    "src.shared.tenant_store.revisions.003_chat_messages_attachments"
+)
+
 
 def upgrade() -> None:
-    op.execute("""
-        ALTER TABLE tenant_template.chat_messages
-            ADD COLUMN IF NOT EXISTS attachments JSONB
-    """)
+    # DDL lives in `_revision_003.statements()` -- the same function
+    # `src/shared/tenant_store/migrate.py` calls for `tenant_owned` Azure data
+    # planes -- so platform and tenant-owned stores get identical DDL from one
+    # authored source (ADR-017 Design Decision 5).
+    bind = op.get_bind()
+    for statement in _revision_003.statements("tenant_template"):
+        op.execute(statement)
 
     # Already-provisioned tenant schemas were cloned from the template before this
     # column existed — same loop-and-guard shape as migrations 022, 034, 040 and 054.
-    op.execute("""
-        DO $$
-        DECLARE
-            schema_name TEXT;
-        BEGIN
-            FOR schema_name IN
-                SELECT nspname FROM pg_namespace
-                WHERE nspname LIKE 'tenant\\_%' AND nspname != 'tenant_template'
-            LOOP
-                IF to_regclass(format('%I.chat_messages', schema_name)) IS NOT NULL THEN
-                    EXECUTE format('
-                        ALTER TABLE %I.chat_messages
-                            ADD COLUMN IF NOT EXISTS attachments JSONB
-                    ', schema_name);
-                END IF;
-            END LOOP;
-        END $$;
-    """)
+    schema_names = bind.execute(
+        text(
+            "SELECT nspname FROM pg_namespace "
+            "WHERE nspname LIKE 'tenant\\_%' AND nspname != 'tenant_template'"
+        )
+    ).scalars().all()
+
+    for schema_name in schema_names:
+        table_exists = bind.execute(
+            text("SELECT to_regclass(:table_name)"),
+            {"table_name": f"{schema_name}.chat_messages"},
+        ).scalar()
+        if table_exists is None:
+            continue
+        for statement in _revision_003.statements(schema_name):
+            op.execute(statement)
 
 
 def downgrade() -> None:
