@@ -1,13 +1,16 @@
+import dataclasses
 import inspect
 
 import pytest
 
+from src.shared.document_visibility import RequestingUser, visibility_predicate
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.retriever import RerankingRetriever
 from src.shared.retrieval.tools import build_default_registry
 from src.shared.retrieval.tools.base import (
     ArgValidationError,
     ToolContext,
+    FORBIDDEN_ARG_KEYS,
     ToolResult,
     assert_no_tenancy_params,
     validate_args,
@@ -31,8 +34,10 @@ class SpyRetriever:
         self.results = results
         self.calls: list[dict] = []
 
-    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
-        self.calls.append({"query": query, "top_k": top_k, "metadata_filter": metadata_filter})
+    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None,
+                       conversation_id=None, requesting_user=None):
+        self.calls.append({"query": query, "top_k": top_k, "metadata_filter": metadata_filter,
+                           "conversation_id": conversation_id, "requesting_user": requesting_user})
         if metadata_filter and "document_ids" in metadata_filter:
             allowed = set(metadata_filter["document_ids"])
             filtered = [r for r in self.results if r.document_id in allowed]
@@ -44,7 +49,8 @@ class SpyRetriever:
 
 
 class RaisingRetriever:
-    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None, conversation_id=None):
+    async def retrieve(self, query, session, schema, top_k=None, metadata_filter=None,
+                       conversation_id=None, requesting_user=None):
         raise RuntimeError("boom")
 
 
@@ -53,11 +59,12 @@ class FailingReranker:
         return None
 
 
-def _context(retriever=None, sql_search=None, max_top_k=20, conversation_context=None) -> ToolContext:
+def _context(retriever=None, sql_search=None, max_top_k=20, conversation_context=None,
+             requesting_user=None) -> ToolContext:
     return ToolContext(
         tenant_id="tenant-1", schema="tenant_test", session=object(),
         retriever=retriever, max_top_k=max_top_k, sql_search=sql_search,
-        conversation_context=conversation_context,
+        conversation_context=conversation_context, requesting_user=requesting_user,
     )
 
 
@@ -490,3 +497,117 @@ class TestToolContextBudget:
 
         assert result.error is None
         assert len(result.results) == 2
+
+
+# --- Uploader visibility at the tool layer (verification rows 46-47, 50-51) ---
+
+class TestUploaderScopeIsNotArgumentSupplied:
+    """`ToolContext` carries the requesting user, and no tool argument may name it —
+    the same property the tenancy keys already have."""
+
+    async def test_no_tool_schema_names_a_tenancy_parameter(self):
+        """Row 46, the pre-existing property, re-asserted beside the new one."""
+        registry = build_default_registry()
+        for tool in registry.list():
+            keys = set(tool.args_schema.get("properties", {}))
+            assert {"schema", "tenant_id", "tenant", "purpose"}.isdisjoint(keys), tool.name
+
+    async def test_no_tool_schema_names_an_uploader_parameter(self):
+        """Row 47. A tool declaring one would let the model ask for another user's
+        documents by name."""
+        registry = build_default_registry()
+        forbidden = {
+            "user_id", "user", "requesting_user",
+            "uploaded_by", "uploader", "ingested_by_kind", "ingested_by",
+        }
+        for tool in registry.list():
+            keys = set(tool.args_schema.get("properties", {}))
+            assert forbidden.isdisjoint(keys), f"{tool.name} declares an uploader parameter"
+
+    async def test_forbidden_arg_keys_covers_the_uploader_names(self):
+        """The registry check above only covers tools that exist today. This is what
+        stops a tool added later from introducing one."""
+        assert {"user_id", "requesting_user", "uploaded_by"} <= FORBIDDEN_ARG_KEYS
+
+    async def test_assert_no_tenancy_params_rejects_an_uploader_key(self):
+        with pytest.raises(ValueError):
+            assert_no_tenancy_params(
+                {"type": "object", "properties": {"query": {"type": "string"},
+                                                  "uploaded_by": {"type": "string"}}},
+                "bad_tool",
+            )
+
+    async def test_tool_context_carries_the_requesting_user(self):
+        assert "requesting_user" in {f.name for f in dataclasses.fields(ToolContext)}
+
+    async def test_requesting_user_defaults_to_absent_not_unscoped(self):
+        """A context built without one must not become the widest scope. `None`
+        resolves to source-system-only inside the predicate."""
+        context = _context()
+        assert context.requesting_user is None
+        predicate, _ = visibility_predicate(context.requesting_user)
+        assert predicate is not None
+        assert "uploaded_by" not in predicate
+
+
+class TestUploaderScopeSurvivesTheToolLayer:
+    """Rows 50-51. The rule is enforced in SQL, so what the tool layer must get right is
+    passing the user through unchanged, whatever the model supplies."""
+
+    async def test_requesting_user_is_forwarded_to_the_retriever(self):
+        retriever = SpyRetriever(_make_results(3))
+        user = RequestingUser(user_id="recruiter-1", role="business_user")
+        context = _context(retriever=retriever, requesting_user=user)
+
+        await semantic_retrieval.call({"query": "python"}, context)
+
+        assert retriever.calls
+        assert retriever.calls[0]["requesting_user"] is user
+
+    @pytest.mark.parametrize(
+        "hostile",
+        [
+            {"query": "x", "user_id": "recruiter-2"},
+            {"query": "x", "uploaded_by": "recruiter-2"},
+            {"query": "x", "requesting_user": "recruiter-2"},
+        ],
+    )
+    async def test_arguments_cannot_override_the_requesting_user(self, hostile):
+        """The adversarial half of row 50: an argument naming a different user is
+        either rejected as undeclared or ignored — never honoured."""
+        retriever = SpyRetriever(_make_results(3))
+        user = RequestingUser(user_id="recruiter-1", role="business_user")
+        context = _context(retriever=retriever, requesting_user=user)
+
+        try:
+            result = await semantic_retrieval.call(hostile, context)
+        except ArgValidationError:
+            return  # rejected outright, which is the stronger outcome
+
+        if not retriever.calls:
+            assert result.error is not None, (
+                f"argument {hostile} neither reached the retriever nor was rejected"
+            )
+            return
+
+        assert retriever.calls[0]["requesting_user"] is user, (
+            f"argument {hostile} reached the requesting user"
+        )
+
+    async def test_a_document_scope_narrows_without_carrying_identity(self):
+        """Row 51. A `document` scope naming another user's document is a well-formed
+        narrowing: it reaches the retriever as a metadata filter and matches nothing
+        there, rather than raising an argument-validation error here."""
+        retriever = SpyRetriever(_make_results(3, document_id="mine"))
+        user = RequestingUser(user_id="recruiter-1", role="business_user")
+        context = _context(retriever=retriever, requesting_user=user)
+
+        result = await semantic_retrieval.call(
+            {"query": "python", "scope": {"type": "document", "document_ids": ["someone-elses-doc"]}},
+            context,
+        )
+
+        assert result.error is None, "a well-formed scope must not be an argument error"
+        assert retriever.calls[0]["metadata_filter"] == {"document_ids": ["someone-elses-doc"]}
+        assert retriever.calls[0]["requesting_user"] is user
+        assert result.results == []

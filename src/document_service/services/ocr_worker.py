@@ -48,53 +48,6 @@ def classify_processing_error(exc: BaseException) -> str:
     return PROCESSING_ERROR_PROCESSING_FAILED
 
 
-# --- Source-content reopeners (CAP-3) ---------------------------------------------------
-#
-# `source_only` retention stores no bytes, so processing re-acquires them through
-# a registered per-source-type reopener. The registry (not imports) connects the
-# worker to source runtimes: `blob_sync.reopen` registers the Azure Blob
-# reopener, and with none registered the worker raises exactly as before.
-
-_SOURCE_REOPENERS: dict = {}
-
-
-def register_source_reopener(source_type: str, reopen) -> None:
-    _SOURCE_REOPENERS[source_type] = reopen
-
-
-async def _reopen_source_content(document, tenant_id: str):
-    source_type = getattr(document, "source_type", None)
-    reopen = _SOURCE_REOPENERS.get(source_type)
-    if reopen is None:
-        return None
-    try:
-        return await reopen(
-            tenant_id,
-            getattr(document, "source_id", None),
-            getattr(document, "external_id", None),
-        )
-    except Exception as exc:
-        logger.info(
-            "source_reopen_failed",
-            extra={"error_class": classify_processing_error(exc)},
-        )
-        return None
-
-
-async def _resolve_content_for_processing(document, tenant_id: str):
-    """Resolve bytes, re-acquiring source-only content through its reopener.
-
-    Anything unresolvable raises `ContentUnresolvable`, exactly as
-    `resolve_content` does when no reopener can supply the bytes.
-    """
-    retention_mode = getattr(document, "retention_mode", None) or RETENTION_PLATFORM_BLOB
-    if retention_mode == RETENTION_SOURCE_ONLY:
-        reopened = await _reopen_source_content(document, tenant_id)
-        if reopened is not None:
-            return reopened
-    return resolve_content(document)
-
-
 async def _embed_chunks(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
@@ -109,6 +62,8 @@ async def _store_chunks(
     embeddings: list[list[float]],
     purpose: str,
     conversation_id: str | None = None,
+    uploaded_by: str | None = None,
+    ingested_by_kind: str | None = None,
 ):
     engine = await get_resolver().resolve(tenant_id)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -119,8 +74,8 @@ async def _store_chunks(
             await session.execute(
                 text(f"""
                     INSERT INTO {schema}.document_chunks
-                        (id, document_id, chunk_index, chunk_text, embedding, page_number, char_start, char_end, purpose, conversation_id)
-                    VALUES (:id, :doc_id, :chunk_index, :chunk_text, CAST(:embedding AS vector), :page_number, :char_start, :char_end, :purpose, :conversation_id)
+                        (id, document_id, chunk_index, chunk_text, embedding, page_number, char_start, char_end, purpose, conversation_id, uploaded_by, ingested_by_kind)
+                    VALUES (:id, :doc_id, :chunk_index, :chunk_text, CAST(:embedding AS vector), :page_number, :char_start, :char_end, :purpose, :conversation_id, :uploaded_by, :ingested_by_kind)
                 """),
                 {
                     "id": str(uuid.uuid4()),
@@ -135,6 +90,16 @@ async def _store_chunks(
                     # Denormalized from the parent document so retrieval can decide
                     # conversation visibility from the chunk row alone (ADR-014).
                     "conversation_id": conversation_id,
+                    # Denormalized for the same reason and on the same terms: every
+                    # answer channel evaluates the uploader-visibility rule per chunk,
+                    # and a join to `documents` would sit between the hnsw index scan
+                    # and the vector ranking. Both values are immutable after
+                    # ingestion, so the copy cannot drift. `ingested_by_kind` falls
+                    # back to the source-system value rather than to 'human': an
+                    # unknown actor must not be attributed to a person, because that
+                    # person would be the only user who could then see it.
+                    "uploaded_by": uploaded_by,
+                    "ingested_by_kind": ingested_by_kind or "source_system",
                 },
             )
         await session.commit()
@@ -460,55 +425,58 @@ def resolve_media_type(
     return None
 
 
-# --- Content resolution ----------------------------------------------------------------
+# --- Content resolution (re-exported) ----------------------------------------------------
+#
+# The implementation moved to `src.document_service.content_resolution` so an HTTP route
+# can read a document's bytes without importing this module and, with it, chunking and
+# the embedding service. Every name it used to define is re-exported here, because they
+# are part of this module's surface in practice: `blob_sync.reopen` registers through
+# `ocr_worker.register_source_reopener`, and tests monkeypatch
+# `ocr_worker._resolve_content_for_processing` and `ocr_worker._store_for`.
 
+from src.document_service.content_resolution import (  # noqa: E402
+    ContentUnresolvable,
+    SourceOnlyNotSupported,
+    has_source_reopener,
+    register_source_reopener,
+)
+from src.document_service import content_resolution as _content_resolution  # noqa: E402
 
-class ContentUnresolvable(Exception):
-    """The document's bytes cannot be obtained under its recorded retention mode."""
-
-
-class SourceOnlyNotSupported(ContentUnresolvable):
-    """`source_only` resolution needs a reopenable source adapter.
-
-    None exists yet; the pull-side contract arrives with `external-document-sources`.
-    Raised explicitly rather than silently treated as "the bytes are gone", because the
-    two are different facts and an operator needs to tell them apart.
-    """
+# The registry itself, so a test inspecting `ocr_worker._SOURCE_REOPENERS` sees the same
+# dict the shared module registers into rather than an empty copy.
+_SOURCE_REOPENERS = _content_resolution._SOURCE_REOPENERS
+_reopen_source_content = _content_resolution.reopen_source_content
 
 
 def _store_for(retention_mode: str):
-    # Imported at call time so the worker and the content store can depend on each other's
-    # packages without an import cycle at module load.
-    from src.document_service.content_store import get_durable_store, get_working_store
+    """Which store this retention mode implies.
 
-    if retention_mode == RETENTION_EPHEMERAL:
-        return get_working_store()
-    return get_durable_store()
+    A function rather than an alias, and the two resolvers below route through it by
+    name, so that a test monkeypatching `ocr_worker._store_for` — which several do, to
+    stand a fake store in for MinIO — still steers the resolution. An alias would have
+    left the patch pointing at a name nothing consulted, and the tests would have failed
+    only once they reached the real object store.
+    """
+    return _content_resolution.store_for(retention_mode)
 
 
 def resolve_content(document) -> bytes | None:
-    """Obtain the bytes implied by the document's recorded retention mode.
+    """The shared resolution, using this module's own `_store_for` seam."""
+    return _content_resolution.resolve_content(document, store_resolver=_store_for)
 
-    The recorded value decides — never a re-derivation, and never the shape of the
-    reference. Returns None when the resolution is well defined but the bytes are gone.
-    """
-    retention_mode = getattr(document, "retention_mode", None) or RETENTION_PLATFORM_BLOB
-    if retention_mode == RETENTION_SOURCE_ONLY:
-        raise SourceOnlyNotSupported(
-            "source_only retention requires a reopenable source adapter, "
-            "which this change does not implement"
-        )
-    reference = getattr(document, "blob_path", None)
-    if not reference:
-        return None
-    return _store_for(retention_mode).open(reference)
+
+async def _resolve_content_for_processing(document, tenant_id: str):
+    """The shared resolution including the source-reopen path, through the same seam."""
+    return await _content_resolution.resolve_content_for_reading(
+        document, tenant_id, store_resolver=_store_for
+    )
 
 
 # --- Processing ------------------------------------------------------------------------
 
 _DOCUMENT_COLUMNS = (
     "id, purpose, status, content_type, filename, blob_path, retention_mode, "
-    "source_type, source_id, external_id, conversation_id"
+    "source_type, source_id, external_id, conversation_id, uploaded_by, ingested_by_kind"
 )
 
 
@@ -714,6 +682,8 @@ async def process_document(document_id: str, tenant_id: str, *, reprocess: bool 
                 await _store_chunks(
                     document_id, tenant_id, chunks, embeddings, purpose,
                     conversation_id=getattr(document, "conversation_id", None),
+                    uploaded_by=getattr(document, "uploaded_by", None),
+                    ingested_by_kind=getattr(document, "ingested_by_kind", None),
                 )
         except Exception:
             logger.info(

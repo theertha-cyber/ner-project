@@ -380,7 +380,11 @@ def build_nodes(orchestrator) -> dict:
             logger.info("entity_resolution outcome=abandoned tenant_id=%s", tenant_id)
             return {"entity_resolution_outcome": "unresolved", "resolved_document_ids": []}
 
-        result = await entity_resolver.resolve_entity(message, session, schema, tenant_id)
+        result = await entity_resolver.resolve_entity(
+            message, session, schema, tenant_id,
+            requesting_user=state.get("requesting_user"),
+            conversation_id=state.get("conversation_id"),
+        )
 
         if result.outcome == entity_resolver.UNIQUE:
             document_ids = result.resolved_document_ids
@@ -467,6 +471,9 @@ def build_nodes(orchestrator) -> dict:
                     external_search=orchestrator._external_source,
                     deadline=deadline, conversation_context=conversation_context,
                     conversation_id=conversation_id,
+                    # From authenticated request state via graph state, exactly as
+                    # `conversation_id` above. Nothing a tool is handed can widen it.
+                    requesting_user=state.get("requesting_user"),
                 )
 
         budget = OrchestrationBudget(max_invocations=settings.orchestrator_max_invocations, deadline=deadline)
@@ -525,7 +532,9 @@ def build_nodes(orchestrator) -> dict:
         name_sources = [
             Source(source_type="document_chunk", document_id=c.document_id) for c in chunks
         ]
-        document_names = await orchestrator._resolve_document_names(name_sources, session, schema)
+        document_names = await orchestrator._resolve_document_names(
+            name_sources, session, schema, state.get("requesting_user")
+        )
 
         llm_messages, admitted = ContextAssembler().assemble(
             message, sql_results, chunks, document_names, conversation_context,

@@ -94,7 +94,8 @@ class TestAnaphoricFollowUpInheritsFullBoundSet:
                 resolved_entity_value="Hannah, Girish",
             )
 
-        async def fake_resolve(message, session, schema, tenant_id):
+        async def fake_resolve(message, session, schema, tenant_id, requesting_user=None,
+                               conversation_id=None):
             return ResolutionResult(outcome=entity_resolver.UNRESOLVED)
 
         monkeypatch.setattr(conv_state, "read_state", fake_read_state)

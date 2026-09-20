@@ -160,6 +160,8 @@ def _create_tables_sql(schema: str) -> list:
                 char_end INTEGER,
                 purpose VARCHAR(20),
                 conversation_id VARCHAR,
+                uploaded_by VARCHAR,
+                ingested_by_kind VARCHAR(32) DEFAULT 'source_system',
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """,

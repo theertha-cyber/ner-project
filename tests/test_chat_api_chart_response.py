@@ -38,7 +38,8 @@ def _patch_turn(monkeypatch, chart, reply="Billing rose through the year.", sour
     """Replaces the orchestrator's non-streaming entry point with a canned turn,
     matching the boundary test_chat_api_streaming.py patches at."""
     async def _execute(message, session, schema, tenant_id, jwt_token=None,
-                       conversation_context=None, conversation_id=None):
+                       conversation_context=None, conversation_id=None,
+                       requesting_user=None):
         return (reply, sources if sources is not None else [_citation()], None,
                 "answer", "v1", None, None, chart)
 

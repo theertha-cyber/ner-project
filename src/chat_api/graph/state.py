@@ -3,6 +3,7 @@ from typing import TypedDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.chat_api.api.v1.schemas import Source, Citation
 from src.chat_api.services.context_assembler import AdmittedEvidence
+from src.shared.document_visibility import RequestingUser
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.orchestrator import RetrievalPlan, RetrievalStatus
 from src.shared.retrieval.tools.registry import ToolRegistry
@@ -19,6 +20,10 @@ class ChatState(TypedDict, total=False):
     jwt_token: str | None
     conversation_context: list[dict] | None
     conversation_id: str | None
+    # Who the turn is being answered for, from authenticated request state. Reaches
+    # every answer channel as the uploader-visibility rule's input. `None` means no end
+    # user (the widget), which admits source-system content only — never "unscoped".
+    requesting_user: "RequestingUser | None"
 
     # runtime context — not serializable, excluded from any future checkpointer
     session: AsyncSession

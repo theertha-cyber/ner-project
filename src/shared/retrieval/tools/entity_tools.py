@@ -85,6 +85,7 @@ class StructuredRetrievalTool:
                 completeness_sink=completeness_sink,
                 # From the context, never from `args` — same rule as semantic retrieval.
                 conversation_id=context.conversation_id,
+                requesting_user=context.requesting_user,
             )
             return (rows or []), False
 

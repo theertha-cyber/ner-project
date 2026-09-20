@@ -3,6 +3,10 @@ from typing import Protocol
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.config import settings
+from src.shared.document_visibility import (
+    RequestingUser,
+    visibility_clause,
+)
 from src.shared.retrieval.config import (
     RetrievalConfig,
     resolve_rerank_candidate_count,
@@ -24,6 +28,7 @@ class Retriever(Protocol):
         top_k: int | None = None,
         metadata_filter: dict | None = None,
         conversation_id: str | None = None,
+        requesting_user: RequestingUser | None = None,
     ) -> list[RetrievalResult]: ...
 
 
@@ -46,6 +51,17 @@ def _conversation_clause(conversation_id: str | None) -> tuple[str, dict]:
         " AND (conversation_id IS NULL OR conversation_id = :conversation_id)",
         {"conversation_id": conversation_id},
     )
+
+
+# The uploader-visibility guardrail sits beside the conversation one and is built the
+# same way: `visibility_clause` in `src/shared/document_visibility.py`, from the
+# caller's authenticated request context, never from `metadata_filter`. It is imported
+# rather than written here because document listing applies the identical rule, and the
+# defect this change fixes was two implementations of one rule drifting apart.
+#
+# It reads the chunk row's own denormalized `ingested_by_kind` / `uploaded_by` (migration
+# 056), for the reason ADR-014 gives for `conversation_id`: a join to `documents` would
+# sit between the hnsw index scan and the vector ranking.
 
 
 def _metadata_filter_clause(metadata_filter: dict | None) -> tuple[str, dict]:
@@ -94,11 +110,13 @@ class DenseRetriever:
         top_k: int | None = None,
         metadata_filter: dict | None = None,
         conversation_id: str | None = None,
+        requesting_user: RequestingUser | None = None,
     ) -> list[RetrievalResult]:
         top_k = resolve_top_k(top_k, self.config, settings)
         filter_clause, filter_params = _metadata_filter_clause(metadata_filter)
         hidden_clause = _hidden_documents_clause(schema)
         conv_clause, conv_params = _conversation_clause(conversation_id)
+        vis_clause, vis_params = visibility_clause(requesting_user)
 
         query_embedding = await self.embedding_service.embed(query)
         embedding_str = "[" + ",".join(str(v) for v in query_embedding) + "]"
@@ -108,11 +126,14 @@ class DenseRetriever:
                 SELECT id, document_id, chunk_index, chunk_text, page_number, char_start, char_end,
                         1 - (embedding <=> :query_emb) AS similarity_score
                 FROM {schema}.document_chunks
-                WHERE embedding IS NOT NULL AND purpose = 'query'{conv_clause}{filter_clause}{hidden_clause}
+                WHERE embedding IS NOT NULL AND purpose = 'query'{conv_clause}{vis_clause}{filter_clause}{hidden_clause}
                 ORDER BY embedding <=> :query_emb
                 LIMIT :top_k
             """),
-            {"query_emb": embedding_str, "top_k": top_k, **conv_params, **filter_params},
+            {
+                "query_emb": embedding_str, "top_k": top_k,
+                **conv_params, **vis_params, **filter_params,
+            },
         )
         rows = result.fetchall()
         return [
@@ -141,22 +162,27 @@ class SparseRetriever:
         top_k: int | None = None,
         metadata_filter: dict | None = None,
         conversation_id: str | None = None,
+        requesting_user: RequestingUser | None = None,
     ) -> list[RetrievalResult]:
         top_k = resolve_top_k(top_k, self.config, settings)
         filter_clause, filter_params = _metadata_filter_clause(metadata_filter)
         hidden_clause = _hidden_documents_clause(schema)
         conv_clause, conv_params = _conversation_clause(conversation_id)
+        vis_clause, vis_params = visibility_clause(requesting_user)
 
         result = await session.execute(
             text(f"""
                 SELECT id, document_id, chunk_index, chunk_text, page_number, char_start, char_end,
                         ts_rank(chunk_tsv, plainto_tsquery('english', :query)) AS rank_score
                 FROM {schema}.document_chunks
-                WHERE chunk_tsv @@ plainto_tsquery('english', :query) AND purpose = 'query'{conv_clause}{filter_clause}{hidden_clause}
+                WHERE chunk_tsv @@ plainto_tsquery('english', :query) AND purpose = 'query'{conv_clause}{vis_clause}{filter_clause}{hidden_clause}
                 ORDER BY rank_score DESC
                 LIMIT :top_k
             """),
-            {"query": query, "top_k": top_k, **conv_params, **filter_params},
+            {
+                "query": query, "top_k": top_k,
+                **conv_params, **vis_params, **filter_params,
+            },
         )
         rows = result.fetchall()
         return [
@@ -198,6 +224,7 @@ class HybridRetriever:
         top_k: int | None = None,
         metadata_filter: dict | None = None,
         conversation_id: str | None = None,
+        requesting_user: RequestingUser | None = None,
     ) -> list[RetrievalResult]:
         top_k = resolve_top_k(top_k, self.config, settings)
         candidate_k = min(top_k * self.CANDIDATE_MULTIPLIER, self.CANDIDATE_CAP)
@@ -208,10 +235,12 @@ class HybridRetriever:
         dense_results = await self.dense.retrieve(
             query, session, schema, top_k=candidate_k,
             metadata_filter=metadata_filter, conversation_id=conversation_id,
+            requesting_user=requesting_user,
         )
         sparse_results = await self.sparse.retrieve(
             query, session, schema, top_k=candidate_k,
             metadata_filter=metadata_filter, conversation_id=conversation_id,
+            requesting_user=requesting_user,
         )
 
         rrf_scores: dict[tuple[str, int], float] = {}
@@ -246,6 +275,7 @@ class RerankingRetriever:
         top_k: int | None = None,
         metadata_filter: dict | None = None,
         conversation_id: str | None = None,
+        requesting_user: RequestingUser | None = None,
         jwt_token: str | None = None,
         degraded_sink: list | None = None,
     ) -> list[RetrievalResult]:
@@ -259,12 +289,14 @@ class RerankingRetriever:
             return await self.retriever.retrieve(
                 query, session, schema, top_k=top_k,
                 metadata_filter=metadata_filter, conversation_id=conversation_id,
+            requesting_user=requesting_user,
             )
 
         candidate_count = resolve_rerank_candidate_count(self.config, settings)
         candidates = await self.retriever.retrieve(
             query, session, schema, top_k=candidate_count,
             metadata_filter=metadata_filter, conversation_id=conversation_id,
+            requesting_user=requesting_user,
         )
         reranked = await self.reranker.rerank(query, candidates, top_k=top_k, jwt_token=jwt_token)
         if reranked is None:

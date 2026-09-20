@@ -140,7 +140,8 @@ class TestChatEndpointTurnShape:
         from src.chat_api.api.v1 import chat as chat_module
 
         async def fake(message, session, schema, tenant_id, jwt_token=None,
-                       conversation_context=None, conversation_id=None):
+                       conversation_context=None, conversation_id=None,
+                       requesting_user=None):
             fake.seen_context = conversation_context
             return (reply, sources, None, "answer", None, None, None, None)
 

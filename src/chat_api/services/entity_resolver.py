@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.extraction_service.services.entity_normalizer import canonicalize
 from src.shared.config import settings
+from src.shared.document_visibility import visibility_predicate_via_document
 from src.shared.database import get_engine
 
 logger = logging.getLogger(__name__)
@@ -150,8 +151,35 @@ async def _resolve_tenant_person_types(session: AsyncSession, tenant_id: str) ->
     return types
 
 
+
+def _conversation_predicate_via_document(conversation_id: str | None, schema: str) -> tuple[str, dict]:
+    """ADR-014's conversation rule, reaching `document_entities` through `documents`.
+
+    This path was missed when ADR-014 enumerated the channels: it reads
+    `document_entities` directly, outside both the `Retriever` implementations and the
+    generated-SQL scope rewrite, so a name extracted from a file attached in one
+    conversation was resolvable from every other conversation of that tenant. The ADR
+    states the guarantee as met, which is why the omission went unnoticed.
+
+    A document with no conversation is tenant-library content and stays visible
+    everywhere, exactly as `_conversation_clause` in the retriever treats it. With no
+    conversation in context, only library content is admitted — the same fail-closed
+    reading the retriever uses.
+    """
+    if conversation_id is None:
+        predicate = "conversation_id IS NULL"
+        params: dict = {}
+    else:
+        predicate = "(conversation_id IS NULL OR conversation_id = :entity_conversation_id)"
+        params = {"entity_conversation_id": conversation_id}
+    return (
+        f"document_id IN (SELECT id FROM {schema}.documents WHERE {predicate})",
+        params,
+    )
+
 async def _lookup_candidate_rows(
     session: AsyncSession, schema: str, canonical_values: list[str], person_types: set[str],
+    requesting_user=None, conversation_id: str | None = None,
 ) -> list[dict]:
     if not canonical_values or not person_types:
         return []
@@ -159,6 +187,20 @@ async def _lookup_candidate_rows(
     # "arjun", the extractor stored "arjun jayakumar". `string_to_array(...) && :values`
     # is the word-level half; keeping the equality test as well means a stored
     # single-word name still matches without relying on the array overlap.
+    # A person extracted only from another user's document must never be offered as a
+    # candidate: this path presents the *name* before any retrieval result exists, so
+    # scoping retrieval alone would still disclose who is in the tenant's other resumes.
+    # Reached through `documents` — `document_entities` carries no denormalized actor.
+    visibility, visibility_params = visibility_predicate_via_document(
+        requesting_user, "document_id", documents_relation=f"{schema}.documents"
+    )
+    conversation, conversation_params = _conversation_predicate_via_document(
+        conversation_id, schema
+    )
+    visibility_clause_sql = "".join(
+        f" AND {clause}" for clause in (visibility, conversation) if clause
+    )
+
     result = await session.execute(
         text(f"""
             SELECT document_id, entity_type, entity_value, normalized_value
@@ -167,25 +209,44 @@ async def _lookup_candidate_rows(
               AND (
                 normalized_value = ANY(:values)
                 OR string_to_array(normalized_value, ' ') && CAST(:values AS text[])
-              )
+              ){visibility_clause_sql}
         """),
-        {"values": canonical_values, "types": sorted(person_types)},
+        {
+            "values": canonical_values, "types": sorted(person_types),
+            **visibility_params, **conversation_params,
+        },
     )
     return [dict(r._mapping) for r in result.fetchall()]
 
 
-async def _build_candidates(session: AsyncSession, schema: str, doc_ids: list[str], winning_rows: list[dict]) -> list[Candidate]:
+async def _build_candidates(session: AsyncSession, schema: str, doc_ids: list[str],
+                            winning_rows: list[dict], requesting_user=None,
+                            conversation_id: str | None = None) -> list[Candidate]:
     name_by_doc: dict[str, str] = {}
     for row in winning_rows:
         name_by_doc.setdefault(row["document_id"], row["entity_value"])
+
+    # Same rule on the enrichment read. The candidate ids arriving here were already
+    # filtered above, but a second query over the same table gets the same predicate
+    # rather than trusting its caller — the property that keeps a future call site from
+    # reintroducing the leak.
+    visibility, visibility_params = visibility_predicate_via_document(
+        requesting_user, "document_id", documents_relation=f"{schema}.documents"
+    )
+    conversation, conversation_params = _conversation_predicate_via_document(
+        conversation_id, schema
+    )
+    visibility_clause_sql = "".join(
+        f" AND {clause}" for clause in (visibility, conversation) if clause
+    )
 
     field_rows = await session.execute(
         text(f"""
             SELECT document_id, entity_type, entity_value
             FROM {schema}.document_entities
-            WHERE document_id = ANY(:doc_ids)
+            WHERE document_id = ANY(:doc_ids){visibility_clause_sql}
         """),
-        {"doc_ids": doc_ids},
+        {"doc_ids": doc_ids, **visibility_params, **conversation_params},
     )
 
     org_by_doc: dict[str, str] = {}
@@ -287,7 +348,8 @@ def _metrics():
     return domain_metrics
 
 
-async def resolve_entity(message: str, session: AsyncSession, schema: str, tenant_id: str) -> ResolutionResult:
+async def resolve_entity(message: str, session: AsyncSession, schema: str, tenant_id: str,
+                         requesting_user=None, conversation_id: str | None = None) -> ResolutionResult:
     """Resolves person-entity references in `message` against `document_entities`.
     Tenant-scoped by `schema` (caller-supplied, never derived from `message`).
     Issues no LLM call.
@@ -304,7 +366,9 @@ async def resolve_entity(message: str, session: AsyncSession, schema: str, tenan
     from src.shared.observability.spans import stage_span
 
     with stage_span("entity_resolution") as span:
-        result = await _resolve_entity(message, session, schema, tenant_id)
+        result = await _resolve_entity(
+            message, session, schema, tenant_id, requesting_user, conversation_id
+        )
         span.set("outcome", result.outcome)
         span.set("mentions_checked", result.mentions_checked)
         span.set("resolved_documents", len(result.resolved_document_ids or []))
@@ -312,7 +376,8 @@ async def resolve_entity(message: str, session: AsyncSession, schema: str, tenan
         return result
 
 
-async def _resolve_entity(message: str, session: AsyncSession, schema: str, tenant_id: str) -> ResolutionResult:
+async def _resolve_entity(message: str, session: AsyncSession, schema: str, tenant_id: str,
+                          requesting_user=None, conversation_id: str | None = None) -> ResolutionResult:
     mentions = _extract_mentions(message)
     if not mentions:
         logger.info("entity_resolution outcome=%s tenant_id=%s mentions_checked=0", UNRESOLVED, tenant_id)
@@ -320,7 +385,9 @@ async def _resolve_entity(message: str, session: AsyncSession, schema: str, tena
 
     person_types = await _resolve_tenant_person_types(session, tenant_id)
     canonical_values = [c for _, c, _ in mentions]
-    rows = await _lookup_candidate_rows(session, schema, canonical_values, person_types)
+    rows = await _lookup_candidate_rows(
+        session, schema, canonical_values, person_types, requesting_user, conversation_id
+    )
 
     if not rows:
         # Second pass with possessives stripped. Deliberately only reached when the
@@ -331,6 +398,7 @@ async def _resolve_entity(message: str, session: AsyncSession, schema: str, tena
         if mentions:
             rows = await _lookup_candidate_rows(
                 session, schema, [c for _, c, _ in mentions], person_types,
+                requesting_user, conversation_id,
             )
 
     if not rows:
@@ -366,7 +434,10 @@ async def _resolve_entity(message: str, session: AsyncSession, schema: str, tena
         )
 
     if ambiguous is not None:
-        candidates = await _build_candidates(session, schema, list(ambiguous.document_ids), ambiguous.rows)
+        candidates = await _build_candidates(
+            session, schema, list(ambiguous.document_ids), ambiguous.rows,
+            requesting_user, conversation_id,
+        )
         logger.info(
             "entity_resolution outcome=%s tenant_id=%s mentions_checked=%d candidate_documents=%d",
             AMBIGUOUS, tenant_id, len(mentions), len(ambiguous.document_ids),

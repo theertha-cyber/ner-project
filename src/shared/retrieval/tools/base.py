@@ -4,10 +4,26 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.shared.document_visibility import RequestingUser
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.retriever import Retriever
 
-FORBIDDEN_ARG_KEYS = {"schema", "tenant_id", "tenant", "purpose"}
+# Argument names no tool may declare. The first four are tenancy and purpose; the rest
+# name the uploader-visibility rule, which is derived from authenticated request state
+# and must be no more reachable from a model-generated argument than tenancy is.
+FORBIDDEN_ARG_KEYS = {
+    "schema",
+    "tenant_id",
+    "tenant",
+    "purpose",
+    "user_id",
+    "user",
+    "requesting_user",
+    "uploaded_by",
+    "uploader",
+    "ingested_by_kind",
+    "ingested_by",
+}
 
 _JSON_SCHEMA_TYPES = {
     "string": str,
@@ -66,6 +82,16 @@ class ToolContext:
     # authenticated request state like everything else on this object, and never from a
     # tool argument — a scope the model can omit would not be a boundary.
     conversation_id: str | None = None
+    # Who this call is being answered for. Retrieval admits a document only when no
+    # human ingested it or when this user did — the same rule document listing applies,
+    # defined once in `src/shared/document_visibility.py`. Read from authenticated
+    # request state on exactly the terms `conversation_id` above is, and for the same
+    # reason: the keys naming it are in `FORBIDDEN_ARG_KEYS`, so no tool argument can
+    # name it, and `scope` can narrow what is visible but never widen it.
+    #
+    # `None` is not "unscoped" — it is the widget's no-end-user case, which sees
+    # source-system content only. The branch lives in `visibility_predicate`.
+    requesting_user: "RequestingUser | None" = None
 
 
 def _render_result_line(item: Any) -> str:

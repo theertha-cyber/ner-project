@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,8 @@ from src.shared.readiness import check_database, check_minio, build_readiness_bo
 from src.document_service.middleware.tenant_context import TenantContextMiddleware
 from src.shared.observability import init_observability
 from src.document_service.api.v1 import documents
+
+logger = logging.getLogger(__name__)
 
 
 def add_bearer_security(app: FastAPI):
@@ -29,9 +32,33 @@ def add_bearer_security(app: FastAPI):
     app.openapi = custom_openapi
 
 
+def _register_source_adapters() -> None:
+    """Populate the source-reopener registry for this process.
+
+    The registry is filled as an import side effect, so a process that never imports the
+    adapter module simply has none — and reports every `source_only` document as
+    unreadable rather than failing in any visible way. The Celery worker imports it at
+    task time; this process must do it at startup, or the content routes would be unable
+    to serve exactly the documents that have no platform copy, which is every document
+    the Azure Blob sync produces.
+
+    Guarded because the adapter's own dependencies may be absent in a deployment that
+    does not use pull sources. Degrading to "this source cannot be re-read" is correct
+    there; refusing to start the document service is not.
+    """
+    try:
+        import src.document_service.blob_sync.reopen  # noqa: F401
+    except Exception as exc:
+        logger.info(
+            "source_adapter_registration_skipped",
+            extra={"error_class": type(exc).__name__},
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.db_factory = get_engine
+    _register_source_adapters()
     await wait_for_database()
     yield
 
