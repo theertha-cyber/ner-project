@@ -26,153 +26,58 @@ Revision ID: 056
 Revises: 055
 Create Date: 2026-09-18
 """
+import importlib
+
 from alembic import op
+from sqlalchemy import text
 
 revision = "056"
 down_revision = "055"
 branch_labels = None
 depends_on = None
 
-# Matches `ActorKind.SOURCE_SYSTEM` in the ingestion contract and the default
-# migration 038 applied to `documents.ingested_by_kind`.
-_HUMAN = "human"
-
-_COLUMNS = "ADD COLUMN IF NOT EXISTS uploaded_by VARCHAR, ADD COLUMN IF NOT EXISTS ingested_by_kind VARCHAR(32)"
+# Leading-digit module name -- can't `from ... import` it by identifier, so
+# import_module by string (same approach `revisions/__init__.py::_discover` uses).
+_revision_006 = importlib.import_module(
+    "src.shared.tenant_store.revisions.006_document_chunks_uploader_visibility"
+)
 
 
 def upgrade() -> None:
-    # Template schema first. New tenants inherit it via
-    # `LIKE tenant_template.document_chunks INCLUDING ALL` in tenant_service.py.
-    op.execute(f"ALTER TABLE tenant_template.document_chunks {_COLUMNS}")
+    # DDL and backfill both live in `_revision_006.statements()` -- the same function
+    # `src/shared/tenant_store/migrate.py` calls for `tenant_owned` data planes -- so
+    # platform and tenant-owned stores get identical statements from one authored
+    # source (ADR-017 Design Decision 5).
+    bind = op.get_bind()
 
-    # Already-provisioned schemas were copied from the template before these columns
-    # existed — same shape as migrations 022, 034, 040 and 054. The to_regclass guard
-    # keeps the migration from failing on a schema missing either table.
-    op.execute(f"""
-        DO $$
-        DECLARE
-            schema_name TEXT;
-        BEGIN
-            FOR schema_name IN
-                SELECT nspname FROM pg_namespace
-                WHERE nspname LIKE 'tenant\\_%' AND nspname != 'tenant_template'
-            LOOP
-                IF to_regclass(format('%I.document_chunks', schema_name)) IS NOT NULL THEN
-                    EXECUTE format('ALTER TABLE %I.document_chunks {_COLUMNS}', schema_name);
-                END IF;
-            END LOOP;
-        END $$;
-    """)
+    # `tenant_template` first, so new tenants inherit the columns via
+    # `LIKE tenant_template.document_chunks INCLUDING ALL` in tenant_service.py. Then
+    # every already-provisioned schema, which was copied from the template before these
+    # columns existed -- same shape as migrations 022, 034, 040 and 054.
+    provisioned = bind.execute(
+        text(
+            "SELECT nspname FROM pg_namespace "
+            "WHERE nspname LIKE 'tenant\\_%' AND nspname != 'tenant_template' "
+            "ORDER BY nspname"
+        )
+    ).scalars().all()
 
-    # Backfill from each chunk's own document. Batched by document rather than by row:
-    # the join is on an indexed primary key and a tenant's chunk count is large while
-    # its document count is not, so one correlated update per schema is cheaper than
-    # paging chunks. `IS NOT DISTINCT FROM` is deliberate — re-running the migration
-    # must not rewrite rows it already set, which is what makes it re-runnable.
-    op.execute("""
-        DO $$
-        DECLARE
-            schema_name TEXT;
-        BEGIN
-            FOR schema_name IN
-                SELECT nspname FROM pg_namespace
-                WHERE nspname LIKE 'tenant\\_%'
-            LOOP
-                IF to_regclass(format('%I.document_chunks', schema_name)) IS NOT NULL
-                   AND to_regclass(format('%I.documents', schema_name)) IS NOT NULL THEN
-                    EXECUTE format('
-                        UPDATE %I.document_chunks c
-                        SET uploaded_by = d.uploaded_by,
-                            ingested_by_kind = COALESCE(d.ingested_by_kind, %L)
-                        FROM %I.documents d
-                        WHERE d.id = c.document_id
-                          AND (c.ingested_by_kind IS NULL OR c.uploaded_by IS DISTINCT FROM d.uploaded_by)
-                    ', schema_name, 'human', schema_name);
-                END IF;
-            END LOOP;
-        END $$;
-    """)
-
-    # A chunk whose document no longer exists cannot have its visibility derived, and
-    # leaving it NULL would let the predicate decide by accident. There is no honest
-    # uploader for it, so it is marked source-system — the same treatment a document
-    # ingested by no human gets, and the same visibility the tenant already had for it
-    # before this change.
-    op.execute("""
-        DO $$
-        DECLARE
-            schema_name TEXT;
-        BEGIN
-            FOR schema_name IN
-                SELECT nspname FROM pg_namespace
-                WHERE nspname LIKE 'tenant\\_%'
-            LOOP
-                IF to_regclass(format('%I.document_chunks', schema_name)) IS NOT NULL THEN
-                    EXECUTE format('
-                        UPDATE %I.document_chunks
-                        SET ingested_by_kind = %L
-                        WHERE ingested_by_kind IS NULL
-                    ', schema_name, 'source_system');
-                END IF;
-            END LOOP;
-        END $$;
-    """)
-
-    # The backfill is the correctness-critical half of this migration, so it verifies
-    # itself rather than trusting that the loop above reached every schema. A row with
-    # no ingesting actor is a row whose visibility is undefined; failing here is far
-    # better than shipping it.
-    op.execute("""
-        DO $$
-        DECLARE
-            schema_name TEXT;
-            unset_count BIGINT;
-        BEGIN
-            FOR schema_name IN
-                SELECT nspname FROM pg_namespace
-                WHERE nspname LIKE 'tenant\\_%'
-            LOOP
-                IF to_regclass(format('%I.document_chunks', schema_name)) IS NOT NULL THEN
-                    EXECUTE format(
-                        'SELECT COUNT(*) FROM %I.document_chunks WHERE ingested_by_kind IS NULL',
-                        schema_name
-                    ) INTO unset_count;
-                    IF unset_count > 0 THEN
-                        RAISE EXCEPTION
-                            'migration 056: % chunks in schema % have no ingesting actor',
-                            unset_count, schema_name;
-                    END IF;
-                END IF;
-            END LOOP;
-        END $$;
-    """)
-
-    # Every retrieval query filters on these two columns alongside `purpose` and
-    # `conversation_id`. Composite because the predicate reads both together, and
-    # partial on human ingestion because source-system chunks are the unrestricted case
-    # that the existing predicates already find.
-    # `%L` rather than an inlined literal: a quote inside the `format()` template would
-    # terminate the template's own string, which is the kind of breakage that only shows
-    # up when the statement actually runs.
-    op.execute("""
-        DO $$
-        DECLARE
-            schema_name TEXT;
-        BEGIN
-            FOR schema_name IN
-                SELECT nspname FROM pg_namespace
-                WHERE nspname LIKE 'tenant\\_%'
-            LOOP
-                IF to_regclass(format('%I.document_chunks', schema_name)) IS NOT NULL THEN
-                    EXECUTE format('
-                        CREATE INDEX IF NOT EXISTS idx_document_chunks_uploaded_by
-                            ON %I.document_chunks (uploaded_by)
-                            WHERE ingested_by_kind = %L
-                    ', schema_name, 'human');
-                END IF;
-            END LOOP;
-        END $$;
-    """)
+    for schema_name in ["tenant_template", *provisioned]:
+        # Both tables are checked, not just `document_chunks`: the backfill reads
+        # `documents`, so a schema holding one without the other must be skipped rather
+        # than half-migrated. The template is checked on the same terms as any other
+        # schema -- it is not guaranteed to be complete in every environment.
+        present = bind.execute(
+            text("SELECT to_regclass(:chunks), to_regclass(:documents)"),
+            {
+                "chunks": f"{schema_name}.document_chunks",
+                "documents": f"{schema_name}.documents",
+            },
+        ).fetchone()
+        if present[0] is None or present[1] is None:
+            continue
+        for statement in _revision_006.statements(schema_name):
+            op.execute(statement)
 
 
 def downgrade() -> None:

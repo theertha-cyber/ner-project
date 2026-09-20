@@ -75,13 +75,54 @@ def _migration():
     return module
 
 
-def _statements(module):
+def _statements(module, schemas):
+    """The statements migration 056 would run, for `schemas` only.
+
+    Since 056 delegates its DDL to `tenant_store.revisions.006_*` (ADR-017 D5), it
+    discovers the schemas to apply them to in Python rather than in a SQL loop, so the
+    collector has to answer `op.get_bind()` as well as `op.execute()`.
+
+    The bind is a stub rather than a real connection deliberately. A real one would
+    return every `tenant_%` schema in the shared test database, and the fixture would
+    then backfill schemas belonging to other test files. The stub keeps this test to
+    the two schemas it seeded and tears down.
+    """
     collected = []
+
+    class _Scalars:
+        @staticmethod
+        def all():
+            return list(schemas)
+
+    class _Result:
+        def __init__(self, params=None):
+            self._params = params or {}
+
+        @staticmethod
+        def scalars():
+            return _Scalars
+
+        def fetchone(self):
+            # Answers the migration's to_regclass guard for whichever schema it asked
+            # about. Only the seeded schemas have both tables -- notably `tenant_template`
+            # in the test database has `document_chunks` but no `documents`, and the
+            # guard is what keeps the backfill from running against it.
+            schema = str(self._params.get("chunks", "")).split(".")[0]
+            return ("present", "present") if schema in schemas else (None, None)
+
+    class _Bind:
+        @staticmethod
+        def execute(statement, params=None):
+            return _Result(params)
 
     class _CollectingOp:
         @staticmethod
         def execute(statement):
             collected.append(statement)
+
+        @staticmethod
+        def get_bind():
+            return _Bind
 
     module.op = _CollectingOp
     module.upgrade()
@@ -154,7 +195,7 @@ async def migrated_database():
 
     module = _migration()
     async with engine.connect() as conn:
-        for statement in _statements(module):
+        for statement in _statements(module, tenant_schemas):
             await conn.execute(text(statement))
 
     yield {
@@ -312,7 +353,7 @@ async def test_migration_is_rerunnable(migrated_database):
             )
         ).fetchall()
 
-        for statement in _statements(module):
+        for statement in _statements(module, migrated_database["tenant_schemas"]):
             await conn.execute(text(statement))
 
         after = (

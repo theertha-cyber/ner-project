@@ -162,6 +162,12 @@ def test_clause_is_appendable_and_matches_the_predicate():
 # columns because they populate them; nothing else may re-derive the comparison.
 _PREDICATE_DEFINITION_ALLOWLIST = {
     "src/shared/document_visibility.py",
+    # Schema DDL, not a retrieval predicate. The partial index this revision creates is
+    # the index the rule's queries use, so its WHERE clause has to spell out the same
+    # comparison -- an index predicate cannot be built from a Python function. It is on
+    # the same footing as the migration that creates it: it defines where the rule can
+    # be evaluated quickly, never what the rule admits.
+    "src/shared/tenant_store/revisions/006_document_chunks_uploader_visibility.py",
 }
 _COLUMN_WRITE_ALLOWLIST = {
     "src/shared/document_visibility.py",
