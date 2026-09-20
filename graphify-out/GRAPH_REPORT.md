@@ -1,65 +1,65 @@
-# Graph Report - ner-project  (2026-09-15)
+# Graph Report - ner-project  (2026-09-18)
 
 ## Corpus Check
-- 1926 files · ~1,935,876 words
+- 2320 files · ~2,356,951 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 22633 nodes · 35369 edges · 1392 communities (1260 shown, 38 thin omitted)
-- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 1128 edges (avg confidence: 0.92)
+- 27695 nodes · 43419 edges · 1740 communities (1586 shown, 50 thin omitted)
+- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 1272 edges (avg confidence: 0.92)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `74fe6d4c`
+- Built from commit: `5a298fbe`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - FakeSession
-- integration_profile/service.py
+- test_tenant_integration_profile.py
 - authFetch
 - AnnotationPage.tsx
 - extraction.ts
 - entity_eval/runner.py
 - test_annotation_import.py
 - ocr_worker.py
-- DocumentIngestionService
-- provision_tenant_data_plane
-- SQLGenerator
+- session_factory
+- migrate.py
+- sql_generator.py
 - _spec
 - entity_views.py
 - RetrievalResult
 - FakeSession
 - chat.py
-- test_context_assembly_path_equivalence.py
-- shared/auth.py
-- data-sources.ts
+- BatchAcceptancePage.tsx
+- get_engine
+- react
 - domain_metrics.py
 - _reconcile
 - support.js
 - vitest
 - build_role_statements
 - DenseRetriever
-- NotFoundError
+- AuditService
 - @testing-library/user-event
 - RetrievalConfig
 - context-usage.ts
 - test_chat_api_streaming.py
 - ContentStore
 - TestStructuredValueSQLExecution
-- build_chat_graph
-- EntityDefinitionSpec
+- nodes.py
+- test_relational_document_delete.py
 - RAGOrchestrator
 - _spec
 - shared/config.py
 - eval/runner.py
-- blob_sync/__init__.py
+- add_run
 - _validate_on_surface
 - gateway/main.py
 - test_chunk_metadata_ingest.py
 - chat_proxy.py
 - _predict
-- schema_for_tenant
+- manual/page.tsx
 - external_postgres/__init__.py
 - documents.py
 - test_document_ingestion.py
@@ -71,14 +71,14 @@
 - insert_document_entities
 - test_azure_blob_source_sync.py
 - build_default_registry
-- session_factory
-- require-auth.tsx
+- add_model_version
+- useAuth
 - MODIFIED Requirements
-- verify
-- react
+- Base
+- chat/page.tsx
 - app
-- ExternalSQLGenerator
-- is_valid_entity
+- AsyncAzureOpenAI
+- entity_normalizer.py
 - Requirement: Retriever interface
 - RetrievalStatus
 - data_plane.py
@@ -86,8 +86,8 @@
 - NormalizedEntity
 - canonicalize
 - Requirement: Deactivation and orphaning never drop a generated relation
-- DocumentTable.tsx
-- test_retrieval_tools_integration.py
+- @testing-library/react
+- annotation_service/worker.py
 - _get
 - test_entity_definition_reconcile.py
 - test_external_postgresql_chat.py
@@ -99,21 +99,21 @@
 - test_extraction_worker_postprocess_failopen.py
 - stage_span
 - ContextAssembler
-- test_conversation_history_reaches_retrieval.py
+- ground_entities
 - test_training_jobs_api.py
 - test_chat_stage_spans.py
 - NER Platform KT Handover Guide
 - Entity-Quality Evaluation Fixture README
 - test_chat_api_structured_scope.py
-- _entity
+- make_tenant
 - _create
 - test_model_registry.py
 - OpenSpec CLI
 - test_external_sql_generator.py
 - AnalyticsQueryRequest
-- extraction.py
+- schema_for_tenant
 - normalize_value
-- nodes.py
+- orchestrator.py
 - test_telemetry_failure_isolation.py
 - training_jobs.py
 - test_celery_queue_metrics.py
@@ -123,14 +123,14 @@
 - _get_sync_engine
 - _entity
 - _insert_entity
-- test_inference_confidence_calibration.py
-- analytics_service/api/v1/schemas.py
-- annotation_service/main.py
+- _fake_session
+- StubLLMClient
+- NotFoundError
 - entity_resolver.py
 - inference_service.py
-- AppError
-- auth_header
-- test_entity_views_reconciler.py
+- gateway/dependencies.py
+- make_tenant
+- Citation
 - configured
 - test_mlflow_verification.py
 - analytics/page.tsx
@@ -141,7 +141,7 @@
 - _entity
 - test_migration_037_entity_view_metadata.py
 - collapse_duplicates
-- ModelCache
+- model_serving/main.py
 - TestSQLPrompt
 - test_extraction_metrics.py
 - OpenSpec CLI
@@ -150,12 +150,12 @@
 - test_inference_metrics.py
 - test_domain_metrics_declarations.py
 - test_batch_extraction_eligibility.py
-- test_entity_span_trimming.py
+- seed_bootstrap.py
 - auth_header
 - TestSelectionInterpretation
 - Candidate
 - Requirement: Base Model (Version 0) Entry
-- test_orchestrator_integration.py
+- OrchestrationBudget
 - _prompt_for
 - test_sysadmin_user_onboarding.py
 - Requirement: SQL query generation and validation
@@ -174,7 +174,7 @@
 - ADDED Requirements
 - v1/tasks.py
 - backfill_document_entities.py
-- DefineEntityTypeSlideOver.tsx
+- useToast
 - test_projection_metrics.py
 - test_imported_annotations_update.py
 - TestMigration036ExtractionRunsProcessingMode
@@ -183,9 +183,9 @@
 - semantic_normalizer.py
 - compilerOptions
 - v1/models.py
-- _get
+- test_observability_context.py
 - test_tenant_document_registry_reconcile.py
-- test_entity_postprocessor_tenant_scope.py
+- test_entity_views_generator.py
 - external_pg_contracts.py
 - Requirement: Tenant data engines are resolved per tenant with no platform fallback
 - auth_header
@@ -195,7 +195,7 @@
 - architect-reviewer skill
 - test_external_pg_contract_descriptions.py
 - Decision
-- chat_api/test_retrieval_metrics.py
+- _payload
 - TestSQLValidation
 - test_document_visibility.py
 - TestMigration029DocumentEntitiesTypedValues
@@ -206,14 +206,14 @@
 - _post_feedback
 - test_document_provenance_migration.py
 - Requirement: Safe activation and concurrent capability limits
-- FakeUpstreamResponse
+- EntityService
 - Document Ingestion Source Boundary (architecture proposal)
 - types/dashboard.ts
-- _get_active_model_version
+- extraction_service/worker.py
 - Requirements
 - TestEntityConfigValueKind
 - test_migration_032_chat_message_feedback.py
-- evaluate_answer
+- test_chat_chart_generation.py
 - Requirements
 - auth_header
 - test_health_endpoints.py
@@ -266,12 +266,12 @@
 - Deploy Platform to Kubernetes on Azure (AKS) — requirements baseline
 - package.json
 - validate_name_labels.py
-- validator.py
+- external_sql_generator.py
 - ADDED Requirements
 - ADDED Requirements
 - Requirements
 - Requirements
-- extraction_proxy.py
+- DocumentUpload.annotationMode.test.tsx
 - TestBusinessUserQueries
 - Requirement: Contract-authorized SQL execution
 - c4-diagram skill
@@ -283,7 +283,7 @@
 - Requirement: Per-Entity-Type Dataset Readiness
 - ADDED Requirements
 - test_dashboard_summary.py
-- TestParseOrdinalSelection
+- test_entity_resolver.py
 - TestWorkerSemanticNormalization
 - Requirements
 - Requirement: Secondary Metrics Panel
@@ -297,26 +297,26 @@
 - UI Inventory — Tenant Self-Service Data Sources (SCR-1/2/3, CMP-1..10)
 - build_name_review_report.py
 - _active_model_card
-- Requirement: Annotation Task Management
+- Requirement: Annotation Export
 - Requirement: Sidebar Layout
 - _JwtOnlyTenantMiddleware
 - TestTheSharedMiddlewareMakesNoSecurityDecision
 - ADDED Requirements
-- Requirements
+- Requirement: Load annotated dataset
 - ADDED Requirements
 - ADDED Requirements
 - Requirements
 - Requirement: Ephemeral retention uses a bounded working copy
 - 002_tenant_template_schema.py
 - 035_document_entities_provenance.py
-- 039_tenant_integration_profiles.py
+- test_seed_bootstrap_batch.py
 - Multi-tenant NER Platform investor/exec deck (scroll-snap slide deck)
 - extends
 - ADDED Requirements
 - setup_test_db.py
 - Requirement: Contract-authorized SQL execution
 - MODIFIED Requirements
-- Requirement: Client-Side File Preview
+- Requirements
 - Requirement: System Admin Cross-Tenant User Creation Endpoint
 - TestStatusToStageMapping
 - ADDED Requirements
@@ -376,7 +376,7 @@
 - Requirement: SQL query generation and validation
 - Requirement: Dashboard Summary Endpoint
 - Requirement: Promote model version
-- SlidingWindowRateLimiter
+- TenantMismatchError
 - ADDED Requirements
 - ADDED Requirements
 - Requirement: Extraction Service Endpoints Auto-Resolve Tenant ID from JWT
@@ -450,7 +450,7 @@
 - Requirement: Approve training job
 - Requirement: Widget API key management
 - test_chat_api_retrieval_status.py
-- data_sources/__init__.py
+- review_queue.py
 - _FakeResult
 - ADDED Requirements
 - ADDED Requirements
@@ -780,7 +780,7 @@
 - Requirement: Multi-Token Drag Span Creation
 - Requirements
 - Requirement: Fixture setup scripts refuse non-test databases
-- SQLAttempt
+- SQLGenerator
 - Verification Plan
 - Requirement: Safe connection lifecycle interface
 - ADDED Requirements
@@ -826,9 +826,9 @@
 - Requirements
 - portal-containerization Specification
 - TestChatEndpointTurnShape
-- database.py
+- get_resolver
 - test_local_compose_delivery_evidence.py
-- test_entity_resolver.py
+- Chat Attachment Upload — End-to-End Discovery and Requirements Baseline
 - ADDED Requirements
 - ADDED Requirements
 - 2026-06-09-sm-02-document-ingestion/tasks.md
@@ -1093,11 +1093,11 @@
 - Requirement: Document provenance and retention metadata
 - Requirement: Query extracted entities
 - Infrastructure
-- _spec
+- auth_header
 - Requirement: Only platform default adapters are executable in this change
 - 2026-09-10-cap-6-local-compose-delivery-migration-and-operational-evidence/design.md
-- TestMentionExtraction
-- 041_azure_blob_sync_ledger.py
+- test_seed_bootstrap_acceptance.py
+- test_retrain_request.py
 - 2026-06-17-add-login-dashboard-transition/tasks.md
 - 2026-06-17-fix-worker-host-routing/tasks.md
 - Requirement: Get active model version
@@ -1129,7 +1129,7 @@
 - Requirement: Annotation Action Bar
 - Requirement: Span Inspector
 - Bugs: Tenant Self-Service Data Sources
-- TestBuildCandidates
+- RetrainingDecisionPage.tsx
 - Requirement: Tenant-Scoped User Management
 - 2026-06-11-training-approval-gate/tasks.md
 - 2026-06-15-promote-warmup-integration/tasks.md
@@ -1177,12 +1177,12 @@
 - Requirement: Pre-labeling and Suggestion Flow
 - Requirement: Task Status Lifecycle
 - Requirement: Token-Click Span Creation
-- Requirement: Settings Page Placeholder
+- openspec/specs/settings-page/spec.md
 - openspec/specs/worker-network-config/spec.md
 - 2026-09-11-redesign-azure-blob-connection-ui/design.md
 - _sanitize_error
 - TestTelemetry
-- 040_tenant_data_source_connections.py
+- Requirement: Sampled Acceptance Gate
 - 2026-06-08-env-config-setup/tasks.md
 - ADDED Requirements
 - 2026-06-22-fix-promote-inprogress-transition/tasks.md
@@ -1204,9 +1204,9 @@
 - 2026-09-08-fix-batch-runs-scroll-layout/tasks.md
 - ADDED Requirements
 - templates/tasks.md
-- Requirement: Reranked document context
+- CannedStreamOrchestrator
 - Requirement: Structured retrieval returns candidate document IDs
-- Requirement: Callers Construct URLs Without {tid}
+- Requirement: Retraining Decision Surface
 - Requirement: Get extraction run status
 - Requirement: Real-time extraction
 - Requirement: Annotation Toolbar
@@ -1252,14 +1252,14 @@
 - external-postgresql-chat-sql-generation/tasks.md
 - 2026-09-10-cap-5-tenant-data-source-administration-portal/tasks.md
 - Verification Plan
-- export.py
+- annotation_service/main.py
 - conversation_entity_state.py
 - analytics_proxy.py
 - Deployment: tenant-self-service-data-sources-20260909-2 — dev
 - 2026-09-11-manual-blob-sync-trigger/proposal.md
 - Security -- tenant-self-service-data-sources-20260909-2
 - TestBaseModelPathIsCalibrated
-- 042_external_pg_contracts.py
+- training_service/worker.py
 - 2026-09-10-cap-4-contract-governed-external-postgresql-query-path-superseded-unrecorded/tasks.md
 - 2026-09-10-cap-4-contract-governed-external-postgresql-query-path/tasks.md
 - Tasks — cap-6-local-compose-delivery-migration-and-operational-evidence
@@ -1268,7 +1268,7 @@
 - summary.md
 - Load -- tenant-self-service-data-sources-20260909-2
 - 2026-09-11-redesign-azure-blob-connection-ui/proposal.md
-- softmax
+- test_inference_confidence_calibration.py
 - external-postgresql-chat-sql-generation/proposal.md
 - dependencies
 - Integration -- tenant-self-service-data-sources-20260909-2
@@ -1279,52 +1279,390 @@
 - ADDED Requirements
 - k6-smoke-avg.js
 - Requirement: Manual sync-now control
-- extract_entities
-- imported-documents/page.tsx
+- v1/llm_prelabel.py
+- ImportedDocuments.tsx
 - 2026-09-11-redesign-azure-blob-connection-ui/tasks.md
 - ADR-015. External Chat Replies Persist; External Rows Do Not
 - ADR-016. Contract-Grounded External SQL Generation
 - 2026-09-11-manual-blob-sync-trigger/tasks.md
-- TestModeDoesNotAffectSkipLogic
+- Requirement: Sampled Acceptance Gate
 - conftest.py
 - test_tenant_document_registry.py
-- entities.py
-- DatabasePoolCollector
+- exported
+- Requirement: Review Outcomes Become Confirmed Spans
 - test_tenant_data_plane_record.py
 - test_tenant_provisioning_data_plane.py
-- widget_keys.py
-- test_relational_projection_generator.py
-- Tenant
+- Requirements
+- test_seed_bootstrap_proposal.py
+- ADDED Requirements
 - Tenant-Owned PostgreSQL Data Plane — Customer Prerequisites Runbook
 - tenant-postgresql-data-plane/proposal.md
 - Requirement: Tenant provisioning clones the template atomically
-- build_relational_delete_statements
-- select_single_value
-- training_service/api/v1/schemas.py
-- TestBackfillSemanticValues
+- ADDED Requirements
+- test_extraction_confidence_filtering.py
+- test_review_outcomes.py
+- Tenant Admin Navigation Restructure — Implementation Map (Phase 1)
 - test_data_plane_route_gate.py
 - test_data_plane_connection_replacement.py
-- test_data_plane_health.py
-- test_upload_precheck.py
-- 043_tenant_data_plane.py
+- data_plane/tasks.py
+- ADDED Requirements
+- ADDED Requirements
 - Requirement: Tenant Creation
 - test_tenant_engine_construction_boundary.py
-- reconcile_entity_tables_sync
+- Requirements
 - Requirement: System Admin chooses and observes the tenant data plane
-- infer
+- test_seed_bootstrap_readiness.py
 - Alembic migrations
+- test_promotion_evidence.py
+- test_retrieval_foundation.py
+- _base_state
+- ADDED Requirements
+- Verification Plan
+- Decisions
+- run_llm_review_async
+- ADDED Requirements
+- import_.py
+- _fix_undefined_alias
+- test_retraining_decision.py
+- Requirement: Inline preview truncation is independent of export availability
+- Requirement: Retriever interface
+- test_chat_api_chart_response.py
+- test_tenant_store_migration_delegation.py
+- Chat Attachment Upload — Technical Design
+- ADDED Requirements
+- test_entity_resolver_mentions.py
+- test_migration_042_045_guards.py
+- ADDED Requirements
+- Requirement: Ephemeral retention uses a bounded working copy
+- test_imported_annotations_list.py
+- Verification Plan
+- Verification Plan
+- Requirement: Role Navigation Matrix
+- Requirement: Safe activation and concurrent capability limits
+- Requirement: Only platform default adapters are executable in this change
+- Requirement: Annotation Export
+- Requirement: Chart rendering in the chat thread
+- Requirement: A tenant content store is a distinct write-capable connection
+- Requirements
+- Requirement: Notification Bell
+- review_resolution.py
+- test_tenant_store_migrate.py
+- promotion_evidence.py
+- emit
+- 2026-09-07-seed-bootstrap/design.md
+- Verification Plan
+- Requirement: Attachment-bearing chat turns
+- Requirement: CSV export endpoint
+- test_entity_resolution_metrics.py
+- CAP-2 — Chat Composer Attachment UX
+- CAP-3 — Conversation-Scoped Attachment Persistence
+- CAP-4 — CSV Ingestion Branch for Chat Attachments
+- CAP-5 — Documents Library Exclusion and Hard-Delete Cleanup
+- 2026-09-03-llm-assisted-prelabeling/design.md
+- Verification Plan
+- Verification Plan
+- Requirement: Task Assignment Form
+- Requirement: Chart event on the streaming endpoint
+- Decisions
+- Requirement: Define / Edit Entity Type Slide-Over
+- ADDED Requirements
+- ADDED Requirements
+- Requirement: Two-stage generation for chart-eligible turns
+- Requirement: Reads and deletes route by the recorded kind, never by current configuration
+- review.py
+- _extract_label_set
+- fine_tune_model
+- test_cap_5_documents_library_exclusion_and_delete.py
+- Requirement: Load annotated dataset
+- Verification Plan
+- 2026-09-10-automated-annotation-guided-workflow/design.md
+- 2026-09-14-cap-2-chat-composer-attachment-ux/design.md
+- cap-6-session-scoped-attachment-retrieval/design.md
+- chat-chart-generation/design.md
+- Requirement: Tenant users can see where their content is stored
+- Requirement: Chat attachment staging
+- test_data_plane_task_retry.py
+- 2026-09-03-annotation-mode-selection/design.md
+- Verification Plan
+- Verification Plan
+- 2026-09-07-training-data-integrity/design.md
+- Requirement: Annotation Export
+- Verification Plan
+- Verification Plan
+- 2026-09-08-human-gated-retraining/design.md
+- 2026-09-10-import-annotation-training-eligibility/design.md
+- Requirement: Notification Read API
+- Verification Plan
+- Verification Plan
+- Verification Plan
+- Verification Plan
+- Verification Plan
+- Verification Plan
+- Verification Plan
+- Verification Plan
+- Verification Plan
+- Verification Plan
+- Verification Plan
+- Requirement: Pre-Step-1 Upload Entry Points
+- TestExecutionUnderRestrictedRole
+- v1/auth.py
+- test_data_plane_recovery_sweep.py
+- _FakeSession
+- test_training_eligibility_overview.py
+- 2026-09-10-tenant-admin-console-nav-restructure/design.md
+- ADDED Requirements
+- 2026-09-14-cap-4-csv-ingestion-branch-for-chat-attachments/design.md
+- 2026-09-16-export-chat-results/design.md
+- Requirement: Sampled Acceptance Gate
+- retraining_decision.py
+- _schema
+- test_migration_047_chat_messages_export_rows.py
+- test_migration_048_chat_message_chart.py
+- test_notifications_api.py
+- Requirement: Pre-labeling
+- Verification Plan
+- 2026-09-10-entity-type-provenance/design.md
+- 2026-09-10-training-eligibility-overview/design.md
+- Requirement: Retraining Decision Surface
+- Requirement: Submit training job
+- Requirement: Load annotated dataset
+- Verification Plan
+- 2026-09-14-cap-3-conversation-scoped-attachment-persistence/design.md
+- 2026-09-14-cap-5-documents-library-exclusion-and-hard-delete-cleanup/design.md
+- Requirement: Bulk-Accept Unmapped Types
+- Requirement: Inline preview truncation and file card, driven by result count
+- Requirement: Attachment-bearing send interaction
+- Requirement: Conversation ownership determines retrieval visibility
+- Verification Plan
+- Requirement: Idempotent source version reconciliation and temporary retention
+- Verification Plan
+- audit_sample_size
+- llm_review.py
+- 2026-09-03-llm-assisted-prelabeling/tasks.md
+- 2026-09-08-confidence-routed-review/tasks.md
+- 2026-09-10-automated-annotation-guided-workflow/tasks.md
+- Requirement: Span CRUD
+- 2026-09-10-import-annotation-training-eligibility/tasks.md
+- Requirement: Annotation Task Endpoint Role Gates
+- Requirement: Role Navigation Matrix
+- Requirement: Train Model Hand-off
+- Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently
+- 2026-09-12-manual-training-data-source-scoping/tasks.md
+- Verification Plan
+- 2026-09-16-chat-export-ux-refinements/design.md
+- 2026-09-18-single-source-tenant-ddl/design.md
+- Requirements
+- Feature Decomposition: Chat Attachment Upload
+- 2026-09-08-human-gated-retraining/tasks.md
+- 2026-09-10-cap-5-single-request-manual-annotation-gestures/design.md
+- Requirement: Multi-Token Drag Span Creation
+- Requirement: Entity Type Card
+- Requirement: Train Model Hand-off
+- Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently
+- Requirement: Role Navigation Matrix
+- ADDED Requirements
+- cap-6-session-scoped-attachment-retrieval/tasks.md
+- tenant-owned-blob-storage/proposal.md
+- tenant-owned-blob-storage/tasks.md
+- Requirement: Submit training job
+- parse_conll
+- parse_jsonl
+- _mention_matches
+- TestMultiSubjectPlanRewriting
+- 039_seed_bootstrap.py
+- 040_confidence_routed_review.py
+- 011. Conversation-Scoped Chat Attachments in the Existing Document Model
+- 012. CSV Support as a Branch in the Existing Ingestion Pipeline
+- 013. Single-Environment Dev/Local Deployment with Docker Compose and Recreate Rollout
+- ADR-014. Chat Export: Persisted Row Snapshot, Rendered On-Demand
+- 014. Conversation Scoping Is a Mandatory Retrieval Guardrail, Not a Model-Selected Scope
+- 2026-09-03-annotation-mode-selection/proposal.md
+- 2026-09-03-llm-assisted-prelabeling/proposal.md
+- 2026-09-07-seed-bootstrap/proposal.md
+- 2026-09-07-seed-bootstrap/tasks.md
+- 2026-09-07-training-data-integrity/proposal.md
+- 2026-09-08-confidence-routed-review/proposal.md
+- 2026-09-08-human-gated-retraining/proposal.md
+- 2026-09-10-automated-annotation-guided-workflow/proposal.md
+- 2026-09-10-cap-5-single-request-manual-annotation-gestures/proposal.md
+- 2026-09-10-entity-type-provenance/proposal.md
+- 2026-09-10-entity-type-provenance/tasks.md
+- 2026-09-10-import-annotation-training-eligibility/proposal.md
+- 2026-09-10-tenant-admin-console-nav-restructure/proposal.md
+- 2026-09-10-training-eligibility-overview/proposal.md
+- 2026-09-12-annotation-workflow-review-simplification/proposal.md
+- Requirement: Annotation Mode Selector Visibility
+- Requirement: Upload deep link
+- 2026-09-12-automated-batch-stage-visibility/proposal.md
+- 2026-09-12-import-annotation-training-workflow/proposal.md
+- Requirement: Workflow Steps
+- 2026-09-12-large-batch-repeatable-upload/proposal.md
+- 2026-09-12-manual-annotation-landing-rework/proposal.md
+- Requirement: Notification Bell
+- Requirement: Submit slide-over source scope
+- 2026-09-14-cap-2-chat-composer-attachment-ux/proposal.md
+- 2026-09-14-cap-3-conversation-scoped-attachment-persistence/proposal.md
+- ADDED Requirements
+- 2026-09-14-cap-4-csv-ingestion-branch-for-chat-attachments/proposal.md
+- ADDED Requirements
+- 2026-09-14-cap-5-documents-library-exclusion-and-hard-delete-cleanup/proposal.md
+- Requirement: Documents library excludes conversation-linked rows
+- 2026-09-16-chat-export-ux-refinements/proposal.md
+- 2026-09-16-export-chat-results/proposal.md
+- 2026-09-16-export-chat-results/tasks.md
+- 2026-09-18-single-source-tenant-ddl/proposal.md
+- Requirement: Tenant-scoped migration DDL is authored once and delegated to
+- cap-6-docker-verification-of-single-request-annotation-gestures/proposal.md
+- cap-6-session-scoped-attachment-retrieval/proposal.md
+- chat-chart-generation/proposal.md
+- chat-chart-generation/tasks.md
+- Requirement: Workflow Steps
+- Requirement: Retraining Page Framing
+- Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently
+- scripts
+- _EngineLRU
+- 052_tenant_data_plane.py
+- Run: chat-attachment-upload-20260910
+- Requirement: Entity Type Definition
+- 2026-09-07-training-data-integrity/tasks.md
+- Requirement: Token-Click Span Creation
+- Requirement: Entity Type Provenance
+- 2026-09-10-training-eligibility-overview/tasks.md
+- 2026-09-12-annotation-workflow-review-simplification/design.md
+- 2026-09-12-automated-annotation-landing-upload-entry-points/proposal.md
+- Requirement: Pre-Step-1 Upload Entry Points
+- Verification Plan
+- Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently
+- Requirement: Pre-Step-1 Upload Entry Points
+- Verification Plan
+- 2026-09-12-automated-retraining-destepped/proposal.md
+- Verification Plan
+- Verification Plan
+- Verification Plan
+- 2026-09-12-manual-annotation-landing-rework/design.md
+- Verification Plan
+- 2026-09-12-manual-training-data-source-scoping/proposal.md
+- Verification Plan
+- Verification Plan
+- 2026-09-15-import-workspace-bulk-accept-and-train-handoff/proposal.md
+- Verification Plan
+- Requirement: Upload Progress Bar
+- Requirement: List training jobs
+- _filename_filter_literals
+- consumed_spans.py
+- 050_azure_blob_sync_ledger.py
+- 2026-09-03-annotation-mode-selection/tasks.md
+- Requirement: Post-processing confidence filtering
+- Requirement: Entity Type Responses Include Provenance
+- 2026-09-12-automated-landing-start-step-below-prereqs/proposal.md
+- Requirement: Retraining Is Not a Numbered Step
+- Requirement: Retraining Page Framing
+- Requirement: Retraining Evidence Link
+- 2026-09-12-automated-retraining-destepped/tasks.md
+- Requirement: Import Deep Link
+- 2026-09-12-import-annotation-training-workflow/tasks.md
+- 2026-09-12-import-workflow-direct-to-training/proposal.md
+- 2026-09-12-manual-annotation-notification-routes-to-training/proposal.md
+- Requirement: Upload deep link
+- 2026-09-14-cap-4-csv-ingestion-branch-for-chat-attachments/tasks.md
+- Requirement: Conversation deletion hard-deletes linked attachment files and derived artefacts
+- 2026-09-14-cap-5-documents-library-exclusion-and-hard-delete-cleanup/tasks.md
+- 2026-09-14-multi-document-task-assignment/proposal.md
+- Requirement: Workflow Steps
+- 2026-09-15-import-workspace-bulk-accept-and-train-handoff/tasks.md
+- 2026-09-16-chat-export-ux-refinements/tasks.md
+- Requirement: Chat response export availability
+- 2026-09-18-single-source-tenant-ddl/tasks.md
+- Requirement: Documents library excludes conversation-linked rows
+- Requirement: Upload deep link
+- Requirement: Submit slide-over source scope
+- strip_bio_prefix
+- 002_main_feature_backlog.py
+- 042_automated_annotation_guided_workflow.py
+- 045_imported_annotation_pending_mapping.py
+- 051_external_pg_contracts.py
+- ADR-013. Large automated batches are promoted without any human review
+- 2026-09-10-tenant-admin-console-nav-restructure/tasks.md
+- 2026-09-12-annotation-workflow-review-simplification/tasks.md
+- 2026-09-12-automated-annotation-landing-upload-entry-points/tasks.md
+- 2026-09-12-automated-landing-start-step-below-prereqs/tasks.md
+- 2026-09-12-import-workflow-direct-to-training/tasks.md
+- 2026-09-14-cap-2-chat-composer-attachment-ux/tasks.md
+- Requirement: Document Table
+- Requirement: Automatic Large-Batch Promotion
+- Requirement: Batch Kind
+- Requirement: Batch Pre-labeling
+- Requirement: Entity Schema Proposal
+- Requirement: Initial-Batch Review Guidance
+- Requirement: Named Batch State
+- Requirement: Pre-Submission Readiness Check
+- Requirement: Q&A-Pair Proposal Input
+- Requirement: Schema Proposal Approval
+- Requirement: Reject training job
+- CAP-6 Sanity Verification
+- setup_demo_tenants.py
+- _retrying
+- test_blob_sync_task_routing.py
+- 039b_tenant_integration_profiles.py
+- 049_tenant_data_source_connections.py
+- 2026-09-10-cap-5-single-request-manual-annotation-gestures/tasks.md
+- 2026-09-12-automated-batch-stage-visibility/tasks.md
+- 2026-09-12-manual-annotation-landing-rework/tasks.md
+- 2026-09-12-manual-annotation-notification-routes-to-training/tasks.md
+- 2026-09-14-cap-3-conversation-scoped-attachment-persistence/tasks.md
+- 2026-09-14-multi-document-task-assignment/tasks.md
+- cap-6-docker-verification-of-single-request-annotation-gestures/design.md
+- Requirement: Chat response export availability
+- Requirement: Conversation deletion hard-deletes linked attachment files and derived artefacts
+- Requirement: Tenant Context Enforcement
+- Requirement: Gateway Extraction Proxy Uses JWT-Only URL Structure
+- Requirements
+- Requirement: Dataset-to-model lineage diagram
+- Requirement: Job list card content
+- Requirement: Retraining Evidence Link
+- Requirements
+- Requirement: Approve training job
+- Requirement: Cancel training job
+- Requirement: Hide submit job action for non-tenant-admin roles
+- Requirement: Submit form span preflight is informational only
+- axe-scan.mjs
+- verify-docker-annotation-fix/summary.md
+- ChartFrame
+- 004_documents_conversation_id.py
+- verify-docker-annotation-fix-20260910-dev.md
+- 2026-09-12-large-batch-repeatable-upload/tasks.md
+- cap-6-docker-verification-of-single-request-annotation-gestures/verification.md
+- Requirement: Per-request authorization context isolation
+- Requirement: Rate limiting
+- Requirement: Auto-Polling for In-Flight Documents
+- Requirement: Soft Delete
+- Requirement: Status Badge
+- Requirement: Design token compliance
+- Requirement: Detail panel defaults to the most recent job when none is selected
+- Requirement: Horizontal status timeline
+- Requirement: Live running-job callout
+- Requirement: Page header matches the mockup's breadcrumb, heading scale, and submit button
+- health-check.md
+- verify-docker-annotation-fix/integration.md
+- next
+- 003_chat_messages_attachments.py
+- 005_document_chunks_conversation_id.py
+- 006_content_store_kind.py
+- cap-6-docker-verification-of-single-request-annotation-gestures/tasks.md
+- Requirement: Filter tabs do not overflow into adjacent content
+- Requirement: Submit slide-over visual parity without behavior change
 
 ## God Nodes (most connected - your core abstractions)
-1. `app()` - 123 edges
-2. `create_access_token()` - 120 edges
-3. `FakeSession` - 110 edges
-4. `vitest` - 108 edges
-5. `FakeLLM` - 98 edges
-6. `@testing-library/react` - 96 edges
-7. `authFetch()` - 96 edges
-8. `session_factory()` - 91 edges
-9. `RetrievalResult` - 90 edges
-10. `make_generator()` - 85 edges
+1. `app()` - 141 edges
+2. `create_access_token()` - 140 edges
+3. `authFetch()` - 132 edges
+4. `vitest` - 131 edges
+5. `@testing-library/react` - 119 edges
+6. `FakeSession` - 112 edges
+7. `session_factory()` - 112 edges
+8. `FakeLLM` - 98 edges
+9. `react` - 91 edges
+10. `RetrievalResult` - 90 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Logo — dark theme SVG` --semantically_similar_to--> `Design: Fix Dark Theme Issues Across Portal Pages`  [INFERRED] [semantically similar]
@@ -1333,10 +1671,10 @@
   .github/workflows/telemetry-scan.yml → .claude/skills/openspec-verify-change/SKILL.md
 - `Iris Run: add-doc-docx-upload-support` --semantically_similar_to--> `spec-driven Workflow Schema`  [INFERRED] [semantically similar]
   .iris/runs/add-doc-docx-upload-support-20260903/RUN-STATE.md → .codex/skills/openspec-apply-change/SKILL.md
-- `test_row_61_adapters_receive_values_never_a_reference_or_a_resolver()` --uses--> `TenantSecretContext`  [INFERRED]
-  tests/test_tenant_integration_profile.py → src/shared/integration_profile/secrets.py
 - `OpenCode OpsX Bulk Archive Command` --references--> `OpenSpec Sync Specs Skill (Claude)`  [AMBIGUOUS]
   .opencode/commands/opsx-bulk-archive.md → .claude/skills/openspec-sync-specs/SKILL.md
+- `Fix Dark Theme Issues - Tasks` --conceptually_related_to--> `Logo (Dark Theme) SVG`  [AMBIGUOUS]
+  src/openspec/changes/fix-dark-theme-issues/tasks.md → src/portal/public/logo-dark-theme.svg
 
 ## Import Cycles
 - None detected.
@@ -1370,91 +1708,91 @@
 - **Local observability release-gate: telemetry scan procedure validated against clean and failing captures plus the workload-instrumentation test suite** — docs_local_dev_telemetry_scan, docs_observability_evidence_scan_clean_run_pass, docs_observability_evidence_workload_instrumentation_tests_run [INFERRED 0.85]
 - **Training job governance evolution: ADR-006 base pipeline refined by ADR-009 (who sets hyperparams) and ADR-010 (readiness measurement)** — docs_adr_006_training_infrastructure_celery_gpu_workers, docs_adr_009_system_admin_sets_training_hyperparameters_admin_set_hyperparams, docs_adr_010_per_entity_type_dataset_threshold_per_entity_readiness [INFERRED 0.85]
 
-## Communities (1392 total, 38 thin omitted)
+## Communities (1740 total, 50 thin omitted)
 
 ### Community 0 - "FakeSession"
-Cohesion: 0.02
-Nodes (115): Raised when every attempt failed. Deliberately an exception rather than a…, SQLGenerationFailed, Answers a natural-language question against extracted structured entity data.…, StructuredRetrievalTool, A statement that outruns the 10s bound is cancelled, the transaction is rolled…, verification.md rows 6, 7, 13 — the execution path either runs a validated…, definition_row(), FakeLLM (+107 more)
+Cohesion: 0.03
+Nodes (97): Answers a natural-language question against extracted structured entity data.…, StructuredRetrievalTool, A statement that outruns the 10s bound is cancelled, the transaction is rolled…, verification.md rows 6, 7, 13 — the execution path either runs a validated…, FakeLLM, FakeSession, _answer_from(), _AnswerLLM (+89 more)
 
-### Community 1 - "integration_profile/service.py"
+### Community 1 - "test_tenant_integration_profile.py"
 Cohesion: 0.04
-Nodes (83): The declared set of adapter selections, and which of them are executable. A…, Names of the slots whose recorded selection is not executable in this change., unsupported_selections(), declared_secret_fields(), InvalidSecretReference, ProfileValidationError, Exception, Typed, allowlisted profile configuration. A value is rejected because it fails… (+75 more)
+Nodes (117): The declared set of adapter selections, and which of them are executable. A…, Names of the slots whose recorded selection is not executable in this change., unsupported_selections(), declared_secret_fields(), InvalidSecretReference, ProfileValidationError, Exception, Typed, allowlisted profile configuration. A value is rejected because it fails… (+109 more)
 
 ### Community 2 - "authFetch"
 Cohesion: 0.03
-Nodes (90): @tanstack/react-query, JobsPage(), TrainingJob, DataPlaneMode, NewTenantPage(), mockAuthFetch, mockPush, Tenant (+82 more)
+Nodes (68): ADR-0001, @tanstack/react-query, JobsPage(), TrainingJob, ROLES, TenantDetail, TenantDetailPage(), TenantUser (+60 more)
 
 ### Community 3 - "AnnotationPage.tsx"
-Cohesion: 0.03
-Nodes (84): AnnotationActionBar(), AnnotationActionBarProps, SAVE_LABELS, SaveState, task, AnnotationPage(), mockAuthFetch, MY_TASK (+76 more)
+Cohesion: 0.05
+Nodes (48): AnnotationPage(), mockAuthFetch, MY_TASK, OTHER_ANNOTATORS_TASK, searchParamsHolder, buildEntityColors(), ENTITY_COLORS, LayoutMode (+40 more)
 
 ### Community 4 - "extraction.ts"
 Cohesion: 0.03
-Nodes (65): BaseModelConfirmDialog(), BaseModelConfirmDialogProps, BatchDocumentSelectModal(), BatchDocumentSelectModalProps, EXTRACTED_DOC, FRESH_DOC, MIXED_DOCS, mockUseEligibleDocuments (+57 more)
+Nodes (69): BaseModelConfirmDialog(), BaseModelConfirmDialogProps, BatchDocumentSelectModal(), BatchDocumentSelectModalProps, EXTRACTED_DOC, FRESH_DOC, MIXED_DOCS, mockUseEligibleDocuments (+61 more)
 
 ### Community 5 - "entity_eval/runner.py"
 Cohesion: 0.04
-Nodes (50): ExpectedEntity, FixtureCase, FixtureError, load_fixture(), _parse_case(), Exception, Path, The labelled entity-quality fixture and its loader. Every case is drawn from a… (+42 more)
+Nodes (56): fold_text(), Removes Unicode format characters (general category `Cf`) and folds typographic…, apply_semantic_normalization(), Populates the six semantic value fields on each entity in place, dispatched by…, ExpectedEntity, FixtureCase, FixtureError, load_fixture() (+48 more)
 
 ### Community 6 - "test_annotation_import.py"
-Cohesion: 0.05
-Nodes (71): compute_entity_type_counts(), generate_uuid(), get_known_entity_types_lower(), get_session(), get_tenant_id(), import_annotations(), parse_conll(), parse_jsonl() (+63 more)
+Cohesion: 0.20
+Nodes (29): auth_header(), cleanup_public(), client(), _create_tables_sql(), make_token(), asyncio, fixture, Tests for annotation file import (JSONL and CoNLL) and export merge. (+21 more)
 
 ### Community 7 - "ocr_worker.py"
-Cohesion: 0.05
-Nodes (78): needs_tesseract, classify_processing_error(), ContentUnresolvable, _embed_chunks(), extract_text_doc(), extract_text_image(), extract_text_pdf(), extract_text_pdf_as_image() (+70 more)
-
-### Community 8 - "DocumentIngestionService"
-Cohesion: 0.07
-Nodes (73): AST, requires_real_stores, Where this document came from, in the source's own terms. Timestamps are never…, SourceReference, InProcessDispatcher, ProcessingDispatcher, Protocol, Post-ingestion processing dispatch. The payload is document identity and tenant… (+65 more)
-
-### Community 9 - "provision_tenant_data_plane"
-Cohesion: 0.05
-Nodes (63): ModuleType, provision_tenant_data_plane(), Provisions `tenant_id`'s own store: `vector` extension, schema, baseline +…, _set_outcome(), apply(), Connection, Apply the tenant-store baseline and pending revisions to one store (Design D5,…, True when `schema` exists, holds at least one table, and has no… (+55 more)
-
-### Community 10 - "SQLGenerator"
 Cohesion: 0.04
-Nodes (77): accepted_columns(), accepted_relations(), _error_class(), _fix_document_name_reference(), _force_nulls_last_on_desc(), _is_identifier_token(), iter_table_references(), _langsmith_extra() (+69 more)
+Nodes (62): needs_tesseract, classify_processing_error(), ContentUnresolvable, _embed_chunks(), extract_text_doc(), extract_text_image(), extract_text_pdf(), extract_text_pdf_as_image() (+54 more)
+
+### Community 8 - "session_factory"
+Cohesion: 0.06
+Nodes (111): AST, requires_real_stores, _Resolver, register_kind(), Where this document came from, in the source's own terms. Timestamps are never…, SourceReference, Records dispatches without executing them. For tests and for verification row…, RecordingDispatcher (+103 more)
+
+### Community 9 - "migrate.py"
+Cohesion: 0.06
+Nodes (50): ModuleType, The real on-disk CA bundle this interpreter's OpenSSL trusts by default.…, system_ca_bundle_path(), apply(), Connection, Apply the tenant-store baseline and pending revisions to one store (Design D5,…, True when `schema` exists, holds at least one table, and has no…, Apply baseline + every tenant-store revision to `schema` on `conn`, then record… (+42 more)
+
+### Community 10 - "sql_generator.py"
+Cohesion: 0.04
+Nodes (55): accepted_columns(), apply_conversation_scope(), _conversation_predicate(), conversation_scope_columns(), _error_class(), _fix_document_name_reference(), _force_nulls_last_on_desc(), _is_identifier_token() (+47 more)
 
 ### Community 11 - "_spec"
-Cohesion: 0.15
-Nodes (11): _child_rows(), verification.md rows 10-12, verification.md row 13, verification.md rows 14, 15, 24, 33, 34, verification.md rows 35, 36, 37, 38, _spec(), _statements(), TestCollisionResolution (+3 more)
+Cohesion: 0.06
+Nodes (39): build_relational_delete_statements(), build_routing_index(), `sql_identifier -> entities routed to it`, skipping every unroutable entity. An…, The one value a `single` definition contributes to the document's `subject`…, The value a `subject` column receives, decided by the definition's…, Clear this document from every **existing** generated table, plus its `subject`…, `uppercased entity_type literal -> the one definition that claims it`. Only…, route_entities() (+31 more)
 
 ### Community 12 - "entity_views.py"
-Cohesion: 0.03
-Nodes (102): _checked_identifier(), build_projection_statements(), _checked_table(), _child_insert(), _child_params(), project_document_entities(), Projects a document's final entity list into the tenant's generated relational…, The value a `subject` column receives, decided by the definition's… (+94 more)
+Cohesion: 0.04
+Nodes (67): build_projection_statements(), _checked_table(), _child_insert(), _child_params(), project_document_entities(), Projects a document's final entity list into the tenant's generated relational…, `confidence` and `page_number` are projected; provenance is not.…, Every statement that writes this document's relational rows. Executes nothing.… (+59 more)
 
 ### Community 13 - "RetrievalResult"
 Cohesion: 0.05
-Nodes (51): Any, resolve_rerank_candidate_count(), resolve_reranker_enabled(), resolve_top_k(), RetrievalResult, CrossEncoderReranker, _metrics(), Protocol (+43 more)
+Nodes (50): Any, resolve_rerank_candidate_count(), resolve_reranker_enabled(), resolve_top_k(), RetrievalResult, CrossEncoderReranker, _metrics(), Protocol (+42 more)
 
 ### Community 14 - "FakeSession"
 Cohesion: 0.05
-Nodes (44): Closed set of per-attempt outcomes. `EMPTY_WITH_DEFECT` is the *only* way a…, SQLAttemptOutcome, FakeLLM, _FakeResult, FakeSession, _generator(), `sql_attempt` records the shape of the query, never the query. Verification row…, A rejected statement has to be visible even when INFO is turned off. (+36 more)
+Nodes (42): FakeLLM, _FakeResult, FakeSession, _generator(), `sql_attempt` records the shape of the query, never the query. Verification row…, A rejected statement has to be visible even when INFO is turned off., End to end through the real handler, since that is what `docker logs` sees., Answers the profile queries from canned tables and every data query with one… (+34 more)
 
 ### Community 15 - "chat.py"
-Cohesion: 0.04
-Nodes (58): field_validator, chat(), chat_stream(), _check_tenant_and_rate_limit(), create_conversation(), delete_conversation(), get_conversation(), list_conversations() (+50 more)
-
-### Community 16 - "test_context_assembly_path_equivalence.py"
-Cohesion: 0.23
-Nodes (8): _make_chunk(), Stands in for RAGOrchestrator's two DB-touching helpers. `prompt_assembly`…, Covers scenario 13: task 6.5. Both execution paths delegate to ContextAssembler…, verification.md rows 71, 72, 73. `source_assembly` used to slice chunks at a…, _state(), _StubOrchestrator, test_graph_path_matches_direct_assembler_call(), TestCitationsDeriveFromAdmittedEvidence
-
-### Community 17 - "shared/auth.py"
-Cohesion: 0.04
-Nodes (76): add_bearer_security(), app_error_handler(), health(), lifespan(), exception_handler, FastAPI, get, Request (+68 more)
-
-### Community 18 - "data-sources.ts"
 Cohesion: 0.03
-Nodes (113): react-dom, DataSourceDetailPage(), DetailContent(), mockAuthFetch, UPDATABLE, ContractsContent(), handlePublish(), handleUpload() (+105 more)
+Nodes (84): field_validator, _await_processed(), chat(), chat_stream(), _check_tenant_and_rate_limit(), _conversation_attachments_query(), create_conversation(), delete_conversation() (+76 more)
+
+### Community 16 - "BatchAcceptancePage.tsx"
+Cohesion: 0.04
+Nodes (57): AutomatedLayout(), ReviewBatchLandingPage(), AutomatedStepper(), stateStyle, StepDef, StepState, BatchAcceptancePage(), BatchAcceptancePageProps (+49 more)
+
+### Community 17 - "get_engine"
+Cohesion: 0.05
+Nodes (69): add_bearer_security(), health(), lifespan(), FastAPI, get, BaseHTTPMiddleware, Request, TenantContextMiddleware (+61 more)
+
+### Community 18 - "react"
+Cohesion: 0.03
+Nodes (122): react, react-dom, DetailContent(), UPDATABLE, ContractsContent(), handlePublish(), handleUpload(), DataSourcesContent() (+114 more)
 
 ### Community 19 - "domain_metrics.py"
-Cohesion: 0.03
-Nodes (107): main(), Regenerate `docs/observability/metric-contract.md` from the live declarations.…, render_family(), _defect_class(), The defect's category, without its payload. `SQLAttempt.defect` carries the…, delete_relational_entities(), Clear the document's relational rows on the caller's connection. Resolves which…, _accumulate_entity_counts() (+99 more)
+Cohesion: 0.04
+Nodes (78): main(), Regenerate `docs/observability/metric-contract.md` from the live declarations.…, render_family(), _defect_class(), The defect's category, without its payload. `SQLAttempt.defect` carries the…, _record_metric(), allowlist_violations(), _ambient_tenant() (+70 more)
 
 ### Community 20 - "_reconcile"
-Cohesion: 0.10
-Nodes (19): _column_types(), verification.md rows 1-8, 11, 12. A `value_kind` edit changes the catalog; `ADD…, Row 2 — the direction that fixes the observed `PHONE_NUMBER` misconfiguration., Rows 1, 2 over the date type., Row 3 — PostgreSQL provides no cast in either direction between these two,…, Row 4 — `'unknown'` would abort any casting conversion, and with it the admin's…, Row 8 — the values go, the rows stay. `'5 years'` is not `5.0`, and no cast…, Row 7 — `document_entities` is the system of record and keeps every value,… (+11 more)
+Cohesion: 0.07
+Nodes (41): `reconcile_entity_tables` for a synchronous `Connection`. The extraction worker…, reconcile_entity_tables_sync(), _column_types(), _columns(), _drop_schema(), _insert_child_row(), _make_schema(), asyncio (+33 more)
 
 ### Community 21 - "support.js"
 Cohesion: 0.07
@@ -1462,27 +1800,27 @@ Nodes (61): boot(), collectProps(), compileAttr(), compileTemplate(), createComp
 
 ### Community 22 - "vitest"
 Cohesion: 0.03
-Nodes (90): @testing-library/react, vitest, SettingsPage(), AnnotationImportResult(), AnnotationImportResultProps, baseDoc, BASE_MODEL_ID, BASE_MODEL_NAME (+82 more)
+Nodes (86): vitest, SettingsPage(), VALID_SOURCE_SCOPES, ViewMode, BASE_MODEL_ID, BASE_MODEL_NAME, BaseModelCard(), BaseModelCardProps (+78 more)
 
 ### Community 23 - "build_role_statements"
-Cohesion: 0.05
-Nodes (45): _async_dsn(), main(), Provision the least-privilege role that generated chat SQL executes under, then…, build_role_statements(), InvalidIdentifierError, _list_active_tenants(), list_tenant_schemas(), provision_role() (+37 more)
+Cohesion: 0.06
+Nodes (43): _async_dsn(), main(), Provision the least-privilege role that generated chat SQL executes under, then…, build_role_statements(), _checked_identifier(), InvalidIdentifierError, _list_active_tenants(), list_tenant_schemas() (+35 more)
 
 ### Community 24 - "DenseRetriever"
-Cohesion: 0.07
-Nodes (45): _fake_vector(), FakeEmbeddingService, main(), Manual playground for HybridRetriever/SparseRetriever/DenseRetriever — no…, Returns a fixed query vector — swap for the real EmbeddingService if you have…, run_query(), setup(), DenseRetriever (+37 more)
+Cohesion: 0.04
+Nodes (75): _fake_vector(), FakeEmbeddingService, main(), Manual playground for HybridRetriever/SparseRetriever/DenseRetriever — no…, Returns a fixed query vector — swap for the real EmbeddingService if you have…, run_query(), setup(), DenseRetriever (+67 more)
 
-### Community 25 - "NotFoundError"
-Cohesion: 0.03
-Nodes (63): DeclarativeBase, create_tenant(), create_tenant_user(), CreateTenantRequest, deactivate_tenant(), get_tenant(), list_audit_log(), list_tenant_users() (+55 more)
+### Community 25 - "AuditService"
+Cohesion: 0.04
+Nodes (62): app_error_handler(), exception_handler, Request, app_error_handler(), exception_handler, Request, app_error_handler(), exception_handler (+54 more)
 
 ### Community 26 - "@testing-library/user-event"
 Cohesion: 0.05
-Nodes (34): @testing-library/user-event, AuditEventRow(), AuditPage(), formatTimestamp(), KIND_COLORS, mockEvents, mockRefetch, mockTenants (+26 more)
+Nodes (32): @testing-library/user-event, AuditEventRow(), AuditPage(), formatTimestamp(), KIND_COLORS, mockEvents, mockRefetch, mockTenants (+24 more)
 
 ### Community 27 - "RetrievalConfig"
 Cohesion: 0.05
-Nodes (72): ContextFactory, KeyError, _create_schema(), main(), CLI entry point for the retrieval eval harness. Seeds the committed synthetic…, Per-instance/per-call override for retrieval behaviour settings. Any field left…, RetrievalConfig, EmbeddingModelMismatchError (+64 more)
+Nodes (68): ContextFactory, KeyError, _create_schema(), main(), CLI entry point for the retrieval eval harness. Seeds the committed synthetic…, Per-instance/per-call override for retrieval behaviour settings. Any field left…, RetrievalConfig, EmbeddingModelMismatchError (+60 more)
 
 ### Community 28 - "context-usage.ts"
 Cohesion: 0.05
@@ -1490,87 +1828,87 @@ Nodes (60): applyTokenTelemetry(), buildCategory(), buildContextSummary(), capit
 
 ### Community 29 - "test_chat_api_streaming.py"
 Cohesion: 0.07
-Nodes (38): _app(), auth_header(), CannedStreamOrchestrator, _fake_citation(), _iter_sse_events_live(), _make_orchestrator(), NoopGuardrails, _patch_orchestrator() (+30 more)
+Nodes (27): _fake_citation(), _iter_sse_events_live(), _make_orchestrator(), NoopGuardrails, Tests for chat-response-token-streaming. Covers verification.md rows 1-27, 33,…, Covers verification.md rows 8, 9 (task 1.4, 1.5)., Regression: Azure OpenAI interleaves chunks with `choices: []` (e.g. a trailing…, Design Decision 3: source-emptiness is checked before entering the streaming… (+19 more)
 
 ### Community 30 - "ContentStore"
-Cohesion: 0.05
-Nodes (45): requires_minio, retry, ContentStore, Protocol, StorageReference, The application-owned boundary for a document's bytes. Three operations and…, Store bytes and return the reference by which they can be reopened. `filename`…, Return the bytes at a previously returned reference, or None if they are gone. (+37 more)
+Cohesion: 0.04
+Nodes (62): requires_minio, retry, ContentStore, Protocol, StorageReference, The application-owned boundary for a document's bytes. Three operations and…, Store bytes and return the reference by which they can be reopened. `filename`…, Return the bytes at a previously returned reference, or None if they are gone. (+54 more)
 
 ### Community 31 - "TestStructuredValueSQLExecution"
 Cohesion: 0.39
 Nodes (3): asyncio, Covers verification.md rows 19, 22-25 — deterministic filtering over real rows., TestStructuredValueSQLExecution
 
-### Community 32 - "build_chat_graph"
-Cohesion: 0.06
-Nodes (28): _DummyOrchestrator, main(), Generates a Mermaid diagram for the chat graph's single, fixed topology using…, build_nodes() only closes over this; node bodies never run here., build_chat_graph(), Compiles the chat graph topology. With `entity_resolution_enabled` off (the…, _route_after_guardrail(), CountingLLMClient (+20 more)
+### Community 32 - "nodes.py"
+Cohesion: 0.03
+Nodes (58): _DummyOrchestrator, main(), Generates a Mermaid diagram for the chat graph's single, fixed topology using…, build_nodes() only closes over this; node bodies never run here., build_chat_graph(), Compiles the chat graph topology. With `entity_resolution_enabled` off (the…, _route_after_entity_resolution(), _route_after_guardrail() (+50 more)
 
-### Community 33 - "EntityDefinitionSpec"
-Cohesion: 0.09
-Nodes (18): EntityDefinitionSpec, The subset of `public.entity_definitions` the generated layer needs, as plain…, Rows 11, 14, 15 — ADR-008. On a base-model tenant `entity_type` holds CoNLL…, TestBaseModelGrounding, _count(), _define(), Deleting a document clears its rows from every generated relational table. The…, verification.md rows 89, 90, 91, 92 (+10 more)
+### Community 33 - "test_relational_document_delete.py"
+Cohesion: 0.18
+Nodes (14): client(), _count(), _define(), fixture, Deleting a document clears its rows from every generated relational table. The…, The document service's own app: `/api/v1/documents` is served there, not by…, verification.md rows 89, 90, 91, 92, verification.md row 29 — the property that keeps the two paths from diverging. (+6 more)
 
 ### Community 34 - "RAGOrchestrator"
-Cohesion: 0.04
-Nodes (46): Queue, skip, Citation, Source, EmbeddingService, ExternalAnswer, The generator's outcome for one question. `reason` is `None` on success; every…, Only `generation_node` calls this. An entity-resolution clarification reply… (+38 more)
+Cohesion: 0.06
+Nodes (25): Queue, skip, Source, EmbeddingService, AsyncSession, Citation, RAGOrchestrator, The turn's retrieval outcome as a plain dict for the HTTP layer. `None` on a… (+17 more)
 
 ### Community 35 - "_spec"
-Cohesion: 0.06
-Nodes (26): build_entity_table_statements(), build_subject_table_statements(), entity_type_literals(), generated_table_names(), Every stored `entity_type` value that means this definition, uppercased and…, The `subject` table, then one `ADD COLUMN IF NOT EXISTS` per active `single`…, The full, idempotent table script for one tenant schema. Returned rather than…, The tenant's query surface: `subject` plus every active `multi` definition's… (+18 more)
+Cohesion: 0.07
+Nodes (26): build_child_table_statements(), build_entity_table_statements(), build_subject_table_statements(), child_index_name(), entity_type_literals(), Every stored `entity_type` value that means this definition, uppercased and…, `idx_<identifier>_normalized_value`, bounded to the identifier length limit.…, `CREATE TABLE IF NOT EXISTS` plus its `normalized_value` index, for one `multi`… (+18 more)
 
 ### Community 36 - "shared/config.py"
 Cohesion: 0.02
-Nodes (143): Formatter, Handler, LogRecord, Sync tenant_{id} schemas with tenant_template. Clones missing tables and adds…, _Token, Ensure the ner_mlflow database exists before the MLflow tracking server starts.…, current_context(), get_tenant_id() (+135 more)
+Nodes (132): Formatter, Handler, LogRecord, Sync tenant_{id} schemas with tenant_template. Clones missing tables and adds…, _init_worker_observability(), connect, Wire this worker's telemetry when it starts as a worker. Bound to the signal…, Ensure the ner_mlflow database exists before the MLflow tracking server starts.… (+124 more)
 
 ### Community 37 - "eval/runner.py"
 Cohesion: 0.09
 Nodes (40): Judgment, aggregate(), AggregateMetrics, compute_query_metrics(), _grade_map(), Judgment, mrr_at_k(), ndcg_at_k() (+32 more)
 
-### Community 38 - "blob_sync/__init__.py"
-Cohesion: 0.08
-Nodes (28): AzureBlobLiveProvider, SDK-backed Azure Blob provider (CAP-3, ADR-012). Replaces…, One tenant connection's live Azure Blob container, via the SDK., Durable Azure Blob synchronization runtime (CAP-3, ADR-012). One tenant-bound…, BlobListingFailed, BlobObject, BlobObjectMissing, BlobProvider (+20 more)
+### Community 38 - "add_run"
+Cohesion: 0.05
+Nodes (57): purge_expired_predictions(), Persisting the confidence split for an extraction run. This is the write half…, Delete routed predictions older than the retention bound, returning how many…, Write one `routed_predictions` row per reconstructed entity and report the…, record_routed_predictions(), is_base_model_version(), is_below_business_threshold(), The confidence split, as pure functions. Shared rather than owned by either… (+49 more)
 
 ### Community 39 - "_validate_on_surface"
 Cohesion: 0.05
 Nodes (23): _names(), The whitelist check used to resolve only the first identifier after each…, `public.documents` is not `documents` — the qualifier is grounds for rejection,…, A legitimate comma join must keep working — the fix is a security fix, not a…, verification.md rows 22-25 — the accepted relation set is the resolved surface., Row 24 — the shape the prompt teaches: a child table joined to `subject`., Row 22 — a relation the resolver does not report is not readable., Row 25 — the surface is per-tenant; `e_skill` elsewhere means nothing here. (+15 more)
 
 ### Community 40 - "gateway/main.py"
-Cohesion: 0.05
-Nodes (71): AsyncEngine, add_bearer_security(), health(), health_live(), lifespan(), FastAPI, get, add_bearer_security() (+63 more)
+Cohesion: 0.06
+Nodes (63): AsyncEngine, add_bearer_security(), health(), health_live(), lifespan(), FastAPI, get, add_bearer_security() (+55 more)
 
 ### Community 41 - "test_chunk_metadata_ingest.py"
-Cohesion: 0.09
-Nodes (21): _store_chunks(), chunk_text(), Chunk, BaseModel, _fake_vector(), FakeEmbeddingService, asyncio, fixture (+13 more)
+Cohesion: 0.07
+Nodes (25): _store_chunks(), chunk_text(), Chunk, BaseModel, _fake_vector(), FakeEmbeddingService, asyncio, fixture (+17 more)
 
 ### Community 42 - "chat_proxy.py"
-Cohesion: 0.24
-Nodes (21): _proxy(), proxy_chat(), proxy_chat_stream(), proxy_create_conversation(), proxy_create_widget_key(), proxy_delete_conversation(), proxy_get_conversation(), proxy_list_conversations() (+13 more)
+Cohesion: 0.12
+Nodes (30): _proxy(), proxy_chat(), proxy_chat_stream(), proxy_create_conversation(), proxy_create_widget_key(), proxy_delete_conversation(), proxy_export_message(), proxy_get_conversation() (+22 more)
 
 ### Community 43 - "_predict"
-Cohesion: 0.07
-Nodes (20): _FakeResponse, _predict(), The extraction worker writes EAV and relational rows in one transaction, or…, verification.md rows 1, 14, 15, 22, 81, verification.md rows 13, 24, verification.md rows 25, 26, 27, 83, verification.md rows 2, 31, verification.md rows 79, 80, 84 (+12 more)
+Cohesion: 0.05
+Nodes (23): _FakeResponse, _predict(), fixture, The extraction worker writes EAV and relational rows in one transaction, or…, verification.md rows 1, 14, 15, 22, 81, verification.md rows 13, 24, verification.md rows 25, 26, 27, 83, verification.md rows 2, 31 (+15 more)
 
-### Community 44 - "schema_for_tenant"
-Cohesion: 0.27
-Nodes (14): create_extraction_run(), find_existing_run(), get_already_extracted(), get_extraction_run(), insert_entity(), list_extraction_runs(), list_processed_document_ids(), AsyncSession (+6 more)
+### Community 44 - "manual/page.tsx"
+Cohesion: 0.04
+Nodes (62): AutomatedLandingPage(), mockPush, ManualAnnotationLanding(), jsonResponse(), mockFetch, mockPush, mockUser, TASKS (+54 more)
 
 ### Community 45 - "external_postgres/__init__.py"
 Cohesion: 0.06
-Nodes (47): external_chat_answer(), ExternalNotExecutable, Exception, External PostgreSQL chat capability (CAP-4, ADR-013). A separate selection from…, Answer one external chat turn: resolve, then drift-gated execution. Returns…, No executable external capability for this tenant; finite reason only., _build_system_prompt(), Contract-grounded external SQL generation (ADR-016). Turns a natural-language… (+39 more)
+Nodes (38): external_chat_answer(), ExternalNotExecutable, Exception, External PostgreSQL chat capability (CAP-4, ADR-013). A separate selection from…, No executable external capability for this tenant; finite reason only., Answer one external chat turn: resolve, then drift-gated execution. Returns…, AzureExternalDatabase, build_live_database() (+30 more)
 
 ### Community 46 - "documents.py"
 Cohesion: 0.04
-Nodes (77): delete_document(), get_document(), get_document_text(), get_tenant_id(), list_documents(), _platform_session(), AsyncSession, delete (+69 more)
+Nodes (71): delete_document(), get_document(), get_document_text(), get_session(), get_tenant_id(), has_column(), has_table(), list_documents() (+63 more)
 
 ### Community 47 - "test_document_ingestion.py"
-Cohesion: 0.10
-Nodes (44): extract_text_docx(), Extract paragraph text from a DOCX document., auth_header(), cleanup_public(), client(), _create_tables_sql(), _ensure_profile_table(), _ensure_public_tenants() (+36 more)
+Cohesion: 0.07
+Nodes (60): extract_text_csv(), extract_text_docx(), is_allowed_file(), Extract paragraph text from a DOCX document., Parse CSV rows into normalized text spans, one span per row. The stdlib `csv`…, auth_header(), cleanup_public(), client() (+52 more)
 
 ### Community 48 - "test_inference_endpoint.py"
 Cohesion: 0.12
 Nodes (12): auth_header(), asyncio, Regression guard: _infer_with_onnx() used to unconditionally send…, Covers verification.md row 51: base-model predictions must be an ordered, non-…, Regression guard: inference_service._resolve_active_version() used to hardcode…, TestInferenceAuth, TestInferenceBaseModelFallback, TestInferenceCustomLabelList (+4 more)
 
 ### Community 49 - "GuardrailService"
-Cohesion: 0.05
-Nodes (32): GuardrailService, _Classifier, _decisions(), _fail_open(), Exception, Guardrail decisions are counted by rule, and a fail-open is not an admission.…, Row 8 — the assertion this file exists for., `str(e)` on a provider error can quote the request back. Only the class name is… (+24 more)
+Cohesion: 0.04
+Nodes (38): GuardrailService, _metrics(), Deterministic short-circuits that decline without an LLM call: a reference to…, One classifier call. Returns True (in-domain) on any error, so a provider…, Returns True if the query is in-domain. Fails open (treats the query as in-…, Only `generation_node` calls this. An entity-resolution clarification reply…, The domain-metric recorders, resolved on first use. `domain_metrics` imports…, _Classifier (+30 more)
 
 ### Community 50 - "mlflow_registry.py"
 Cohesion: 0.10
@@ -1585,48 +1923,48 @@ Cohesion: 0.09
 Nodes (54): _activity_tag_colour(), ActivityRow, _all_active_tenant_ids(), _annotator_continue_work(), _annotator_data(), _annotator_side_panel(), _annotator_task_activity(), _annotator_type_counts() (+46 more)
 
 ### Community 53 - "insert_document_entities"
-Cohesion: 0.12
-Nodes (20): insert_document_entities(), Writes reconstructed entities, with the provenance that says where each value…, _entity(), asyncio, fixture, Covers verification.md rows 56-63. `document_entities` could not previously…, Row 57 — a NULL means unchanged, not unknown., Rows 59-62 at the storage boundary. (+12 more)
+Cohesion: 0.11
+Nodes (21): insert_document_entities(), Writes reconstructed entities, with the provenance that says where each value…, _entity(), asyncio, fixture, Covers verification.md rows 56-63. `document_entities` could not previously…, Row 57 — a NULL means unchanged, not unknown., Rows 59-62 at the storage boundary. (+13 more)
 
 ### Community 54 - "test_azure_blob_source_sync.py"
-Cohesion: 0.09
-Nodes (70): acquire_lease(), confirm_missing(), ensure_sync_tables(), get_source(), hidden_document_ids(), hide_document(), last_successful_run_at(), ledger_identities() (+62 more)
+Cohesion: 0.05
+Nodes (104): AzureBlobLiveProvider, SDK-backed Azure Blob provider (CAP-3, ADR-012). Replaces…, One tenant connection's live Azure Blob container, via the SDK., Durable Azure Blob synchronization runtime (CAP-3, ADR-012). One tenant-bound…, acquire_lease(), confirm_missing(), ensure_sync_tables(), get_source() (+96 more)
 
 ### Community 55 - "build_default_registry"
 Cohesion: 0.06
-Nodes (68): orchestrate_retrieval(), Top-level entry point: plans, executes, and degrades to a fallback plan (both…, build_default_registry(), _budget(), _context_factory(), _make_chunk(), Exception, Covers verification.md row 6. (+60 more)
+Nodes (68): RuntimeError, orchestrate_retrieval(), Top-level entry point: plans, executes, and degrades to a fallback plan (both…, build_default_registry(), _budget(), _context_factory(), _make_chunk(), Exception (+60 more)
 
-### Community 56 - "session_factory"
-Cohesion: 0.11
-Nodes (46): Record a profile. Validation is by declared schema, never by value inspection.…, write_profile(), session_factory(), platform_tenant(), fixture, Verification for the tenant-integration-profile ADDED requirement (ADR-017,…, Scenario: Platform blob retention is rejected for a residency tenant., A `platform` tenant is unaffected by the new restriction. (+38 more)
+### Community 56 - "add_model_version"
+Cohesion: 0.05
+Nodes (59): record_sql(), add_model_version(), add_training_job(), complete_run(), consumed_rows(), dataset_span_ids_now(), ensure_audit_events(), Fixtures shared by the `human-gated-retraining` test files. Extends… (+51 more)
 
-### Community 57 - "require-auth.tsx"
-Cohesion: 0.09
-Nodes (23): lucide-react, AppShell(), AppShellProps, Sidebar(), SidebarProps, mockLogout, mockPush, userInitials() (+15 more)
+### Community 57 - "useAuth"
+Cohesion: 0.04
+Nodes (66): lucide-react, mockFetch, mockPush, mockReplace, TrainingJobsPage(), mockLogin, mockReplace, DEMO_CHIPS (+58 more)
 
 ### Community 58 - "MODIFIED Requirements"
 Cohesion: 0.04
 Nodes (48): ADDED Requirements, MODIFIED Requirements, REMOVED Requirements, Requirement: Annotation Task Queue, Requirement: Annotation Toolbar, Requirement: Document Viewer and Token Rendering, Requirement: Entity Type Palette and Armed Mode, Requirement: Focus Mode Entity Palette (+40 more)
 
-### Community 59 - "verify"
-Cohesion: 0.18
-Nodes (10): _declared_public_tables(), _declared_tenant_template_tables(), main(), Verify the live database's schema matches what the Alembic migration chain…, Table name -> declared column names, for every ORM model mapped to…, Union of every table any migration creates in tenant_template. Every migration…, Returns a list of human-readable drift descriptions. Empty means clean., verify() (+2 more)
+### Community 59 - "Base"
+Cohesion: 0.08
+Nodes (21): DeclarativeBase, AuditEvent, Base, EntityDefinition, str, Tenant, TenantStatus, TenantUser (+13 more)
 
-### Community 60 - "react"
+### Community 60 - "chat/page.tsx"
 Cohesion: 0.03
-Nodes (62): react, react-markdown, remark-gfm, ChatPage(), Conversation, Message, Source, mockFetch (+54 more)
+Nodes (74): react-markdown, remark-gfm, buildSendRequest(), ChatPage(), ChatPageInner(), Conversation, ExportAvailability, Message (+66 more)
 
 ### Community 61 - "app"
-Cohesion: 0.06
-Nodes (31): app(), fixture, auth_header(), asyncio, TestAnalyticsExportEndpoint, auth_header(), TestAnalyticsQueryEndpoint, auth_header() (+23 more)
+Cohesion: 0.04
+Nodes (46): ProcessingMode, Enum, str, The processing mode a batch extraction run executes under. The mode is chosen…, app(), fixture, auth_header(), asyncio (+38 more)
 
-### Community 62 - "ExternalSQLGenerator"
-Cohesion: 0.12
-Nodes (16): AsyncAzureOpenAI, build_client(), find_name_span(), main(), process_record(), One-off script: identifies the resume owner's own name span in each…, ExternalSQLGenerator, _metrics() (+8 more)
+### Community 62 - "AsyncAzureOpenAI"
+Cohesion: 0.36
+Nodes (6): AsyncAzureOpenAI, build_client(), find_name_span(), main(), process_record(), One-off script: identifies the resume owner's own name span in each…
 
-### Community 63 - "is_valid_entity"
-Cohesion: 0.11
-Nodes (17): filter_valid_entities(), is_valid_entity(), Whether an entity is a fact worth storing. `NOT NULL` does not catch an empty…, Partitions entities into those worth persisting and a count of those dropped.…, _short_value_types(), _entity(), parametrize, Covers verification.md rows 20-23. `document_entities.normalized_value` is `NOT… (+9 more)
+### Community 63 - "entity_normalizer.py"
+Cohesion: 0.09
+Nodes (23): filter_valid_entities(), _is_adjacent(), is_valid_entity(), Whether `current` continues the entity `prev` belongs to. Model serving filters…, The entity's surface text. When the caller supplies the full ordered token…, Whether an entity is a fact worth storing. `NOT NULL` does not catch an empty…, Partitions entities into those worth persisting and a count of those dropped.…, Splits a `B-TYPE`/`I-TYPE` label into (prefix, type). Labels with no recognized… (+15 more)
 
 ### Community 64 - "Requirement: Retriever interface"
 Cohesion: 0.04
@@ -1634,35 +1972,35 @@ Nodes (48): Purpose, Requirement: Centralized retrieval configuration, Requireme
 
 ### Community 65 - "RetrievalStatus"
 Cohesion: 0.08
-Nodes (19): Renders the turn's retrieval outcome for the answer model, or None when every…, render_retrieval_status(), CapabilityStatus, What one plan entry actually did. `error` holds the specific failure text,…, The turn's retrieval outcome, as one value with named consumers. Replaces…, The strongest signal any invocation of this capability produced, ordered failed…, RetrievalStatus, A turn that never reached retrieval passes no status; behaviour is unchanged. (+11 more)
+Nodes (17): _bounded(), Renders the turn's retrieval outcome for the answer model, or None when every…, render_retrieval_status(), CapabilityStatus, What one plan entry actually did. `error` holds the specific failure text,…, The turn's retrieval outcome, as one value with named consumers. Replaces…, The strongest signal any invocation of this capability produced, ordered failed…, RetrievalStatus (+9 more)
 
 ### Community 66 - "data_plane.py"
-Cohesion: 0.08
-Nodes (28): _Cache, _cas_status(), DataPlaneRecord, _default_platform_record(), get_data_plane_record(), get_data_plane_record_sync(), invalidate(), mark_paused() (+20 more)
+Cohesion: 0.11
+Nodes (19): _Cache, DataPlaneRecord, _default_platform_record(), get_data_plane_record(), get_data_plane_record_sync(), The per-tenant data-plane record: lookup, short-TTL cache, and typed errors…, Short-TTL in-process cache (default 15s, `NER_DATA_PLANE_CACHE_TTL_SECONDS`).…, `conn` is an `AsyncConnection` or `AsyncSession` on the *platform* database. (+11 more)
 
 ### Community 67 - "tracked_tenants"
-Cohesion: 0.08
-Nodes (44): active_connection(), enqueued(), fixture, parametrize, Verification for the manual Azure Blob sync trigger. Maps to…, Record broker enqueues instead of sending them., test_broker_unavailable_returns_safe_code(), test_connection_reports_latest_completed_sync_run() (+36 more)
+Cohesion: 0.07
+Nodes (52): evaluate_connection(), datetime, Sync scheduling evaluation (CAP-3, ADR-012). The beat scheduler evaluates every…, Decide whether a connection is due for a scheduled run or a catch-up., ScheduleDecision, test_scheduler_cadence_and_catchup_decisions(), active_connection(), enqueued() (+44 more)
 
 ### Community 68 - "NormalizedEntity"
-Cohesion: 0.09
-Nodes (45): NormalizedEntity, apply_decisions(), build_candidates(), _build_client(), build_window(), call_postprocessor(), Candidate, _comparable() (+37 more)
+Cohesion: 0.08
+Nodes (45): NormalizedEntity, Strips leading and trailing punctuation, returning `(trimmed, left, right)`…, trim_span(), apply_decisions(), build_candidates(), _build_client(), build_window(), call_postprocessor() (+37 more)
 
 ### Community 69 - "canonicalize"
 Cohesion: 0.06
-Nodes (23): canonicalize(), fold_text(), _is_adjacent(), Removes Unicode format characters (general category `Cf`) and folds typographic…, Deterministic fallback (format-character removal, typographic folding, NFKC,…, Whether `current` continues the entity `prev` belongs to. Model serving filters…, The entity's surface text. When the caller supplies the full ordered token…, Splits a `B-TYPE`/`I-TYPE` label into (prefix, type). Labels with no recognized… (+15 more)
+Nodes (22): canonicalize(), Deterministic fallback (format-character removal, typographic folding, NFKC,…, verification.md rows 10-13, TestCanonicalNormalization, asyncio, Covers verification.md rows 8-11. The defect: `canonicalize()` applied NFKC,…, Row 8's second clause: the point of folding is that the persisted row is…, The development tenant stored a JOB_TITLE whose only content was an em dash;… (+14 more)
 
 ### Community 70 - "Requirement: Deactivation and orphaning never drop a generated relation"
 Cohesion: 0.04
 Nodes (45): ADDED Requirements, MODIFIED Requirements, REMOVED Requirements, RENAMED Requirements, Requirement: Deactivation and orphaning never drop a generated relation, Requirement: Each active multi-valued entity gets a child table, Requirement: Each tenant gets a subject table with one column per single-valued entity, Requirement: Entity type matching is case-insensitive and covers base-model labels (+37 more)
 
-### Community 71 - "DocumentTable.tsx"
-Cohesion: 0.10
-Nodes (21): DocumentsPage(), DocumentRow(), DocumentRowProps, formatDate(), purposeLabel(), statusToVariant, DocumentTable(), DocumentTableProps (+13 more)
+### Community 71 - "@testing-library/react"
+Cohesion: 0.04
+Nodes (49): Favicon — dark theme SVG, Logo — dark theme SVG, @testing-library/react, Hardcoded-color-to-CSS-variable mapping (text-gray-900 -> var(--ink), bg-white -> var(--surface-2), etc.), Design: Fix Dark Theme Issues Across Portal Pages, Proposal: Fix Dark Theme Issues Across Portal Pages, Fix Dark Theme Issues - Tasks, In-app Logo SVG (+41 more)
 
-### Community 72 - "test_retrieval_tools_integration.py"
-Cohesion: 0.13
-Nodes (20): _create_chunks_table(), _create_second_schema(), _fake_vector(), FakeEmbeddingService, _insert_chunk(), _insert_document(), fixture, Covers verification.md row 28: multi-document scope, results restricted to the… (+12 more)
+### Community 72 - "annotation_service/worker.py"
+Cohesion: 0.05
+Nodes (70): get_llm_client(), The client this deployment is configured to use. A deployment that has…, build_existing_config_block(), build_qa_pair_block(), build_seed_block(), build_user_payload(), _cap_example_length(), count_qa_pairs() (+62 more)
 
 ### Community 73 - "_get"
 Cohesion: 0.09
@@ -1673,8 +2011,8 @@ Cohesion: 0.08
 Nodes (24): _column_type(), _columns(), _persisted_value_kind(), fixture, All four entity-definition write paths reconcile the tenant's generated schema,…, verification.md rows 64, 114, verification.md row 115, verification.md rows 65, 67, 68, 116 (+16 more)
 
 ### Community 75 - "test_external_postgresql_chat.py"
-Cohesion: 0.14
-Nodes (29): is_external_request_executable(), Whether one named connection may serve this tenant's external request., clamp_limit(), execute_external_query(), Enforce the server row cap: keep a smaller LIMIT, else append one., Run one drift-gated, validated, parameterized external SELECT. Returns…, _record(), FixtureExternalDatabase (+21 more)
+Cohesion: 0.15
+Nodes (28): clamp_limit(), execute_external_query(), Enforce the server row cap: keep a smaller LIMIT, else append one., Run one drift-gated, validated, parameterized external SELECT. Returns…, check(), FixtureExternalDatabase, In-memory fake: declared metadata plus scripted rows, no network., Compare live metadata against the accepted fingerprint. Returns "clean" or… (+20 more)
 
 ### Community 76 - "_entity"
 Cohesion: 0.13
@@ -1685,8 +2023,8 @@ Cohesion: 0.09
 Nodes (15): _calls(), _latency_observations(), LLM calls report tokens, latency and an outcome — and never the provider's…, Row 5's second clause., Cost is derived from configured rates, not from a table in source., Found on the running stack, not in a test. Three of the four LLM operations —…, Attribution degrades to `unknown` rather than dropping the observation — a lost…, Row 5's first clause. (+7 more)
 
 ### Community 78 - "test_annotation_workspace.py"
-Cohesion: 0.16
-Nodes (39): auth_header(), cleanup_public(), client(), _create_tables_sql(), make_token(), asyncio, fixture, pending' is written by the tenant seed path but was missing from the transition… (+31 more)
+Cohesion: 0.08
+Nodes (74): only_record(), asyncio, Token/tag alignment in the annotation export. Covers verification.md Spec…, verification.md row 6. Establishes the defect is whitespace-general, not…, verification.md row 7. The stored `bio_tags` column is itself derived from the…, Insert one document with `text_content` and the given confirmed spans. Each…, verification.md row 5. The exact case verified by hand in the proposal: with a…, seed_document() (+66 more)
 
 ### Community 79 - "check_regression"
 Cohesion: 0.08
@@ -1701,24 +2039,24 @@ Cohesion: 0.08
 Nodes (18): dict, _entity(), _FakeHeaders, _FakeHttpResponse, _FakeResponse, asyncio, fixture, Covers verification.md rows 48-52. Post-processing is an optional enhancement… (+10 more)
 
 ### Community 82 - "stage_span"
-Cohesion: 0.06
-Nodes (26): current_trace_id(), BaseException, Span helpers for the workload instrumentation. Auto-instrumentation gives one…, The ambient trace id as a 32-character hex string, or None outside a trace., A span for one stage, yielding a setter for attributes decided inside the…, Attribute setter that is a no-op when there is no live span., The exception's *class*, not its message. A driver message quotes the offending…, _Setter (+18 more)
+Cohesion: 0.04
+Nodes (42): langsmith_extra(), One hop between a LangSmith run and the OTel trace it happened inside. They are…, `langsmith_extra=` for one wrapped provider call, or `{}` when unavailable.…, _run_id_setter(), current_trace_id(), BaseException, Span helpers for the workload instrumentation. Auto-instrumentation gives one…, The ambient trace id as a 32-character hex string, or None outside a trace. (+34 more)
 
 ### Community 83 - "ContextAssembler"
 Cohesion: 0.04
-Nodes (59): AdmittedEvidence, _bounded(), build_system_prompt(), collapse_duplicate_rows(), ContextAssembler, _count_tokens(), _dedupe_chunks(), _fit_external_rows() (+51 more)
+Nodes (59): build_system_prompt(), collapse_duplicate_rows(), ContextAssembler, _count_tokens(), _dedupe_chunks(), _fit_external_rows(), _label_for(), Returns rendered chunk text (label + body), overlap-trimmed. Never mutates… (+51 more)
 
-### Community 84 - "test_conversation_history_reaches_retrieval.py"
-Cohesion: 0.11
-Nodes (16): _metrics(), One classifier call. Returns True (in-domain) on any error, so a provider…, Returns True if the query is in-domain. Fails open (treats the query as in-…, The domain-metric recorders, resolved on first use. `domain_metrics` imports…, Deterministic short-circuits that decline without an LLM call: a reference to…, Single definition of how much prior conversation each LLM call sees, and how it…, The trailing window of history, oldest first. Empty list when there is none., The same window rendered as `role: content` lines, for the prompts that… (+8 more)
+### Community 84 - "ground_entities"
+Cohesion: 0.04
+Nodes (46): build_entity_type_block(), build_user_payload(), ground_entities(), ground_quote(), GroundingResult, parse_llm_response(), Prompt construction, response parsing, and grounding for LLM pre-labeling.…, The model's output reduced to `{entity_type, quote}` pairs. Accepts either the… (+38 more)
 
 ### Community 85 - "test_training_jobs_api.py"
-Cohesion: 0.17
-Nodes (36): auth_header(), client(), _create_tables_sql(), engine(), fake_celery_send_task(), make_token(), asyncio, fixture (+28 more)
+Cohesion: 0.13
+Nodes (46): auth_header(), client(), _create_tables_sql(), engine(), fake_celery_send_task(), make_token(), asyncio, fixture (+38 more)
 
 ### Community 86 - "test_chat_stage_spans.py"
-Cohesion: 0.11
-Nodes (17): _node_outcome(), What this node decided, as a category — never what it decided *about*. Every…, nodes(), _orchestrator(), fixture, One chat question produces one span per stage it executed. Verification row 1.…, A declined question never reaches generation, and the absence of the span is…, A node added later without widening the enumeration lands on `other`, which is… (+9 more)
+Cohesion: 0.06
+Nodes (26): _node_outcome(), What this node decided, as a category — never what it decided *about*. Every…, _bucket(), _observations(), A retrieval that finds nothing is recorded as such, not as an absence of…, Task 3.5's fourth measurement — what survived merge and the cap., The recording sits in `_invoke_entry`, which is the one point every dispatched…, TestHitRate (+18 more)
 
 ### Community 87 - "NER Platform KT Handover Guide"
 Cohesion: 0.07
@@ -1732,9 +2070,9 @@ Nodes (33): _embed(), main(), One-off generator for…, Entity-Quality Evaluatio
 Cohesion: 0.09
 Nodes (18): apply_document_scope(), document_scope_columns(), `relation -> the column a document scope constrains`, static tables plus the…, Constrains every scoped table reference in an already-validated statement to a…, Structural document-scope enforcement for structured retrieval —…, A derived table needs a name; using the table's own keeps every qualified…, An aggregate projects no document_id, so a post-execution row filter could…, verification.md row 40 — the predicate is inside the source, so the row limit… (+10 more)
 
-### Community 90 - "_entity"
-Cohesion: 0.15
-Nodes (10): `sql_identifier -> entities routed to it`, skipping every unroutable entity. An…, route_entities(), _entity(), parametrize, verification.md rows 19-21, verification.md row 4 — the builders touch no database., verification.md rows 6-9, TestPurity (+2 more)
+### Community 90 - "make_tenant"
+Cohesion: 0.07
+Nodes (51): drop_test_schemas(), make_tenant(), make_token(), Fixtures shared by the `test_confidence_routing` / `test_review_queue` /…, A throwaway tenant with its own schema and catalog row., Drop only the schemas this module created. Scoped by the tenant's own slug…, Every tenant table these tests touch, in dependency order., tenant_tables_sql() (+43 more)
 
 ### Community 91 - "_create"
 Cohesion: 0.08
@@ -1749,32 +2087,32 @@ Cohesion: 0.16
 Nodes (34): Caveman (README Overview), Auto-Clarity Rule, Caveman (SKILL Instructions), Caveman Intensity Levels (lite/full/ultra/wenyan), Brainstorm-Then-Decompose Principle, Feature Decomposer Skill, OpenSpec Apply Change Skill, OpenSpec CLI (+26 more)
 
 ### Community 94 - "test_external_sql_generator.py"
-Cohesion: 0.18
+Cohesion: 0.17
 Nodes (23): CountingFixtureExternalDatabase, executable_tenant(), FakeLLM, _make_connection(), make_generator(), _patch_live_database(), _patch_live_database_unreachable(), _publish() (+15 more)
 
 ### Community 95 - "AnalyticsQueryRequest"
-Cohesion: 0.17
-Nodes (14): analytics_export(), analytics_query(), analytics_refresh(), AsyncSession, post, Request, AnalyticsExportRequest, AnalyticsQueryRequest (+6 more)
+Cohesion: 0.08
+Nodes (37): analytics_dashboard(), fetch_widget_data(), AsyncSession, get, Request, analytics_export(), analytics_query(), analytics_refresh() (+29 more)
 
-### Community 96 - "extraction.py"
-Cohesion: 0.20
-Nodes (19): BatchExtractRequest, BatchExtractResponse, BatchRunListItem, BatchRunListResponse, BatchRunStatus, EligibleDocument, EligibleDocumentListResponse, EntityQueryParams (+11 more)
+### Community 96 - "schema_for_tenant"
+Cohesion: 0.09
+Nodes (56): _get_tenant_id(), _get_user_id(), list_entities(), patch_entity(), AsyncSession, get, Request, extract_entities() (+48 more)
 
 ### Community 97 - "normalize_value"
 Cohesion: 0.05
 Nodes (26): normalize_value(), Pure, deterministic dispatch by declared value kind. No network, database, or…, parametrize, Covers verification.md rows 24-28. `_read_number` tried `_digits_to_number`…, Row 28 — the fallback must not start inventing numbers., The fallback anchors at the start of the phrase, so a trailing identifier…, Row 24 — the exact stored value from `Resume RENJIEAPEN.pdf`., Row 26 — what the reconstruction fix now hands the parser. (+18 more)
 
-### Community 98 - "nodes.py"
-Cohesion: 0.04
-Nodes (90): setter, _route_after_entity_resolution(), build_nodes(), Log, span and time one graph node. The span lives here rather than in a second…, Returns a new RetrievalPlan with every `semantic_retrieval` entry's `scope`…, Returns a dict of node-name -> async callable, each closing over the given…, _rewrite_plan_for_resolution(), _traced() (+82 more)
+### Community 98 - "orchestrator.py"
+Cohesion: 0.05
+Nodes (72): setter, Returns a new RetrievalPlan with every `semantic_retrieval` entry's `scope`…, _rewrite_plan_for_resolution(), Single definition of how much prior conversation each LLM call sees, and how it…, The trailing window of history, oldest first. Empty list when there is none., The same window rendered as `role: content` lines, for the prompts that…, recent_messages(), render_history() (+64 more)
 
 ### Community 99 - "test_telemetry_failure_isolation.py"
 Cohesion: 0.15
 Nodes (9): _get(), A telemetry outage must not become a platform outage. Verification rows 21 and…, The config-only rollback. If telemetry ever causes a production problem,…, The counterpart: a passing test above means nothing if export never happens., One request could pass before the exporter's first failed connection. A run of…, Risk-register item 5 — the property that makes the above true, asserted…, TestExportIsDisabledByAnEmptyEndpoint, TestRequestsSurviveAnUnreachableCollector (+1 more)
 
 ### Community 100 - "training_jobs.py"
-Cohesion: 0.14
-Nodes (31): _all_active_tenant_ids(), approve_training_job(), cancel_training_job(), _compute_run_name(), create_training_job(), get_platform_session(), get_session(), get_tenant_id() (+23 more)
+Cohesion: 0.11
+Nodes (45): AsyncSession, post, Request, Requesting a retrain from the decision surface. A retrain is a training job.…, Production-review spans no completed run has consumed yet. A local count rather…, Create an ordinary training job in `pending_approval`. Returns the created job,…, request_retrain(), _schema() (+37 more)
 
 ### Community 101 - "test_celery_queue_metrics.py"
 Cohesion: 0.09
@@ -1789,52 +2127,52 @@ Cohesion: 0.11
 Nodes (19): auth_header(), client(), engine(), _fake_store(), _FakeContentStore, make_token(), _provision_tenant(), asyncio (+11 more)
 
 ### Community 104 - "test_inference_windowing.py"
-Cohesion: 0.09
-Nodes (19): Resolves (window_budget, overlap) in WordPiece units, clamped so that…, _window_geometry(), _fake_session(), _FakeInput, label_list(), patched_serving(), _positions_of_word(), fixture (+11 more)
+Cohesion: 0.08
+Nodes (24): _get_tokenizer(), Resolves (window_budget, overlap) in WordPiece units, clamped so that…, WordPiece length of each whitespace word, in word order. Uses one…, _window_geometry(), _wordpiece_counts(), _fake_session(), _FakeInput, label_list() (+16 more)
 
 ### Community 105 - "_get_sync_engine"
-Cohesion: 0.05
-Nodes (35): _extract_label_set(), fine_tune_model(), _get_sync_engine(), _load_annotated_dataset(), _make_service_token(), MLflowCallback, Exception, task (+27 more)
+Cohesion: 0.15
+Nodes (12): _get_sync_engine(), Write job fields, and count a state transition when the status is one of them.…, The one place this worker obtains a tenant-schema engine — routed through…, _schema(), _update_job_progress(), _cleanup_test_schema(), _create_test_schema(), Tests for training worker functions: _update_job_progress and model_versions… (+4 more)
 
 ### Community 106 - "_entity"
 Cohesion: 0.16
 Nodes (13): _entity(), fixture, Covers verification.md rows 34-38. "Invalid LLM output must never be written…, Row 35 — and never the extraction., _respond(), stable_settings(), TestAcceptedValuesGoThroughDeterministicNormalization, TestInvalidItemDoesNotInvalidateSiblings (+5 more)
 
 ### Community 107 - "_insert_entity"
-Cohesion: 0.15
-Nodes (8): _insert_entity(), Covers verification.md rows 22, 23, 26-31., Covers verification.md row 23: two tenant schemas share a normalized value;…, verification.md row 41. Resolution used to stop at the first mention that…, verification.md row 43 — the single-subject path behaves exactly as before., verification.md row 45 — the cap applies to the union, and an over-cap turn is…, Ambiguity is still a property of ONE mention matching several people — two…, TestResolveEntityOutcomes
-
-### Community 108 - "test_inference_confidence_calibration.py"
-Cohesion: 0.17
-Nodes (12): _fake_session(), _FakeInput, _install_session(), label_list(), patched_serving(), fixture, Guards the calibration fix: `_infer_window()` used to report `np.max(logits)`…, The exact regression: a max logit of 5.0 used to be reported verbatim. (+4 more)
-
-### Community 109 - "analytics_service/api/v1/schemas.py"
-Cohesion: 0.18
-Nodes (19): analytics_dashboard(), fetch_widget_data(), AsyncSession, get, Request, AnalyticsFilter, AnalyticsQueryResponse, ConfidenceBucket (+11 more)
-
-### Community 110 - "annotation_service/main.py"
 Cohesion: 0.10
-Nodes (37): _compute_bio_tags(), create_span(), delete_span(), generate_uuid(), get_session(), get_tenant_id(), list_spans(), prelabel_document() (+29 more)
+Nodes (13): _insert_entity(), usefixtures, Covers verification.md rows 22, 23, 26-31., Covers verification.md row 23: two tenant schemas share a normalized value;…, verification.md row 41. Resolution used to stop at the first mention that…, verification.md row 43 — the single-subject path behaves exactly as before., verification.md row 45 — the cap applies to the union, and an over-cap turn is…, Ambiguity is still a property of ONE mention matching several people — two… (+5 more)
+
+### Community 108 - "_fake_session"
+Cohesion: 0.29
+Nodes (7): _fake_session(), _install_session(), The exact regression: a max logit of 5.0 used to be reported verbatim., `np.max` over the softmax must pick the same element `argmax` did, or a…, Session whose per-position logit vector is produced by `logit_fn(position)`.…, Row 2: every returned confidence is the softmax probability of the predicted…, TestFineTunedPathIsCalibrated
+
+### Community 109 - "StubLLMClient"
+Cohesion: 0.08
+Nodes (36): A client that returns a canned response and counts its calls. Lives beside the…, StubLLMClient, _add_document(), auth_header(), cleanup(), client(), engine(), fake_send_task() (+28 more)
+
+### Community 110 - "NotFoundError"
+Cohesion: 0.14
+Nodes (30): _compute_bio_tags(), create_span(), delete_span(), get_session(), get_tenant_id(), list_spans(), prelabel_document(), promote_suggested_span() (+22 more)
 
 ### Community 111 - "entity_resolver.py"
-Cohesion: 0.04
-Nodes (51): _accept_matching_mentions(), _build_candidates(), _depossessive(), _extract_mentions(), interpret_selection(), _lookup_candidate_rows(), _mention_matches(), _MentionMatch (+43 more)
+Cohesion: 0.10
+Nodes (26): _accept_matching_mentions(), _build_candidates(), _depossessive(), _extract_mentions(), interpret_selection(), _lookup_candidate_rows(), _MentionMatch, _metrics() (+18 more)
 
 ### Community 112 - "inference_service.py"
-Cohesion: 0.13
-Nodes (26): WarmupRequest, post, Request, warmup_endpoint(), _get_base_pipeline(), _get_tokenizer(), infer(), _infer_window() (+18 more)
+Cohesion: 0.14
+Nodes (25): WarmupRequest, post, Request, warmup_endpoint(), _get_base_pipeline(), infer(), _infer_window(), _infer_with_base_model() (+17 more)
 
-### Community 113 - "AppError"
-Cohesion: 0.04
-Nodes (74): Response, app_error_handler(), exception_handler, Request, app_error_handler(), exception_handler, Request, app_error_handler() (+66 more)
+### Community 113 - "gateway/dependencies.py"
+Cohesion: 0.08
+Nodes (42): list_notifications(), mark_all_read(), mark_read(), MarkReadResult, Notification, NotificationList, AsyncSession, BaseModel (+34 more)
 
-### Community 114 - "auth_header"
-Cohesion: 0.16
-Nodes (10): auth_header(), asyncio, TestCorrectEntity, TestCorrectEntityAnnotator, TestQueryEntitiesAnnotator200, TestQueryEntitiesByConfidence, TestQueryEntitiesByDocument, TestQueryEntitiesByType (+2 more)
+### Community 114 - "make_tenant"
+Cohesion: 0.12
+Nodes (50): add_document(), auth_header(), make_tenant(), A throwaway tenant with its own schema, catalog row, and entity types., _add_qa_pair(), _approve_new_initial(), cleanup(), client() (+42 more)
 
-### Community 115 - "test_entity_views_reconciler.py"
-Cohesion: 0.20
-Nodes (12): _drop_schema(), _insert_child_row(), _make_schema(), fixture, Integration tests for the entity table reconciler against a real tenant schema.…, The extraction worker's connection idiom, so the sync executor is exercised as…, verification.md rows 65, 68 — the never-drop rule against a live server., _row_count() (+4 more)
+### Community 115 - "Citation"
+Cohesion: 0.09
+Nodes (33): Citation, cap_rows(), _columns(), Defensively caps a raw SQL result to MAX_EXPORT_ROWS before it is persisted as…, render_csv(), render_xlsx(), _sanitize_cell(), _app() (+25 more)
 
 ### Community 116 - "configured"
 Cohesion: 0.11
@@ -1849,8 +2187,8 @@ Cohesion: 0.10
 Nodes (18): mockDashboardData, mockQueryErrorObj, mockQueryResponse, mockRefetchQuery, AnalyticsPage(), ResultsTableProps, useAnalyticsQuery(), useDashboardWidgets() (+10 more)
 
 ### Community 119 - "Requirement: Get training job status"
-Cohesion: 0.04
-Nodes (45): Purpose, Requirement: Approve training job, Requirement: Cancel training job, Requirement: Get training job status, Requirement: Hide submit job action for non-tenant-admin roles, Requirement: List training jobs, Requirement: Reject training job, Requirement: Submit form span preflight is informational only (+37 more)
+Cohesion: 0.22
+Nodes (9): Requirement: Get training job status, Scenario: Get status of completed job, Scenario: Get status of failed job, Scenario: Get status of queued job, Scenario: Get status of running job, Scenario: Get training job as non-owner tenant, Scenario: System Admin gets a job with the correct tenant_id, Scenario: System Admin gets a job with the wrong tenant_id (+1 more)
 
 ### Community 120 - "telemetry_scan.py"
 Cohesion: 0.13
@@ -1876,13 +2214,13 @@ Nodes (16): _columns(), _insert_definition(), migrated(), fixture, parametrize, 
 Cohesion: 0.15
 Nodes (12): collapse_duplicates(), Collapses repeated mentions of the same fact within one document into a single…, _entity(), asyncio, Covers verification.md rows 64-67. 364 rows on the development tenant held only…, Row 67 — the key is per document, so two documents naming the same skill keep…, They canonicalize to the same value, which is what the key uses., Row 65 — citations point at this row, so its offsets must be real text. (+4 more)
 
-### Community 126 - "ModelCache"
-Cohesion: 0.10
-Nodes (7): CachedModel, ModelCache, cache(), fixture, TestCacheHitOnSubsequentRequest, TestLoadModelOnFirstRequest, TestLRUEvictionOnMemoryPressure
+### Community 126 - "model_serving/main.py"
+Cohesion: 0.05
+Nodes (21): add_bearer_security(), app_error_handler(), health(), lifespan(), exception_handler, FastAPI, get, Request (+13 more)
 
 ### Community 127 - "TestSQLPrompt"
-Cohesion: 0.20
-Nodes (6): verification.md row 1 and Risk 7 — the prompt teaches the relational surface,…, Row 1 — no instruction to select from `document_entities`, and no `entity_type`…, Row 5.5 — the graph's scope filter and citation assembly both need it., Task 5.3 — the guidance that was never EAV-specific stays., Task 5.4 — document metadata questions still work; the EAV store is not offered., TestSQLPrompt
+Cohesion: 0.09
+Nodes (15): accepted_relations(), Every relation a statement may name: the static tables plus this tenant's…, verification.md row 1 and Risk 7 — the prompt teaches the relational surface,…, Row 1 — no instruction to select from `document_entities`, and no `entity_type`…, Row 5.5 — the graph's scope filter and citation assembly both need it., Task 5.3 — the guidance that was never EAV-specific stays., Task 5.4 — document metadata questions still work; the EAV store is not offered., definition_row() (+7 more)
 
 ### Community 128 - "test_extraction_metrics.py"
 Cohesion: 0.10
@@ -1912,9 +2250,9 @@ Nodes (13): The declarations in `domain_metrics.py` are the cardinality and disc
 Cohesion: 0.18
 Nodes (16): auth_header(), eligibility_tenant_schema(), _insert_document(), _mark_extracted(), _promote_model(), asyncio, fixture, Mirrors production shape: the legacy `version` column is left NULL and the real… (+8 more)
 
-### Community 135 - "test_entity_span_trimming.py"
-Cohesion: 0.12
-Nodes (14): Strips leading and trailing punctuation, returning `(trimmed, left, right)`…, trim_span(), _predict(), parametrize, Covers verification.md rows 16-19. `worker._tokenize_span` splits on `\\S+`, so…, The development tenant stored `O Konni, Pathanamthitta (Dist),` — the closing…, Row 19 — the property that makes citations resolvable., Whitespace tokenization with real offsets, matching `worker._tokenize_span`. (+6 more)
+### Community 135 - "seed_bootstrap.py"
+Cohesion: 0.10
+Nodes (56): accept_batch(), _acceptance_body(), approve_candidate(), _batch_document_ids(), _coerce_json(), create_prelabel_batch(), _derive_batch_state(), _document_ids() (+48 more)
 
 ### Community 136 - "auth_header"
 Cohesion: 0.15
@@ -1925,16 +2263,16 @@ Cohesion: 0.22
 Nodes (4): Exception, Covers verification.md rows 42-45., ScriptedSelectionClient, TestSelectionInterpretation
 
 ### Community 138 - "Candidate"
-Cohesion: 0.05
-Nodes (34): Candidate, Deterministic clarification text — no LLM call., render_clarification(), fixture, Covers verification.md row 40., Covers verification.md rows 39, 41, 46, 47, 48, 49., Covers verification.md rows 54-58 at the persistence layer., state_schema() (+26 more)
+Cohesion: 0.09
+Nodes (15): Candidate, Deterministic clarification text — no LLM call., render_clarification(), fixture, Covers verification.md row 40., Covers verification.md rows 39, 41, 46, 47, 48, 49., Covers verification.md rows 54-58 at the persistence layer., state_schema() (+7 more)
 
 ### Community 139 - "Requirement: Base Model (Version 0) Entry"
 Cohesion: 0.05
 Nodes (42): Purpose, Requirement: Base Model (Version 0) Entry, Requirement: Demote Model Version, Requirement: Model Detail Panel, Requirement: Model Version Card, Requirement: Model Versions API Hooks, Requirement: Model Versions List Page, Requirement: Promote Model Version (+34 more)
 
-### Community 140 - "test_orchestrator_integration.py"
-Cohesion: 0.17
-Nodes (15): _create_chunks_table(), _fake_vector(), FakeEmbeddingService, _insert_chunk(), _insert_document(), fixture, Covers verification.md row 18., Covers verification.md row 19. (+7 more)
+### Community 140 - "OrchestrationBudget"
+Cohesion: 0.07
+Nodes (29): OrchestrationBudget, _create_chunks_table(), _fake_vector(), FakeEmbeddingService, _insert_chunk(), _insert_document(), fixture, Covers verification.md row 18. (+21 more)
 
 ### Community 141 - "_prompt_for"
 Cohesion: 0.11
@@ -1953,16 +2291,16 @@ Cohesion: 0.10
 Nodes (19): Context, Currently-In-Force ADRs, Decision 10: Cross-plane reads are explicit, Decision 11: Local Compose tenant store, Decision 12: Feature flag for shared environments, Decision 1: Relocate the whole tenant schema by connection routing, Decision 2: Control-plane data-plane record with an explicit status machine, Decision 3: New provider `azure_postgresql_data_plane` (+11 more)
 
 ### Community 145 - "reconstruct_entities"
-Cohesion: 0.05
-Nodes (39): aggregate_confidence(), merge_wordpieces(), Reconstructs complete logical entities from an ordered, WordPiece-merged…, Merges `##`-prefixed WordPiece continuation tokens into the preceding token's…, Entity-level confidence is the minimum of its constituent tokens' confidences —…, reconstruct_entities(), _pred(), `reconstruct_entities` used to continue an entity across an `I-` tag no matter… (+31 more)
+Cohesion: 0.04
+Nodes (50): aggregate_confidence(), merge_wordpieces(), Reconstructs complete logical entities from an ordered, WordPiece-merged…, Merges `##`-prefixed WordPiece continuation tokens into the preceding token's…, Entity-level confidence is the minimum of its constituent tokens' confidences —…, reconstruct_entities(), _pred(), `reconstruct_entities` used to continue an entity across an `I-` tag no matter… (+42 more)
 
 ### Community 146 - "Requirements"
 Cohesion: 0.05
 Nodes (42): Model Serving, Purpose, Requirement: Cross-encoder reranking endpoint, Requirement: Internal inference endpoint, Requirement: Model cache, Requirement: Model loader uses API-provided artifact path, Requirement: Model Registry URL is configurable and targets the correct in-network port, Requirement: Model warmup on promotion (+34 more)
 
 ### Community 147 - "create_access_token"
-Cohesion: 0.21
-Nodes (27): create_access_token(), fixture, system_admin_header(), tenant_admin_header(), client(), fixture, The document service's own app: `/api/v1/documents` is served there, not by…, tenant() (+19 more)
+Cohesion: 0.12
+Nodes (39): _make_service_token(), Service-to-service credential, matching `training_service.worker`'s pattern.…, create_access_token(), _bearer(), fixture, Verification for the `require_data_plane_ready` circuit breaker (ADR-017, task…, A `ready` `tenant_owned` tenant whose *recorded* health is `unreachable` (as a…, A `ready`-status tenant already recorded `unreachable` gets 503 straight from… (+31 more)
 
 ### Community 148 - "test_training_metrics.py"
 Cohesion: 0.11
@@ -1974,19 +2312,19 @@ Nodes (13): parametrize, _python_sources(), Structural guards: one logging confi
 
 ### Community 150 - "Settings"
 Cohesion: 0.07
-Nodes (33): BaseSettings, model_validator, Inject database_ssl_mode into the default connection URLs when the URLs…, Settings, clean_ner_environment(), parametrize, Run with no `NER_` variables set, restoring them afterwards. The suite's own…, Row 30 — no plaintext secret defaults in `src/shared/config.py`. (+25 more)
+Nodes (34): BaseSettings, model_validator, Inject database_ssl_mode into the default connection URLs when the URLs…, Settings, clean_ner_environment(), parametrize, Secret-class settings must have no default, including the new telemetry pepper.…, Run with no `NER_` variables set, restoring them afterwards. The suite's own… (+26 more)
 
 ### Community 151 - "model_serving/api/v1/schemas.py"
-Cohesion: 0.19
-Nodes (18): get_tenant_id(), inference_endpoint(), post, Request, get_tenant_id(), post, Request, rerank_endpoint() (+10 more)
+Cohesion: 0.24
+Nodes (15): get_tenant_id(), inference_endpoint(), post, Request, get_tenant_id(), post, Request, rerank_endpoint() (+7 more)
 
 ### Community 152 - "_app"
 Cohesion: 0.21
 Nodes (13): _app(), _foundation_sample_lines(), _get(), parametrize, `/metrics` is reachable without auth, counts requests, and carries no tenant…, Row 23 — two readings either side of a served request., Row 24 — every label set, on every family this change declares, on every…, The scope above is only meaningful if the names in it match real families. A… (+5 more)
 
 ### Community 153 - "Requirement: Document Upload Zone"
-Cohesion: 0.05
-Nodes (41): Portal Documents, Purpose, Requirement: Auto-Polling for In-Flight Documents, Requirement: Cancel an In-Progress Batch, Requirement: Document Table, Requirement: Document Upload Zone, Requirement: Soft Delete, Requirement: Status Badge (+33 more)
+Cohesion: 0.18
+Nodes (11): Requirement: Document Upload Zone, Scenario: Click to browse and multi-select files, Scenario: Click to browse and select a valid PNG, Scenario: Drag a valid PDF onto the zone, Scenario: Drag-over visual state change, Scenario: Drag three valid files onto the zone, Scenario: Drop a file exceeding 50MB, Scenario: Drop a mixed batch of valid and invalid files (+3 more)
 
 ### Community 154 - "Requirements"
 Cohesion: 0.05
@@ -2001,16 +2339,16 @@ Cohesion: 0.05
 Nodes (40): ADDED Requirements, Requirement: Bounded agentic retrieval loop, Requirement: Evidence accumulation into existing state keys, Requirement: Feature flag and flag-off equivalence, Requirement: Iteration, tool-call, and wall-clock budgets, Requirement: Loop failure falls back to one-shot retrieval, Requirement: Loop is measured against the one-shot configuration, Requirement: Malformed tool calls get one corrective retry, then the loop degrades (+32 more)
 
 ### Community 157 - "v1/tasks.py"
-Cohesion: 0.33
-Nodes (11): create_task(), generate_uuid(), get_session(), get_tenant_id(), list_tasks(), AsyncSession, get, post (+3 more)
+Cohesion: 0.16
+Nodes (23): current_role(), Request, Role gates for annotation_service routes. `TenantContextMiddleware`…, Raise 403 unless the caller's role is one of `allowed`. Returns the role., require_annotator(), require_annotator_or_tenant_admin(), require_roles(), require_tenant_admin() (+15 more)
 
 ### Community 158 - "backfill_document_entities.py"
-Cohesion: 0.09
-Nodes (24): backfill_document(), backfill_semantic_values_for_document(), _documents_for_semantic_backfill(), _documents_needing_backfill(), _fetch_token_records(), main(), Backfill `document_entities` for documents extracted before normalized entity…, Populates typed value columns for an already-normalized document by re-parsing… (+16 more)
+Cohesion: 0.07
+Nodes (27): backfill_document(), backfill_semantic_values_for_document(), _documents_for_semantic_backfill(), _documents_needing_backfill(), _fetch_token_records(), main(), Backfill `document_entities` for documents extracted before normalized entity…, Populates typed value columns for an already-normalized document by re-parsing… (+19 more)
 
-### Community 159 - "DefineEntityTypeSlideOver.tsx"
+### Community 159 - "useToast"
 Cohesion: 0.05
-Nodes (47): AnnotationImportPreview(), AnnotationImportPreviewProps, PreviewState, makeQC(), mockAuthFetch, mockUseEntityTypes, renderPreview(), BASE_LABELS (+39 more)
+Nodes (42): hankenGrotesk, inter, jetbrainsMono, BASE_LABELS, CARDINALITY_OPTIONS, mockFetch, cardinalityChangeMessage(), DefineEntityTypeSlideOver() (+34 more)
 
 ### Community 160 - "test_projection_metrics.py"
 Cohesion: 0.13
@@ -2044,17 +2382,17 @@ Nodes (18): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModu
 Cohesion: 0.29
 Nodes (18): _base_model_metadata(), _compute_run_name(), demote_model(), get_active_model(), get_session(), get_tenant_id(), _get_version_or_404(), list_model_versions() (+10 more)
 
-### Community 168 - "_get"
-Cohesion: 0.24
-Nodes (7): _get(), A leaked contextvar would silently merge two users' work under one identifier., Rows 15 and 17 — a hash for the user, a UUID for the tenant, nothing else., Row 4 — the four fields match the values resolved for that request., _records(), TestContextMatchesTheRequest, TestIdentityIsOpaque
+### Community 168 - "test_observability_context.py"
+Cohesion: 0.15
+Nodes (13): app_and_log(), _get(), BaseHTTPMiddleware, fixture, A record emitted during a request carries that request's context, opaquely.…, A leaked contextvar would silently merge two users' work under one identifier., Rows 15 and 17 — a hash for the user, a UUID for the tenant, nothing else., Stands in for each service's real `TenantContextMiddleware`. Only the part this… (+5 more)
 
 ### Community 169 - "test_tenant_document_registry_reconcile.py"
 Cohesion: 0.15
 Nodes (19): Upserts one document's registry row. Called after ingestion, an OCR status…, record(), fixture, Verification for `registry.record`/`update_status` and…, Scenario #33: Status transitions reach the registry., Scenario #34: Drift is reconciled., Scenario #35: Unreachable store does not erase registry rows., Scenario #36: System admin sees counts during a tenant outage. (+11 more)
 
-### Community 170 - "test_entity_postprocessor_tenant_scope.py"
-Cohesion: 0.18
-Nodes (10): _entity(), fixture, Covers verification.md rows 53-55. ADR-001 requires zero cross-tenant leakage,…, `insert_document_entities` takes its schema and document id from the caller., Tenant scope is the worker's, resolved from server-controlled context; the…, stable_settings(), TestEvidenceWindowIsBounded, TestOneDocumentPerRequest (+2 more)
+### Community 170 - "test_entity_views_generator.py"
+Cohesion: 0.08
+Nodes (27): catalogued_table_names(), expected_table_names(), generated_table_names(), `schema -> QuerySurface` for the execution role, `validate_sql`, and the…, Every table `build_entity_table_statements` would create or extend. `subject`,…, Every table name any supplied definition claims, active or not. Wider than…, The tenant's query surface: `subject` plus every active `multi` definition's…, resolve_query_surface() (+19 more)
 
 ### Community 171 - "external_pg_contracts.py"
 Cohesion: 0.22
@@ -2085,16 +2423,16 @@ Cohesion: 0.22
 Nodes (17): AC Verification Policy (AGENTS.md Invariant 2), AC Verification Policy (docs/workflow/acceptance-criteria.md), Project coding standards (docs/standards/coding-standards.md), Microservice pattern-selection rules (docs/architecture/microservice-patterns.md), openspec/project.md (PROJECT.md), Reviewer Council conventions (docs/agents/reviewer-council.md), Architect Review Checklist, architect-reviewer skill (+9 more)
 
 ### Community 178 - "test_external_pg_contract_descriptions.py"
-Cohesion: 0.13
-Nodes (34): accepted_contract(), canonical_fingerprint(), CanonicalContract, ContractValidation, _is_safe_name(), _normalize_relations(), publish_version(), Canonical schema-contract lifecycle (CAP-4, ADR-013). A contract declares… (+26 more)
+Cohesion: 0.12
+Nodes (34): canonical_fingerprint(), CanonicalContract, ContractValidation, fingerprint_of_metadata(), _is_safe_name(), _normalize_relations(), publish_version(), Canonical schema-contract lifecycle (CAP-4, ADR-013). A contract declares… (+26 more)
 
 ### Community 179 - "Decision"
 Cohesion: 0.12
 Nodes (16): 017. Tenant-Owned PostgreSQL Data Plane (Data Residency), 1. The unit of residency is the whole tenant schema, 2. A content-free document registry in the control plane, for all tenants, 3. A distinct connection provider with write privileges, 4. New tenants only; plane is fixed, 5. Provisioning and migrations run per data plane, 6. Engine routing and failure isolation, 7. Originals do not rest on the platform (+8 more)
 
-### Community 180 - "chat_api/test_retrieval_metrics.py"
-Cohesion: 0.15
-Nodes (9): _bucket(), _observations(), A retrieval that finds nothing is recorded as such, not as an absence of…, Task 3.5's fourth measurement — what survived merge and the cap., The recording sits in `_invoke_entry`, which is the one point every dispatched…, TestHitRate, TestTheOrchestratorRecordsEveryDispatchedCapability, TestZeroResults (+1 more)
+### Community 180 - "_payload"
+Cohesion: 0.08
+Nodes (26): ChartPayload, model_validator, _is_grounded(), _numeric_values(), parse_chart_tool_call(), The `render_chart` tool offered to the answer-generation model, and the…, Returns the payload when every value it plots is present in `sql_results`,…, Turns a `render_chart` tool call into a chart that is safe to render, or None.… (+18 more)
 
 ### Community 181 - "TestSQLValidation"
 Cohesion: 0.12
@@ -2109,8 +2447,8 @@ Cohesion: 0.26
 Nodes (8): _columns(), _index_names(), asyncio, fixture, Covers verification.md rows 38-42., _run(), sync_engine(), TestMigration029DocumentEntitiesTypedValues
 
 ### Community 184 - "data_sources/service.py"
-Cohesion: 0.09
-Nodes (47): mark_retired(), Retirement -> `store_retired`, terminal. No DDL/DML against the tenant store —…, LifecycleRejected, Exception, A lifecycle action the connection's state, evidence, or limits forbid. Carries…, activate_connection(), _canonical_body_digest(), _emit() (+39 more)
+Cohesion: 0.06
+Nodes (73): _require_keys(), _cas_status(), mark_paused(), mark_provisioning(), mark_ready_from_paused(), mark_retired(), Active connection paused -> data plane `paused` (content routes 409)., First activation of a data-plane connection -> `provisioning`, binding the… (+65 more)
 
 ### Community 185 - "ADDED Requirements"
 Cohesion: 0.05
@@ -2136,9 +2474,9 @@ Nodes (15): _columns(), migrated_database(), _migration(), asyncio, fixture, Ver
 Cohesion: 0.12
 Nodes (16): ADDED Requirements, MODIFIED Requirements, Requirement: Data-plane connection pause and retirement drive data-plane status, Requirement: Safe activation and concurrent capability limits, Requirement: Tenant-admin-managed finite Azure connections, Scenario: Cross-tenant connection access is denied, Scenario: Data-plane test reports a missing vector extension, Scenario: Duplicate active provider is rejected (+8 more)
 
-### Community 191 - "FakeUpstreamResponse"
-Cohesion: 0.17
-Nodes (9): _FakeRequest, FakeUpstreamResponse, _patch_upstream_client(), Covers verification.md rows 21, 22 (tasks 3.3, 3.4). Calls `proxy_chat_stream`…, Stands in for the `httpx.Response` returned by `client.send(req, stream=True)`…, Duck-typed stand-in for `starlette.Request` carrying only what…, TestChatStreamGatewayProxy, _executable_string_literals() (+1 more)
+### Community 191 - "EntityService"
+Cohesion: 0.08
+Nodes (32): create_entity_type(), delete_entity_type(), EntityTypeCreate, EntityTypeToggle, EntityTypeUpdate, get_entity_type(), list_entity_types(), AsyncSession (+24 more)
 
 ### Community 192 - "Document Ingestion Source Boundary (architecture proposal)"
 Cohesion: 0.20
@@ -2148,13 +2486,13 @@ Nodes (14): Document Ingestion Source Boundary (architecture proposal), Document
 Cohesion: 0.05
 Nodes (50): DashboardPage(), ActiveModelCard(), ActiveModelCardProps, ActivityPanel(), ActivityPanelProps, ActivityRowList(), ActivityRowListProps, ROW_ICONS (+42 more)
 
-### Community 194 - "_get_active_model_version"
-Cohesion: 0.14
-Nodes (17): _get_active_model_version(), _get_cached_model_version(), Promoted version from the local `model_versions` cache. Reads `version_number`…, Active model version, resolved from the training-service registry — the same…, model_registry_tenant(), _promote(), asyncio, fixture (+9 more)
+### Community 194 - "extraction_service/worker.py"
+Cohesion: 0.06
+Nodes (43): get_already_extracted(), Documents (of the given IDs) already extracted under the given model version,…, delete_relational_entities(), Clear the document's relational rows on the caller's connection. Resolves which…, _accumulate_entity_counts(), _get_active_model_version(), _get_cached_model_version(), _get_document_filenames() (+35 more)
 
 ### Community 195 - "Requirements"
-Cohesion: 0.05
-Nodes (39): Purpose, Requirement: Dataset-to-model lineage diagram, Requirement: Design token compliance, Requirement: Detail panel defaults to the most recent job when none is selected, Requirement: Detail panel header shows the full job id and creation timestamp, Requirement: Filter tab active state is not obscured by hover styling, Requirement: Filter tabs do not overflow into adjacent content, Requirement: Horizontal status timeline (+31 more)
+Cohesion: 0.15
+Nodes (12): Purpose, Requirement: Detail panel header shows the full job id and creation timestamp, Requirement: Filter tab active state is not obscured by hover styling, Requirement: Hyperparameters render as a single 4-column row, Requirement: Large-stat evaluation metrics, Requirement: MLflow run link as card, Requirements, Scenario: Completed job shows large-stat metrics (+4 more)
 
 ### Community 196 - "TestEntityConfigValueKind"
 Cohesion: 0.30
@@ -2164,9 +2502,9 @@ Nodes (8): auth_header(), AsyncClient, asyncio, fixture, Covers verification.md 
 Cohesion: 0.18
 Nodes (7): dev_engine(), fixture, Verifies migration 032 (chat_message_feedback + chat_messages.answer_kind/…, Sanity check: existing chat_messages rows (inserted before this migration) were…, _table_columns(), TestMigration032AppliedToTenantTemplate, TestMigration032BackfilledToLiveTenantSchemas
 
-### Community 198 - "evaluate_answer"
-Cohesion: 0.18
-Nodes (8): AnswerCase, AnswerCaseResult, evaluate_answer(), Answer-level evaluation — verification.md rows 85, 86, 87. Chunk-ranking…, The single most damaging failure the investigation found: a broken turn…, One answer-level case. `required_facts` are the substrings the reply must…, TestAnswerLevelHarness, The case must fail when the reply carries evidence for only one subject — the…
+### Community 198 - "test_chat_chart_generation.py"
+Cohesion: 0.12
+Nodes (20): _drain(), _generation_node(), NoopGuardrails, Covers verification.md rows 1-4, 8, 13-14, 18-19, 21-23: which turns are…, Row 2: document-only turn makes exactly one call and carries no chart., Rows 8 and 18: when the model declines, stage B is the call it always was., Answers the decision call from the script, then streams the narrative., The ordering the SSE contract depends on (rows 20, 27). (+12 more)
 
 ### Community 199 - "Requirements"
 Cohesion: 0.05
@@ -2225,8 +2563,8 @@ Cohesion: 0.36
 Nodes (5): auth_header(), _get_summary(), Creates `total` eligible assistant answer messages; the first len(ratings) of…, _seed_feedback(), TestResponseQualityCard
 
 ### Community 213 - "test_entity_config.py"
-Cohesion: 0.44
-Nodes (11): auth_header(), AsyncClient, asyncio, fixture, tenant_with_token(), test_scenario_14_create_entity_type_v1(), test_scenario_15_update_increments_version(), test_scenario_16_valid_label_mapping() (+3 more)
+Cohesion: 0.21
+Nodes (22): auth_header(), AsyncClient, asyncio, fixture, qa_tenant(), verification.md row 17., verification.md row 18., verification.md row 19. QA pairs go through the same versioned update path as… (+14 more)
 
 ### Community 214 - "test_extraction_api.py"
 Cohesion: 0.29
@@ -2249,8 +2587,8 @@ Cohesion: 0.05
 Nodes (37): ADDED Requirements, Requirement: authFetch stub, Requirement: Badge component, Requirement: MiniBar component, Requirement: PlaceholderScreen component, Requirement: Primitive barrel export, Requirement: SegmentControl component, Requirement: SlideOver component (+29 more)
 
 ### Community 219 - "apply_to_all_tenant_schemas"
-Cohesion: 0.33
-Nodes (6): upgrade(), downgrade(), upgrade(), downgrade(), upgrade(), apply_to_all_tenant_schemas()
+Cohesion: 0.13
+Nodes (19): upgrade(), downgrade(), upgrade(), downgrade(), upgrade(), downgrade(), qa_examples on entity_definitions, source on suggested_spans Two additive…, Every tenant schema, `tenant_template` included. The template is not optional:… (+11 more)
 
 ### Community 220 - "tenant-postgresql-data-plane/tasks.md"
 Cohesion: 0.12
@@ -2274,7 +2612,7 @@ Nodes (7): _create_annotation_tasks(), _create_bare_documents(), asyncio, fixtur
 
 ### Community 225 - "Requirements"
 Cohesion: 0.05
-Nodes (37): Purpose, Requirement: Entity definition value kind columns are added to the public schema, Requirement: Existing tenant schemas are reconciled to the current template shape, Requirement: Per-tenant-schema DDL tolerates tenant schemas missing a table, Requirement: Semantic value columns are added to the template and every existing tenant schema, Requirement: Tenant provisioning clones the template atomically, Requirement: Tenant-scoped migrations propagate to existing tenant schemas, Requirement: The `document_entities` table exists on the template and every tenant schema (+29 more)
+Nodes (43): Purpose, Requirement: Entity definition value kind columns are added to the public schema, Requirement: Existing tenant schemas are reconciled to the current template shape, Requirement: Per-tenant-schema DDL tolerates tenant schemas missing a table, Requirement: Semantic value columns are added to the template and every existing tenant schema, Requirement: Tenant provisioning clones the template atomically, Requirement: Tenant-scoped migration DDL is authored once and delegated to, Requirement: Tenant-scoped migrations propagate to existing tenant schemas (+35 more)
 
 ### Community 226 - "TestSetupTestDbGuard"
 Cohesion: 0.29
@@ -2285,8 +2623,8 @@ Cohesion: 0.05
 Nodes (36): ADDED Requirements, Requirement: Celery Queue Instrumentation, Requirement: Chat And Retrieval Path Instrumentation, Requirement: Entity Resolution Outcomes Are Recorded, Requirement: Extraction And Projection Instrumentation, Requirement: Guardrail Decisions Are Counted, Including Fail-Open, Requirement: LangSmith And OpenTelemetry Traces Are Correlated, Requirement: Model Serving Instrumentation (+28 more)
 
 ### Community 228 - "portal/package.json"
-Cohesion: 0.06
-Nodes (30): results, @axe-core/playwright, eslint, eslint-config-next, eslint-config-prettier, jsdom, next, @playwright/test (+22 more)
+Cohesion: 0.10
+Nodes (18): eslint, eslint-config-next, eslint-config-prettier, jsdom, postcss, recharts, @testing-library/jest-dom, @types/node (+10 more)
 
 ### Community 229 - "ADDED Requirements"
 Cohesion: 0.06
@@ -2376,9 +2714,9 @@ Nodes (7): devDependencies, autoprefixer, tailwindcss, autoprefixer, tailwindcss
 Cohesion: 0.39
 Nodes (7): _clean(), _contains_blocklisted_substring(), main(), name_span(), Deterministic post-validation safety net over annotations.jsonl.labeled's NAME…, Returns the char offset where a blocklisted word starts inside the concatenated…, validate()
 
-### Community 251 - "validator.py"
-Cohesion: 0.19
-Nodes (17): Identifier, _check_columns(), _first_keyword(), _function_names(), _identifiers_in_from(), _is_select_alias(), Exception, AST validator for external PostgreSQL SELECT statements (CAP-4, ADR-013).… (+9 more)
+### Community 251 - "external_sql_generator.py"
+Cohesion: 0.08
+Nodes (35): Identifier, _build_system_prompt(), ExternalSQLGenerator, _metrics(), _missing_param_name(), _parse_llm_output(), Contract-grounded external SQL generation (ADR-016). Turns a natural-language…, Resolved on use, like the other generators, so this module never pulls the… (+27 more)
 
 ### Community 252 - "ADDED Requirements"
 Cohesion: 0.06
@@ -2396,9 +2734,9 @@ Nodes (34): Document Ingestion Boundary, Purpose, Requirement: Azure Blob sync s
 Cohesion: 0.06
 Nodes (34): Purpose, Requirement: Baseline regression gate, Requirement: Configuration matrix comparison, Requirement: Deterministic offline evaluation, Requirement: Evaluation executes through the tool layer, Requirement: Report output, Requirement: Retrieval metrics, Requirement: Versioned golden set (+26 more)
 
-### Community 256 - "extraction_proxy.py"
-Cohesion: 0.44
-Nodes (11): _proxy(), proxy_batch(), proxy_batch_list(), proxy_batch_status(), proxy_eligible_documents(), proxy_extract(), proxy_list_entities(), proxy_patch_entity() (+3 more)
+### Community 256 - "DocumentUpload.annotationMode.test.tsx"
+Cohesion: 0.05
+Nodes (25): ACCEPTED_TYPES, AnnotationMode, callLog, createWrapper(), entityTypes, prelabelCalls, prelabelFailures, renderUpload() (+17 more)
 
 ### Community 258 - "Requirement: Contract-authorized SQL execution"
 Cohesion: 0.11
@@ -2439,6 +2777,10 @@ Nodes (32): ADDED Requirements, Requirement: Baseline regression gate, Requireme
 ### Community 267 - "test_dashboard_summary.py"
 Cohesion: 0.15
 Nodes (10): _platform_health_status(), auth_header(), _FakeHealthClient, _FakeHealthResponse, _seed_annotator_tasks(), _seed_spans(), test_platform_health_status_critical_when_gateway_or_model_serving_offline(), test_platform_health_status_degraded_when_noncritical_offline() (+2 more)
+
+### Community 268 - "test_entity_resolver.py"
+Cohesion: 0.11
+Nodes (7): entity_schema(), fixture, Covers verification.md rows 24-27., Covers verification.md row 42 (ordinal path)., TestMentionExtraction, TestParseOrdinalSelection, TestPersonTypes
 
 ### Community 269 - "TestWorkerSemanticNormalization"
 Cohesion: 0.21
@@ -2488,9 +2830,9 @@ Nodes (4): load(), main(), name_span(), Builds a human-readable review report co
 Cohesion: 0.40
 Nodes (5): _active_model_card(), ActiveModelInfo, _format_deployed_date(), Deployment metadata only — which model is currently serving, not how well it…, Deployment metadata only (which model is serving) — no eval metrics.…
 
-### Community 282 - "Requirement: Annotation Task Management"
-Cohesion: 0.06
-Nodes (31): Annotation Workspace, Purpose, Requirement: Annotation Export, Requirement: Annotation Task Management, Requirement: Pre-labeling, Requirement: Span CRUD, Requirements, Scenario: Complete a task that has spans (+23 more)
+### Community 282 - "Requirement: Annotation Export"
+Cohesion: 0.04
+Nodes (47): Annotation Workspace, Purpose, Requirement: Annotation Export, Requirement: Annotation Task Management, Requirement: Pre-labeling, Requirement: Span CRUD, Requirements, Scenario: A document exceeding the window budget produces multiple records (+39 more)
 
 ### Community 283 - "Requirement: Sidebar Layout"
 Cohesion: 0.06
@@ -2508,9 +2850,9 @@ Nodes (3): parametrize, Risk-register item 1: the consolidation must not have ab
 Cohesion: 0.06
 Nodes (30): ADDED Requirements, Requirement: Chat runtime behaviour is unchanged by the tool layer, Requirement: Document retrieval tools, Requirement: Entity retrieval tool, Requirement: Retrieval tool contract, Requirement: Tenant scope is caller-supplied, never argument-supplied, Requirement: Tool registry and schema export, Requirement: Tool result envelope (+22 more)
 
-### Community 287 - "Requirements"
-Cohesion: 0.06
-Nodes (30): Purpose, Requirement: Celery worker initialisation, Requirement: Fine-tune the model, Requirement: Handle training failure, Requirement: Load annotated dataset, Requirement: Log training run to MLflow Tracking, Requirement: Save model artifacts, Requirement: Tokenize dataset (+22 more)
+### Community 287 - "Requirement: Load annotated dataset"
+Cohesion: 0.05
+Nodes (37): Purpose, Requirement: Celery worker initialisation, Requirement: Fine-tune the model, Requirement: Handle training failure, Requirement: Load annotated dataset, Requirement: Log training run to MLflow Tracking, Requirement: Save model artifacts, Requirement: Tokenize dataset (+29 more)
 
 ### Community 288 - "ADDED Requirements"
 Cohesion: 0.07
@@ -2527,6 +2869,10 @@ Nodes (29): Purpose, Requirement: DB cache fallback on MLflow outage, Requiremen
 ### Community 291 - "Requirement: Ephemeral retention uses a bounded working copy"
 Cohesion: 0.07
 Nodes (29): Original Document Storage, Purpose, Requirement: Document content store boundary, Requirement: Ephemeral retention uses a bounded working copy, Requirement: No consumer parses the storage reference, Requirement: Reprocessability is bounded by retention mode and stated, never silently assumed, Requirement: Retention mode is explicit and determines content resolution, Requirement: The storage reference is an outcome, never an input (+21 more)
+
+### Community 294 - "test_seed_bootstrap_batch.py"
+Cohesion: 0.07
+Nodes (30): AzureOpenAIClient, LLMClient, LLMUnavailable, Exception, Protocol, The only module in `annotation_service` that knows which LLM provider is…, The provider could not be reached, or returned something unusable. Raised…, One call: a system prompt and a user payload in, parsed JSON out. (+22 more)
 
 ### Community 295 - "Multi-tenant NER Platform investor/exec deck (scroll-snap slide deck)"
 Cohesion: 0.50
@@ -2552,9 +2898,9 @@ Nodes (18): ADDED Requirements, external-postgresql-chat, Purpose, Requirement: 
 Cohesion: 0.07
 Nodes (28): MODIFIED Requirements, Requirement: Activity Panel, Requirement: Dashboard Data Shape, Requirement: Dashboard Summary Endpoint, Requirement: Data Freshness, Requirement: Hero Section, Requirement: Secondary Metrics Panel, Requirement: Stat Card Strip (+20 more)
 
-### Community 301 - "Requirement: Client-Side File Preview"
-Cohesion: 0.07
-Nodes (28): Purpose, Requirement: Annotation File Import — Frontend Button, Requirement: Annotation File Upload and Backend Import, Requirement: Backend Partial Import Support, Requirement: Client-Side File Preview, Requirement: Import Result Feedback, Requirements, Scenario: Backend response schema change is backward-compatible (+20 more)
+### Community 301 - "Requirements"
+Cohesion: 0.04
+Nodes (46): Purpose, Requirement: Annotation File Import — Frontend Button, Requirement: Annotation File Upload and Backend Import, Requirement: Backend Partial Import Support, Requirement: Bulk-Accept Unmapped Types, Requirement: Client-Side File Preview, Requirement: Entity Type Mapping, Requirement: Import Result Feedback (+38 more)
 
 ### Community 302 - "Requirement: System Admin Cross-Tenant User Creation Endpoint"
 Cohesion: 0.07
@@ -2589,8 +2935,8 @@ Cohesion: 0.07
 Nodes (27): ADDED Requirements, Requirement: Document content store boundary, Requirement: Ephemeral retention uses a bounded working copy, Requirement: No consumer parses the storage reference, Requirement: Reprocessability is bounded by retention mode and stated, never silently assumed, Requirement: Retention mode is explicit and determines content resolution, Requirement: The storage reference is an outcome, never an input, Scenario: A NULL reference is not reported as a failure (+19 more)
 
 ### Community 419 - "data_sources.py"
-Cohesion: 0.12
-Nodes (41): enqueue_sync(), activate_data_source(), _body_digest(), create_data_source(), _created(), _data_plane_body(), _enqueue_blob_sync(), _error() (+33 more)
+Cohesion: 0.10
+Nodes (47): enqueue_sync(), activate_data_source(), _body_digest(), create_data_source(), _created(), _data_plane_body(), _enqueue_blob_sync(), _error() (+39 more)
 
 ### Community 420 - "Requirement: Contract-authorized SQL execution"
 Cohesion: 0.11
@@ -2609,8 +2955,8 @@ Cohesion: 0.07
 Nodes (26): audit-log Specification, Purpose, Requirement: Audit Log Endpoint Tenant Filtering, Requirement: Audit Log Page Tenant Filter UI, Requirement: List Audit Events via API, Requirement: Persist Audit Events, Requirement: Render Audit Log Page, Requirements (+18 more)
 
 ### Community 424 - "Requirement: Define / Edit Entity Type Slide-Over"
-Cohesion: 0.07
-Nodes (26): Purpose, Requirement: Activate / Deactivate Entity Type, Requirement: Define / Edit Entity Type Slide-Over, Requirement: Entity Type Card, Requirement: Entity Types API Hooks, Requirement: Entity Types List Page, Requirements, Scenario: API error shows error toast (+18 more)
+Cohesion: 0.06
+Nodes (33): Purpose, Requirement: Activate / Deactivate Entity Type, Requirement: Define / Edit Entity Type Slide-Over, Requirement: Entity Type Card, Requirement: Entity Types API Hooks, Requirement: Entity Types List Page, Requirements, Scenario: Adding a QA pair row and saving submits qa_examples (+25 more)
 
 ### Community 425 - "MODIFIED Requirements"
 Cohesion: 0.08
@@ -2673,8 +3019,8 @@ Cohesion: 0.09
 Nodes (22): ADDED Requirements, Requirement: Editing Imported Row Annotations, Requirement: Imported Documents List View, Requirement: Imported Rows Remain Decoupled from the Annotation Task Pipeline, Requirement: Review Progress Tracking, Requirement: Token-Level Rendering with Entity Colors, Scenario: B/I run renders as one colored span, Scenario: Create a new span from unselected tokens (+14 more)
 
 ### Community 440 - "Requirement: Sidebar Layout"
-Cohesion: 0.09
-Nodes (22): MODIFIED Requirements, Requirement: Sidebar Layout, Requirement: Topbar Layout, Scenario: active nav item is highlighted, Scenario: avatar has 10px border radius, Scenario: badge renders when present, Scenario: dark mode toggle has 10px border radius, Scenario: dark mode toggle switches theme (+14 more)
+Cohesion: 0.08
+Nodes (23): MODIFIED Requirements, Requirement: Sidebar Layout, Requirement: Topbar Layout, Scenario: active nav item is highlighted, Scenario: avatar has 10px border radius, Scenario: badge renders when present, Scenario: dark mode toggle has 10px border radius, Scenario: dark mode toggle switches theme (+15 more)
 
 ### Community 441 - "ADDED Requirements"
 Cohesion: 0.09
@@ -2689,8 +3035,8 @@ Cohesion: 0.09
 Nodes (22): chat-orchestration-graph Specification, Purpose, Requirement: Explicit stage outcomes in state, Requirement: Fixed topology with no agentic behaviour, Requirement: Graph-based chat execution flow, Requirement: Node-level observability, Requirement: Per-request state isolation, Requirement: Retrieval and model components are orchestrated, not replaced (+14 more)
 
 ### Community 444 - "Requirements"
-Cohesion: 0.09
-Nodes (22): Purpose, Requirement: Authenticated API calls from chat page, Requirement: Chat screen route and access, Requirement: Conversation sidebar, Requirement: Message thread display, Requirement: Rename conversation from sidebar, Requirement: Role-gated chat access, Requirements (+14 more)
+Cohesion: 0.05
+Nodes (38): Purpose, Requirement: Authenticated API calls from chat page, Requirement: Authenticated download from the revealed format actions, Requirement: Chat screen route and access, Requirement: Conversation sidebar, Requirement: Export offer appears whenever structured data exists, regardless of result count, Requirement: Export prompt reveals download actions only after the user opts in, Requirement: Inline preview truncation is independent of export availability (+30 more)
 
 ### Community 445 - "Requirements"
 Cohesion: 0.09
@@ -2709,8 +3055,8 @@ Cohesion: 0.09
 Nodes (21): chat-api, MODIFIED Requirements, Requirement: Guardrail — source citation enforcement, Requirement: RAG chat endpoint, Requirement: SQL query generation and validation, Scenario: Chat with document context query, Scenario: Chat with existing conversation, Scenario: Chat with simple entity count query (+13 more)
 
 ### Community 449 - "Requirements"
-Cohesion: 0.09
-Nodes (21): Purpose, Requirement: Citation enrichment with entity type resolution, Requirement: Citation model with document names and entity type names, Requirement: Configurable chat API service URL, Requirement: Conversation creation endpoint, Requirement: Disclaimer in every response, Requirement: Per-request authorization context isolation, Requirement: Rate limiting (+13 more)
+Cohesion: 0.08
+Nodes (25): Purpose, Requirement: Attachment-bearing chat turns, Requirement: Citation enrichment with entity type resolution, Requirement: Citation model with document names and entity type names, Requirement: Configurable chat API service URL, Requirement: Conversation creation endpoint, Requirement: Conversation-scoped attachment retrieval, Requirement: Disclaimer in every response (+17 more)
 
 ### Community 450 - "Requirement: SQL query generation and validation"
 Cohesion: 0.09
@@ -2724,9 +3070,9 @@ Nodes (21): Purpose, Requirement: Dashboard Summary Endpoint, Requirement: Dashb
 Cohesion: 0.09
 Nodes (21): Model Registry, Purpose, Requirement: Demote model version, Requirement: Get active model version, Requirement: List model versions, Requirement: Promote model version, Requirements, Scenario: Demote a non-promoted model returns 422 (+13 more)
 
-### Community 453 - "SlidingWindowRateLimiter"
-Cohesion: 0.13
-Nodes (6): _count_rejection(), Count one rejection, splitting the bucket key into its scope and tenant. Keys…, SlidingWindowRateLimiter, The tenant label here is deliberate: a rejected request produces the least…, TestRateLimitRejectionsAreCounted, TestRateLimiter
+### Community 453 - "TenantMismatchError"
+Cohesion: 0.07
+Nodes (18): _count_rejection(), Count one rejection, splitting the bucket key into its scope and tenant. Keys…, SlidingWindowRateLimiter, A validated token asserting one tenant, addressing another. The counter and the…, TenantMismatchError, The four counters Exit Gate 3 names: mismatch, auth failure, rate-limit…, Row 32's second clause. The reason is drawn from the exception type, so there…, The tenant label here is deliberate: a rejected request produces the least… (+10 more)
 
 ### Community 454 - "ADDED Requirements"
 Cohesion: 0.13
@@ -2769,8 +3115,8 @@ Cohesion: 0.10
 Nodes (20): ADDED Requirements, Requirement: Assistant messages carry model-identity metadata for future evaluation, Requirement: Feedback data model supports future extension, Requirement: Feedback restricted to the Business User role, Requirement: One immutable rating per eligible assistant message, Requirement: Only eligible assistant answer messages are rateable, Scenario: A new feedback attribute can be added without breaking existing rows, Scenario: Assistant message from an NER-grounded answer records model_version (+12 more)
 
 ### Community 464 - "Requirements"
-Cohesion: 0.10
-Nodes (20): Purpose, Requirement: Create and Update Endpoints Return Flat Entity Object, Requirement: Entity Type Read Responses Deserialize JSON Columns, Requirement: Entity Type Routes Use Name Identifier, Requirement: Entity Types API Tenant-Scoped Routes, Requirement: PATCH Endpoint for Toggling Active Status, Requirements, Scenario: Deactivate sets is_active to false (+12 more)
+Cohesion: 0.08
+Nodes (24): Purpose, Requirement: Create and Update Endpoints Return Flat Entity Object, Requirement: Entity Type Read Responses Deserialize JSON Columns, Requirement: Entity Type Responses Include Provenance, Requirement: Entity Type Routes Use Name Identifier, Requirement: Entity Types API Tenant-Scoped Routes, Requirement: PATCH Endpoint for Toggling Active Status, Requirements (+16 more)
 
 ### Community 465 - "Requirement: A generated `subject` column's physical type equals the type its definition declares"
 Cohesion: 0.10
@@ -2889,8 +3235,8 @@ Cohesion: 0.11
 Nodes (18): Purpose, Requirement: Annotator Dashboard Queries, Requirement: Business User Dashboard Queries, Requirement: Tenant Admin Dashboard Queries, Requirements, Scenario: annotator completion percentage, Scenario: annotator shows task activity rows, Scenario: annotator side panel shows dataset readiness (+10 more)
 
 ### Community 494 - "Requirement: Entity Type Definition"
-Cohesion: 0.11
-Nodes (18): Entity Configuration, Purpose, Requirement: Base Label Mapping, Requirement: Entity Type Definition, Requirement: Entity Type Listing and Query, Requirements, Scenario: An entity type predating the view layer defaults to multi, Scenario: Cardinality is constrained to the two known values (+10 more)
+Cohesion: 0.08
+Nodes (25): Entity Configuration, Purpose, Requirement: Base Label Mapping, Requirement: Entity Type Definition, Requirement: Entity Type Listing and Query, Requirement: Entity Type Provenance, Requirements, Scenario: A hand-created entity type is manual (+17 more)
 
 ### Community 495 - "Requirement: Tenant Admin Dashboard Queries"
 Cohesion: 0.11
@@ -3017,12 +3363,12 @@ Cohesion: 0.12
 Nodes (16): Purpose, Requirement: CORS configuration for widget endpoints, Requirement: Hosted widget JS file, Requirement: Widget API key management, Requirement: Widget-specific chat endpoint, Requirements, Scenario: Chat with invalid widget API key, Scenario: Generate widget API key (+8 more)
 
 ### Community 526 - "test_chat_api_retrieval_status.py"
-Cohesion: 0.16
-Nodes (11): Per-capability retrieval outcome for the turn. Additive: a client that ignores…, RetrievalStatusOut, _app(), auth_header(), CannedOrchestrator, _fake_citation(), _patch(), `retrieval_status` on the chat response — verification.md rows 18, 19, 28. The… (+3 more)
+Cohesion: 0.12
+Nodes (22): Per-capability retrieval outcome for the turn. Additive: a client that ignores…, RetrievalStatusOut, _proxy(), proxy_batch(), proxy_batch_list(), proxy_batch_status(), proxy_eligible_documents(), proxy_extract() (+14 more)
 
-### Community 527 - "data_sources/__init__.py"
-Cohesion: 0.14
-Nodes (23): _require_keys(), Tenant-scoped Azure connection control plane (CAP-2, ADR-011)., ConnectionValidationError, Exception, The finite approved provider catalog for the tenant control plane (CAP-2). Only…, Reject anything outside the two approved providers., Check one provider's non-secret configuration against its closed key set., Check that required reference fields hold references and nothing else. Unknown… (+15 more)
+### Community 527 - "review_queue.py"
+Cohesion: 0.10
+Nodes (37): Random, complete_audit_sample(), _document_text(), get_review_accumulation(), list_review_queue(), open_audit_sample(), AsyncSession, get (+29 more)
 
 ### Community 529 - "ADDED Requirements"
 Cohesion: 0.12
@@ -3177,8 +3523,8 @@ Cohesion: 0.13
 Nodes (14): Model Warmup, Purpose, Requirement: Model warmup on promotion, Requirement: Standalone warmup API (optional convenience), Requirement: Warmup endpoint in model-serving, Requirements, Scenario: A slow cold load that exceeds the client timeout still completes in the background, Scenario: First extraction after warmup uses cached model (+6 more)
 
 ### Community 567 - "Requirement: Task Assignment Form"
-Cohesion: 0.13
-Nodes (14): Purpose, Requirement: Task Assignment Form, Requirements, Scenario: Annotator dropdown lists only annotator-role users, Scenario: Assign button disabled until both fields are selected, Scenario: Assign Task button hidden for annotator, Scenario: Assign Task button visible for tenant admin, Scenario: Cancel collapses form without submitting (+6 more)
+Cohesion: 0.08
+Nodes (25): Purpose, Requirement: Annotation Task Endpoint Role Gates, Requirement: Task Assignment Form, Requirement: Task Completion Is Final Approval, Requirements, Scenario: A business user cannot create or list tasks, Scenario: A completion has no Tenant Admin review step, Scenario: A partially-failed batch shows per-document results and requires Done to close (+17 more)
 
 ### Community 568 - "2026-06-10-sm-03-annotation-workspace/design.md"
 Cohesion: 0.14
@@ -4106,7 +4452,7 @@ Nodes (11): Purpose, Requirement: Tenant-Admin User CRUD Endpoints, Requirements
 
 ### Community 799 - "lifecycle.py"
 Cohesion: 0.08
-Nodes (36): _connection_string(), DataPlaneSecureTester, _query_role_available(), The `azure_postgresql_data_plane` secure tester (ADR-017, Design D3, D11 — task…, Registered for `azure_postgresql_data_plane` in `testing.py`'s tester registry.…, Returns a failure reason, or `None` if the target schema is absent, empty, or…, run_data_plane_test_sync(), _schema_create_privilege() (+28 more)
+Nodes (34): _connection_string(), DataPlaneSecureTester, _query_role_available(), The `azure_postgresql_data_plane` secure tester (ADR-017, Design D3, D11 — task…, Registered for `azure_postgresql_data_plane` in `testing.py`'s tester registry.…, Returns a failure reason, or `None` if the target schema is absent, empty, or…, run_data_plane_test_sync(), _schema_create_privilege() (+26 more)
 
 ### Community 800 - "ADDED Requirements"
 Cohesion: 0.14
@@ -4330,15 +4676,15 @@ Nodes (10): Drag Annotation, Purpose, Requirement: Multi-Token Drag Span Creatio
 
 ### Community 855 - "Requirements"
 Cohesion: 0.18
-Nodes (10): Extraction Service, Purpose, Requirement: Gateway Extraction Proxy Uses JWT-Only URL Structure, Requirement: Review and correct entities, Requirements, Scenario: Correct an extracted entity, Scenario: Correct entity as annotator, Scenario: Proxy forwards batch run list request without tid in URL (+2 more)
+Nodes (10): Extraction Service, Purpose, Requirement: Callers Construct URLs Without {tid}, Requirement: Review and correct entities, Requirements, Scenario: Correct an extracted entity, Scenario: Correct entity as annotator, Scenario: Extraction engine forwards request without tid in URL (+2 more)
 
 ### Community 856 - "Requirement: Fixture setup scripts refuse non-test databases"
 Cohesion: 0.18
 Nodes (10): Purpose, Requirement: Explicit opt-in override for the fixture guard, Requirement: Fixture setup scripts refuse non-test databases, Requirements, Scenario: Override permits a non-standard test database name, Scenario: Script refuses to run against the development database, Scenario: Script runs against a test database, Scenario: The guard reads the URL actually used, not the default (+2 more)
 
-### Community 857 - "SQLAttempt"
-Cohesion: 0.08
-Nodes (18): _filename_filter_literals(), The literals a query requires `documents.filename` to match, with any SQL…, Renders prior attempts into the corrective block appended to a retry prompt. At…, One pass of generate -> validate -> execute -> classify., _render_attempt_feedback(), SQLAttempt, Rows 52, 58 — the feedback has to name the relation that would work, and must…, TestFilenameDefect (+10 more)
+### Community 857 - "SQLGenerator"
+Cohesion: 0.04
+Nodes (62): _metrics(), AsyncSession, Renders the tenant's relations and columns, each with what it means and a…, The relations a statement may name, as a bare list, for the hard-constraints…, Executes an already-validated statement and returns its rows. When…, The total the statement would have matched without its row limit, or None if…, Bounded, representative values per stored `entity_type`, still read from the…, Why the relational surface cannot answer at all, or None when it can. The… (+54 more)
 
 ### Community 858 - "Verification Plan"
 Cohesion: 0.15
@@ -4505,8 +4851,8 @@ Cohesion: 0.20
 Nodes (9): Activate, ADR conventions, Change folder structure, Related documentation, spec-driven-verified OpenSpec Schema, Spec format, Stage Gates, verification.md sections (+1 more)
 
 ### Community 899 - "Requirement: Role Navigation Matrix"
-Cohesion: 0.20
-Nodes (9): ADDED Requirements, Requirement: Role Navigation Matrix, Requirement: Screen Title Map, Scenario: annotator nav, Scenario: business_user nav, Scenario: known screen lookup, Scenario: system_admin nav, Scenario: tenant_admin nav (+1 more)
+Cohesion: 0.10
+Nodes (20): Purpose, Requirement: Method Landing Routes and Legacy Redirects, Requirement: Role Navigation Matrix, Requirement: Screen Title Map, Requirements, Scenario: a section with no permitted links is dropped, Scenario: annotator nav, Scenario: Automated's Retraining child carries no step-number prefix (+12 more)
 
 ### Community 900 - "Requirements"
 Cohesion: 0.20
@@ -4517,20 +4863,20 @@ Cohesion: 0.20
 Nodes (9): portal-containerization Specification, Purpose, Requirement: Portal Compose Service, Requirement: Portal Multi-Stage Docker Build, Requirements, Scenario: Portal can reach the gateway API, Scenario: Portal image builds successfully, Scenario: Portal starts as part of the compose stack (+1 more)
 
 ### Community 902 - "TestChatEndpointTurnShape"
-Cohesion: 0.42
-Nodes (3): asyncio, verification.md rows 16, 17, 20, 21 — the RAG chat endpoint's existing…, TestChatEndpointTurnShape
+Cohesion: 0.32
+Nodes (4): asyncio, verification.md rows 16, 17, 20, 21 — the RAG chat endpoint's existing…, Real ingestion over an in-memory store. The default store is object storage,…, TestChatEndpointTurnShape
 
-### Community 903 - "database.py"
-Cohesion: 0.03
-Nodes (110): get_db(), AsyncSession, Request, Routed through EngineResolver (ADR-017)., handle_extraction_completed(), task, refresh_analytics_materialized_views(), get_session() (+102 more)
+### Community 903 - "get_resolver"
+Cohesion: 0.04
+Nodes (67): handle_extraction_completed(), task, refresh_analytics_materialized_views(), get_session(), AsyncSession, Routed through EngineResolver (ADR-017). `SELECT 1` proves the connection is…, blob_sync_tick(), _data_plane_retry_countdown() (+59 more)
 
 ### Community 904 - "test_local_compose_delivery_evidence.py"
 Cohesion: 0.23
 Nodes (12): _chain_heads(), _compose(), Path, Local Compose delivery evidence (CAP-6, ADR-014). Hermetic by design: every…, _revisions(), test_app_service_host_ports_are_unique(), test_chain_check_rejects_branch_and_broken_link(), test_db_init_applies_migrations_before_app_services() (+4 more)
 
-### Community 905 - "test_entity_resolver.py"
-Cohesion: 0.20
-Nodes (6): entity_schema(), fixture, Covers verification.md rows 63, 64. No full user message is logged (the…, TestPersonTypes, TestResolutionLogging, usefixtures
+### Community 905 - "Chat Attachment Upload — End-to-End Discovery and Requirements Baseline"
+Cohesion: 0.05
+Nodes (39): Architecture-Driving Requirements and Constraints, Assumption Register, Blocking, Business Context and Success Measures, Business Rules, Chat Attachment Upload — End-to-End Discovery and Requirements Baseline, Current State, Data Requirements (+31 more)
 
 ### Community 906 - "ADDED Requirements"
 Cohesion: 0.22
@@ -4717,8 +5063,8 @@ Cohesion: 0.22
 Nodes (8): Context, Currently-In-Force ADRs, Decision 1: <!-- title -->, Decisions, Goals / Non-Goals, Migration Plan, Open Questions, Risks / Trade-offs
 
 ### Community 952 - "Requirement: Authenticated Route Group Layout"
-Cohesion: 0.22
-Nodes (8): ADDED Requirements, Requirement: Admin Sub-Layout Role Guard, Requirement: Authenticated Route Group Layout, Scenario: authenticated access renders shell, Scenario: existing admin URLs unchanged, Scenario: non-admin role blocked from /admin/*, Scenario: system_admin accesses admin route, Scenario: unauthenticated access redirects to login
+Cohesion: 0.20
+Nodes (9): Purpose, Requirement: Admin Sub-Layout Role Guard, Requirement: Authenticated Route Group Layout, Requirements, Scenario: authenticated access renders shell, Scenario: existing admin URLs unchanged, Scenario: non-admin role blocked from /admin/*, Scenario: system_admin accesses admin route (+1 more)
 
 ### Community 953 - "Requirement: OPTIONS requests bypass authentication middleware"
 Cohesion: 0.22
@@ -5329,8 +5675,8 @@ Cohesion: 0.25
 Nodes (8): Requirement: Guardrail — source citation enforcement, Scenario: Clarification request is not replaced by the guardrail, Scenario: Domain decline keeps its message, Scenario: Empty-sources turn emits no tokens before the fallback, Scenario: Generated answer after selection still requires citations, Scenario: Response with no sources after a retrieval failure, Scenario: Response with no sources after successful empty retrieval, Scenario: Response without sources is rejected
 
 ### Community 1105 - "Requirements"
-Cohesion: 0.25
-Nodes (7): Document Ingestion, Purpose, Requirement: Tenant Context Enforcement, Requirements, Scenario: Authenticated request with valid tenant, Scenario: Request for unknown tenant, Scenario: Request with inactive tenant
+Cohesion: 0.20
+Nodes (9): Document Ingestion, Purpose, Requirement: CSV file ingestion, Requirement: CSV text extraction branch, Requirements, Scenario: CSV processing writes spans and chunks, Scenario: CSV with quoted delimiters and ragged rows is normalized, Scenario: Unsupported file type remains rejected (+1 more)
 
 ### Community 1106 - "Requirement: Convert trained model to ONNX format"
 Cohesion: 0.25
@@ -5588,9 +5934,9 @@ Nodes (7): Requirement: Query extracted entities, Scenario: Query entities as an
 Cohesion: 0.29
 Nodes (6): Infrastructure, Purpose, Requirement: Seed script idempotent for promoted model, Requirements, Scenario: First run inserts promoted model, Scenario: Re-run seed script skips existing promoted model
 
-### Community 1170 - "_spec"
-Cohesion: 0.24
-Nodes (7): _columns(), asyncio, verification.md rows 59-63, verification.md row 53 — the failure mode most likely to reach production., _spec(), TestReconcilerRepairs, TestSubjectColumnListChanges
+### Community 1170 - "auth_header"
+Cohesion: 0.12
+Nodes (24): auth_header(), cleanup(), _client(), engine(), _outcomes(), fixture, _queued(), The review queue and its human resolution route. Covers verification.md rows… (+16 more)
 
 ### Community 1171 - "Requirement: Only platform default adapters are executable in this change"
 Cohesion: 0.15
@@ -5600,9 +5946,13 @@ Nodes (12): ADDED Requirements, MODIFIED Requirements, Requirement: Only platfor
 Cohesion: 0.17
 Nodes (11): Context, Currently-In-Force ADRs, Decision 1: Evidence-first delivery change, no runtime behavior change, Decision 2: Migration compatibility asserted by chain inspection, not rewrite, Decision 3: Telemetry evidence via declarations + scan, not new dashboards, Decision 4: Recovery evidenced by procedure + timed compose-level exercise record, Decisions, Goals / Non-Goals (+3 more)
 
-### Community 1174 - "041_azure_blob_sync_ledger.py"
-Cohesion: 0.47
-Nodes (5): downgrade(), _for_each_tenant_schema(), durable azure blob sync ledger in every tenant schema (CAP-3) ADR-012 keeps…, Apply one statement to every provisioned tenant schema, per the 038 pattern.…, upgrade()
+### Community 1173 - "test_seed_bootstrap_acceptance.py"
+Cohesion: 0.14
+Nodes (25): _accept(), _approve_initial_batch(), cleanup(), client(), _completed_batch(), engine(), fake_send_task(), fixture (+17 more)
+
+### Community 1174 - "test_retrain_request.py"
+Cohesion: 0.10
+Nodes (25): _annotation_client(), cleanup(), engine(), _job_row(), fixture, Requesting a retrain, and the approval it must not skip. Covers verification.md…, A request creates a job awaiting approval and enqueues nothing., tasks.md 1.2: Tenant Admin requests, System Admin approves. A System Admin who… (+17 more)
 
 ### Community 1175 - "2026-06-17-add-login-dashboard-transition/tasks.md"
 Cohesion: 0.33
@@ -5727,6 +6077,10 @@ Nodes (6): Requirement: Span Inspector, Scenario: Clicking a confirmed span open
 ### Community 1205 - "Bugs: Tenant Self-Service Data Sources"
 Cohesion: 0.25
 Nodes (8): Bugs: Tenant Self-Service Data Sources, DS-001: Last-run status never updates, DS-002: Portal shows `INTERNAL_ERROR` for every data-source error, DS-003: Blob sync scheduler appears stuck, DS-004: Gateway blocks its event loop while enqueuing a manual sync, DS-005: Gateway had no Celery broker configured, DS-006: Blob sync containers download the tokenizer at startup and die if it fails, DS-007: Blob sync OCR tests fail on a stale test-fixture schema
+
+### Community 1206 - "RetrainingDecisionPage.tsx"
+Cohesion: 0.09
+Nodes (25): ADR-0008, AccumulationBreakdown(), metricRow(), PromotionEvidencePanel(), RetrainingDecisionPage(), createWrapper(), EMPTY_OVERVIEW, mockFetch (+17 more)
 
 ### Community 1207 - "Requirement: Tenant-Scoped User Management"
 Cohesion: 0.40
@@ -5916,9 +6270,9 @@ Nodes (5): Requirement: Task Status Lifecycle, Scenario: Creating a span does no
 Cohesion: 0.40
 Nodes (5): Requirement: Token-Click Span Creation, Scenario: API error reverts optimistic span, Scenario: Clicking a token while armed creates a span, Scenario: Clicking a token while no type is armed opens the span inspector, Scenario: Clicking an already-spanned token while armed does nothing
 
-### Community 1254 - "Requirement: Settings Page Placeholder"
+### Community 1254 - "openspec/specs/settings-page/spec.md"
 Cohesion: 0.40
-Nodes (4): Requirement: Settings Page Placeholder, Requirements, Scenario: Settings page does not show coming-soon copy, Settings Page
+Nodes (4): Purpose, Requirement: Settings Page Placeholder, Requirements, Scenario: Settings page does not show coming-soon copy
 
 ### Community 1255 - "openspec/specs/worker-network-config/spec.md"
 Cohesion: 0.40
@@ -5929,8 +6283,12 @@ Cohesion: 0.18
 Nodes (10): Context, Currently-In-Force ADRs, Decision 1: Merge test, attestation, and activation into one sequential control — attestation checkboxes stay, no auto-submission, Decision 2: Reorder via straight JSX reordering in `DetailContent`, not a new layout abstraction, Decision 3: New-connection modal reuses `SlideOver`'s internals as a centered dialog, not a right-edge panel, Decisions, Goals / Non-Goals, Migration Plan (+2 more)
 
 ### Community 1257 - "_sanitize_error"
-Cohesion: 0.25
-Nodes (5): BaseException, Renders an exception into a single bounded line safe to put in a prompt., _sanitize_error(), Row 57 — SQLAlchemy appends the statement and bound values to str(exc)., Row 57 — bounded length.
+Cohesion: 0.24
+Nodes (6): BaseException, Renders an exception into a single bounded line safe to put in a prompt., _sanitize_error(), Row 57 — SQLAlchemy appends the statement and bound values to str(exc)., Row 57 — bounded length., TestFeedback
+
+### Community 1259 - "Requirement: Sampled Acceptance Gate"
+Cohesion: 0.06
+Nodes (34): ADDED Requirements, MODIFIED Requirements, Requirement: Batch Kind, Requirement: Batch Pre-labeling, Requirement: Initial-Batch Review Guidance, Requirement: Named Batch State, Requirement: Q&A-Pair Proposal Input, Requirement: Sampled Acceptance Gate (+26 more)
 
 ### Community 1260 - "2026-06-08-env-config-setup/tasks.md"
 Cohesion: 0.50
@@ -6016,17 +6374,17 @@ Nodes (3): ADDED Requirements, Requirement: Touched OCR failure paths emit safe 
 Cohesion: 0.50
 Nodes (3): 1. <!-- Task Group Name (e.g., Setup) -->, 2. <!-- Task Group Name (e.g., Core Implementation) -->, N. Verification & Evidence
 
-### Community 1281 - "Requirement: Reranked document context"
-Cohesion: 0.50
-Nodes (4): Requirement: Reranked document context, Scenario: A relevant chunk ranked below the truncation cutoff is promoted into context, Scenario: Chat succeeds with unreranked ordering when the reranker is unavailable, Scenario: Reranking does not alter the structured entity source
+### Community 1281 - "CannedStreamOrchestrator"
+Cohesion: 0.18
+Nodes (16): _app(), auth_header(), CannedStreamOrchestrator, _patch_orchestrator(), Patched onto `chat_module.orchestrator` for endpoint tests. Both entry points…, Parses an httpx streaming response body into a list of (event, data) pairs., Covers verification.md rows 13, 14, 15, 35 (tasks 2.13, 2.14)., Covers row 35 (chat-api guardrail spec): a turn whose sources come back empty… (+8 more)
 
 ### Community 1282 - "Requirement: Structured retrieval returns candidate document IDs"
 Cohesion: 0.50
 Nodes (4): Requirement: Structured retrieval returns candidate document IDs, Scenario: Candidate IDs are the distinct document IDs of the result rows, Scenario: Failed structured retrieval yields no candidates, Scenario: No document_id column yields no candidates
 
-### Community 1283 - "Requirement: Callers Construct URLs Without {tid}"
-Cohesion: 0.50
-Nodes (4): Requirement: Callers Construct URLs Without {tid}, Scenario: Extraction engine forwards request without tid in URL, Scenario: Training service constructs warmup URL without tid in path, Scenario: Worker constructs inference URL without tid in path
+### Community 1283 - "Requirement: Retraining Decision Surface"
+Cohesion: 0.06
+Nodes (33): Human-Gated Retraining, Purpose, Requirement: Manual Retrain Request, Requirement: No Automatic Retraining Or Promotion, Requirement: Promotion Decision Evidence, Requirement: Retraining Decision Surface, Requirement: Training Runs Record Consumed Spans, Requirements (+25 more)
 
 ### Community 1284 - "Requirement: Get extraction run status"
 Cohesion: 0.50
@@ -6081,8 +6439,8 @@ Cohesion: 0.67
 Nodes (3): Requirement: Resolution outcome is observable, Scenario: Ambiguous turn is logged with its candidate count, Scenario: Zero-match mention is logged
 
 ### Community 1303 - "Requirement: Post-processing confidence filtering"
-Cohesion: 0.67
-Nodes (3): Requirement: Post-processing confidence filtering, Scenario: Low-confidence entities are filtered out, Scenario: The threshold is meaningful against the returned scale
+Cohesion: 0.40
+Nodes (5): Requirement: Post-processing confidence filtering, Scenario: Low-confidence entities are filtered out, Scenario: Low-confidence entities are retained for routing, Scenario: Retaining predictions does not change what business consumers see, Scenario: The threshold is meaningful against the returned scale
 
 ### Community 1304 - "Requirement: Span Deselection"
 Cohesion: 0.67
@@ -6121,8 +6479,8 @@ Cohesion: 0.22
 Nodes (9): Authentication, Deployment Under Test, Evidence, Follow-Up Work, QA Report -- tenant-self-service-data-sources-20260909-2, Release Gate, Results By Test Type, Scope (+1 more)
 
 ### Community 1315 - "test_data_plane_status_endpoint.py"
-Cohesion: 0.21
-Nodes (12): _bearer(), failed_tenant(), fixture, Verification for `GET /api/v1/data-plane` and `POST /api/v1/data-…, Scenario: retry from `provisioning_failed` CAS's to `provisioning` and enqueues…, A `tenant_owned` tenant whose provisioning attempt failed, with a real…, Scenario: a tenant with no `tenant_data_planes` row reads back the platform…, Scenario: retry on a `platform`/`ready` tenant is a no-op, rejected. (+4 more)
+Cohesion: 0.15
+Nodes (17): _bearer(), failed_tenant(), fixture, parametrize, Verification for `GET /api/v1/data-plane` and `POST /api/v1/data-…, Scenario: opening the status read did not open the retry., Scenario: retry on a `platform`/`ready` tenant is a no-op, rejected., Scenario: retry from `provisioning_failed` CAS's to `provisioning` and enqueues… (+9 more)
 
 ### Community 1316 - "2026-09-10-cap-4-contract-governed-external-postgresql-query-path/proposal.md"
 Cohesion: 0.25
@@ -6158,7 +6516,7 @@ Nodes (8): ADDED Requirements, Requirement: Manual Blob sync trigger action, Sce
 
 ### Community 1324 - "ToolContext"
 Cohesion: 0.03
-Nodes (71): RuntimeError, ArgValidationError, assert_no_tenancy_params(), Any, Exception, Protocol, Validates `args` against a minimal JSON-Schema-shaped `args_schema` (type,…, Shared execution wrapper: validates args, times the call, and converts any… (+63 more)
+Nodes (79): ExternalAnswer, The generator's outcome for one question. `reason` is `None` on success; every…, ArgValidationError, assert_no_tenancy_params(), Any, Exception, Protocol, Validates `args` against a minimal JSON-Schema-shaped `args_schema` (type,… (+71 more)
 
 ### Community 1325 - "to_sql_identifier"
 Cohesion: 0.12
@@ -6176,13 +6534,13 @@ Nodes (6): 1. Navigation and data layer, 2. SCR-1 collection screen, 3. SCR-2 li
 Cohesion: 0.29
 Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log and Audit Record, Verification Plan
 
-### Community 1329 - "export.py"
-Cohesion: 0.31
-Nodes (8): export_annotations(), get_session(), get_tenant_id(), AsyncSession, get, Request, Routed through EngineResolver (ADR-017)., _tokenize()
+### Community 1329 - "annotation_service/main.py"
+Cohesion: 0.12
+Nodes (21): _bio_tags_from_offsets(), export_annotations(), get_session(), get_tenant_id(), AsyncSession, get, Request, Derive BIO tags purely from each span's `char_start`/`char_end`. The stored… (+13 more)
 
 ### Community 1330 - "conversation_entity_state.py"
-Cohesion: 0.10
-Nodes (24): CandidateEntity, PendingClarification, _candidates_to_schema(), Candidate, _candidates_from_json(), _candidates_to_json(), clear_binding(), clear_pending() (+16 more)
+Cohesion: 0.14
+Nodes (18): _candidates_from_json(), _candidates_to_json(), clear_binding(), clear_pending(), ConversationState, decode_document_ids(), encode_document_ids(), increment_reask() (+10 more)
 
 ### Community 1331 - "analytics_proxy.py"
 Cohesion: 0.50
@@ -6204,9 +6562,9 @@ Nodes (5): Decision, Findings, Gaps (honest, non-blocking), Security -- tenant-s
 Cohesion: 0.33
 Nodes (4): slow, Row 3: the base-model fallback reports the same scale, so a tenant with no…, Downloads the base model, so it is excluded from the default run. It is the…, TestBaseModelPathIsCalibrated
 
-### Community 1336 - "042_external_pg_contracts.py"
-Cohesion: 0.60
-Nodes (4): downgrade(), _for_each_tenant_schema(), canonical external-postgresql schema contracts and tenant schema index (CAP-4)…, upgrade()
+### Community 1336 - "training_service/worker.py"
+Cohesion: 0.09
+Nodes (20): _assert_dataset_splittable(), _load_annotated_dataset(), _make_service_token(), Exception, Tokenise a batch and align BIO tags to subwords. When `truncation_stats` is…, Fail the job when no train/evaluation split with at least one evaluation row…, tokenize_and_align_labels(), TrainingDataError (+12 more)
 
 ### Community 1337 - "2026-09-10-cap-4-contract-governed-external-postgresql-query-path-superseded-unrecorded/tasks.md"
 Cohesion: 0.40
@@ -6240,17 +6598,17 @@ Nodes (4): Decision, Load -- tenant-self-service-data-sources-20260909-2, Result
 Cohesion: 0.25
 Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
 
-### Community 1345 - "softmax"
-Cohesion: 0.21
-Nodes (7): ndarray, Numerically stable softmax over `axis`. Subtracting the per-row maximum before…, softmax(), Row 4: overlap conflicts are resolved by edge distance first, confidence…, The observed production logit band was roughly 2.8-7.4, which is exactly the…, TestOverlapTieBreakStillWorks, TestSoftmaxHelper
+### Community 1345 - "test_inference_confidence_calibration.py"
+Cohesion: 0.14
+Nodes (12): ndarray, Numerically stable softmax over `axis`. Subtracting the per-row maximum before…, softmax(), _FakeInput, label_list(), patched_serving(), fixture, Guards the calibration fix: `_infer_window()` used to report `np.max(logits)`… (+4 more)
 
 ### Community 1346 - "external-postgresql-chat-sql-generation/proposal.md"
 Cohesion: 0.25
 Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
 
 ### Community 1347 - "dependencies"
-Cohesion: 0.25
-Nodes (8): dependencies, lucide-react, next, react, react-dom, react-markdown, remark-gfm, @tanstack/react-query
+Cohesion: 0.22
+Nodes (9): dependencies, lucide-react, next, react, react-dom, react-markdown, recharts, remark-gfm (+1 more)
 
 ### Community 1348 - "Integration -- tenant-self-service-data-sources-20260909-2"
 Cohesion: 0.50
@@ -6280,13 +6638,13 @@ Nodes (11): ADDED Requirements, Requirement: Content-free document registry in t
 Cohesion: 0.29
 Nodes (6): ADDED Requirements, Requirement: Manual sync-now control, Scenario: Administrator triggers a manual sync from the detail view, Scenario: Lease-held manual sync surfaces a safe retry notice, Scenario: Sync-now is absent for PostgreSQL connections, Scenario: Sync-now is unavailable for inactive connections
 
-### Community 1356 - "extract_entities"
-Cohesion: 0.41
-Nodes (12): extract_entities(), get_batch_status(), _get_role(), _get_tenant_id(), list_batch_runs(), list_eligible_documents(), AsyncSession, get (+4 more)
+### Community 1356 - "v1/llm_prelabel.py"
+Cohesion: 0.11
+Nodes (29): _coerce_json(), _content_hash(), get_llm_prelabel_job(), _load_document_text(), AsyncSession, get, post, Request (+21 more)
 
-### Community 1357 - "imported-documents/page.tsx"
-Cohesion: 0.05
-Nodes (47): Favicon — dark theme SVG, Logo — dark theme SVG, Hardcoded-color-to-CSS-variable mapping (text-gray-900 -> var(--ink), bg-white -> var(--surface-2), etc.), Design: Fix Dark Theme Issues Across Portal Pages, Proposal: Fix Dark Theme Issues Across Portal Pages, Fix Dark Theme Issues - Tasks, In-app Logo SVG, Logo (Dark Theme) SVG (+39 more)
+### Community 1357 - "ImportedDocuments.tsx"
+Cohesion: 0.04
+Nodes (64): ImportAnnotationLanding(), mockFiles, mockPush, mockAuthFetch, mockUseAnnotationImport, mockUseAuth, mockUseEntityTypes, ImportedDocumentsPage() (+56 more)
 
 ### Community 1358 - "2026-09-11-redesign-azure-blob-connection-ui/tasks.md"
 Cohesion: 0.33
@@ -6304,25 +6662,25 @@ Nodes (4): ADR-016. Contract-Grounded External SQL Generation, Consequences, Con
 Cohesion: 0.40
 Nodes (4): 1. Gateway Manual Sync Route, 2. Portal Sync-Now Control, 3. Acceptance-Criteria Tests, 4. Verification & Evidence
 
-### Community 1362 - "TestModeDoesNotAffectSkipLogic"
-Cohesion: 0.40
-Nodes (3): Row 73 — flipping the toggle must not reprocess and overwrite existing entities., The whole worker module is inspected, not one function. `run_batch_extraction`…, TestModeDoesNotAffectSkipLogic
+### Community 1362 - "Requirement: Sampled Acceptance Gate"
+Cohesion: 0.07
+Nodes (29): ADDED Requirements, MODIFIED Requirements, Requirement: Automatic Large-Batch Promotion, Requirement: Batch Kind, Requirement: Initial-Batch Review Guidance, Requirement: Sampled Acceptance Gate, Scenario: A finished large batch is promoted with no reviewer of any role, Scenario: A fully failed large batch is not promoted (+21 more)
 
 ### Community 1363 - "conftest.py"
-Cohesion: 0.27
-Nodes (11): _assert_test_database(), captured_spans(), client(), db_session(), engine(), fixture, pytest_sessionstart(), Collect the stage spans a block of code emits.… (+3 more)
+Cohesion: 0.23
+Nodes (13): _assert_test_database(), captured_spans(), client(), db_session(), engine(), _platform_session_is_fake_session(), fixture, pytest_sessionstart() (+5 more)
 
 ### Community 1364 - "test_tenant_document_registry.py"
 Cohesion: 0.20
 Nodes (11): _backfill_registry_from_schema(), fixture, Verification for `public.tenant_document_registry` (ADR-017). Maps to…, The same projection alembic migration 043 runs per platform tenant schema,…, Scenario: Existing documents are backfilled. Given a platform tenant with 5…, A throwaway tenant schema shaped like `documents` at head 042 (migration 038's…, Scenario: Registry schema holds no content columns., registry_source_schema() (+3 more)
 
-### Community 1365 - "entities.py"
-Cohesion: 0.38
-Nodes (10): _get_tenant_id(), _get_user_id(), list_entities(), patch_entity(), AsyncSession, get, Request, EntityItem (+2 more)
+### Community 1365 - "exported"
+Cohesion: 0.09
+Nodes (19): _attributes(), _bodies(), exported(), fixture, Row 32 — delivery, not emission., The provisioned Loki datasource derives its trace link from `"trace_id": "..."`…, A log store queries on attributes, not on the body text, so the correlation…, They stay present-and-null in the body, where a query can filter on them. As… (+11 more)
 
-### Community 1366 - "DatabasePoolCollector"
-Cohesion: 0.20
-Nodes (7): DatabasePoolCollector, init_db_pool_metrics(), instrument_app(), Register the pool collector once per process. Re-registering raises in…, Expose `/metrics` on a FastAPI service. The endpoint is mounted on the app…, Reports database connection usage at scrape time. The obvious implementation —…, Bind to the engine's pool events, once, on the first scrape that finds one.…
+### Community 1366 - "Requirement: Review Outcomes Become Confirmed Spans"
+Cohesion: 0.07
+Nodes (28): Confidence-Routed Review, Purpose, Requirement: Accumulation Reporting, Requirement: Auto-Accept Audit Sampling, Requirement: Confidence-Based Routing, Requirement: Review Outcomes Become Confirmed Spans, Requirement: Review Queue Resolution, Requirements (+20 more)
 
 ### Community 1367 - "test_tenant_data_plane_record.py"
 Cohesion: 0.18
@@ -6332,17 +6690,17 @@ Nodes (9): Verification for `public.tenant_data_planes` — the ADR-017 control-
 Cohesion: 0.31
 Nodes (10): auth_header(), AsyncClient, asyncio, Verification for tenant creation with `data_plane_mode` (ADR-017, task 9.3) —…, Scenario: System Admin creates a tenant-owned data plane tenant., Scenario: Invalid data plane mode is rejected., Feature-flag gating: creating a tenant_owned tenant is rejected when disabled., test_invalid_data_plane_mode_is_rejected() (+2 more)
 
-### Community 1369 - "widget_keys.py"
-Cohesion: 0.31
-Nodes (9): create_widget_key(), get_session(), list_widget_keys(), AsyncSession, delete, get, post, Request (+1 more)
+### Community 1369 - "Requirements"
+Cohesion: 0.07
+Nodes (28): LLM Pre-labeling, Purpose, Requirement: Asynchronous Execution, Requirement: Entity Type Constraint, Requirement: Extraction Scope, Requirement: Extractive-Only Output, Requirement: Grounding and Verification, Requirement: LLM Pre-labeling Trigger (+20 more)
 
-### Community 1370 - "test_relational_projection_generator.py"
-Cohesion: 0.31
-Nodes (4): Pure-function tests for the relational projection. Database-free, deliberately.…, verification.md rows 4, 22, 32, _subject(), TestSubjectRow
+### Community 1370 - "test_seed_bootstrap_proposal.py"
+Cohesion: 0.13
+Nodes (17): _candidate_named(), _candidates(), cleanup(), client(), engine(), fake_send_task(), fixture, Entity schema proposal: request, candidate validation, and per-candidate… (+9 more)
 
-### Community 1371 - "Tenant"
-Cohesion: 0.24
-Nodes (3): fixture, A tenant schema plus the handful of helpers every test below needs., Tenant
+### Community 1371 - "ADDED Requirements"
+Cohesion: 0.07
+Nodes (27): ADDED Requirements, Requirement: Batch Pre-labeling, Requirement: Entity Schema Proposal, Requirement: Pre-Submission Readiness Check, Requirement: Sampled Acceptance Gate, Requirement: Schema Proposal Approval, Scenario: Approving a candidate creates an entity type, Scenario: Approving a candidate whose name already exists (+19 more)
 
 ### Community 1372 - "Tenant-Owned PostgreSQL Data Plane — Customer Prerequisites Runbook"
 Cohesion: 0.22
@@ -6356,21 +6714,21 @@ Nodes (8): Capabilities, Change Notes, Impact, Modified Capabilities, New Capabi
 Cohesion: 0.22
 Nodes (8): ADDED Requirements, MODIFIED Requirements, Requirement: Tenant provisioning clones the template atomically, Requirement: Tenant-scoped migrations also reach residency stores, Scenario: A column added by migration reaches both planes, Scenario: A failed table clone rolls back the whole tenant, Scenario: A provisioned tenant has the full template table set, Scenario: A tenant-owned tenant is not cloned on the platform
 
-### Community 1375 - "build_relational_delete_statements"
-Cohesion: 0.31
-Nodes (4): build_relational_delete_statements(), Clear this document from every **existing** generated table, plus its `subject`…, verification.md rows 27, 28, 30, TestDeleteStatements
+### Community 1375 - "ADDED Requirements"
+Cohesion: 0.07
+Nodes (27): ADDED Requirements, Requirement: Manual Retrain Request, Requirement: No Automatic Retraining Or Promotion, Requirement: Promotion Decision Evidence, Requirement: Retraining Decision Surface, Requirement: Training Runs Record Consumed Spans, Scenario: A completed run does not chain another run, Scenario: A completed run does not promote itself (+19 more)
 
-### Community 1376 - "select_single_value"
-Cohesion: 0.31
-Nodes (4): The one value a `single` definition contributes to the document's `subject`…, select_single_value(), verification.md rows 16-18, TestSingleValueSelection
+### Community 1376 - "test_extraction_confidence_filtering.py"
+Cohesion: 0.11
+Nodes (20): cleanup(), _document_entities(), engine(), _prepare(), fixture, Below-threshold predictions are retained for routing, invisibly to business…, What a business consumer sees. `document_entities` is what `chat_api`'s entity…, The 0.30 prediction survives the run, with everything routing and review need. (+12 more)
 
-### Community 1377 - "training_service/api/v1/schemas.py"
-Cohesion: 0.39
-Nodes (8): ApproveJobRequest, ModelVersionListResponse, ModelVersionPromoteRequest, BaseModel, RejectJobRequest, TrainingJobCreate, TrainingJobListResponse, TrainingJobResponse
+### Community 1377 - "test_review_outcomes.py"
+Cohesion: 0.14
+Nodes (18): add_run_inline(), cleanup(), _client(), engine(), fixture, _queued(), Review outcomes becoming confirmed spans. Covers verification.md rows 13-17.…, The spec is explicit that the original span must not also exist — a correction… (+10 more)
 
-### Community 1378 - "TestBackfillSemanticValues"
-Cohesion: 0.39
-Nodes (3): asyncio, Covers verification.md rows 26-28., TestBackfillSemanticValues
+### Community 1378 - "Tenant Admin Navigation Restructure — Implementation Map (Phase 1)"
+Cohesion: 0.07
+Nodes (26): 1.1 Architecture, 1.2 RBAC, 1.3 Current Tenant Admin navigation (`src/portal/src/lib/nav-config.ts`), 1.4 The three annotation methods — current state, 1.5 Entity Types — single source of truth, 1.6 Training lifecycle, 1.7 Notifications / task-state events, 1. What already exists (current implementation) (+18 more)
 
 ### Community 1379 - "test_data_plane_route_gate.py"
 Cohesion: 0.28
@@ -6380,17 +6738,17 @@ Nodes (8): awaiting_store_tenant(), _bearer(), fixture, Verification for the con
 Cohesion: 0.32
 Nodes (7): fixture, Verification for "Replacement connections must point at the same store"…, The stored configuration validates as `sslmode=verify-full` (production shape);…, A `tenant_owned` tenant already `ready`, with a real `tenant_<id>` schema and…, ready_tenant_with_real_store(), _relax_data_plane_tls(), _store_engine()
 
-### Community 1381 - "test_data_plane_health.py"
-Cohesion: 0.39
-Nodes (7): _cleanup(), _make_ready_tenant(), Verification for "Per-tenant store health is a content-free control-plane…, Scenario #29: Service stays ready during a tenant outage., Scenario #30: Recovery is detected., test_scenario_29_service_stays_ready_during_a_tenant_outage(), test_scenario_30_recovery_is_detected()
+### Community 1381 - "data_plane/tasks.py"
+Cohesion: 0.08
+Nodes (31): _connection_url(), _platform_engine(), _probe_one(), probe_tenant_data_plane_health(), _ProfileShim, provision_tenant_data_plane(), task, The tenant-store provisioning Celery task (ADR-017, Design D6 — task 10.1).… (+23 more)
 
-### Community 1382 - "test_upload_precheck.py"
-Cohesion: 0.29
-Nodes (7): _bearer(), fixture, Verification for "Uploads are rejected before bytes are accepted when the store…, A `ready` `tenant_owned` tenant whose store is actually unreachable —…, Scenario: Upload during outage writes nothing., test_upload_during_outage_writes_nothing(), unreachable_ready_tenant()
+### Community 1382 - "ADDED Requirements"
+Cohesion: 0.07
+Nodes (26): ADDED Requirements, Requirement: Asynchronous Execution, Requirement: Entity Type Constraint, Requirement: Extraction Scope, Requirement: Extractive-Only Output, Requirement: Grounding and Verification, Requirement: LLM Pre-labeling Trigger, Requirement: Result Caching (+18 more)
 
-### Community 1383 - "043_tenant_data_plane.py"
-Cohesion: 0.38
-Nodes (5): _for_each_platform_tenant_schema(), _quoted(), tenant data plane control plane: tenant_data_planes, tenant_document_registry,…, Apply one statement to every provisioned platform tenant schema. `statement` is…, upgrade()
+### Community 1383 - "ADDED Requirements"
+Cohesion: 0.07
+Nodes (26): ADDED Requirements, Requirement: Accumulation Reporting, Requirement: Auto-Accept Audit Sampling, Requirement: Confidence-Based Routing, Requirement: Review Outcomes Become Confirmed Spans, Requirement: Review Queue Resolution, Scenario: A confirmed outcome creates a span at the predicted offsets, Scenario: A corrected outcome creates a span at the corrected offsets (+18 more)
 
 ### Community 1384 - "Requirement: Tenant Creation"
 Cohesion: 0.29
@@ -6400,17 +6758,1301 @@ Nodes (6): MODIFIED Requirements, Requirement: Tenant Creation, Scenario: Invali
 Cohesion: 0.38
 Nodes (6): _iter_py_files(), Source checks for the tenant-data-plane-routing spec's scenario #7: "Workers…, Guards the allowlist itself against typos/renames going stale., test_allowlist_files_actually_exist(), test_no_cross_schema_public_join_in_tenant_session_sql(), test_no_direct_platform_engine_construction_outside_allowlist()
 
-### Community 1386 - "reconcile_entity_tables_sync"
-Cohesion: 0.33
-Nodes (4): Connection, `reconcile_entity_tables` for a synchronous `Connection`. The extraction worker…, reconcile_entity_tables_sync(), Both executors share one plan; only `execute` differs. The worker reconciles at…
+### Community 1386 - "Requirements"
+Cohesion: 0.07
+Nodes (26): Purpose, Requirement: Annotation Mode Selector Visibility, Requirement: Automated Mode Triggers Pre-labeling Per Uploaded Document, Requirement: Automated Option Gating, Requirement: Batch Outcome Reporting, Requirement: Manual Mode Performs No Pre-labeling, Requirement: Pre-labeling Failure Does Not Affect Uploads, Requirements (+18 more)
 
 ### Community 1387 - "Requirement: System Admin chooses and observes the tenant data plane"
 Cohesion: 0.40
 Nodes (4): ADDED Requirements, Requirement: System Admin chooses and observes the tenant data plane, Scenario: Document counts remain visible during a tenant outage, Scenario: System Admin creates a tenant-owned tenant
 
-### Community 1388 - "infer"
+### Community 1388 - "test_seed_bootstrap_readiness.py"
+Cohesion: 0.12
+Nodes (24): drop_test_schemas(), make_token(), Fixtures shared by the four `test_seed_bootstrap_*` files. Not a test module —…, tenant_tables_sql(), cleanup(), engine(), asyncio, fixture (+16 more)
+
+### Community 1392 - "test_promotion_evidence.py"
+Cohesion: 0.12
+Nodes (19): _annotation_client(), cleanup(), engine(), _evidence(), fixture, Evidence for the promotion decision, and the verdict it must not produce.…, A tenant whose versions have recorded the given numbers of consumed spans.…, Both versions' metrics, and what each was trained on, in one response. (+11 more)
+
+### Community 1393 - "test_retrieval_foundation.py"
+Cohesion: 0.14
+Nodes (17): _fake_vector(), FakeEmbeddingService, _old_similarity_search(), asyncio, fixture, integration, Covers scenario 3: DenseRetriever output must be identical to the pre-refactor…, Deterministic stand-in for EmbeddingService.embed — avoids a live OpenAI call. (+9 more)
+
+### Community 1394 - "_base_state"
+Cohesion: 0.10
+Nodes (12): _base_state(), Covers verification.md rows 14, 32, 33, 34., Never dereferenced directly — every call that would touch the DB is…, Covers verification.md rows 42-49., Covers verification.md rows 54-58., Covers verification.md rows 15, 21, 28, 29, 50., _SentinelSession, TestAmbiguousAndOverCap (+4 more)
+
+### Community 1395 - "ADDED Requirements"
+Cohesion: 0.08
+Nodes (23): ADDED Requirements, Requirement: Annotation Mode Selector Visibility, Requirement: Automated Mode Triggers Pre-labeling Per Uploaded Document, Requirement: Automated Option Gating, Requirement: Batch Outcome Reporting, Requirement: Manual Mode Performs No Pre-labeling, Requirement: Pre-labeling Failure Does Not Affect Uploads, Scenario: Automated is disabled with no active entity types (+15 more)
+
+### Community 1396 - "Verification Plan"
+Cohesion: 0.08
+Nodes (23): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, 7. Agent Verification Record, 8. Archive Waiver (+15 more)
+
+### Community 1397 - "Decisions"
+Cohesion: 0.08
+Nodes (23): Context, Currently-In-Force ADRs, Decision 10: Human review only at first; the LLM route is a per-tenant switch, default off, Decision 11: Below-threshold predictions are discarded on resolution, with an age cap, Decision 12: A rejection records an outcome and produces no training signal, Decision 13: Audit sampling runs weekly at max(20, 5%), capped at 100, Decision 14: Routing lives in the batch extraction worker, not the ad-hoc `/extract` endpoint, Decision 15: The visibility guarantee is about the routing store, not about filtering `document_entities` (+15 more)
+
+### Community 1398 - "run_llm_review_async"
+Cohesion: 0.12
+Nodes (17): _load_queued_predictions(), This tenant's route, falling back to the configured default. Read from…, Queued predictions, oldest first, with the document text each one needs. The…, Review this tenant's queued predictions with the LLM. Returns counts rather…, run_llm_review_async(), _tenant_review_policy(), The route that resolves this tenant's queued predictions. A tenant with no…, resolve_review_policy() (+9 more)
+
+### Community 1399 - "ADDED Requirements"
+Cohesion: 0.09
+Nodes (22): ADDED Requirements, Requirement: Both the durable and the working store follow the tenant, Requirement: Failure is closed, with no fallback to platform storage, Requirement: Model artifacts and experiment tracking are excluded from content-store routing, Requirement: Resolved tenant content stores are cached within a bounded size, Requirement: The content store is resolved per tenant at write time, Scenario: A chat attachment follows the same routing, Scenario: A model is served from platform storage for a routed tenant (+14 more)
+
+### Community 1400 - "import_.py"
+Cohesion: 0.19
+Nodes (22): compute_entity_type_counts(), generate_uuid(), get_known_entity_types_lower(), get_session(), get_tenant_id(), import_annotations(), list_import_files(), map_import_types() (+14 more)
+
+### Community 1401 - "_fix_undefined_alias"
+Cohesion: 0.13
+Nodes (10): _fix_undefined_alias(), Deterministically repairs a qualifier the model never bound to a relation. The…, FakeSurface, The generator reliably produces the right aggregate shape and then refers to…, The exact SQL the generator produced in dev, which Postgres rejected with…, `document_id` exists on both relations, so nothing here says which was meant.…, One column belongs to e_money and the other to subject, so no single relation…, TestDoesNotMisreadSql (+2 more)
+
+### Community 1402 - "test_retraining_decision.py"
+Cohesion: 0.13
+Nodes (16): cleanup(), _client(), _decision(), engine(), fixture, The retraining decision surface. Covers verification.md rows 6-9. Row 8 is the…, The spec's 120/14 split at a smaller scale, with the same shape. The breakdown…, A base-model tenant is a distinct state, not a zero. ADR-008: the base model… (+8 more)
+
+### Community 1403 - "Requirement: Inline preview truncation is independent of export availability"
+Cohesion: 0.09
+Nodes (21): ADDED Requirements, MODIFIED Requirements, REMOVED Requirements, RENAMED Requirements, Requirement: Authenticated download from the revealed format actions, Requirement: Export offer appears whenever structured data exists, regardless of result count, Requirement: Export prompt reveals download actions only after the user opts in, Requirement: Inline preview truncation and file card, driven by result count (+13 more)
+
+### Community 1404 - "Requirement: Retriever interface"
+Cohesion: 0.09
+Nodes (21): ADDED Requirements, MODIFIED Requirements, Requirement: Chunks carry denormalized conversation ownership, Requirement: Retriever interface, Scenario: A chat query cannot bypass the purpose restriction, Scenario: Chunks written before this change remain retrievable, Scenario: DenseRetriever uses the hnsw index, Scenario: HybridRetriever fuses dense and sparse results via RRF (+13 more)
+
+### Community 1405 - "test_chat_api_chart_response.py"
+Cohesion: 0.16
+Nodes (13): auth_header(), _citation(), _get_conversation(), _patch_turn(), _post_chat(), Covers verification.md rows 24-26 and 31-32, 34: the chart's place in the chat…, Row 34: an assistant row inserted without ever naming the chart column —…, A payload that no longer validates must not break the whole reload. (+5 more)
+
+### Community 1406 - "test_tenant_store_migration_delegation.py"
+Cohesion: 0.14
+Nodes (21): check_migration_source(), delegates_to_revisions_module(), is_explicitly_exempt(), _migration_files(), parametrize, Path, Static enforcement for ADR-017 Design Decision 5 (openspec change `single-…, Returns a failure reason string if `module_source`'s `upgrade()` touches… (+13 more)
+
+### Community 1407 - "Chat Attachment Upload — Technical Design"
+Cohesion: 0.10
+Nodes (20): Backend send contract, Background / Context, Baseline findings, Chat Attachment Upload — Technical Design, Codebase Discovery Findings, Composer and conversation lifecycle, CSV ingestion integration, Data Model / API Changes (+12 more)
+
+### Community 1408 - "ADDED Requirements"
+Cohesion: 0.10
+Nodes (20): ADDED Requirements, MODIFIED Requirements, Requirement: Backend Partial Import Support, Requirement: Entity Type Mapping, Requirement: Imported Files Are Training Data, Requirement: Request Training From an Import, Requirement: Unmapped Entity Types Are Held, Not Dropped, Scenario: A file pending mapping contributes nothing (+12 more)
+
+### Community 1409 - "test_entity_resolver_mentions.py"
+Cohesion: 0.14
+Nodes (10): _coro(), _FakeSession, asyncio, Entity resolution never fired on real questions. Two causes, both here: 1.…, The exact failing question., james" must resolve to James, not be shortened to "jame" and lost., verification.md row 46. A stored name can carry a single-letter token ("zanith…, Stands in for the DB. `_lookup_candidate_rows` is patched out, so this only has… (+2 more)
+
+### Community 1410 - "test_migration_042_045_guards.py"
+Cohesion: 0.19
+Nodes (14): _base_tables(), _has_column(), _has_table(), _load(), prepared(), fixture, usefixtures, Guard tests for migrations 042-045. Each runs the migration's real `upgrade()`… (+6 more)
+
+### Community 1411 - "ADDED Requirements"
+Cohesion: 0.10
+Nodes (19): ADDED Requirements, Requirement: Chart eligibility gating, Requirement: Chart is suppressed when the answer is not trusted, Requirement: Chart numbers are grounded in retrieved rows, Requirement: Chart tool contract, Scenario: Blocked question is never offered the chart tool, Scenario: Chart containing an invented value is rejected, Scenario: Chart whose values all appear in the rows is accepted (+11 more)
+
+### Community 1412 - "Requirement: Ephemeral retention uses a bounded working copy"
+Cohesion: 0.10
+Nodes (19): ADDED Requirements, MODIFIED Requirements, Requirement: A storage reference is accompanied by its producing store, Requirement: Ephemeral retention uses a bounded working copy, Requirement: Retention mode is explicit and determines content resolution, Scenario: A NULL reference is not reported as a failure, Scenario: A routed tenant's ephemeral bytes never reach platform storage, Scenario: An adapter cannot override retention (+11 more)
+
+### Community 1413 - "test_imported_annotations_list.py"
+Cohesion: 0.23
+Nodes (19): auth_header(), cleanup_public(), client(), _create_tables_sql(), make_token(), asyncio, fixture, Tests for imported annotations list and detail endpoints. (+11 more)
+
+### Community 1414 - "Verification Plan"
+Cohesion: 0.11
+Nodes (18): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, 7. Agent Verification Record, 8. Outstanding Items (+10 more)
+
+### Community 1415 - "Verification Plan"
+Cohesion: 0.11
+Nodes (18): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, 7. Agent Verification Record, 8. Outstanding Items (+10 more)
+
+### Community 1416 - "Requirement: Role Navigation Matrix"
+Cohesion: 0.11
+Nodes (18): ADDED Requirements, MODIFIED Requirements, Requirement: Method Landing Routes and Legacy Redirects, Requirement: Role Navigation Matrix, Requirement: Screen Title Map, Scenario: a section with no permitted links is dropped, Scenario: annotator nav, Scenario: automated step routes are tenant-admin only (+10 more)
+
+### Community 1417 - "Requirement: Safe activation and concurrent capability limits"
+Cohesion: 0.11
+Nodes (18): MODIFIED Requirements, Requirement: Safe activation and concurrent capability limits, Requirement: Tenant-admin-managed finite Azure connections, Scenario: An unapproved provider is rejected, Scenario: Content-store test leaves no scratch object behind, Scenario: Content-store test reports a missing expiry rule, Scenario: Content-store test reports a read-only credential, Scenario: Cross-tenant connection access is denied (+10 more)
+
+### Community 1418 - "Requirement: Only platform default adapters are executable in this change"
+Cohesion: 0.11
+Nodes (18): MODIFIED Requirements, Requirement: Only platform default adapters are executable in this change, Requirement: Tenant-owned data plane forbids platform-retained originals, Scenario: A content-store selection executes with an active content-store connection, Scenario: A non-default selection cannot be activated, Scenario: A non-default selection may be recorded, Scenario: A platform-plane tenant may execute a tenant content store, Scenario: A read-only Blob source does not make the content store executable (+10 more)
+
+### Community 1419 - "Requirement: Annotation Export"
+Cohesion: 0.11
+Nodes (17): MODIFIED Requirements, Requirement: Annotation Export, Scenario: A document exceeding the window budget produces multiple records, Scenario: An entity crossing a window boundary is complete in at least one window, Scenario: An invalid source value is rejected, Scenario: Automated source includes only promoted spans, Scenario: Consecutive windows overlap, Scenario: Export annotation dataset (+9 more)
+
+### Community 1420 - "Requirement: Chart rendering in the chat thread"
+Cohesion: 0.11
+Nodes (17): ADDED Requirements, MODIFIED Requirements, Requirement: Chart delivered over the streaming connection, Requirement: Chart rendering in the chat thread, Requirement: Message thread display, Scenario: Assistant message with a chart renders it above its citations, Scenario: Bar chart renders with title and categories, Scenario: Chart honours the active theme (+9 more)
+
+### Community 1421 - "Requirement: A tenant content store is a distinct write-capable connection"
+Cohesion: 0.11
+Nodes (17): ADDED Requirements, Requirement: A tenant content store is a distinct write-capable connection, Requirement: Bounded working-copy lifetime is enforced by the tenant's container, Requirement: One container holds durable and working bytes under separate prefixes, Requirement: Pause and retirement stop content routing without deleting tenant objects, Scenario: A correctly scoped rule passes, Scenario: A literal credential is rejected, Scenario: A missing lifecycle rule blocks activation (+9 more)
+
+### Community 1422 - "Requirements"
+Cohesion: 0.11
+Nodes (17): manual-annotation-landing Specification, Purpose, Requirement: Annotated Documents List, Requirement: At-a-Glance Stats, Requirement: Train Model Hand-off, Requirement: Workflow Steps, Requirements, Scenario: annotator sees only their own annotated documents (+9 more)
+
+### Community 1423 - "Requirement: Notification Bell"
+Cohesion: 0.11
+Nodes (17): notifications Specification, Purpose, Requirement: Notification Bell, Requirement: Notification Read API, Requirement: Notification Storage, Requirements, Scenario: A business user does not see annotation notifications, Scenario: A completed manual annotation task notification routes to Models & Training scoped to manual (+9 more)
+
+### Community 1424 - "review_resolution.py"
+Cohesion: 0.16
+Nodes (17): compute_bio_tags(), create_span_from_outcome(), discard_prediction(), normalize_resolution(), ValueError, Turning a reviewed prediction into a recorded outcome, and an outcome into a…, Insert the review outcome and return its id. The row carries its own copy of…, Create the confirmed span a confirmed or corrected outcome implies, or `None`.… (+9 more)
+
+### Community 1425 - "test_tenant_store_migrate.py"
+Cohesion: 0.25
+Nodes (17): main(), Returns 0 always — see module docstring. Prints one safe outcome line per…, _cleanup_tenant(), _has_marker_column(), _provisioned_tenant_at_baseline(), Verification for `src/shared/tenant_store/migrate.py` (ADR-017, task 10.6) —…, Scenario #19: Deploy upgrades a residency store., Scenario #20: Unreachable store during deploy is isolated. (+9 more)
+
+### Community 1426 - "promotion_evidence.py"
+Cohesion: 0.16
+Nodes (15): dataset_sizes_comparable(), get_promotion_evidence(), _promoted_row(), AsyncSession, get, Request, Evidence for the promotion decision. Promotion was already a human action…, Whether two trained-on counts are close enough to read the metrics side by… (+7 more)
+
+### Community 1427 - "emit"
+Cohesion: 0.13
+Nodes (11): emit(), fixture, parametrize, `max_tokens=4` is a shape field, not a credential. A word-boundary miss here…, Emit through the real handler `init_observability` installs and return the…, Redaction must not swallow the shape fields that replace the content — an event…, The denylist reaches field names and `key=value` runs. A statement echoed as…, The failure mode this exists for: someone sets `NER_LOG_LEVEL=DEBUG` to… (+3 more)
+
+### Community 1428 - "2026-09-07-seed-bootstrap/design.md"
+Cohesion: 0.12
+Nodes (16): A rejected batch's suggestions are retained (task 1.5), Context, Currently-In-Force ADRs, Decision 1: The LLM proposes entity types; it never creates them, Decision 2: Batch pre-labeling is one job over N documents, reusing change 1's per-document machinery, Decision 3: Bulk acceptance is gated on a sampled agreement rate, not on reviewing everything, Decision 4: The sample is drawn randomly and the drawn set is recorded, Decision 5: The readiness check reads ADR-010's threshold and is advisory (+8 more)
+
+### Community 1429 - "Verification Plan"
+Cohesion: 0.12
+Nodes (16): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, 7. Agent Verification Record, 8. Outstanding Items (+8 more)
+
+### Community 1430 - "Requirement: Attachment-bearing chat turns"
+Cohesion: 0.12
+Nodes (16): ADDED Requirements, MODIFIED Requirements, Requirement: Attachment-bearing chat turns, Requirement: Attachment content is retrievable only within its own conversation, Requirement: Attachments are indexed before the turn is answered, Requirement: Text-only chat sends remain supported, Scenario: A failed attachment does not silently degrade the answer, Scenario: A job description attached in one session does not answer another session (+8 more)
+
+### Community 1431 - "Requirement: CSV export endpoint"
+Cohesion: 0.12
+Nodes (16): chat-export Specification, Purpose, Requirement: CSV export endpoint, Requirement: Export format validation, Requirement: Row snapshot persisted per structured turn, Requirement: XLSX export endpoint, Requirements, Scenario: Export rejects a request from a non-owning user (+8 more)
+
+### Community 1432 - "test_entity_resolution_metrics.py"
+Cohesion: 0.15
+Nodes (11): _mentions_count(), _mentions_sum(), parametrize, Entity resolution records its outcome and how many mentions it checked — and…, Structural rather than incidental: both families label on `outcome` alone, so…, Row 10's first clause — all four constants, not just the interesting ones., A rename in `entity_resolver.py` must break this import rather than leave a…, Row 10's second clause. (+3 more)
+
+### Community 1433 - "CAP-2 — Chat Composer Attachment UX"
+Cohesion: 0.12
+Nodes (16): API Surface (indicative), Assumptions, CAP-2 — Chat Composer Attachment UX, Constraints, Contracts / Interfaces, Data owned, Demonstrates Reference Scenarios, Events consumed (+8 more)
+
+### Community 1434 - "CAP-3 — Conversation-Scoped Attachment Persistence"
+Cohesion: 0.12
+Nodes (16): API Surface (indicative), Assumptions, CAP-3 — Conversation-Scoped Attachment Persistence, Constraints, Contracts / Interfaces, Data owned, Demonstrates Reference Scenarios, Events consumed (+8 more)
+
+### Community 1435 - "CAP-4 — CSV Ingestion Branch for Chat Attachments"
+Cohesion: 0.12
+Nodes (16): API Surface (indicative), Assumptions, CAP-4 — CSV Ingestion Branch for Chat Attachments, Constraints, Contracts / Interfaces, Data owned, Demonstrates Reference Scenarios, Events consumed (+8 more)
+
+### Community 1436 - "CAP-5 — Documents Library Exclusion and Hard-Delete Cleanup"
+Cohesion: 0.12
+Nodes (16): API Surface (indicative), Assumptions, CAP-5 — Documents Library Exclusion and Hard-Delete Cleanup, Constraints, Contracts / Interfaces, Data owned, Demonstrates Reference Scenarios, Events consumed (+8 more)
+
+### Community 1437 - "2026-09-03-llm-assisted-prelabeling/design.md"
+Cohesion: 0.12
+Nodes (15): Context, Currently-In-Force ADRs, Decision 1: Separate endpoint, not a parameter on the existing one, Decision 2: Extraction, verification, and storage are three separate steps, Decision 3: Full-document extraction prompt, not QA-answering, Decision 4: Grounding failure means "drop", never "best effort", Decision 5: Cache key is (content hash, entity-config version), not per-request, Decision 6: Lightweight Celery queue, separate from the GPU training queue (+7 more)
+
+### Community 1438 - "Verification Plan"
+Cohesion: 0.12
+Nodes (15): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, 7. Agent Verification Record, 8. Outstanding Items (+7 more)
+
+### Community 1439 - "Verification Plan"
+Cohesion: 0.12
+Nodes (15): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, 7. Agent Verification Record, 8. Outstanding Items (+7 more)
+
+### Community 1440 - "Requirement: Task Assignment Form"
+Cohesion: 0.12
+Nodes (15): MODIFIED Requirements, Requirement: Task Assignment Form, Scenario: A partially-failed batch shows per-document results and requires Done to close, Scenario: Annotator dropdown lists only annotator-role users, Scenario: Assign button disabled until both fields are selected, Scenario: Assign Task button hidden for annotator, Scenario: Assign Task button visible for tenant admin, Scenario: Cancel collapses form without submitting (+7 more)
+
+### Community 1441 - "Requirement: Chart event on the streaming endpoint"
+Cohesion: 0.12
+Nodes (15): ADDED Requirements, Requirement: Chart event on the streaming endpoint, Requirement: Chart in the chat response contract, Requirement: Chart persisted with the assistant turn, Scenario: Chart event precedes the first token, Scenario: Chart survives conversation reload, Scenario: Done event repeats the chart, Scenario: Existing tenants receive the column (+7 more)
+
+### Community 1442 - "Decisions"
+Cohesion: 0.12
+Nodes (15): Context, Currently-In-Force ADRs, Decision 1: A separate write-capable provider, `azure_blob_content_store`, Decision 2: The backend is recorded per document, never re-derived, Decision 3: One container, two prefixes, with a prefix-scoped lifecycle rule, Decision 4: Tenant-scoped store resolution, bounded cache, fail closed, Decision 5: Lift ADR-017's `platform_blob` rejection, conditionally, Decision 6: No migration of existing bytes (+7 more)
+
+### Community 1443 - "Requirement: Define / Edit Entity Type Slide-Over"
+Cohesion: 0.13
+Nodes (14): MODIFIED Requirements, Requirement: Define / Edit Entity Type Slide-Over, Scenario: Adding a QA pair row and saving submits qa_examples, Scenario: API error shows error toast, Scenario: BASE MODEL LABEL chip selection is single-select, Scenario: Create submits POST and shows success toast, Scenario: Edit submits PUT and increments version, Scenario: Escape key closes the slide-over (+6 more)
+
+### Community 1444 - "ADDED Requirements"
+Cohesion: 0.13
+Nodes (14): ADDED Requirements, Requirement: Annotated Documents List, Requirement: At-a-Glance Stats, Requirement: Single Work Card, Requirement: Train Model Hand-off, Scenario: annotator sees only their own annotated documents, Scenario: annotator sees their own completed count, Scenario: completed tasks are listed with a working view link (+6 more)
+
+### Community 1445 - "ADDED Requirements"
+Cohesion: 0.13
+Nodes (14): ADDED Requirements, Requirement: CSV export endpoint, Requirement: Export format validation, Requirement: Row snapshot persisted per structured turn, Requirement: XLSX export endpoint, Scenario: Export rejects a request from a non-owning user, Scenario: Export returns valid CSV, Scenario: Export returns valid XLSX (+6 more)
+
+### Community 1446 - "Requirement: Two-stage generation for chart-eligible turns"
+Cohesion: 0.13
+Nodes (14): ADDED Requirements, MODIFIED Requirements, Requirement: Chart payload carried in graph state, Requirement: Fixed topology with no agentic behaviour, Requirement: Two-stage generation for chart-eligible turns, Scenario: Blocked question short-circuits to END, Scenario: Chart tool call does not alter graph routing, Scenario: Excess complexity short-circuits to END (+6 more)
+
+### Community 1447 - "Requirement: Reads and deletes route by the recorded kind, never by current configuration"
+Cohesion: 0.13
+Nodes (14): ADDED Requirements, Requirement: Every stored document records which content store produced its reference, Requirement: Existing documents carry a backfilled backend kind, Requirement: Reads and deletes route by the recorded kind, never by current configuration, Scenario: A mixed-backend tenant resolves each document independently, Scenario: A platform-stored document records the platform kind, Scenario: A tenant-stored document records the tenant kind, Scenario: Activation does not orphan existing documents (+6 more)
+
+### Community 1448 - "review.py"
+Cohesion: 0.33
+Nodes (13): get_imported_annotation(), get_session(), get_tenant_id(), list_imported_annotations(), mark_imported_annotation_reviewed(), _parse_entity_types(), AsyncSession, get (+5 more)
+
+### Community 1449 - "_extract_label_set"
+Cohesion: 0.18
+Nodes (7): _extract_label_set(), verification.md row 12. A record holding a full export window must survive the…, verification.md row 13. ADR-009 puts sequence length in the System Admin's…, verification.md row 14. Truncation is allowed to happen; it is not allowed to…, TestExtractLabelSet, TestLabelMapping, TestSequenceLength
+
+### Community 1450 - "fine_tune_model"
+Cohesion: 0.22
+Nodes (7): fine_tune_model(), MLflowCallback, task, _save_artifacts(), Return a mock sync engine whose connection returns a row with given status., TestFineTuneRetryGuard, TrainerCallback
+
+### Community 1451 - "test_cap_5_documents_library_exclusion_and_delete.py"
+Cohesion: 0.34
+Nodes (14): chat_client(), doc_client(), asyncio, fixture, seed_document_with_conversation(), test_4_1_library_listing_excludes_chat_attachments(), test_4_2_library_fetch_by_id_of_chat_attachment_fails_404(), test_4_3_library_text_retrieval_of_chat_attachment_fails_404() (+6 more)
+
+### Community 1452 - "Requirement: Load annotated dataset"
+Cohesion: 0.14
+Nodes (13): MODIFIED Requirements, Requirement: Load annotated dataset, Requirement: Tokenize dataset, Scenario: A window-sized record is not truncated at the default sequence length, Scenario: Annotation service URL defaults to the correct internal port, Scenario: Annotation service URL is overridable via environment variable, Scenario: Dataset large enough to split proceeds, Scenario: Dataset loads successfully (+5 more)
+
+### Community 1453 - "Verification Plan"
+Cohesion: 0.14
+Nodes (13): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, 7. Archive Override, AI Output Review (+5 more)
+
+### Community 1454 - "2026-09-10-automated-annotation-guided-workflow/design.md"
+Cohesion: 0.14
+Nodes (13): Context, Currently-In-Force ADRs, Decision 1: The Q&A pair is a `documents` row with `purpose = 'qa_pair'`, Decision 2: `batch_kind` is chosen at trigger time and drives the reviewer role, Decision 3: `state` is derived, not stored as a workflow field, Decision 4: The agreement threshold stays fixed and conservative, Decision 5: Initial-batch guidance is corrected spans + an optional per-document note, encoded into the prompt as text, Decision 6: The acceptance→eligible→notify transition is idempotent and single-transaction (+5 more)
+
+### Community 1455 - "2026-09-14-cap-2-chat-composer-attachment-ux/design.md"
+Cohesion: 0.14
+Nodes (13): Context, Currently-In-Force ADRs, Decision 1: Client-side staging with zero server calls at pick time, Decision 2: Serialize to the existing JSON `ChatRequest.attachments`, not new multipart form data, Decision 3: `ChatInput` stays presentational; the page owns the queue, Decision 4: Client accept set mirrors the backend allow-list, including CSV, Decision 5: Clear the tray on success only, preserve on failure, Decision 6: Styling exclusively from the installed token file (+5 more)
+
+### Community 1456 - "cap-6-session-scoped-attachment-retrieval/design.md"
+Cohesion: 0.14
+Nodes (13): Context, Currently-In-Force ADRs, Decision 1: Attachment-bearing turns are `multipart/form-data`; text-only turns stay JSON, Decision 2: Attachments are ingested through `DocumentIngestionService`, which gains `conversation_id`, Decision 3: `document_chunks` carries a denormalized `conversation_id`, Decision 4: The conversation predicate is mandatory and comes from request context, Decision 5: The SQL path is scoped by reusing the existing inline-view rewrite, Decision 6: Attachment processing is awaited, with a bounded wait and honest degradation (+5 more)
+
+### Community 1457 - "chat-chart-generation/design.md"
+Cohesion: 0.14
+Nodes (13): Context, Currently-In-Force ADRs, Decision 1: Two-stage generation rather than tool-calling inside the stream, Decision 2: Validate every chart number against the retrieved rows, Decision 3: Chart is bound to the same trust decision as the reply, Decision 4: Additive wire contract, with the chart as its own SSE event, Decision 5: Recharts in the portal, persisted as JSONB, Decision 6: Stage A receives the full assembled prompt (+5 more)
+
+### Community 1458 - "Requirement: Tenant users can see where their content is stored"
+Cohesion: 0.14
+Nodes (13): ADDED Requirements, Requirement: Content routes present a safe state when the tenant store is unavailable, Requirement: Content-store connections are administrable in the portal, Requirement: Tenant users can see where their content is stored, Scenario: A content-store connection is created through the standard form, Scenario: A failed write test surfaces only a safe reason class, Scenario: A recorded but unexecutable selection does not claim tenant storage, Scenario: An active content store is reflected in the portal (+5 more)
+
+### Community 1459 - "Requirement: Chat attachment staging"
+Cohesion: 0.14
+Nodes (13): chat-composer-attachments Specification, Purpose, Requirement: Accessible attachment control, Requirement: Attachment-bearing send interaction, Requirement: Chat attachment staging, Requirements, Scenario: Failed send preserves staged attachments, Scenario: Keyboard users stage and remove attachments (+5 more)
+
+### Community 1460 - "test_data_plane_task_retry.py"
+Cohesion: 0.22
+Nodes (13): _count_spans(), _insert_pending_document(), ocr_tenant(), asyncio, fixture, Verification for "Background tasks retry with bounded backoff and then park"…, Scenario #28: OCR has produced text and the store becomes unreachable before…, A real, fully-provisioned `tenant_owned` schema on `postgres-tenant-store`,… (+5 more)
+
+### Community 1461 - "2026-09-03-annotation-mode-selection/design.md"
+Cohesion: 0.15
+Nodes (12): Context, Currently-In-Force ADRs, Decision 1: Gate the selector on `purpose === "training"`, Decision 2: Manual is the default, and is a strict no-op, Decision 3: Frontend loops change 1's per-document endpoint; no batch endpoint, Decision 4: Pre-label triggers run after uploads and cannot fail an upload, Decision 5: Disable Automated when the tenant has no active entity types, Decisions (+4 more)
+
+### Community 1462 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1463 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1464 - "2026-09-07-training-data-integrity/design.md"
+Cohesion: 0.15
+Nodes (12): Context, Currently-In-Force ADRs, Decision 1: Derive token offsets by scanning the source text, not by assuming separators, Decision 2: Span offsets are the source of truth; stop consuming the stored `bio_tags` column, Decision 3: Window at export time, with overlap, on a source-token budget, Decision 4: The dataset guard is mechanical, not a readiness threshold, Decision 5: Do not auto-invalidate models trained before this fix, Decisions (+4 more)
+
+### Community 1465 - "Requirement: Annotation Export"
+Cohesion: 0.15
+Nodes (12): MODIFIED Requirements, Requirement: Annotation Export, Scenario: A document exceeding the window budget produces multiple records, Scenario: An entity crossing a window boundary is complete in at least one window, Scenario: Consecutive windows overlap, Scenario: Export annotation dataset, Scenario: Export for specific documents only, Scenario: Export ignores a stale stored bio_tags value (+4 more)
+
+### Community 1466 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1467 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1468 - "2026-09-08-human-gated-retraining/design.md"
+Cohesion: 0.15
+Nodes (12): Context, Currently-In-Force ADRs, Decision 1: The training run records what it consumed, at completion, Decision 2: A retrain request is an ordinary training job submission, Decision 3: No automatic initiation, stated as a testable requirement, Decision 4: The promotion surface shows evidence, and shows its limits, Decision 5: Behave sensibly with no trained model, Decisions (+4 more)
+
+### Community 1469 - "2026-09-10-import-annotation-training-eligibility/design.md"
+Cohesion: 0.15
+Nodes (12): Context, Currently-In-Force ADRs, Decision 1: Hold unmapped rows in place, mark them pending, Decision 2: Mapping rewrites tags in place; the original is kept on the header, Decision 3: "Map to new" calls the entity-config create API, then maps, Decision 4: Eligibility = all rows imported AND no unmapped type; `reviewed` is orthogonal, Decision 5: Export tags imported rows with a source marker, Decisions (+4 more)
+
+### Community 1470 - "Requirement: Notification Read API"
+Cohesion: 0.15
+Nodes (12): ADDED Requirements, Requirement: Notification Bell, Requirement: Notification Read API, Requirement: Notification Storage, Scenario: A business user does not see annotation notifications, Scenario: A notification row is persisted, Scenario: A tenant admin sees a tenant-admin-addressed notification, Scenario: Cross-tenant isolation (+4 more)
+
+### Community 1471 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1472 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1473 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1474 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1475 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1476 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1477 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1478 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1479 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1480 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1481 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1482 - "Requirement: Pre-Step-1 Upload Entry Points"
+Cohesion: 0.15
+Nodes (12): automated-annotation-landing Specification, Purpose, Requirement: Pre-Step-1 Upload Entry Points, Requirement: Retraining Is Not a Numbered Step, Requirements, Scenario: Both upload entry points are visible before step 1, Scenario: The landing page explains retraining as a separate, optional decision, Scenario: The primary "Start with step 1" action is unchanged (+4 more)
+
+### Community 1483 - "TestExecutionUnderRestrictedRole"
+Cohesion: 0.27
+Nodes (4): The role generated SQL runs under, or None to keep the connection role. Read…, The statement below is exactly what a table-reference gap would let through.…, Two independent controls. The read-only transaction is unchanged by this work;…, TestExecutionUnderRestrictedRole
+
+### Community 1484 - "v1/auth.py"
+Cohesion: 0.29
+Nodes (10): login(), logout(), AsyncSession, JSONResponse, post, Request, refresh(), _set_refresh_cookie() (+2 more)
+
+### Community 1485 - "test_data_plane_recovery_sweep.py"
+Cohesion: 0.24
+Nodes (12): _insert_processing_document(), fixture, Verification for the recovery sweep half of task 11.3…, A document stuck in `processing` longer than the threshold is reset and…, A document still well within a normal processing window is not stolen from…, A `ready` `tenant_owned` tenant with a real, fully-provisioned schema on…, A `source_only` document with no reopener registered — `process_document`…, _read_status() (+4 more)
+
+### Community 1486 - "_FakeSession"
+Cohesion: 0.18
+Nodes (6): _FakeResult, _FakeSession, asyncio, Answers the existence probe from a set of filenames the tenant supposedly has., list the tools in Resume 4.pdf' is a legitimate filename query — a zero-row…, TestFilenameDefectDetection
+
+### Community 1487 - "test_training_eligibility_overview.py"
+Cohesion: 0.32
+Nodes (12): cleanup(), _client(), _decision(), engine(), _exec(), asyncio, fixture, training-eligibility-overview — per-source accumulation split + eligible-units… (+4 more)
+
+### Community 1488 - "2026-09-10-tenant-admin-console-nav-restructure/design.md"
+Cohesion: 0.17
+Nodes (11): Context, Currently-In-Force ADRs, Decision 1: `NavItem` becomes a `section | link` union; sub-screens stay out of the sidebar, Decision 2: Three new landing routes; legacy routes redirect, never deleted, Decision 3: `notifications` in `public`, addressed to a role, Decision 4: Completion is the single approval; the notification is guarded to fire once, Decisions, Goals / Non-Goals (+3 more)
+
+### Community 1489 - "ADDED Requirements"
+Cohesion: 0.17
+Nodes (11): ADDED Requirements, Requirement: Accessible attachment control, Requirement: Attachment-bearing send interaction, Requirement: Chat attachment staging, Scenario: Failed send preserves staged attachments, Scenario: Keyboard users stage and remove attachments, Scenario: Reject an unsupported file type, Scenario: Remove a staged file before send (+3 more)
+
+### Community 1490 - "2026-09-14-cap-4-csv-ingestion-branch-for-chat-attachments/design.md"
+Cohesion: 0.17
+Nodes (11): Context, Currently-In-Force ADRs, Decision 1: CSV is a media-type branch in the existing worker, Decision 2: Extension-driven acceptance plus declaration-aware media-type resolution, Decision 3: One normalized text span per CSV row, cells joined, Decision 4: The upload route's unsupported-type message names the real allow-list, Decisions, Goals / Non-Goals (+3 more)
+
+### Community 1491 - "2026-09-16-export-chat-results/design.md"
+Cohesion: 0.17
+Nodes (11): Context, Decision 1: Snapshot storage — new column on `chat_messages`, not a new table, Decision 2: Snapshot source — `ChatState.sql_results`, not `AdmittedEvidence.rows`, Decision 3: Threshold signal — `export.row_count`, gating an inline preview truncation, not just a file-card show/hide, Decision 4: XLSX generation — server-side via `openpyxl`, generated on request (not pre-generated), Decision 5: Access control — reuse conversation ownership check, no new authorization concept, Decisions, Goals / Non-Goals (+3 more)
+
+### Community 1492 - "Requirement: Sampled Acceptance Gate"
+Cohesion: 0.17
+Nodes (12): Requirement: Sampled Acceptance Gate, Scenario: A large batch refuses every acceptance-gate endpoint, Scenario: A tenant admin cannot accept a large batch, Scenario: A tenant admin cannot review or accept an initial batch, Scenario: Accepting an initial batch neither notifies nor marks training-eligible, Scenario: Annotator acceptance of a large batch makes it training-eligible and notifies the tenant admin, Scenario: Annotator acceptance of an initial batch is recorded but is not the training-eligibility gate, Scenario: Batch below the threshold cannot be bulk-accepted (+4 more)
+
+### Community 1493 - "retraining_decision.py"
+Cohesion: 0.23
+Nodes (11): get_retraining_decision(), AsyncSession, get, Request, The retraining decision surface. Change 5 produced an accumulation figure and…, Whether a training job for this tenant is awaiting approval, queued, or running., Evidence for the retrain decision. No verdict, no threshold, no job.…, _schema() (+3 more)
+
+### Community 1494 - "_schema"
+Cohesion: 0.36
+Nodes (3): ModelVersionRepository, AsyncSession, _schema()
+
+### Community 1495 - "test_migration_047_chat_messages_export_rows.py"
+Cohesion: 0.20
+Nodes (7): dev_engine(), fixture, Verifies migration 047 (chat_messages.export_rows/export_row_count) was…, Sanity check: existing chat_messages rows (inserted before this migration) were…, _table_columns(), TestMigration047AppliedToTenantTemplate, TestMigration047BackfilledToLiveTenantSchemas
+
+### Community 1496 - "test_migration_048_chat_message_chart.py"
+Cohesion: 0.20
+Nodes (8): _chart_column(), dev_engine(), fixture, Verifies migration 048 (chat_messages.chart) was actually applied to the real…, ADR-001: the column must reach every tenant schema, not only the template., The migration backfills nothing, and a user's own message can never acquire a…, TestMigration048AppliedToTenantTemplate, TestMigration048BackfilledToLiveTenantSchemas
+
+### Community 1497 - "test_notifications_api.py"
+Cohesion: 0.39
+Nodes (6): _auth(), _client(), asyncio, Gateway `/api/v1/notifications` — read + mark-read, tenant + audience scoped.…, _seed(), TestNotificationsApi
+
+### Community 1498 - "Requirement: Pre-labeling"
+Cohesion: 0.18
+Nodes (10): MODIFIED Requirements, Requirement: Pre-labeling, Scenario: List suggested spans, Scenario: List suggested spans includes their source, Scenario: Pre-label a processed document, Scenario: Pre-label longest match wins for overlapping examples, Scenario: Pre-label matching is case-insensitive, Scenario: Pre-label replaces existing suggestions (+2 more)
+
+### Community 1499 - "Verification Plan"
+Cohesion: 0.18
+Nodes (10): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, Edge Case Evidence, Functional Evidence (+2 more)
+
+### Community 1500 - "2026-09-10-entity-type-provenance/design.md"
+Cohesion: 0.18
+Nodes (10): Context, Currently-In-Force ADRs, Decision 1: `provenance` is a `NOT NULL` column with a `server_default` of `'manual'`, Decision 2: The creation path decides provenance; the request body cannot, Decision 3: Immutability is enforced by omission, not a trigger, Decisions, Goals / Non-Goals, Migration Plan (+2 more)
+
+### Community 1501 - "2026-09-10-training-eligibility-overview/design.md"
+Cohesion: 0.18
+Nodes (10): Context, Currently-In-Force ADRs, Decision 1: Per-source attribution comes from span provenance, not a new column, Decision 2: "Unconsumed" for an import file = no completed run after its `training_eligible_at`, Decision 3: The overview is additive to the response, old fields unchanged, Decisions, Goals / Non-Goals, Migration Plan (+2 more)
+
+### Community 1502 - "Requirement: Retraining Decision Surface"
+Cohesion: 0.18
+Nodes (10): MODIFIED Requirements, Requirement: Retraining Decision Surface, Scenario: A tenant with no trained model is shown distinctly, Scenario: Accumulation is broken down per entity type, Scenario: Accumulation is broken down per span source, Scenario: Accumulation is not presented as readiness, Scenario: Consumed units drop off the overview, Scenario: Decision surface shows accumulation against the serving version (+2 more)
+
+### Community 1503 - "Requirement: Submit training job"
+Cohesion: 0.18
+Nodes (10): MODIFIED Requirements, Requirement: Submit training job, Scenario: An invalid source_scope value is rejected, Scenario: Automated-scoped submission gates only on promoted spans, Scenario: Import-scoped submission skips the span-based gates entirely, Scenario: Manual-scoped submission excludes promoted spans from its gate, Scenario: Submit a valid training job, Scenario: Submit training job as non-admin (+2 more)
+
+### Community 1504 - "Requirement: Load annotated dataset"
+Cohesion: 0.18
+Nodes (10): MODIFIED Requirements, Requirement: Load annotated dataset, Scenario: A job with no source_scope combines every source, Scenario: Annotation service URL defaults to the correct internal port, Scenario: Annotation service URL is overridable via environment variable, Scenario: Dataset large enough to split proceeds, Scenario: Dataset loads successfully, Scenario: Dataset too small to form an evaluation split (+2 more)
+
+### Community 1505 - "Verification Plan"
+Cohesion: 0.18
+Nodes (10): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Verification Completion, Edge Case Evidence, Functional Evidence (+2 more)
+
+### Community 1506 - "2026-09-14-cap-3-conversation-scoped-attachment-persistence/design.md"
+Cohesion: 0.18
+Nodes (10): Context, Currently-In-Force ADRs, Decision 1: Keep attachments on the existing chat send path, Decision 2: Use conversation-owned document rows, Decision 3: Preserve text-only requests unchanged, Decisions, Goals / Non-Goals, Migration Plan (+2 more)
+
+### Community 1507 - "2026-09-14-cap-5-documents-library-exclusion-and-hard-delete-cleanup/design.md"
+Cohesion: 0.18
+Nodes (10): Context, Currently-In-Force ADRs, Decision 1: Exclude conversation-linked rows on every library surface, not only the list, Decision 2: A single shared cleanup helper for a document's hard delete, Decision 3: Cleanup order and the cascade as backstop only, Decisions, Goals / Non-Goals, Migration Plan (+2 more)
+
+### Community 1508 - "Requirement: Bulk-Accept Unmapped Types"
+Cohesion: 0.18
+Nodes (10): ADDED Requirements, MODIFIED Requirements, REMOVED Requirements, Requirement: Bulk-Accept Unmapped Types, Requirement: Import Deep Link, Requirement: Request Training From an Import, Scenario: A file with nothing pending reports no unmapped types, Scenario: Accept all as new types creates every unmapped type in one call (+2 more)
+
+### Community 1509 - "Requirement: Inline preview truncation and file card, driven by result count"
+Cohesion: 0.18
+Nodes (10): ADDED Requirements, Requirement: Authenticated download from the file card, Requirement: Inline preview truncation and file card, driven by result count, Scenario: A detailed single-result answer is never truncated, however many lines it spans, Scenario: A high result count with a short reply does not truncate, Scenario: A long reply with no structured result behind it is never truncated, Scenario: Clicking download triggers an authenticated fetch, Scenario: Clicking See more reveals the full reply (+2 more)
+
+### Community 1510 - "Requirement: Attachment-bearing send interaction"
+Cohesion: 0.18
+Nodes (10): ADDED Requirements, MODIFIED Requirements, Requirement: Attachment-bearing send interaction, Requirement: The composer reports attachment send progress, Scenario: A failed attachment send keeps the files and reports why, Scenario: A text-only send carries no attachment parts, Scenario: An in-flight attachment send shows progress, Scenario: Failed send preserves staged attachments (+2 more)
+
+### Community 1511 - "Requirement: Conversation ownership determines retrieval visibility"
+Cohesion: 0.18
+Nodes (10): ADDED Requirements, Requirement: Conversation ownership determines retrieval visibility, Requirement: Conversation scope is enforced from request context, Scenario: A conversation attachment is invisible in another conversation, Scenario: A conversation attachment is invisible outside any conversation, Scenario: A conversation attachment is retrievable in its own conversation, Scenario: A model-chosen scope cannot widen conversation visibility, Scenario: Conversation scope composes with the existing purpose restriction (+2 more)
+
+### Community 1512 - "Verification Plan"
+Cohesion: 0.18
+Nodes (10): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, Edge Case Evidence, Functional Evidence (+2 more)
+
+### Community 1513 - "Requirement: Idempotent source version reconciliation and temporary retention"
+Cohesion: 0.18
+Nodes (10): MODIFIED Requirements, Requirement: Idempotent source version reconciliation and temporary retention, Scenario: A routed tenant may retain a synchronized original durably, Scenario: Changed object is atomically replaced, Scenario: Deleted source object, Scenario: Platform-stored durable retention still blocks a sync, Scenario: Processing reaches a terminal outcome, Scenario: Retry or unchanged object (+2 more)
+
+### Community 1514 - "Verification Plan"
+Cohesion: 0.18
+Nodes (10): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, Edge Case Evidence, Functional Evidence (+2 more)
+
+### Community 1515 - "audit_sample_size"
+Cohesion: 0.25
+Nodes (5): audit_sample_size(), `min(cap, max(floor, ceil(fraction * N)))`, and never more than the population…, Decision 13's formula, before any database. The floor and the cap are the whole…, Decision 13 as configured: weekly, max(20, 5%), capped at 100., TestSampleSizing
+
+### Community 1516 - "llm_review.py"
+Cohesion: 0.24
+Nodes (10): build_user_payload(), LLMReviewError, parse_review_response(), ValueError, Asking the LLM to judge one low-confidence prediction. The deterministic half…, One provider call, validated. Returns a resolution body for…, The provider's answer could not be read as a review outcome. Raised rather than…, The excerpt, the span, and the configured type list. The excerpt's… (+2 more)
+
+### Community 1517 - "2026-09-03-llm-assisted-prelabeling/tasks.md"
+Cohesion: 0.20
+Nodes (9): 1. Prerequisites & Open Questions, 2. Schema & Migrations, 3. Entity Config — QA Pairs, 4. LLM Client & Prompt Construction, 5. Grounding & Verification, 6. Async Task & Trigger Endpoint, 7. Result Caching, 8. Source Tracking on the Existing Keyword Path (+1 more)
+
+### Community 1518 - "2026-09-08-confidence-routed-review/tasks.md"
+Cohesion: 0.20
+Nodes (9): 1. Prerequisites, 2. Retain Below-Threshold Predictions, 3. Confidence Routing, 4. Review Queue Resolution, 5. Outcomes Become Spans, 6. Accumulation Reporting, 7. Auto-Accept Audit Sampling, 8. Frontend Surface (+1 more)
+
+### Community 1519 - "2026-09-10-automated-annotation-guided-workflow/tasks.md"
+Cohesion: 0.20
+Nodes (9): 1. Prerequisites, 2. Database, 3. Q&A-Pair Proposal Input, 4. Batch Kind + Named State, 5. Initial-Batch Review Guidance, 6. Acceptance Gate — Role, Eligibility, Notification, 7. `purpose = 'qa_pair'` filter audit, 8. Portal (+1 more)
+
+### Community 1520 - "Requirement: Span CRUD"
+Cohesion: 0.20
+Nodes (9): MODIFIED Requirements, Requirement: Span CRUD, Scenario: Create a span on a processed document, Scenario: Create span with invalid entity type returns 422, Scenario: Delete a span, Scenario: List spans on a document, Scenario: Multi-token drag annotation is saved once, Scenario: Single-token annotation is saved once (+1 more)
+
+### Community 1521 - "2026-09-10-import-annotation-training-eligibility/tasks.md"
+Cohesion: 0.20
+Nodes (9): 1. Prerequisites, 2. Database, 3. Import endpoint, 4. Type mapping endpoint, 5. Export, 6. Training request, 7. Portal, 8. Filter audit (+1 more)
+
+### Community 1522 - "Requirement: Annotation Task Endpoint Role Gates"
+Cohesion: 0.20
+Nodes (9): ADDED Requirements, Requirement: Annotation Task Endpoint Role Gates, Requirement: Task Completion Is Final Approval, Scenario: A business user cannot create or list tasks, Scenario: A completion has no Tenant Admin review step, Scenario: A tenant admin can create a task, Scenario: An annotator cannot create a task, Scenario: Completing a task marks it training-eligible and notifies the tenant admin (+1 more)
+
+### Community 1523 - "Requirement: Role Navigation Matrix"
+Cohesion: 0.20
+Nodes (9): MODIFIED Requirements, Requirement: Role Navigation Matrix, Scenario: a section with no permitted links is dropped, Scenario: annotator nav, Scenario: Automated's Retraining child carries no step-number prefix, Scenario: business_user nav, Scenario: Manual no longer carries a Review Queue child, Scenario: system_admin nav (+1 more)
+
+### Community 1524 - "Requirement: Train Model Hand-off"
+Cohesion: 0.20
+Nodes (9): MODIFIED Requirements, RENAMED Requirements, Requirement: Train Model Hand-off, Requirement: Workflow Steps, Scenario: CTA appears once training material exists, Scenario: CTA is absent with nothing annotated, Scenario: CTA is never shown to an annotator, Scenario: only the workspace card is shown (+1 more)
+
+### Community 1525 - "Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently"
+Cohesion: 0.20
+Nodes (9): MODIFIED Requirements, Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently, Scenario: A notification fires when each stage completes, Scenario: Both stages remain visible once the initial batch is approved and a large batch exists, Scenario: Starting another large batch is disabled while one is already running, Scenario: The large-batch picker stays available after a previous large batch has already completed, Scenario: The large-batch section is visible but locked before the initial batch is approved, Scenario: The large-batch section unlocks its picker once the initial batch is approved (+1 more)
+
+### Community 1526 - "2026-09-12-manual-training-data-source-scoping/tasks.md"
+Cohesion: 0.20
+Nodes (9): 1. Database, 2. Backend: annotation export, 3. Backend: training-jobs submission and gating, 4. Backend: training worker, 5. Frontend: types, hook, submit slide-over, 6. Frontend: workflow hand-offs, 7. Frontend: Manual landing three-step workflow, 8. Tests (+1 more)
+
+### Community 1527 - "Verification Plan"
+Cohesion: 0.20
+Nodes (9): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, Edge Case Evidence, Functional Evidence, Structural Evidence (+1 more)
+
+### Community 1528 - "2026-09-16-chat-export-ux-refinements/design.md"
+Cohesion: 0.20
+Nodes (9): Context, Decision 1: Overflow detection — CSS line-clamp + a measured "is it actually clamped" check, Decision 2: Two-step reveal is an in-place swap, not an additive reveal, Decision 3: Confirming reveals both format choices (CSV and XLSX), not an immediate default-format download, Decisions, Goals / Non-Goals, Migration Plan, Open Questions (+1 more)
+
+### Community 1529 - "2026-09-18-single-source-tenant-ddl/design.md"
+Cohesion: 0.20
+Nodes (9): Context, Currently-In-Force ADRs, Decision 1: Delegate by import, not by codegen, Decision 2: Static source check as the enforcement mechanism, Decisions, Goals / Non-Goals, Migration Plan, Open Questions (+1 more)
+
+### Community 1530 - "Requirements"
+Cohesion: 0.20
+Nodes (9): Portal Documents, Purpose, Requirement: Cancel an In-Progress Batch, Requirement: Status Filter Tabs, Requirements, Scenario: Cancel a batch after the first file succeeds, Scenario: Click a status filter tab, Scenario: Filter tab shows document counts (+1 more)
+
+### Community 1531 - "Feature Decomposition: Chat Attachment Upload"
+Cohesion: 0.22
+Nodes (8): Brainstorm Notes, Cross-Cutting Concerns, Dependency Order (Suggested Implementation Sequence), Feature Decomposition: Chat Attachment Upload, Files Affected, Source Documents, Summary, Summary Table
+
+### Community 1532 - "2026-09-08-human-gated-retraining/tasks.md"
+Cohesion: 0.22
+Nodes (8): 1. Prerequisites, 2. Record Consumed Spans, 3. Retraining Decision Surface, 4. Manual Retrain Request, 5. No Automatic Initiation, 6. Promotion Decision Evidence, 7. Frontend Surfaces, 8. Verification & Evidence
+
+### Community 1533 - "2026-09-10-cap-5-single-request-manual-annotation-gestures/design.md"
+Cohesion: 0.22
+Nodes (8): Context, Currently-In-Force ADRs, Decision 1: Keep one canonical save path per gesture, Decisions, Goals / Non-Goals, Migration Plan, Open Questions, Risks / Trade-offs
+
+### Community 1534 - "Requirement: Multi-Token Drag Span Creation"
+Cohesion: 0.22
+Nodes (8): MODIFIED Requirements, Requirement: Multi-Token Drag Span Creation, Scenario: Drag across tokens creates a multi-token span, Scenario: Drag direction is agnostic (right-to-left = left-to-right), Scenario: Drag ending on an already-confirmed token is blocked, Scenario: Drag preview highlights range during drag, Scenario: Drag while unarmed does not create a span, Scenario: Single-click (same token mousedown and mouseup) still creates a single-token span
+
+### Community 1535 - "Requirement: Entity Type Card"
+Cohesion: 0.22
+Nodes (8): MODIFIED Requirements, Requirement: Entity Type Card, Scenario: Card displays all fields for an active required entity type, Scenario: Card hover lift, Scenario: Card shows a suggested provenance chip with reference, Scenario: Card shows an imported provenance chip, Scenario: Card shows Deactivate button for active entity type, Scenario: Card shows Reactivate button for inactive entity type
+
+### Community 1536 - "Requirement: Train Model Hand-off"
+Cohesion: 0.22
+Nodes (8): ADDED Requirements, Requirement: Train Model Hand-off, Requirement: Workflow Steps, Scenario: annotator sees only a single review card, Scenario: CTA appears once training-eligible files exist, Scenario: CTA is absent with nothing training-eligible, Scenario: CTA is never shown to an annotator, Scenario: tenant_admin sees the two-step workflow in order
+
+### Community 1537 - "Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently"
+Cohesion: 0.22
+Nodes (8): MODIFIED Requirements, Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently, Scenario: A notification fires when each stage completes, Scenario: Both stages remain visible once the initial batch is approved and a large batch exists, Scenario: Starting another large batch is disabled while one is already running, Scenario: The large-batch picker stays available after a previous large batch has already completed, Scenario: The large-batch section is visible but locked before the initial batch is approved, Scenario: The large-batch section unlocks its picker once the initial batch is approved
+
+### Community 1538 - "Requirement: Role Navigation Matrix"
+Cohesion: 0.22
+Nodes (8): MODIFIED Requirements, Requirement: Role Navigation Matrix, Scenario: a section with no permitted links is dropped, Scenario: annotator nav, Scenario: business_user nav, Scenario: Manual no longer carries a Review Queue child, Scenario: system_admin nav, Scenario: tenant_admin nav
+
+### Community 1539 - "ADDED Requirements"
+Cohesion: 0.22
+Nodes (8): ADDED Requirements, Requirement: Prove the deployed CAP-5 image and health, Requirement: Report unverifiable deployments as blocked, Requirement: Verify single-request gestures, Scenario: Healthy deployment with CAP-5 provenance, Scenario: Missing prerequisite, Scenario: Multi-token drag, Scenario: Same-token click
+
+### Community 1540 - "cap-6-session-scoped-attachment-retrieval/tasks.md"
+Cohesion: 0.22
+Nodes (8): 1. Schema — conversation ownership on chunks, 2. Ingestion — attachments become real documents, 3. Retrieval — the mandatory conversation predicate, 4. SQL path — the second channel, 5. Chat API — multipart turns, ingestion, and the bounded wait, 6. Portal — send file content and report progress, 7. End-to-end — the HR scenario, 8. Verification & Evidence
+
+### Community 1541 - "tenant-owned-blob-storage/proposal.md"
+Cohesion: 0.22
+Nodes (8): Capabilities, Decisions, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1542 - "tenant-owned-blob-storage/tasks.md"
+Cohesion: 0.22
+Nodes (8): 1. Backend attribution (migration step 1 — inert), 2. Route reads and deletes by recorded kind (migration step 2 — inert), 3. The content-store connection provider (migration step 3 — inert), 4. The Azure Blob content store adapter (migration step 4 — inert), 5. Make the selection executable and relax the retention rules (migration step 5 — behaviour change), 6. Portal, 7. Local stack and documentation, 8. Verification & Evidence
+
+### Community 1543 - "Requirement: Submit training job"
+Cohesion: 0.22
+Nodes (9): Requirement: Submit training job, Scenario: An invalid source_scope value is rejected, Scenario: Automated-scoped submission gates only on promoted spans, Scenario: Import-scoped submission skips the span-based gates entirely, Scenario: Manual-scoped submission excludes promoted spans from its gate, Scenario: Submit a valid training job, Scenario: Submit training job as non-admin, Scenario: Submit training job with insufficient entities (+1 more)
+
+### Community 1544 - "parse_conll"
+Cohesion: 0.36
+Nodes (3): parse_conll(), _strip_null_bytes(), TestParseConll
+
+### Community 1546 - "_mention_matches"
+Cohesion: 0.33
+Nodes (4): _mention_matches(), Whether a mention identifies the person whose stored name is…, Substring matching would make "jay" resolve to "arjun jayakumar"., TestMentionMatches
+
+### Community 1547 - "TestMultiSubjectPlanRewriting"
+Cohesion: 0.28
+Nodes (4): Covers verification.md rows 42, 44, 47, 48. `_rewrite_plan_for_resolution` used…, Only "Girish" resolves; "Hannah" is not in the tenant's data. The turn must not…, verification.md row 44 — one mention matching several people is still an…, TestMultiSubjectPlanRewriting
+
+### Community 1548 - "039_seed_bootstrap.py"
+Cohesion: 0.39
+Nodes (7): downgrade(), Schema proposals, batch pre-labeling, and the sampled acceptance record Five…, Every tenant schema, `tenant_template` included. The template is not optional:…, _statements(), _tenant_schemas(), upgrade(), _values()
+
+### Community 1549 - "040_confidence_routed_review.py"
+Cohesion: 0.43
+Nodes (7): downgrade(), Confidence routing, the review queue, review outcomes, and accumulation…, Every tenant schema, `tenant_template` included. The template is not optional:…, _statements(), _tenant_schemas(), upgrade(), _values()
+
+### Community 1550 - "011. Conversation-Scoped Chat Attachments in the Existing Document Model"
+Cohesion: 0.25
+Nodes (7): 011. Conversation-Scoped Chat Attachments in the Existing Document Model, Alternatives Considered, Consequences, Context, Decision, Related, Status
+
+### Community 1551 - "012. CSV Support as a Branch in the Existing Ingestion Pipeline"
+Cohesion: 0.25
+Nodes (7): 012. CSV Support as a Branch in the Existing Ingestion Pipeline, Alternatives Considered, Consequences, Context, Decision, Related, Status
+
+### Community 1552 - "013. Single-Environment Dev/Local Deployment with Docker Compose and Recreate Rollout"
+Cohesion: 0.25
+Nodes (7): 013. Single-Environment Dev/Local Deployment with Docker Compose and Recreate Rollout, Alternatives Considered, Consequences, Context, Decision, Related, Status
+
+### Community 1553 - "ADR-014. Chat Export: Persisted Row Snapshot, Rendered On-Demand"
+Cohesion: 0.25
+Nodes (7): ADR-014. Chat Export: Persisted Row Snapshot, Rendered On-Demand, Consequences, Context, Decision, Negative, Positive, Related
+
+### Community 1554 - "014. Conversation Scoping Is a Mandatory Retrieval Guardrail, Not a Model-Selected Scope"
+Cohesion: 0.25
+Nodes (7): 014. Conversation Scoping Is a Mandatory Retrieval Guardrail, Not a Model-Selected Scope, Alternatives Considered, Consequences, Context, Decision, Related, Status
+
+### Community 1555 - "2026-09-03-annotation-mode-selection/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1556 - "2026-09-03-llm-assisted-prelabeling/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1557 - "2026-09-07-seed-bootstrap/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1558 - "2026-09-07-seed-bootstrap/tasks.md"
+Cohesion: 0.25
+Nodes (7): 1. Prerequisites, 2. Schema Proposal, 3. Batch Pre-labeling, 4. Sampled Acceptance Gate, 5. Pre-Submission Readiness Check, 6. Frontend Surfaces, 7. Verification & Evidence
+
+### Community 1559 - "2026-09-07-training-data-integrity/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1560 - "2026-09-08-confidence-routed-review/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1561 - "2026-09-08-human-gated-retraining/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1562 - "2026-09-10-automated-annotation-guided-workflow/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1563 - "2026-09-10-cap-5-single-request-manual-annotation-gestures/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1564 - "2026-09-10-entity-type-provenance/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1565 - "2026-09-10-entity-type-provenance/tasks.md"
+Cohesion: 0.25
+Nodes (7): 1. Prerequisites, 2. Database, 3. Model + service, 4. Creation-path wiring, 5. Portal, 6. Tests, 7. Verification
+
+### Community 1566 - "2026-09-10-import-annotation-training-eligibility/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1567 - "2026-09-10-tenant-admin-console-nav-restructure/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1568 - "2026-09-10-training-eligibility-overview/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1569 - "2026-09-12-annotation-workflow-review-simplification/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1570 - "Requirement: Annotation Mode Selector Visibility"
+Cohesion: 0.25
+Nodes (7): MODIFIED Requirements, Requirement: Annotation Mode Selector Visibility, Scenario: A seeded Automated selection still resets to Manual after a batch, Scenario: Selector is not shown for query uploads, Scenario: Selector is shown for training uploads, Scenario: Selector resets to Manual after a batch completes, Scenario: Selector seeds its initial selection from the caller
+
+### Community 1571 - "Requirement: Upload deep link"
+Cohesion: 0.25
+Nodes (7): MODIFIED Requirements, Requirement: Upload deep link, Scenario: An unrelated query parameter does not open the uploader, Scenario: Arriving with no upload parameter leaves the uploader closed, Scenario: Arriving with ?upload=1 opens the uploader, Scenario: mode=automated seeds the annotation-mode selector, Scenario: purpose=qa_pair opens the Q&A-pair uploader
+
+### Community 1572 - "2026-09-12-automated-batch-stage-visibility/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1573 - "2026-09-12-import-annotation-training-workflow/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Question — flagged, not resolved here, What Changes, Why
+
+### Community 1574 - "Requirement: Workflow Steps"
+Cohesion: 0.25
+Nodes (7): MODIFIED Requirements, REMOVED Requirements, Requirement: Train Model Hand-off, Requirement: Workflow Steps, Scenario: annotator sees only a single review card, Scenario: tenant_admin sees the two-step workflow in order, Scenario: Train model is available with nothing imported yet
+
+### Community 1575 - "2026-09-12-large-batch-repeatable-upload/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1576 - "2026-09-12-manual-annotation-landing-rework/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1577 - "Requirement: Notification Bell"
+Cohesion: 0.25
+Nodes (7): MODIFIED Requirements, Requirement: Notification Bell, Scenario: A completed manual annotation task notification routes to Models & Training scoped to manual, Scenario: An automated batch notification routes a tenant_admin to the retraining evidence page, Scenario: An automated batch notification routes an annotator to that batch's review screen, Scenario: The bell is absent for a business user, Scenario: Unread badge reflects the unread count
+
+### Community 1578 - "Requirement: Submit slide-over source scope"
+Cohesion: 0.25
+Nodes (7): ADDED Requirements, Requirement: Submit slide-over source scope, Scenario: Arriving with a source query parameter auto-opens the slide-over, Scenario: Choosing a source unlocks the preflight check and submission, Scenario: Generic entry point requires an explicit source choice, Scenario: Locked source shows read-only text, not a picker, Scenario: Submitting sends the effective source_scope
+
+### Community 1579 - "2026-09-14-cap-2-chat-composer-attachment-ux/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1580 - "2026-09-14-cap-3-conversation-scoped-attachment-persistence/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1581 - "ADDED Requirements"
+Cohesion: 0.25
+Nodes (7): ADDED Requirements, Requirement: Attachment-bearing chat turns, Requirement: Conversation-scoped attachment retrieval, Requirement: Text-only chat sends remain supported, Scenario: Another conversation does not see the attachments, Scenario: First send creates the conversation and stores attachments, Scenario: Normal message without attachments still works
+
+### Community 1582 - "2026-09-14-cap-4-csv-ingestion-branch-for-chat-attachments/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1583 - "ADDED Requirements"
+Cohesion: 0.25
+Nodes (7): ADDED Requirements, Requirement: CSV file ingestion, Requirement: CSV text extraction branch, Scenario: CSV processing writes spans and chunks, Scenario: CSV with quoted delimiters and ragged rows is normalized, Scenario: Unsupported file type remains rejected, Scenario: Upload a CSV document
+
+### Community 1584 - "2026-09-14-cap-5-documents-library-exclusion-and-hard-delete-cleanup/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1585 - "Requirement: Documents library excludes conversation-linked rows"
+Cohesion: 0.25
+Nodes (7): ADDED Requirements, Requirement: Documents library excludes conversation-linked rows, Scenario: Fetching a chat attachment by id from the library is refused, Scenario: Library delete refuses a chat attachment, Scenario: Library listing omits a chat attachment, Scenario: Library text retrieval of a chat attachment is refused, Scenario: Non-chat documents behave unchanged
+
+### Community 1586 - "2026-09-16-chat-export-ux-refinements/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1587 - "2026-09-16-export-chat-results/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1588 - "2026-09-16-export-chat-results/tasks.md"
+Cohesion: 0.25
+Nodes (7): 1. Database migration, 2. Row snapshot persistence, 3. ChatResponse export field, 4. Export endpoint (CSV/XLSX), 5. Portal file card, 6. Regression sweep, 7. Verification & Evidence
+
+### Community 1589 - "2026-09-18-single-source-tenant-ddl/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1590 - "Requirement: Tenant-scoped migration DDL is authored once and delegated to"
+Cohesion: 0.25
+Nodes (7): ADDED Requirements, Requirement: Tenant-scoped migration DDL is authored once and delegated to, Scenario: A migration exempted from delegation is not flagged, Scenario: A migration with inline tenant-scoped DDL and no matching revision fails the check, Scenario: A tenant-scoped migration delegates its upgrade DDL, Scenario: Re-applying a delegated migration is a no-op, Scenario: The same revision reaches a tenant-owned Azure store
+
+### Community 1591 - "cap-6-docker-verification-of-single-request-annotation-gestures/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1592 - "cap-6-session-scoped-attachment-retrieval/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1593 - "chat-chart-generation/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1594 - "chat-chart-generation/tasks.md"
+Cohesion: 0.25
+Nodes (7): 1. Chart contract and validation, 2. Two-stage generation in the graph, 3. API contract and persistence, 4. Portal rendering, 5. Sample data for verification, 6. Manual end-to-end check, 7. Verification & Evidence
+
+### Community 1595 - "Requirement: Workflow Steps"
+Cohesion: 0.25
+Nodes (7): import-annotation-landing Specification, Purpose, Requirement: Workflow Steps, Requirements, Scenario: annotator sees only a single review card, Scenario: tenant_admin sees the two-step workflow in order, Scenario: Train model is available with nothing imported yet
+
+### Community 1596 - "Requirement: Retraining Page Framing"
+Cohesion: 0.25
+Nodes (7): Purpose, Requirement: Retraining Page Framing, Requirements, retraining-decision-screen Specification, Scenario: The page states there is no schedule or required order, Scenario: The production-review section explains what it counts, Scenario: The training-eligible section explains it is a separate count
+
+### Community 1597 - "Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently"
+Cohesion: 0.25
+Nodes (8): Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently, Scenario: A notification fires when each stage completes, Scenario: Both stages remain visible once the initial batch is approved and a large batch exists, Scenario: Starting another large batch is disabled while one is already running, Scenario: The large-batch picker stays available after a previous large batch has already completed, Scenario: The large-batch section is visible but locked before the initial batch is approved, Scenario: The large-batch section unlocks its picker once the initial batch is approved, Scenario: Train model navigates to the Automated flow's own training entry point
+
+### Community 1598 - "scripts"
+Cohesion: 0.25
+Nodes (8): scripts, build, dev, format, lint, start, test, typecheck
+
+### Community 1599 - "_EngineLRU"
+Cohesion: 0.25
+Nodes (3): _EngineLRU, A bounded LRU of tenant-store engines, keyed by `(tenant_id, connection_id,…, Stores `engine` under `key`; returns an evicted engine (oldest, over capacity)…
+
+### Community 1600 - "052_tenant_data_plane.py"
+Cohesion: 0.38
+Nodes (5): _for_each_platform_tenant_schema(), _quoted(), tenant data plane control plane: tenant_data_planes, tenant_document_registry,…, Apply one statement to every provisioned platform tenant schema. `statement` is…, upgrade()
+
+### Community 1601 - "Run: chat-attachment-upload-20260910"
+Cohesion: 0.29
+Nodes (6): Artifacts, Gates, History, Run: chat-attachment-upload-20260910, Source, Stage
+
+### Community 1602 - "Requirement: Entity Type Definition"
+Cohesion: 0.29
+Nodes (6): MODIFIED Requirements, Requirement: Entity Type Definition, Scenario: Entity type with no QA pairs remains valid, Scenario: Tenant Admin adds QA pairs to an entity type, Scenario: Tenant Admin creates an entity type, Scenario: Tenant Admin updates an entity type
+
+### Community 1603 - "2026-09-07-training-data-integrity/tasks.md"
+Cohesion: 0.29
+Nodes (6): 1. Establish the Failing Baseline, 2. Offset Derivation Fix, 3. Windowing, 4. Training Sequence Length, 5. Split Guard, 6. Verification & Evidence
+
+### Community 1604 - "Requirement: Token-Click Span Creation"
+Cohesion: 0.29
+Nodes (6): MODIFIED Requirements, Requirement: Token-Click Span Creation, Scenario: API error reverts optimistic span, Scenario: Clicking a token while armed creates a span, Scenario: Clicking a token while no type is armed opens the span inspector, Scenario: Clicking an already-spanned token while armed does nothing
+
+### Community 1605 - "Requirement: Entity Type Provenance"
+Cohesion: 0.29
+Nodes (6): ADDED Requirements, Requirement: Entity Type Provenance, Scenario: A hand-created entity type is manual, Scenario: A type created while mapping an import is imported, Scenario: An approved schema-proposal candidate is suggested, Scenario: Provenance is immutable across updates
+
+### Community 1606 - "2026-09-10-training-eligibility-overview/tasks.md"
+Cohesion: 0.29
+Nodes (6): 1. Prerequisites, 2. Accumulation service, 3. Decision endpoint, 4. Tests, 5. Portal, 6. Verification
+
+### Community 1607 - "2026-09-12-annotation-workflow-review-simplification/design.md"
+Cohesion: 0.29
+Nodes (6): Context, Decisions, Goals / Non-Goals, Migration Plan, Open Questions, Risks / Trade-offs
+
+### Community 1608 - "2026-09-12-automated-annotation-landing-upload-entry-points/proposal.md"
+Cohesion: 0.29
+Nodes (6): Capabilities, Impact, Modified Capabilities, New Capabilities, What Changes, Why
+
+### Community 1609 - "Requirement: Pre-Step-1 Upload Entry Points"
+Cohesion: 0.29
+Nodes (6): ADDED Requirements, Requirement: Pre-Step-1 Upload Entry Points, Scenario: Both upload entry points are visible before step 1, Scenario: The primary "Start with step 1" action is unchanged, Scenario: Upload documents opens the uploader pre-set to Automated, Scenario: Upload Q&A pair opens the Q&A-pair uploader
+
+### Community 1610 - "Verification Plan"
+Cohesion: 0.29
+Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Log, 5. Audit Record, Verification Plan
+
+### Community 1611 - "Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently"
+Cohesion: 0.29
+Nodes (6): ADDED Requirements, Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently, Scenario: A notification fires when each stage completes, Scenario: Both stages remain visible once the initial batch is approved and a large batch exists, Scenario: The large-batch section is visible but locked before the initial batch is approved, Scenario: The large-batch section unlocks its picker once the initial batch is approved
+
+### Community 1612 - "Requirement: Pre-Step-1 Upload Entry Points"
+Cohesion: 0.29
+Nodes (6): MODIFIED Requirements, Requirement: Pre-Step-1 Upload Entry Points, Scenario: Both upload entry points are visible before step 1, Scenario: The primary "Start with step 1" action is unchanged, Scenario: Upload documents opens the uploader pre-set to Automated, Scenario: Upload Q&A pair opens the Q&A-pair uploader
+
+### Community 1613 - "Verification Plan"
+Cohesion: 0.29
+Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Log, 5. Audit Record, Verification Plan
+
+### Community 1614 - "2026-09-12-automated-retraining-destepped/proposal.md"
+Cohesion: 0.29
+Nodes (6): Capabilities, Impact, Modified Capabilities, New Capabilities, What Changes, Why
+
+### Community 1615 - "Verification Plan"
+Cohesion: 0.29
+Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Log, 5. Audit Record, Verification Plan
+
+### Community 1616 - "Verification Plan"
+Cohesion: 0.29
+Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Log, 5. Audit Record, Verification Plan
+
+### Community 1617 - "Verification Plan"
+Cohesion: 0.29
+Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Log, 5. Audit Record, Verification Plan
+
+### Community 1618 - "2026-09-12-manual-annotation-landing-rework/design.md"
+Cohesion: 0.29
+Nodes (6): Context, Decisions, Goals / Non-Goals, Migration Plan, Open Questions, Risks / Trade-offs
+
+### Community 1619 - "Verification Plan"
+Cohesion: 0.29
+Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Log, 5. Audit Record, Verification Plan
+
+### Community 1620 - "2026-09-12-manual-training-data-source-scoping/proposal.md"
+Cohesion: 0.29
+Nodes (6): Capabilities, Impact, Modified Capabilities, New Capabilities, What Changes, Why
+
+### Community 1621 - "Verification Plan"
+Cohesion: 0.29
+Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Log, 5. Audit Record, Verification Plan
+
+### Community 1622 - "Verification Plan"
+Cohesion: 0.29
+Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Log, 5. Audit Record, Verification Plan
+
+### Community 1623 - "2026-09-15-import-workspace-bulk-accept-and-train-handoff/proposal.md"
+Cohesion: 0.29
+Nodes (6): Capabilities, Impact, Modified Capabilities, Removed Requirements, What Changes, Why
+
+### Community 1624 - "Verification Plan"
+Cohesion: 0.29
+Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Log, 5. Audit Record, Verification Plan
+
+### Community 1625 - "Requirement: Upload Progress Bar"
+Cohesion: 0.29
+Nodes (7): Requirement: Upload Progress Bar, Scenario: Batch position is shown during a multi-file upload, Scenario: Batch summary after all files succeed, Scenario: One file fails mid-batch, Scenario: Single-file upload shows no batch position, Scenario: Upload completes, Scenario: Upload progress updates in real time
+
+### Community 1626 - "Requirement: List training jobs"
+Cohesion: 0.29
+Nodes (7): Requirement: List training jobs, Scenario: List jobs includes tenant_id on each item, Scenario: List jobs paginated, Scenario: List jobs with status filter, Scenario: System Admin lists jobs across tenants with an explicit status filter, Scenario: System Admin lists jobs with an explicit tenant_id, Scenario: System Admin lists jobs with no tenant_id sees an aggregated pending-approval queue
+
+### Community 1627 - "_filename_filter_literals"
+Cohesion: 0.43
+Nodes (3): _filename_filter_literals(), The literals a query requires `documents.filename` to match, with any SQL…, TestFilenameFilterLiterals
+
+### Community 1628 - "consumed_spans.py"
+Cohesion: 0.33
+Nodes (6): dataset_span_ids(), dataset_span_ids_sql(), What a training run consumed, recorded when the run finishes. This is the…, The span ids the dataset just built from this tenant covers. Called at dataset-…, Record `span_ids` as consumed by `model_version`. Returns how many ids were…, record_consumed_spans()
+
+### Community 1629 - "050_azure_blob_sync_ledger.py"
+Cohesion: 0.47
+Nodes (5): downgrade(), _for_each_tenant_schema(), durable azure blob sync ledger in every tenant schema (CAP-3) ADR-012 keeps…, Apply one statement to every provisioned tenant schema, per the 038 pattern.…, upgrade()
+
+### Community 1630 - "2026-09-03-annotation-mode-selection/tasks.md"
+Cohesion: 0.33
+Nodes (5): 1. Prerequisites, 2. Entity Type QA Pairs Editor, 3. Annotation Mode Selector, 4. Pre-label Trigger Orchestration, 5. Verification & Evidence
+
+### Community 1631 - "Requirement: Post-processing confidence filtering"
+Cohesion: 0.33
+Nodes (5): MODIFIED Requirements, Requirement: Post-processing confidence filtering, Scenario: Low-confidence entities are filtered out, Scenario: Low-confidence entities are retained for routing, Scenario: Retaining predictions does not change what business consumers see
+
+### Community 1632 - "Requirement: Entity Type Responses Include Provenance"
+Cohesion: 0.33
+Nodes (5): ADDED Requirements, Requirement: Entity Type Responses Include Provenance, Scenario: A client-supplied provenance on create is ignored, Scenario: Create response includes provenance, Scenario: List response includes provenance
+
+### Community 1633 - "2026-09-12-automated-landing-start-step-below-prereqs/proposal.md"
+Cohesion: 0.33
+Nodes (5): Capabilities, Impact, Modified Capabilities, What Changes, Why
+
+### Community 1634 - "Requirement: Retraining Is Not a Numbered Step"
+Cohesion: 0.33
+Nodes (5): ADDED Requirements, Requirement: Retraining Is Not a Numbered Step, Scenario: The landing page explains retraining as a separate, optional decision, Scenario: The stepper does not render on the retraining route, Scenario: The stepper shows exactly 3 steps
+
+### Community 1635 - "Requirement: Retraining Page Framing"
+Cohesion: 0.33
+Nodes (5): ADDED Requirements, Requirement: Retraining Page Framing, Scenario: The page states there is no schedule or required order, Scenario: The production-review section explains what it counts, Scenario: The training-eligible section explains it is a separate count
+
+### Community 1636 - "Requirement: Retraining Evidence Link"
+Cohesion: 0.33
+Nodes (5): ADDED Requirements, Requirement: Retraining Evidence Link, Scenario: Tenant admin sees the link in the Model Versions view, Scenario: The link is absent from the Training Jobs view, Scenario: The link is not shown to system_admin
+
+### Community 1637 - "2026-09-12-automated-retraining-destepped/tasks.md"
+Cohesion: 0.33
+Nodes (5): 1. Stepper restructure, 2. New entry point, 3. Copy clarification, 4. Tests, 5. Verification & Evidence
+
+### Community 1638 - "Requirement: Import Deep Link"
+Cohesion: 0.33
+Nodes (5): ADDED Requirements, Requirement: Import Deep Link, Scenario: A role that cannot import does not get the picker opened for it, Scenario: Arriving with ?import=1 opens the file picker, Scenario: Arriving with no import parameter leaves the picker closed
+
+### Community 1639 - "2026-09-12-import-annotation-training-workflow/tasks.md"
+Cohesion: 0.33
+Nodes (5): 1. Shared banner, 2. Import deep link, 3. Import landing page, 4. Tests, 5. Verification & Evidence
+
+### Community 1640 - "2026-09-12-import-workflow-direct-to-training/proposal.md"
+Cohesion: 0.33
+Nodes (5): Capabilities, Impact, Modified Capabilities, What Changes, Why
+
+### Community 1641 - "2026-09-12-manual-annotation-notification-routes-to-training/proposal.md"
+Cohesion: 0.33
+Nodes (5): Capabilities, Impact, Modified Capabilities, What Changes, Why
+
+### Community 1642 - "Requirement: Upload deep link"
+Cohesion: 0.33
+Nodes (5): ADDED Requirements, Requirement: Upload deep link, Scenario: An unrelated query parameter does not open the uploader, Scenario: Arriving with no upload parameter leaves the uploader closed, Scenario: Arriving with ?upload=1 opens the uploader
+
+### Community 1643 - "2026-09-14-cap-4-csv-ingestion-branch-for-chat-attachments/tasks.md"
+Cohesion: 0.33
+Nodes (5): 1. Allow-list and rejection path, 2. Media-type resolution, 3. CSV extraction branch, 4. Tests, 5. Verification & Evidence
+
+### Community 1644 - "Requirement: Conversation deletion hard-deletes linked attachment files and derived artefacts"
+Cohesion: 0.33
+Nodes (5): ADDED Requirements, Requirement: Conversation deletion hard-deletes linked attachment files and derived artefacts, Scenario: Delete a conversation owning attachments removes every trace, Scenario: Deleting a conversation without attachments is unchanged, Scenario: Retrying a conversation delete is safe
+
+### Community 1645 - "2026-09-14-cap-5-documents-library-exclusion-and-hard-delete-cleanup/tasks.md"
+Cohesion: 0.33
+Nodes (5): 1. Library exclusion, 2. Hard-delete cleanup helper, 3. Conversation delete path, 4. Regression coverage, 5. Verification & Evidence
+
+### Community 1646 - "2026-09-14-multi-document-task-assignment/proposal.md"
+Cohesion: 0.33
+Nodes (5): Capabilities, Impact, Modified Capabilities, What Changes, Why
+
+### Community 1647 - "Requirement: Workflow Steps"
+Cohesion: 0.33
+Nodes (5): MODIFIED Requirements, Requirement: Workflow Steps, Scenario: annotator sees only a single review card, Scenario: tenant_admin sees the two-step workflow in order, Scenario: Train model is available with nothing imported yet
+
+### Community 1648 - "2026-09-15-import-workspace-bulk-accept-and-train-handoff/tasks.md"
+Cohesion: 0.33
+Nodes (5): 1. Backend, 2. Imported-files list — bulk accept + train hand-off, 3. Remove the auto-open deep link, 4. Tests, 5. Verification & Evidence
+
+### Community 1649 - "2026-09-16-chat-export-ux-refinements/tasks.md"
+Cohesion: 0.33
+Nodes (5): 1. Overflow-based truncation, 2. Decoupled export-offer visibility, 3. Two-step reveal (prompt, then format actions), 4. Regression sweep, 5. Verification & Evidence
+
+### Community 1650 - "Requirement: Chat response export availability"
+Cohesion: 0.33
+Nodes (5): ADDED Requirements, Requirement: Chat response export availability, Scenario: Conversation history retains export availability for past turns, Scenario: Response includes export metadata when structured source succeeded, Scenario: Response omits export availability when no structured result exists
+
+### Community 1651 - "2026-09-18-single-source-tenant-ddl/tasks.md"
+Cohesion: 0.33
+Nodes (5): 1. Revision module: verify upgrade coverage, 2. Rewire migration 055's upgrade to delegate, 3. Delegation enforcement check, 4. Extend the fix to migrations 053/054 (same bug, found during verification), 5. Verification & Evidence
+
+### Community 1652 - "Requirement: Documents library excludes conversation-linked rows"
+Cohesion: 0.33
+Nodes (6): Requirement: Documents library excludes conversation-linked rows, Scenario: Fetching a chat attachment by id from the library is refused, Scenario: Library delete refuses a chat attachment, Scenario: Library listing omits a chat attachment, Scenario: Library text retrieval of a chat attachment is refused, Scenario: Non-chat documents behave unchanged
+
+### Community 1653 - "Requirement: Upload deep link"
+Cohesion: 0.33
+Nodes (6): Requirement: Upload deep link, Scenario: An unrelated query parameter does not open the uploader, Scenario: Arriving with no upload parameter leaves the uploader closed, Scenario: Arriving with ?upload=1 opens the uploader, Scenario: mode=automated seeds the annotation-mode selector, Scenario: purpose=qa_pair opens the Q&A-pair uploader
+
+### Community 1654 - "Requirement: Submit slide-over source scope"
+Cohesion: 0.33
+Nodes (6): Requirement: Submit slide-over source scope, Scenario: Arriving with a source query parameter auto-opens the slide-over, Scenario: Choosing a source unlocks the preflight check and submission, Scenario: Generic entry point requires an explicit source choice, Scenario: Locked source shows read-only text, not a picker, Scenario: Submitting sends the effective source_scope
+
+### Community 1656 - "002_main_feature_backlog.py"
+Cohesion: 0.40
+Nodes (5): _guarded_add_constraint(), Backfills the tenant-store baseline for Alembic migrations 039-048 (main's…, Same guard as `baseline.py`'s: no `ADD CONSTRAINT IF NOT EXISTS` in Postgres., Idempotent DDL, applied after `baseline.py`'s (and in the same order it uses):…, statements()
+
+### Community 1657 - "042_automated_annotation_guided_workflow.py"
+Cohesion: 0.60
+Nodes (4): downgrade(), automated annotation guided workflow: batch_kind, derived state, guidance…, _tenant_schemas(), upgrade()
+
+### Community 1658 - "045_imported_annotation_pending_mapping.py"
+Cohesion: 0.60
+Nodes (4): downgrade(), imported annotations: hold unmapped-type rows instead of dropping them Revision…, _tenant_schemas(), upgrade()
+
+### Community 1659 - "051_external_pg_contracts.py"
+Cohesion: 0.60
+Nodes (4): downgrade(), _for_each_tenant_schema(), canonical external-postgresql schema contracts and tenant schema index (CAP-4)…, upgrade()
+
+### Community 1660 - "ADR-013. Large automated batches are promoted without any human review"
+Cohesion: 0.40
+Nodes (4): ADR-013. Large automated batches are promoted without any human review, Consequences, Context, Decision
+
+### Community 1661 - "2026-09-10-tenant-admin-console-nav-restructure/tasks.md"
+Cohesion: 0.40
+Nodes (4): 1. Navigation (Phase 2 — done), 2. Notifications infrastructure (Phase 3 — done), 3. Annotation-task RBAC + completion hook (Phase 3 — done), 4. Verification
+
+### Community 1662 - "2026-09-12-annotation-workflow-review-simplification/tasks.md"
+Cohesion: 0.40
+Nodes (4): 1. Backend — reviewer roles and the sequencing gate, 2. Backend — automatic large-batch promotion, 3. Frontend — sequential flow, no batch-kind choice, 4. Verification & Evidence
+
+### Community 1663 - "2026-09-12-automated-annotation-landing-upload-entry-points/tasks.md"
+Cohesion: 0.40
+Nodes (4): 1. Frontend: upload plumbing, 2. Frontend: Automated landing page, 3. Tests, 4. Verification & Evidence
+
+### Community 1664 - "2026-09-12-automated-landing-start-step-below-prereqs/tasks.md"
+Cohesion: 0.40
+Nodes (4): 1. Shared component, 2. Automated landing page, 3. Tests, 4. Verification & Evidence
+
+### Community 1665 - "2026-09-12-import-workflow-direct-to-training/tasks.md"
+Cohesion: 0.40
+Nodes (4): 1. Import landing page, 2. Shared component, 3. Tests, 4. Verification & Evidence
+
+### Community 1666 - "2026-09-14-cap-2-chat-composer-attachment-ux/tasks.md"
+Cohesion: 0.40
+Nodes (4): 1. ChatInput component — attachment staging surface, 2. Chat page — staged queue and send wiring, 3. Tests, 4. Verification & Evidence
+
+### Community 1667 - "Requirement: Document Table"
+Cohesion: 0.40
+Nodes (5): Requirement: Document Table, Scenario: Empty state, Scenario: Loading state shows skeleton rows, Scenario: Pagination next/previous, Scenario: Table renders with correct columns
+
+### Community 1668 - "Requirement: Automatic Large-Batch Promotion"
+Cohesion: 0.40
+Nodes (5): Requirement: Automatic Large-Batch Promotion, Scenario: A finished large batch is promoted with no reviewer of any role, Scenario: A fully failed large batch is not promoted, Scenario: A partially-completed large batch still promotes its successes, Scenario: Promoted spans record their acceptance route like a reviewed batch's
+
+### Community 1669 - "Requirement: Batch Kind"
+Cohesion: 0.40
+Nodes (5): Requirement: Batch Kind, Scenario: A large batch is refused before any initial batch is approved, Scenario: Batch kind is reported on batch status, Scenario: Initial batch is capped at five documents, Scenario: Large batch has no document cap
+
+### Community 1670 - "Requirement: Batch Pre-labeling"
+Cohesion: 0.40
+Nodes (5): Requirement: Batch Pre-labeling, Scenario: Batch pre-labeling grounds quotes the same way as single-document pre-labeling, Scenario: Batch pre-labeling honours the entity type constraint, Scenario: Enqueue a batch pre-labeling job, Scenario: One document failing does not abort the batch
+
+### Community 1671 - "Requirement: Entity Schema Proposal"
+Cohesion: 0.40
+Nodes (5): Requirement: Entity Schema Proposal, Scenario: Generate a schema proposal from a seed set, Scenario: Generating a proposal creates no entity types, Scenario: Proposal candidates carry verbatim examples, Scenario: Proposal on a seed set with no processed documents
+
+### Community 1672 - "Requirement: Initial-Batch Review Guidance"
+Cohesion: 0.40
+Nodes (5): Requirement: Initial-Batch Review Guidance, Scenario: A tenant admin cannot record initial-batch guidance, Scenario: Guidance from the initial batch reaches the large-batch prompt, Scenario: Initial-batch corrections are persisted, Scenario: No guidance without a reviewed initial batch
+
+### Community 1673 - "Requirement: Named Batch State"
+Cohesion: 0.40
+Nodes (5): Requirement: Named Batch State, Scenario: A batch where every document fails reports failed, Scenario: A batch with mixed outcomes reports partially_completed, Scenario: A fully successful batch reports completed, Scenario: Batch status is available while processing
+
+### Community 1674 - "Requirement: Pre-Submission Readiness Check"
+Cohesion: 0.40
+Nodes (5): Requirement: Pre-Submission Readiness Check, Scenario: Configured but unannotated entity types are visible, Scenario: Readiness check does not block submission, Scenario: Readiness check does not use a tenant-wide total, Scenario: Readiness check names shortfalling entity types
+
+### Community 1675 - "Requirement: Q&A-Pair Proposal Input"
+Cohesion: 0.40
+Nodes (5): Requirement: Q&A-Pair Proposal Input, Scenario: An unsupported Q&A-pair file type is rejected, Scenario: Q&A-pair text reaches the proposal prompt, Scenario: Schema proposal accepts a Q&A-pair document, Scenario: Uploading a Q&A pair creates no entity types
+
+### Community 1676 - "Requirement: Schema Proposal Approval"
+Cohesion: 0.40
+Nodes (5): Requirement: Schema Proposal Approval, Scenario: Approving a candidate creates an entity type, Scenario: Approving a candidate whose name already exists, Scenario: Editing a candidate before approval, Scenario: Rejecting a candidate creates nothing
+
+### Community 1677 - "Requirement: Reject training job"
+Cohesion: 0.40
+Nodes (5): Requirement: Reject training job, Scenario: Reject a job that is not pending_approval, Scenario: Reject a pending training job, Scenario: Reject a pending training job without reason, Scenario: Reject as non-system-admin
+
+### Community 1678 - "CAP-6 Sanity Verification"
+Cohesion: 0.40
+Nodes (4): CAP-6 Sanity Verification, CAP-6 Sanity Verification, Deployed gesture trace, Focused portal tests
+
+### Community 1679 - "setup_demo_tenants.py"
+Cohesion: 0.60
+Nodes (4): create_tenant(), login(), main(), Provision the four demo/showcase tenants over the admin API. Requires the…
+
+### Community 1680 - "_retrying"
+Cohesion: 0.70
+Nodes (4): _retrying(), asyncio, test_fatal_error_raised_after_retry_bound_exhausted(), test_retries_with_exponential_backoff_before_succeeding()
+
+### Community 1681 - "test_blob_sync_task_routing.py"
+Cohesion: 0.40
+Nodes (3): parametrize, Blob sync Celery tasks route to the queue the blob_sync worker consumes.…, test_blob_sync_tasks_route_to_blob_sync_queue()
+
+### Community 1684 - "2026-09-10-cap-5-single-request-manual-annotation-gestures/tasks.md"
+Cohesion: 0.50
+Nodes (3): 1. Event Coordination, 2. Regression Tests, 3. Verification & Evidence
+
+### Community 1685 - "2026-09-12-automated-batch-stage-visibility/tasks.md"
+Cohesion: 0.50
+Nodes (3): 1. Persistent two-stage layout, 2. Notifications, 3. Verification & Evidence
+
+### Community 1686 - "2026-09-12-manual-annotation-landing-rework/tasks.md"
+Cohesion: 0.50
+Nodes (3): 1. Remove the Review Queue frontend surface, 2. Rework the Manual annotation landing page, 3. Verification & Evidence
+
+### Community 1687 - "2026-09-12-manual-annotation-notification-routes-to-training/tasks.md"
+Cohesion: 0.50
+Nodes (3): 1. Fix, 2. Tests, 3. Verification & Evidence
+
+### Community 1688 - "2026-09-14-cap-3-conversation-scoped-attachment-persistence/tasks.md"
+Cohesion: 0.50
+Nodes (3): 1. API contract changes, 2. Regression coverage, 3. Verification & Evidence
+
+### Community 1689 - "2026-09-14-multi-document-task-assignment/tasks.md"
+Cohesion: 0.50
+Nodes (3): 1. Component rewrite, 2. Tests, 3. Verification & Evidence
+
+### Community 1690 - "cap-6-docker-verification-of-single-request-annotation-gestures/design.md"
+Cohesion: 0.50
+Nodes (3): Context, Scope Guard, Verification Approach
+
+### Community 1691 - "Requirement: Chat response export availability"
+Cohesion: 0.50
+Nodes (4): Requirement: Chat response export availability, Scenario: Conversation history retains export availability for past turns, Scenario: Response includes export metadata when structured source succeeded, Scenario: Response omits export availability when no structured result exists
+
+### Community 1692 - "Requirement: Conversation deletion hard-deletes linked attachment files and derived artefacts"
+Cohesion: 0.50
+Nodes (4): Requirement: Conversation deletion hard-deletes linked attachment files and derived artefacts, Scenario: Delete a conversation owning attachments removes every trace, Scenario: Deleting a conversation without attachments is unchanged, Scenario: Retrying a conversation delete is safe
+
+### Community 1693 - "Requirement: Tenant Context Enforcement"
+Cohesion: 0.50
+Nodes (4): Requirement: Tenant Context Enforcement, Scenario: Authenticated request with valid tenant, Scenario: Request for unknown tenant, Scenario: Request with inactive tenant
+
+### Community 1694 - "Requirement: Gateway Extraction Proxy Uses JWT-Only URL Structure"
+Cohesion: 0.50
+Nodes (4): Requirement: Gateway Extraction Proxy Uses JWT-Only URL Structure, Scenario: Proxy forwards batch run list request without tid in URL, Scenario: Proxy forwards single extraction request without tid in URL, Scenario: Proxy returns 403 when JWT is missing
+
+### Community 1695 - "Requirements"
+Cohesion: 0.50
+Nodes (3): Purpose, Requirements, Seed Bootstrap
+
+### Community 1696 - "Requirement: Dataset-to-model lineage diagram"
+Cohesion: 0.50
+Nodes (4): Requirement: Dataset-to-model lineage diagram, Scenario: Lineage renders for a completed job with a promoted model, Scenario: Lineage renders "pending" for a job with no model version yet, Scenario: Training job and model version boxes show their sublabels
+
+### Community 1697 - "Requirement: Job list card content"
+Cohesion: 0.50
+Nodes (4): Requirement: Job list card content, Scenario: Completed job card shows F1 score, Scenario: Non-running job still shows a status-colored dot, Scenario: Running job card shows full summary
+
+### Community 1698 - "Requirement: Retraining Evidence Link"
+Cohesion: 0.50
+Nodes (4): Requirement: Retraining Evidence Link, Scenario: Tenant admin sees the link in the Model Versions view, Scenario: The link is absent from the Training Jobs view, Scenario: The link is not shown to system_admin
+
+### Community 1699 - "Requirements"
+Cohesion: 0.50
+Nodes (3): Purpose, Requirements, Training Jobs
+
+### Community 1700 - "Requirement: Approve training job"
+Cohesion: 0.50
+Nodes (4): Requirement: Approve training job, Scenario: Approve a job that is not pending_approval, Scenario: Approve a pending training job, Scenario: Approve as non-system-admin
+
+### Community 1701 - "Requirement: Cancel training job"
+Cohesion: 0.50
+Nodes (4): Requirement: Cancel training job, Scenario: Cancel a completed job returns 422, Scenario: Cancel a pending_approval job, Scenario: Cancel a queued job
+
+### Community 1702 - "Requirement: Hide submit job action for non-tenant-admin roles"
+Cohesion: 0.50
+Nodes (4): Requirement: Hide submit job action for non-tenant-admin roles, Scenario: Submit button hidden for system_admin, Scenario: Submit button visible for tenant_admin, Scenario: Submit slideover not accessible for system_admin
+
+### Community 1703 - "Requirement: Submit form span preflight is informational only"
+Cohesion: 0.50
+Nodes (4): Requirement: Submit form span preflight is informational only, Scenario: Backend rejection for insufficient entities is surfaced after submit, Scenario: Preflight display shows span count while loading and on fetch failure, Scenario: Submit enabled with span count below the legacy 500 threshold
+
+### Community 1704 - "axe-scan.mjs"
+Cohesion: 0.50
+Nodes (3): results, @axe-core/playwright, @playwright/test
+
+### Community 1705 - "verify-docker-annotation-fix/summary.md"
+Cohesion: 0.50
+Nodes (3): CAP-6 Verification Summary, CAP-6 Verification Summary, Disposition: BLOCKED
+
+### Community 1707 - "004_documents_conversation_id.py"
 Cohesion: 0.67
-Nodes (3): infer(), _infer_url(), Request
+Nodes (3): _guarded_add_constraint(), Matches Alembic migration 053…, statements()
+
+### Community 1717 - "Requirement: Per-request authorization context isolation"
+Cohesion: 0.67
+Nodes (3): Requirement: Per-request authorization context isolation, Scenario: Interleaved tenant requests do not leak tokens, Scenario: Orchestrator singleton holds no request-scoped state
+
+### Community 1718 - "Requirement: Rate limiting"
+Cohesion: 0.67
+Nodes (3): Requirement: Rate limiting, Scenario: Rate limit exceeded returns 429, Scenario: Rate limit headers on successful request
+
+### Community 1719 - "Requirement: Auto-Polling for In-Flight Documents"
+Cohesion: 0.67
+Nodes (3): Requirement: Auto-Polling for In-Flight Documents, Scenario: Polling starts when pending document exists, Scenario: Polling stops when all documents reach terminal state
+
+### Community 1720 - "Requirement: Soft Delete"
+Cohesion: 0.67
+Nodes (3): Requirement: Soft Delete, Scenario: Delete a document from a filtered list, Scenario: Delete a document when "All" filter is active
+
+### Community 1721 - "Requirement: Status Badge"
+Cohesion: 0.67
+Nodes (3): Requirement: Status Badge, Scenario: Deleted badge is visually muted, Scenario: Processing badge shows pulse animation
+
+### Community 1722 - "Requirement: Design token compliance"
+Cohesion: 0.67
+Nodes (3): Requirement: Design token compliance, Scenario: No generic gray utility classes remain, Scenario: Page heading uses display font
+
+### Community 1723 - "Requirement: Detail panel defaults to the most recent job when none is selected"
+Cohesion: 0.67
+Nodes (3): Requirement: Detail panel defaults to the most recent job when none is selected, Scenario: An explicitly-selected job id that does not exist still shows "Job not found", Scenario: Loading the page with no selection auto-selects the latest job
+
+### Community 1724 - "Requirement: Horizontal status timeline"
+Cohesion: 0.67
+Nodes (3): Requirement: Horizontal status timeline, Scenario: Failed job shows the failure branch, not the full lifecycle, Scenario: Running job shows horizontal timeline with current step highlighted
+
+### Community 1725 - "Requirement: Live running-job callout"
+Cohesion: 0.67
+Nodes (3): Requirement: Live running-job callout, Scenario: Non-running job shows no callout, Scenario: Running job shows the live callout
+
+### Community 1726 - "Requirement: Page header matches the mockup's breadcrumb, heading scale, and submit button"
+Cohesion: 0.67
+Nodes (3): Requirement: Page header matches the mockup's breadcrumb, heading scale, and submit button, Scenario: Header shows the API-path breadcrumb above the heading, Scenario: Submit button copy matches the mockup exactly
 
 ## Ambiguous Edges - Review These
 - `OpenSpec Sync Specs Skill (Claude)` → `OpenCode OpsX Archive Command`  [AMBIGUOUS]
@@ -6419,19 +8061,19 @@ Nodes (3): infer(), _infer_url(), Request
   .opencode/commands/opsx-bulk-archive.md · relation: references
 - `OpenSpec CLI` → `OPSX: Ask Command (VSCode Ask Agent)`  [AMBIGUOUS]
   .claude/commands/opsx/ask.md · relation: conceptually_related_to
-- `Tenant Self-Service Data Sources — requirements baseline v1.2` → `Deploy Platform to Kubernetes on Azure (AKS) — requirements baseline`  [AMBIGUOUS]
-  docs/requirement/deploy-platform-kubernetes-azure.md · relation: conceptually_related_to
 - `Fix Dark Theme Issues - Tasks` → `Logo (Dark Theme) SVG`  [AMBIGUOUS]
   src/openspec/changes/fix-dark-theme-issues/tasks.md · relation: conceptually_related_to
 - `Fix Dark Theme Issues - Tasks` → `Logo (Light Theme) SVG`  [AMBIGUOUS]
   src/openspec/changes/fix-dark-theme-issues/tasks.md · relation: conceptually_related_to
+- `Tenant Self-Service Data Sources — requirements baseline v1.2` → `Deploy Platform to Kubernetes on Azure (AKS) — requirements baseline`  [AMBIGUOUS]
+  docs/requirement/deploy-platform-kubernetes-azure.md · relation: conceptually_related_to
 - `ADR-002: Single Curated Base Model Strategy (No BYOM)` → `ADR-003: Per-Tenant Model Serving Topology (Shared Pool + Routing)`  [AMBIGUOUS]
   docs/adr/003-model-serving-topology.md · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **9382 isolated node(s):** `$schema`, `plugin`, `vendorRoot`, `SessionMessage`, `SessionMessageInfo` (+9377 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 12699 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **38 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **11627 isolated node(s):** `$schema`, `plugin`, `vendorRoot`, `SessionMessage`, `SessionMessageInfo` (+11622 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 15735 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **50 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -6442,11 +8084,11 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **What is the exact relationship between `OpenSpec CLI` and `OPSX: Ask Command (VSCode Ask Agent)`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `Tenant Self-Service Data Sources — requirements baseline v1.2` and `Deploy Platform to Kubernetes on Azure (AKS) — requirements baseline`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `Fix Dark Theme Issues - Tasks` and `Logo (Dark Theme) SVG`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `Fix Dark Theme Issues - Tasks` and `Logo (Light Theme) SVG`?**
+  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
+- **What is the exact relationship between `Tenant Self-Service Data Sources — requirements baseline v1.2` and `Deploy Platform to Kubernetes on Azure (AKS) — requirements baseline`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `ADR-002: Single Curated Base Model Strategy (No BYOM)` and `ADR-003: Per-Tenant Model Serving Topology (Shared Pool + Routing)`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
