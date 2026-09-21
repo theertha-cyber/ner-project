@@ -91,7 +91,7 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
   // citation chip does — they sit a few pixels apart and behaving differently would
   // read as a bug.
   const [viewingAttachment, setViewingAttachment] = useState<
-    { documentId: string; documentName: string } | null
+    { documentId: string; documentName: string; siblings: MessageAttachment[] } | null
   >(null);
 
   // Depend on a signal describing the *tail* of the thread, not the array itself:
@@ -203,6 +203,7 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
                                 setViewingAttachment({
                                   documentId: file.id,
                                   documentName: file.filename,
+                                  siblings: msg.attachments ?? [],
                                 })
                               }
                               title={`Open ${file.filename}`}
@@ -288,6 +289,16 @@ export function MessageThread({ messages, loading, canRate, onRateMessage }: Mes
       <OriginalDocumentViewer
         documentId={viewingAttachment?.documentId ?? null}
         documentName={viewingAttachment?.documentName ?? null}
+        otherSources={(viewingAttachment?.siblings ?? [])
+          .filter((file) => file.id !== viewingAttachment?.documentId)
+          .map((file) => ({ documentId: file.id, documentName: file.filename }))}
+        onSelectSource={(source) =>
+          setViewingAttachment({
+            documentId: source.documentId,
+            documentName: source.documentName ?? "Document",
+            siblings: viewingAttachment?.siblings ?? [],
+          })
+        }
         onClose={() => setViewingAttachment(null)}
       />
     </div>

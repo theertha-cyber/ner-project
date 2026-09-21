@@ -42,6 +42,7 @@ export type DocumentState =
       mediaType: string;
       renderMode: RenderMode;
       filename: string | null;
+      fileSize: number | null;
     }
   | { status: "unavailable"; code: string; message: string; filename: string | null };
 
@@ -165,6 +166,7 @@ export function useOriginalDocument(documentId: string | null) {
           mediaType: probe.media_type,
           renderMode: probe.render_mode,
           filename: probe.filename,
+          fileSize: probe.file_size,
         });
       } catch (error) {
         // An abort is the rapid-reopen path, not a failure worth showing.
