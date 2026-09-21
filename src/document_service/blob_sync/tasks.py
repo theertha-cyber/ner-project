@@ -106,31 +106,49 @@ def blob_sync_tick() -> dict:
                     {"provider": PROVIDER_AZURE_BLOB},
                 )
             ).fetchall()
-        for connection_id, tenant_id, activated_at in rows:
-            schema = schema_for_tenant(tenant_id)
-            try:
-                tenant_engine = await get_resolver().resolve(str(tenant_id))
-            except (DataPlaneNotReady, DataPlaneUnavailable):
-                # Skip this connection's tick — a per-tenant outage must not abort the
-                # tick for every other tenant's connections.
-                continue
-            tenant_sessions = async_sessionmaker(tenant_engine, expire_on_commit=False)
-            async with tenant_sessions() as session:
-                await ledger.ensure_sync_tables(session, schema)
-                await session.commit()
-                last_success = await ledger.last_successful_run_at(
-                    session, schema, str(connection_id)
+        used_tenants: set[str] = set()
+        try:
+            for connection_id, tenant_id, activated_at in rows:
+                schema = schema_for_tenant(tenant_id)
+                try:
+                    tenant_engine = await get_resolver().resolve(str(tenant_id))
+                except (DataPlaneNotReady, DataPlaneUnavailable):
+                    # Skip this connection's tick — a per-tenant outage must not abort the
+                    # tick for every other tenant's connections.
+                    continue
+                used_tenants.add(str(tenant_id))
+                tenant_sessions = async_sessionmaker(tenant_engine, expire_on_commit=False)
+                async with tenant_sessions() as session:
+                    await ledger.ensure_sync_tables(session, schema)
+                    await session.commit()
+                    last_success = await ledger.last_successful_run_at(
+                        session, schema, str(connection_id)
+                    )
+                decision = evaluate_connection(
+                    active=True, last_success_at=last_success, connected_at=activated_at
                 )
-            decision = evaluate_connection(
-                active=True, last_success_at=last_success, connected_at=activated_at
-            )
-            if decision.decision in (DECISION_DUE, DECISION_CATCHUP):
-                enqueue_sync(str(tenant_id), str(connection_id), decision.trigger)
-                enqueued.append(str(connection_id))
+                if decision.decision in (DECISION_DUE, DECISION_CATCHUP):
+                    enqueue_sync(str(tenant_id), str(connection_id), decision.trigger)
+                    enqueued.append(str(connection_id))
+        finally:
+            await _dispose_tenant_engines(used_tenants)
         return enqueued
 
     enqueued = asyncio.run(_tick())
     return {"enqueued": enqueued}
+
+
+async def _dispose_tenant_engines(tenant_ids) -> None:
+    """Dispose each tenant's cached engine before the calling `asyncio.run` loop ends.
+
+    A pooled async engine's connections are bound to the loop that opened them. Every
+    Celery task here runs in its own `asyncio.run`, so an engine left in the resolver's
+    cache is reused from a *different* loop by the next task and fails with "attached to
+    a different loop" / "another operation is in progress"."""
+    from src.shared.database import get_resolver
+
+    for tenant_id in tenant_ids:
+        await get_resolver().invalidate_tenant(tenant_id)
 
 
 def _data_plane_retry_countdown(retries: int) -> int:
@@ -156,18 +174,30 @@ def run_blob_sync_task(self, tenant_id: str, connection_id: str, trigger: str) -
 
     from src.document_service.blob_sync.sync import run_sync
     from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable
-    from src.shared.database import get_resolver
+    from src.shared.database import get_engine, get_resolver
 
     # Reopenable source-only documents processed from this worker re-acquire
     # their bytes through the registered provider seam.
     from src.document_service.blob_sync import reopen as _reopen  # noqa: F401
 
     async def _run_and_drain():
+        try:
+            return await _run_sync_and_drain()
+        finally:
+            await _dispose_tenant_engines([tenant_id])
+
+    async def _run_sync_and_drain():
         # Routed through EngineResolver (ADR-017): this tenant's ledger and document
         # rows live wherever its data plane resolves, not always the platform database.
         engine = await get_resolver().resolve(tenant_id)
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
-        result = await run_sync(session_factory, tenant_id, connection_id, trigger)
+        # The connection row and integration profile are control-plane tables: they live
+        # on the platform database even when the tenant's own data plane is elsewhere.
+        platform_session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+        result = await run_sync(
+            session_factory, tenant_id, connection_id, trigger,
+            platform_session_factory=platform_session_factory,
+        )
         # Ingestion dispatches OCR as a fire-and-forget asyncio task (today's
         # in-process dispatcher). asyncio.run() tears its loop down the instant
         # this coroutine returns, which orphans and cancels any such task

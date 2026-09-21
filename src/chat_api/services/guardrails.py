@@ -59,6 +59,7 @@ In-domain examples (note: the subject matter varies by tenant — all of these a
 - "Compare what document A and document B say about liability."
 - "What entities appear on page 3 of the uploaded lease?"
 - "Find me candidates who graduated in 2026."
+- "Who interned at Acme Corp?" / "Who worked at Globex?" (a bare "who" question naming a company, school or skill is a lookup over the tenant's own documents, even when the name is unfamiliar)
 - "Is Arjun a good AI engineer?" (a lookup/judgement over this tenant's resume data)
 - "Find me candidates for a Backend Engineer role, preferably at an MNC."
 - "Which invoices are overdue?"

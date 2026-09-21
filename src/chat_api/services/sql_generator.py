@@ -1111,6 +1111,21 @@ def _render_attempt_feedback(
     )
 
 
+
+async def _reset_search_path(session) -> None:
+    """Return the connection to the server's default `search_path` after a probe.
+
+    `execute_sql` ends in a raw COMMIT, after which the session is no longer inside a
+    transaction, so a later plain `SET search_path` is not undone by the session's
+    rollback and stays on the pooled connection. A `tenant_owned` tenant's engine is
+    pooled, so the next query on it inherited a tenant-only path that cannot see pgvector's
+    operators in `public`. Best effort: a failed reset must not turn a probe into an error.
+    """
+    try:
+        await session.execute(text("RESET search_path"))
+    except Exception:
+        logger.warning("search_path_reset_failed", exc_info=True)
+
 class SQLGenerator:
     def __init__(self):
         # Read once; `sql_max_attempts = 1` is the config-only rollback to the
@@ -1440,8 +1455,12 @@ Return ONLY the SQL query, no explanations:"""
         try:
             async with asyncio.timeout(10):
                 _metrics().assert_tenant_schema(schema, "chat_api.sql_generator.execute_sql")
+                # LOCAL, because the COMMIT below would otherwise make this permanent on
+                # the connection. A `tenant_owned` tenant's engine is pooled, so the next
+                # query on it -- semantic retrieval -- inherited a tenant-only path that
+                # cannot see pgvector's operators in `public`.
                 result = await session.execute(
-                    text(f"SET search_path TO {schema}")
+                    text(f"SET LOCAL search_path TO {schema}")
                 )
                 await session.execute(text("BEGIN READ ONLY"))
                 # SET LOCAL scopes the role to this transaction, so the privilege
@@ -1552,6 +1571,8 @@ Return ONLY the SQL query, no explanations:"""
                 extra={"schema": schema, "error_class": type(e).__name__},
             )
             return {}
+        finally:
+            await _reset_search_path(session)
 
     # One query, two facts: does the relational surface hold rows for this question's extent,
     # and does the EAV store. Asked together so the two answers describe the same instant and
@@ -1627,6 +1648,8 @@ Return ONLY the SQL query, no explanations:"""
                 extra={"schema": schema, "error_class": type(e).__name__},
             )
             return None
+        finally:
+            await _reset_search_path(session)
 
         if row is None or bool(row[0]) or not bool(row[1]):
             return None
@@ -1768,6 +1791,8 @@ Return ONLY the SQL query, no explanations:"""
                 extra={"schema": schema, "error_class": type(e).__name__},
             )
             return None
+        finally:
+            await _reset_search_path(session)
         return None
 
     async def _wrong_relation_defect(
@@ -1831,6 +1856,8 @@ Return ONLY the SQL query, no explanations:"""
                 extra={"schema": schema, "error_class": type(e).__name__},
             )
             return None
+        finally:
+            await _reset_search_path(session)
         return None
 
     @staticmethod

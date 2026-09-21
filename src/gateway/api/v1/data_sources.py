@@ -21,7 +21,7 @@ import re
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.gateway.dependencies import (
     get_db,
@@ -49,7 +49,9 @@ from src.shared.data_sources.service import (
     test_connection,
     update_connection,
 )
+from src.shared.data_plane import DataPlaneNotReady, DataPlaneUnavailable
 from src.shared.data_sources.store import to_connection_dict
+from src.shared.database import get_resolver
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +135,24 @@ def _ok(body: dict, replayed: bool = False):
     )
 
 
+async def _latest_runs(tenant_id: str, blob_ids: list[str]) -> dict:
+    """Latest run per Blob connection, read from the tenant's own data plane.
+
+    The connection rows are control-plane (`session`, the platform database) but the run
+    ledger is tenant data: for a `tenant_owned` tenant it lives in that tenant's store,
+    where the platform session cannot see it and every connection read as `never_run`.
+    A data plane that is not ready degrades to "no run known" rather than failing the
+    connection list, which is itself served from the platform database."""
+    if not blob_ids:
+        return {}
+    try:
+        engine = await get_resolver().resolve(tenant_id)
+    except (DataPlaneNotReady, DataPlaneUnavailable):
+        return {}
+    async with async_sessionmaker(engine, expire_on_commit=False)() as ledger_session:
+        return await latest_sync_outcomes(ledger_session, tenant_id, blob_ids)
+
+
 async def _render_many(session, tenant_id: str, rows) -> list[dict]:
     """Safe `Connection` shapes with each Blob connection's latest completed run.
 
@@ -140,7 +160,7 @@ async def _render_many(session, tenant_id: str, rows) -> list[dict]:
     response never resets the portal's cached last-run status to `never_run`.
     """
     blob_ids = [str(row.id) for row in rows if row.provider == PROVIDER_AZURE_BLOB]
-    runs = await latest_sync_outcomes(session, tenant_id, blob_ids)
+    runs = await _latest_runs(tenant_id, blob_ids)
     return [to_connection_dict(row, runs.get(str(row.id))) for row in rows]
 
 

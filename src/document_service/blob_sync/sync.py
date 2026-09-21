@@ -193,14 +193,22 @@ async def _profile_retention(session, tenant_id: str) -> str | None:
 
 async def run_sync(session_factory, tenant_id: str, connection_id: str,
                    trigger: str, *, provider=None,
-                   make_ingestion_service=None, temp_store=None) -> SyncResult:
-    """Execute one durable synchronization. See module docstring for the contract."""
+                   make_ingestion_service=None, temp_store=None,
+                   platform_session_factory=None) -> SyncResult:
+    """Execute one durable synchronization. See module docstring for the contract.
+
+    `session_factory` is the tenant's data plane (ledger and document rows), which for a
+    `tenant_owned` tenant is its own Azure store. The connection row and integration
+    profile are control-plane tables that exist only on the platform database, so they are
+    read through `platform_session_factory` (defaults to `session_factory`, which is the
+    same database for a `platform`-mode tenant)."""
     from src.shared.tenant_schema import schema_for_tenant
 
     if trigger not in TRIGGERS:
         raise ValueError(f"unknown sync trigger: {trigger}")
     schema = schema_for_tenant(tenant_id)
     run_id = str(uuid.uuid4())
+    platform_session_factory = platform_session_factory or session_factory
 
     async with session_factory() as session:
         await ledger.ensure_sync_tables(session, schema)
@@ -220,7 +228,7 @@ async def run_sync(session_factory, tenant_id: str, connection_id: str,
         _record_metric(trigger, outcome)
         return SyncResult(run_id, outcome, reason, seen, ingested, skipped, failed)
 
-    async with session_factory() as session:
+    async with platform_session_factory() as session:
         connection = await _active_blob_connection(session, tenant_id, connection_id)
     if connection is None:
         return await _finish(OUTCOME_BLOCKED, REASON_INACTIVE_CONNECTION)
@@ -236,7 +244,7 @@ async def run_sync(session_factory, tenant_id: str, connection_id: str,
         except BlobProviderUnavailable:
             return await _finish(OUTCOME_BLOCKED, REASON_PREREQUISITE_MISSING)
 
-    async with session_factory() as session:
+    async with platform_session_factory() as session:
         retention = await _profile_retention(session, tenant_id)
     if retention not in SYNC_ALLOWED_RETENTION:
         logger.info(

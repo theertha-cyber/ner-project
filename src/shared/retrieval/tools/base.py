@@ -1,3 +1,4 @@
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Protocol
@@ -7,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.document_visibility import RequestingUser
 from src.shared.retrieval.models import RetrievalResult
 from src.shared.retrieval.retriever import Retriever
+
+logger = logging.getLogger(__name__)
 
 # Argument names no tool may declare. The first four are tenancy and purpose; the rest
 # name the uploader-visibility rule, which is derived from authenticated request state
@@ -211,4 +214,9 @@ async def run_tool(
         return ToolResult(tool_name=name, results=results, latency_ms=elapsed_ms, degraded=degraded, error=None)
     except Exception as e:
         elapsed_ms = (time.monotonic() - start) * 1000
+        # The error string reaches the caller as a classified failure only; without this
+        # the cause of a failed retrieval is not recoverable from the logs.
+        logger.warning(
+            "retrieval tool failed tool=%s error_class=%s", name, type(e).__name__, exc_info=True,
+        )
         return ToolResult(tool_name=name, results=[], latency_ms=elapsed_ms, degraded=False, error=str(e))

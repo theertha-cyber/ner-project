@@ -166,6 +166,11 @@ services:
       NER_MODEL_SERVING_URL: "http://model_serving:8000"
       NER_CHAT_API_PORT: 8006
       NER_ENTITY_RESOLUTION_ENABLED: "true"
+      # The default 8s window was sized for a structured attempt of ~2-3s against the local
+      # store. Against an Azure-hosted tenant store one takes ~6s (an LLM call plus several
+      # ~50ms round trips), which leaves under the 2s the semantic fallback needs, so it was
+      # skipped and the turn answered "one of the sources failed".
+      NER_RETRIEVAL_DEADLINE_SECONDS: "15"
       # An attachment-bearing chat turn ingests through DocumentIngestionService, which
       # writes the file to the content store — so chat_api needs the same MinIO endpoint
       # document_service uses. Without it the setting falls back to localhost:9000, which
