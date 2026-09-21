@@ -23,12 +23,14 @@ export interface PdfPageProps {
   url: string;
   pageNumber: number;
   onPageCount?: (count: number) => void;
+  /** Reader-controlled zoom multiplier, independent of the sharpness scale below. */
+  scale?: number;
 }
 
 // Rendered above CSS size so the page stays sharp on high-density displays.
 const RENDER_SCALE = 2;
 
-export function PdfPage({ url, pageNumber, onPageCount }: PdfPageProps) {
+export function PdfPage({ url, pageNumber, onPageCount, scale = 1 }: PdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -54,13 +56,14 @@ export function PdfPage({ url, pageNumber, onPageCount }: PdfPageProps) {
         const page = await loaded.getPage(target);
         if (cancelled) return;
 
-        const viewport = page.getViewport({ scale: RENDER_SCALE });
+        const viewport = page.getViewport({ scale: RENDER_SCALE * scale });
         const canvas = canvasRef.current;
         if (!canvas) return;
         canvas.width = viewport.width;
         canvas.height = viewport.height;
         // Laid out at half the render size, so the extra pixels become sharpness rather
-        // than a page twice as wide as the panel.
+        // than a page twice as wide as the panel. The reader's zoom multiplies both sides
+        // of that ratio equally, so it grows the displayed page without losing sharpness.
         canvas.style.width = `${viewport.width / RENDER_SCALE}px`;
         canvas.style.height = "auto";
 
@@ -77,7 +80,7 @@ export function PdfPage({ url, pageNumber, onPageCount }: PdfPageProps) {
       cancelled = true;
       doc?.destroy();
     };
-  }, [url, pageNumber, onPageCount]);
+  }, [url, pageNumber, onPageCount, scale]);
 
   if (error) {
     return (

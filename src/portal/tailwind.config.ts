@@ -16,6 +16,17 @@ const config: Config = {
         "text-disabled": "var(--color-text-disabled)",
         border: "var(--color-border)",
         "border-focus": "var(--color-border-focus)",
+        // The compact ink/surface/line scale used by the document viewer and the
+        // design-system mockups (design-system/ner-portal/tokens.css). Distinct from
+        // the "color-*" tokens above, which back the rest of the portal's chrome.
+        "ink-1": "var(--ink)",
+        "ink-2": "var(--ink-2)",
+        "ink-3": "var(--ink-3)",
+        "surface-1": "var(--surface)",
+        "surface-2": "var(--surface-2)",
+        "surface-3": "var(--surface-3)",
+        line: "var(--line)",
+        primary: "var(--primary)",
         "status-active": "var(--color-status-active)",
         "status-inactive": "var(--color-status-inactive)",
         "status-running": "var(--color-status-running)",

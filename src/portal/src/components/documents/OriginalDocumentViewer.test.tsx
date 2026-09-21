@@ -139,7 +139,7 @@ describe("rendering the document at the cited page", () => {
 
     open({ pageNumber: 2 });
 
-    await waitFor(() => expect(screen.getByTestId("page-indicator")).toHaveTextContent("2 / 5"));
+    await waitFor(() => expect(screen.getByTestId("page-indicator")).toHaveTextContent("Page 2 of 5"));
     await userEvent.click(screen.getByRole("button", { name: /next page/i }));
     await waitFor(() => expect(renderPage).toHaveBeenCalledWith(3));
   });

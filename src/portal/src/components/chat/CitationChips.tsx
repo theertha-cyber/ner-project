@@ -36,6 +36,17 @@ export function CitationChips({ citations }: { citations: Citation[] }) {
   const visible = showAll ? citations : citations.slice(0, VISIBLE_COUNT);
   const overflow = citations.length - visible.length;
 
+  // Every other document-backed citation on this answer, deduped, offered as a quick
+  // jump from inside the open viewer so switching sources doesn't mean closing it first.
+  const otherSources = citations
+    .filter((c) => c.document_id && c.document_id !== viewing?.documentId)
+    .filter((c, i, arr) => arr.findIndex((x) => x.document_id === c.document_id) === i)
+    .map((c) => ({
+      documentId: c.document_id as string,
+      documentName: c.document_name ?? null,
+      pageNumber: c.page_number ?? null,
+    }));
+
   return (
     <div style={{ marginTop: 6 }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -147,6 +158,14 @@ export function CitationChips({ citations }: { citations: Citation[] }) {
         documentId={viewing?.documentId ?? null}
         pageNumber={viewing?.pageNumber ?? null}
         documentName={viewing?.documentName ?? null}
+        otherSources={otherSources}
+        onSelectSource={(source) =>
+          setViewing({
+            documentId: source.documentId,
+            pageNumber: source.pageNumber ?? null,
+            documentName: source.documentName ?? null,
+          })
+        }
         onClose={() => setViewing(null)}
       />
     </div>

@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, FileWarning, Loader2, RefreshCw, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileWarning,
+  Loader2,
+  Minus,
+  Plus,
+  RefreshCw,
+  X,
+} from "lucide-react";
 
 import { SlideOver } from "@/components/ui/slide-over";
 import { PdfPage } from "@/components/documents/PdfPage";
@@ -24,16 +34,44 @@ import { isRetryable, useOriginalDocument } from "@/hooks/use-original-document"
  * matrix.
  */
 
+/** Another source cited alongside the one currently open, offered as a quick jump. */
+export interface DocumentViewerSource {
+  documentId: string;
+  documentName?: string | null;
+  pageNumber?: number | null;
+}
+
 export interface OriginalDocumentViewerProps {
   documentId: string | null;
   /** The page the citation pointed at, 1-based. Null when the citation carried none. */
   pageNumber?: number | null;
   /** Falls back to the server-reported filename; used before the probe returns. */
   documentName?: string | null;
+  /** Sibling sources from the same answer, excluding the one currently open. */
+  otherSources?: DocumentViewerSource[];
+  onSelectSource?: (source: DocumentViewerSource) => void;
   onClose: () => void;
 }
 
-const PANEL_MAX_WIDTH = 940;
+// A PDF page rendered at 100% zoom is ~600px wide (see PdfPage's RENDER_SCALE); the
+// panel only needs to be wide enough to pad that, not fill most of the viewport.
+const PANEL_MAX_WIDTH = 680;
+
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2;
+const ZOOM_STEP = 0.25;
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Short label for the meta line, not a MIME-type dump — "PDF", not "application/pdf".
+function typeLabel(mediaType: string): string {
+  const subtype = mediaType.split("/")[1] ?? mediaType;
+  return subtype.split("+")[0].toUpperCase();
+}
 
 function useViewerWidth() {
   const [width, setWidth] = useState(PANEL_MAX_WIDTH);
@@ -139,6 +177,8 @@ export function OriginalDocumentViewer({
   documentId,
   pageNumber,
   documentName,
+  otherSources,
+  onSelectSource,
   onClose,
 }: OriginalDocumentViewerProps) {
   const { state, retry } = useOriginalDocument(documentId);
@@ -159,10 +199,12 @@ export function OriginalDocumentViewer({
   const citedPage = pageNumber && pageNumber > 0 ? pageNumber : 1;
   const [page, setPage] = useState(citedPage);
   const [pageCount, setPageCount] = useState<number | null>(null);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     setPage(citedPage);
     setPageCount(null);
+    setZoom(1);
   }, [documentId, citedPage]);
 
   // Stable identity: `PdfPage` takes this in a dependency array, and a new function each
@@ -170,6 +212,16 @@ export function OriginalDocumentViewer({
   const handlePageCount = useCallback((count: number) => setPageCount(count), []);
 
   const multiPage = pageCount !== null && pageCount > 1;
+  const fileSize = state.status === "ready" ? state.fileSize : null;
+  const mediaType = state.status === "ready" ? state.mediaType : null;
+
+  const metaParts: string[] = [];
+  if (mediaType) metaParts.push(typeLabel(mediaType));
+  if (pageCount !== null) metaParts.push(pageCount === 1 ? "1 page" : `${pageCount} pages`);
+  if (fileSize !== null) metaParts.push(formatFileSize(fileSize));
+
+  const canDownload = state.status === "ready";
+  const sources = otherSources ?? [];
 
   return (
     <SlideOver open={documentId !== null} onClose={onClose} width={width}>
@@ -179,21 +231,91 @@ export function OriginalDocumentViewer({
             <h2 className="truncate text-[13.5px] font-medium tracking-tight text-ink-1" title={title}>
               {title}
             </h2>
-            {pageCount !== null && (
-              <p className="mt-0.5 text-[11.5px] text-ink-3">
-                {pageCount === 1 ? "1 page" : `${pageCount} pages`}
-              </p>
+            {metaParts.length > 0 && (
+              <p className="mt-0.5 truncate text-[11.5px] text-ink-3">{metaParts.join(" · ")}</p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close document"
-            className="-mr-1 shrink-0 rounded-lg p-1.5 text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink-1"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {canDownload && (
+              <a
+                href={state.status === "ready" ? state.url : undefined}
+                download={title}
+                aria-label="Download document"
+                title="Download"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1"
+              >
+                <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                Download
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close document"
+              className="-mr-1 shrink-0 rounded-lg p-1.5 text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink-1"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
         </header>
+
+        {state.status === "ready" && state.renderMode !== "image" && (
+          <div className="flex items-center justify-between gap-4 border-b border-line/60 bg-surface-1/50 px-5 py-2">
+            {multiPage ? (
+              <nav aria-label="Document pages" className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPage((n) => Math.max(1, n - 1))}
+                  disabled={page <= 1}
+                  aria-label="Previous page"
+                  className="rounded-lg p-1 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1 disabled:pointer-events-none disabled:opacity-35"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                </button>
+                <span
+                  data-testid="page-indicator"
+                  className="min-w-[5.5rem] text-center text-[12px] tabular-nums text-ink-2"
+                >
+                  Page {page} of {pageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((n) => Math.min(pageCount as number, n + 1))}
+                  disabled={page >= (pageCount as number)}
+                  aria-label="Next page"
+                  className="rounded-lg p-1 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1 disabled:pointer-events-none disabled:opacity-35"
+                >
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </nav>
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setZoom((z) => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100))}
+                disabled={zoom <= ZOOM_MIN}
+                aria-label="Zoom out"
+                className="rounded-lg p-1 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1 disabled:pointer-events-none disabled:opacity-35"
+              >
+                <Minus className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+              <span className="min-w-[3.25rem] text-center text-[12px] tabular-nums text-ink-2">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setZoom((z) => Math.min(ZOOM_MAX, Math.round((z + ZOOM_STEP) * 100) / 100))}
+                disabled={zoom >= ZOOM_MAX}
+                aria-label="Zoom in"
+                className="rounded-lg p-1 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1 disabled:pointer-events-none disabled:opacity-35"
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {state.status === "loading" && (
           <div className="flex flex-1 items-center justify-center gap-2 text-[13px] text-ink-3">
@@ -215,7 +337,7 @@ export function OriginalDocumentViewer({
           ))}
 
         {state.status === "ready" && state.renderMode === "image" && (
-          <div className="flex-1 overflow-auto p-6">
+          <div className="flex-1 overflow-auto p-4">
             <img
               src={state.url}
               alt={title}
@@ -225,48 +347,34 @@ export function OriginalDocumentViewer({
         )}
 
         {state.status === "ready" && state.renderMode !== "image" && (
-          <div className="relative flex-1 overflow-auto">
-            <div className="px-6 py-6">
-              <PdfPage url={state.url} pageNumber={page} onPageCount={handlePageCount} />
+          <div className="flex-1 overflow-auto">
+            <div className="px-4 py-4">
+              <PdfPage url={state.url} pageNumber={page} onPageCount={handlePageCount} scale={zoom} />
             </div>
-
-            {/* Floating rather than a fixed bar: the page is the content, and a bordered
-                strip across the bottom would take height from it on every document,
-                including the single-page ones that need no navigation at all. */}
-            {multiPage && (
-              <nav
-                aria-label="Document pages"
-                className="pointer-events-none sticky bottom-4 flex justify-center"
-              >
-                <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-line/60 bg-surface-1/95 px-1.5 py-1 shadow-lg backdrop-blur">
-                  <button
-                    type="button"
-                    onClick={() => setPage((n) => Math.max(1, n - 1))}
-                    disabled={page <= 1}
-                    aria-label="Previous page"
-                    className="rounded-full p-1.5 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1 disabled:pointer-events-none disabled:opacity-35"
-                  >
-                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                  <span
-                    data-testid="page-indicator"
-                    className="min-w-[4.5rem] text-center text-[12px] tabular-nums text-ink-2"
-                  >
-                    {page} / {pageCount}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setPage((n) => Math.min(pageCount as number, n + 1))}
-                    disabled={page >= (pageCount as number)}
-                    aria-label="Next page"
-                    className="rounded-full p-1.5 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1 disabled:pointer-events-none disabled:opacity-35"
-                  >
-                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </div>
-              </nav>
-            )}
           </div>
+        )}
+
+        {sources.length > 0 && onSelectSource && (
+          <footer className="border-t border-line/60 bg-surface-1/80 px-5 py-3">
+            <p className="mb-2 text-[11px] uppercase tracking-wider text-ink-3">Other sources</p>
+            <div className="flex gap-2 overflow-x-auto">
+              {sources.map((source) => {
+                const label =
+                  source.documentName || `${source.documentId.slice(0, 8)}...`;
+                return (
+                  <button
+                    key={source.documentId}
+                    type="button"
+                    onClick={() => onSelectSource(source)}
+                    title={`Open ${label}`}
+                    className="shrink-0 whitespace-nowrap rounded-full border border-line bg-surface-2 px-3 py-1.5 text-[12px] text-ink-2 transition-colors hover:bg-surface-3 hover:text-ink-1"
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </footer>
         )}
       </div>
     </SlideOver>
