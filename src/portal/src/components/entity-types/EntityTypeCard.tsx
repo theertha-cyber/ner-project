@@ -96,6 +96,14 @@ export function EntityTypeCard({ entityType, index, onEdit, onToggle }: EntityTy
             Required
           </span>
         )}
+        {entityType.sensitivity && entityType.sensitivity !== "open" && (
+          <span
+            className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+            title="Never sent to the external LLM provider — detected locally instead"
+          >
+            {entityType.sensitivity === "pattern" ? "Pattern" : "Local only"}
+          </span>
+        )}
         <span
           className={[
             "rounded-full px-2 py-0.5 text-xs font-medium",

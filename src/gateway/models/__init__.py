@@ -116,6 +116,13 @@ class EntityDefinition(Base):
     # reason as `cardinality`: `entity_service.create` inserts an explicit column list.
     provenance = Column(String(16), server_default="manual", default="manual", nullable=False)
     provenance_ref = Column(String(255), nullable=True)
+    # Whether this entity type's real values may reach an external LLM provider during
+    # pre-labeling: 'open' (may be sent externally — the default), 'pattern' (fixed shape,
+    # detected locally via `validation_rule`), or 'local_only' (free text, detected locally via
+    # the tenant's own hosted model). `server_default` for the same reason as `cardinality` and
+    # `provenance`: `entity_service.create_entity_type` inserts through raw SQL with an explicit
+    # column list, so a Python-side default alone would never fire.
+    sensitivity = Column(String(16), server_default="open", default="open", nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

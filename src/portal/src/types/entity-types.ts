@@ -10,6 +10,15 @@
 export type EntityCardinality = "single" | "multi";
 
 /**
+ * Whether this entity type's real values may reach an external LLM provider during
+ * pre-labeling. `open` (the default) may be sent externally. `pattern` values follow a fixed,
+ * regex-matchable shape (e.g. an SSN) and require `validation_rule` to be set — that regex is
+ * what a local detector matches against instead of sending the value externally. `local_only`
+ * values are free text (e.g. a person's name) detected by a local model, never sent externally.
+ */
+export type EntitySensitivity = "open" | "pattern" | "local_only";
+
+/**
  * Few-shot context for LLM pre-labeling only. Optional on an entity type — a type with no
  * QA pairs is still fully eligible for extraction, so this must never be treated as a
  * precondition for anything.
@@ -36,6 +45,9 @@ export interface EntityType {
   /** How the type came to exist — assigned at creation, immutable. */
   provenance?: "manual" | "suggested" | "imported";
   provenance_ref?: string | null;
+  /** Defaults to `open` server-side; absent only on a value constructed before this field existed. */
+  sensitivity?: EntitySensitivity;
+  validation_rule?: string | null;
 }
 
 export interface EntityTypeListResponse {

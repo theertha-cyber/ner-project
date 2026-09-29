@@ -10,9 +10,15 @@ existing row's version, and deactivating one bumps nothing at all, so no per-row
 stand in for the whole. And a hash needs no extra column, no write path, and no backfill: it is
 derived from what the catalog already holds, so it cannot fall out of step with it.
 
-Only the fields the prompt actually reads are hashed — name, description, examples, qa_examples.
-`updated_at` and `version` are deliberately excluded: an edit that changes neither the prompt nor
-the eligible type set should not throw away a valid cache entry.
+The fields hashed are every field that changes what a pre-labeling run actually does: what the
+external prompt asks for and how few-shot examples are worded (`name`, `description`, `examples`,
+`qa_examples`), and — since `automated-annotation-pii-masking` — what governs local-only
+detection instead of an external call (`sensitivity`, `validation_rule`, `base_label_mapping`).
+A tenant who reclassifies a type, tightens a `pattern` regex, or edits a `local_only` type's
+base-label mapping has changed what this pipeline produces, even though nothing about the
+document itself changed, and a stale cache entry would silently keep serving the old behavior.
+`updated_at` and `version` are deliberately excluded: an edit that changes neither the prompt,
+the local-detection inputs, nor the eligible type set should not throw away a valid cache entry.
 """
 
 import hashlib
@@ -22,10 +28,14 @@ from sqlalchemy import text
 
 # Ordered so the SELECT, the fingerprint, and prompt construction all agree on what "the
 # configuration" is, and adding a field to one cannot silently omit it from the others.
-CONFIG_FIELDS = ("name", "description", "examples", "qa_examples")
+CONFIG_FIELDS = (
+    "name", "description", "examples", "qa_examples",
+    "sensitivity", "validation_rule", "base_label_mapping",
+)
 
 _SELECT_ACTIVE = (
-    "SELECT name, description, examples, qa_examples "
+    "SELECT name, description, examples, qa_examples, sensitivity, validation_rule, "
+    "       base_label_mapping "
     "FROM public.entity_definitions "
     "WHERE tenant_id = :tid AND is_active = true "
     "ORDER BY name"
@@ -49,13 +59,18 @@ def normalize_entity_config(rows) -> list[dict]:
     """Configuration rows as plain, ordered dicts ready to hash or render into a prompt."""
     normalized = []
     for row in rows:
-        name, description, examples, qa_examples = row[0], row[1], row[2], row[3]
+        name, description, examples, qa_examples, sensitivity, validation_rule, base_label_mapping = (
+            row[0], row[1], row[2], row[3], row[4], row[5], row[6],
+        )
         normalized.append(
             {
                 "name": name,
                 "description": description,
                 "examples": _coerce_json(examples) or [],
                 "qa_examples": _coerce_json(qa_examples) or [],
+                "sensitivity": sensitivity or "open",
+                "validation_rule": validation_rule,
+                "base_label_mapping": _coerce_json(base_label_mapping) or {},
             }
         )
     normalized.sort(key=lambda item: item["name"])

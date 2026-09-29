@@ -13,6 +13,12 @@ router = APIRouter(prefix="/api/v1/tenants/{tenant_slug}/entity-types", tags=["e
 # validates it again before the write — this is the request contract, that is the invariant.
 Cardinality = Literal["single", "multi"]
 
+# `open` | `pattern` | `local_only`, same reasoning as `Cardinality` above, backed by migration
+# `049`'s CHECK constraint. Governs only whether this type's real values may reach an external
+# LLM provider during pre-labeling (see the `automated-annotation-pii-masking` change) — nothing
+# in this API layer reads or acts on it beyond storing and validating it.
+Sensitivity = Literal["open", "pattern", "local_only"]
+
 
 class QaExample(BaseModel):
     """One few-shot question/answer pair for LLM pre-labeling.
@@ -43,6 +49,9 @@ class EntityTypeCreate(BaseModel):
     value_kind: str | None = None
     value_unit: str | None = None
     cardinality: Cardinality | None = None
+    # Defaults to `open` at the service layer when omitted, not here — `None` here means "not
+    # sent", matching every other optional field's exclude-unset contract.
+    sensitivity: Sensitivity | None = None
     # Few-shot context for LLM pre-labeling only — never a literal label source for a specific
     # document. Optional: an entity type without QA pairs is still fully eligible for extraction.
     qa_examples: list[QaExample] | None = None
@@ -62,6 +71,7 @@ class EntityTypeUpdate(BaseModel):
     value_kind: str | None = None
     value_unit: str | None = None
     cardinality: Cardinality | None = None
+    sensitivity: Sensitivity | None = None
     # Few-shot context for LLM pre-labeling only — never a literal label source for a specific
     # document. Optional: an entity type without QA pairs is still fully eligible for extraction.
     qa_examples: list[QaExample] | None = None

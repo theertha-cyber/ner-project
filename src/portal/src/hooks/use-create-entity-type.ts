@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import { useAuth } from "@/lib/auth";
-import type { EntityCardinality, EntityType, QaExample } from "@/types/entity-types";
+import type { EntityCardinality, EntitySensitivity, EntityType, QaExample } from "@/types/entity-types";
 
 // `sql_identifier` is deliberately absent: it is system-assigned at create and never changed,
 // so the client has nothing to say about it. `cardinality` and `value_kind` are here because
@@ -15,6 +15,8 @@ export interface CreateEntityTypePayload {
   required_flag: boolean;
   cardinality: EntityCardinality;
   value_kind: string;
+  sensitivity: EntitySensitivity;
+  validation_rule: string | null;
   // Always sent, empty array included: an explicit `[]` clears previously-stored pairs, where
   // omitting the key would leave them in place.
   qa_examples: QaExample[];

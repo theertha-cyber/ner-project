@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.annotation_service.api.v1.spans import get_session, get_tenant_id
 from src.annotation_service.celery_app import celery_app
 from src.shared.config import settings
+from src.annotation_service.services.pii_masking import find_uncovered_local_only_type
 from src.shared.database import get_engine
 from src.shared.entity_config_version import entity_config_fingerprint, load_active_entity_config
 from src.shared.exceptions import NotFoundError
@@ -123,6 +124,21 @@ async def trigger_llm_prelabel(
             detail={
                 "code": "NO_ENTITY_TYPES",
                 "message": "No entity types are configured for this tenant",
+            },
+        )
+
+    # ADR-015: a `local_only` type with no way to detect it locally would otherwise have its
+    # real values sent to the external LLM provider, silently, the moment pre-labeling runs.
+    uncovered_type = find_uncovered_local_only_type(entity_types)
+    if uncovered_type:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "LOCAL_ONLY_TYPE_NOT_COVERED",
+                "message": (
+                    f"Entity type '{uncovered_type}' is classified local_only but has no "
+                    "base_label_mapping configured, so it has no local detection mechanism"
+                ),
             },
         )
 

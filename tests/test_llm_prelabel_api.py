@@ -126,9 +126,15 @@ _ENTITY_DEFINITIONS_SQL = """
         version INTEGER DEFAULT 1,
         required_flag BOOLEAN DEFAULT false,
         is_active BOOLEAN DEFAULT true,
+        sensitivity VARCHAR(16) NOT NULL DEFAULT 'open',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
     )
+"""
+
+_ADD_SENSITIVITY_IF_MISSING = """
+    ALTER TABLE public.entity_definitions
+        ADD COLUMN IF NOT EXISTS sensitivity VARCHAR(16) NOT NULL DEFAULT 'open'
 """
 
 
@@ -156,6 +162,10 @@ async def _make_tenant(engine, entity_types=True):
         await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
         await conn.execute(text(_TENANTS_SQL))
         await conn.execute(text(_ENTITY_DEFINITIONS_SQL))
+        # `CREATE TABLE IF NOT EXISTS` above is a no-op when another test already created this
+        # table in an earlier shape — this heals a pre-existing table that predates a column,
+        # the same self-healing `db-init`'s migrations do for the real schema.
+        await conn.execute(text(_ADD_SENSITIVITY_IF_MISSING))
         for ddl in _tenant_tables_sql(schema):
             await conn.execute(text(ddl))
         # The tenant-context middleware resolves the JWT's tenant against this table before any

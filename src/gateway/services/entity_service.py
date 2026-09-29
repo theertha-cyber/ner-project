@@ -18,11 +18,18 @@ from src.shared.exceptions import ValidationError, NotFoundError
 # added it.
 _ENTITY_COLUMNS = """
     id, name, description, examples, qa_examples, validation_rule, target_table,
-    base_label_mapping, value_kind, value_unit, cardinality, sql_identifier,
+    base_label_mapping, value_kind, value_unit, cardinality, sensitivity, sql_identifier,
     version, required_flag, is_active, provenance, provenance_ref, created_at, updated_at
 """
 
 VALID_PROVENANCE = {"manual", "suggested", "imported"}
+
+# Kept here rather than imported from a masking module: nothing outside entity-type CRUD needs
+# this vocabulary yet, and the pipeline that will eventually read `sensitivity`
+# (`automated-annotation-pii-masking`) treats it as data from the catalog, not a constant it
+# shares with the validator that writes it.
+VALID_SENSITIVITY = {"open", "pattern", "local_only"}
+DEFAULT_SENSITIVITY = "open"
 
 
 def _serialize_qa_examples(qa_examples) -> str | None:
@@ -54,6 +61,25 @@ def _validate_cardinality(cardinality) -> str | None:
         return (
             f"cardinality must be one of {sorted(CARDINALITIES)}, got '{cardinality}'"
         )
+    return None
+
+
+def _validate_sensitivity(sensitivity) -> str | None:
+    """Rejected here, before the write. Migration `049`'s CHECK constraint is the backstop, and
+    reaching it would surface as a 500 on what is really a malformed request."""
+    if sensitivity is None:
+        return None
+    if sensitivity not in VALID_SENSITIVITY:
+        return f"sensitivity must be one of {sorted(VALID_SENSITIVITY)}, got '{sensitivity}'"
+    return None
+
+
+def _validate_pattern_requires_validation_rule(sensitivity, validation_rule) -> str | None:
+    """`pattern` sensitivity means "a future local detector matches this type's values via
+    `validation_rule`" — a `pattern` type with no rule has nothing for that detector to run, so
+    it is rejected here rather than silently accepted as an unprotected sensitive type."""
+    if sensitivity == "pattern" and not validation_rule:
+        return "sensitivity 'pattern' requires a non-empty validation_rule"
     return None
 
 
@@ -101,6 +127,17 @@ class EntityService:
         if cardinality_error:
             raise ValidationError(cardinality_error)
 
+        sensitivity = payload.get("sensitivity") or DEFAULT_SENSITIVITY
+        sensitivity_error = _validate_sensitivity(sensitivity)
+        if sensitivity_error:
+            raise ValidationError(sensitivity_error)
+
+        pattern_error = _validate_pattern_requires_validation_rule(
+            sensitivity, payload.get("validation_rule")
+        )
+        if pattern_error:
+            raise ValidationError(pattern_error)
+
         entity_id = generate_uuid()
         # Assigned here, once, and never changed afterwards. Omitting it — as this INSERT did
         # until now — leaves `sql_identifier` NULL, and a NULL-identifier definition is skipped
@@ -116,10 +153,12 @@ class EntityService:
                 INSERT INTO public.entity_definitions
                     (id, tenant_id, name, description, examples, qa_examples, validation_rule,
                      target_table, base_label_mapping, value_kind, value_unit, cardinality,
-                     sql_identifier, required_flag, is_active, version, provenance, provenance_ref)
+                     sensitivity, sql_identifier, required_flag, is_active, version, provenance,
+                     provenance_ref)
                 VALUES (:id, :tid, :name, :desc, :examples, :qa_examples, :rule,
                         :target, :mapping, :value_kind, :value_unit, :cardinality,
-                        :sql_identifier, :required, :active, 1, :provenance, :provenance_ref)
+                        :sensitivity, :sql_identifier, :required, :active, 1, :provenance,
+                        :provenance_ref)
             """),
             {
                 "id": entity_id,
@@ -137,6 +176,7 @@ class EntityService:
                 # child table is always correct, whereas a multi-valued entity marked `single`
                 # silently discards every value but one from the query surface.
                 "cardinality": payload.get("cardinality") or CARDINALITY_MULTI,
+                "sensitivity": sensitivity,
                 "sql_identifier": sql_identifier,
                 "active": payload.get("is_active", True),
                 "required": payload.get("required_flag", False),
@@ -203,13 +243,34 @@ class EntityService:
             if cardinality_error:
                 raise ValidationError(cardinality_error)
 
+        if "sensitivity" in payload:
+            sensitivity_error = _validate_sensitivity(payload.get("sensitivity"))
+            if sensitivity_error:
+                raise ValidationError(sensitivity_error)
+
+        # Resolved against `existing` rather than the payload alone: a PUT that only sends
+        # `validation_rule` must still be checked against an already-`pattern` type's
+        # sensitivity, and a PUT that only sends `sensitivity: "pattern"` must still be checked
+        # against the type's already-stored `validation_rule`. Unlike `provenance`, `sensitivity`
+        # is not immutable, so this check runs on every update, not only when `sensitivity`
+        # itself is present in the payload.
+        resulting_sensitivity = payload.get("sensitivity", existing.get("sensitivity"))
+        resulting_validation_rule = payload.get(
+            "validation_rule", existing.get("validation_rule")
+        )
+        pattern_error = _validate_pattern_requires_validation_rule(
+            resulting_sensitivity, resulting_validation_rule
+        )
+        if pattern_error:
+            raise ValidationError(pattern_error)
+
         # `sql_identifier` is deliberately absent: it is assigned once at create and never
         # changed, so renaming an entity type's display name cannot rename its table, break a
         # saved query, or orphan the old one.
         allowed_fields = {
             "description", "examples", "qa_examples", "validation_rule", "target_table",
             "base_label_mapping", "required_flag", "value_kind", "value_unit",
-            "cardinality",
+            "cardinality", "sensitivity",
         }
         updates = {k: v for k, v in payload.items() if k in allowed_fields}
 
@@ -299,6 +360,7 @@ class EntityService:
             # Returned on every read path: without it the edit form cannot show an entity
             # type's persisted cardinality and silently resets it to the default on every save.
             "cardinality": r.cardinality or CARDINALITY_MULTI,
+            "sensitivity": r.sensitivity or DEFAULT_SENSITIVITY,
             # Read-only metadata. A client-supplied value is ignored rather than rejected —
             # see the create and update paths, which never read it from the payload.
             "sql_identifier": r.sql_identifier,

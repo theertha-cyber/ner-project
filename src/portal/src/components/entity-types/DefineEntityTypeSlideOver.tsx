@@ -5,7 +5,7 @@ import { SlideOver } from "@/components/ui";
 import { useToast } from "@/hooks/use-toast";
 import { useCreateEntityType } from "@/hooks/use-create-entity-type";
 import { useUpdateEntityType } from "@/hooks/use-update-entity-type";
-import type { EntityCardinality, EntityType, QaExample } from "@/types/entity-types";
+import type { EntityCardinality, EntitySensitivity, EntityType, QaExample } from "@/types/entity-types";
 
 const BASE_LABELS = ["PER", "ORG", "LOC", "MISC"] as const;
 
@@ -28,6 +28,20 @@ const VALUE_KINDS = ["text", "number", "duration", "money", "date", "boolean"] a
 
 const DEFAULT_CARDINALITY: EntityCardinality = "multi";
 const DEFAULT_VALUE_KIND = "text";
+
+// Explained in terms of where the value can go, not the mechanism behind it: the admin
+// configuring this should not need to know how local detection works, only what it buys them.
+const SENSITIVITY_OPTIONS: {
+  value: EntitySensitivity;
+  label: string;
+  hint: string;
+}[] = [
+  { value: "open", label: "Open", hint: "may be sent to the external LLM" },
+  { value: "pattern", label: "Pattern", hint: "fixed shape, e.g. SSN — needs a pattern below" },
+  { value: "local_only", label: "Local only", hint: "free text, e.g. a name — never sent externally" },
+];
+
+const DEFAULT_SENSITIVITY: EntitySensitivity = "open";
 
 export interface DefineEntityTypeSlideOverProps {
   open: boolean;
@@ -72,6 +86,9 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
   const [requiredFlag, setRequiredFlag] = useState(false);
   const [cardinality, setCardinality] = useState<EntityCardinality>(DEFAULT_CARDINALITY);
   const [valueKind, setValueKind] = useState<string>(DEFAULT_VALUE_KIND);
+  const [sensitivity, setSensitivity] = useState<EntitySensitivity>(DEFAULT_SENSITIVITY);
+  const [validationRule, setValidationRule] = useState("");
+  const [sensitivityError, setSensitivityError] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState(false);
 
   useEffect(() => {
@@ -86,6 +103,8 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
       setRequiredFlag(editTarget.required_flag);
       setCardinality(editTarget.cardinality ?? DEFAULT_CARDINALITY);
       setValueKind(editTarget.value_kind ?? DEFAULT_VALUE_KIND);
+      setSensitivity(editTarget.sensitivity ?? DEFAULT_SENSITIVITY);
+      setValidationRule(editTarget.validation_rule ?? "");
     } else {
       setName("");
       setDescription("");
@@ -95,8 +114,11 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
       setRequiredFlag(false);
       setCardinality(DEFAULT_CARDINALITY);
       setValueKind(DEFAULT_VALUE_KIND);
+      setSensitivity(DEFAULT_SENSITIVITY);
+      setValidationRule("");
     }
     setQaError(null);
+    setSensitivityError(null);
     setPendingConfirm(false);
   }, [open, editTarget]);
 
@@ -129,6 +151,8 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
       required_flag: requiredFlag,
       cardinality,
       value_kind: valueKind,
+      sensitivity,
+      validation_rule: validationRule.trim() || null,
       // Fully empty rows are dropped rather than persisted; `handleSubmit` has already
       // rejected the half-filled ones, so what survives here is complete pairs only.
       qa_examples: qaRows
@@ -170,6 +194,14 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
       return;
     }
     setQaError(null);
+
+    // Mirrors the backend's own rule (422 `sensitivity 'pattern' requires a non-empty
+    // validation_rule`) so the admin sees this before a round-trip, not after.
+    if (sensitivity === "pattern" && !validationRule.trim()) {
+      setSensitivityError("Pattern sensitivity requires a pattern to match against.");
+      return;
+    }
+    setSensitivityError(null);
 
     if (isEdit && editTarget) {
       // Create mode never prompts — there is nothing yet to be inconsistent with — and neither
@@ -401,6 +433,62 @@ export function DefineEntityTypeSlideOver({ open, onClose, editTarget }: DefineE
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* SENSITIVITY */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-secondary">
+              Sensitivity
+            </label>
+            <div className="flex flex-col gap-2">
+              {SENSITIVITY_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    setSensitivity(option.value);
+                    setSensitivityError(null);
+                  }}
+                  className={[
+                    "rounded px-3 py-2 text-left border transition-colors",
+                    sensitivity === option.value
+                      ? "border-brand-primary bg-brand-primary text-white"
+                      : "border-border hover:border-brand-primary hover:text-brand-primary",
+                  ].join(" ")}
+                  aria-pressed={sensitivity === option.value}
+                >
+                  <span className="block text-xs font-medium">{option.label}</span>
+                  <span className="block text-xs opacity-80">{option.hint}</span>
+                </button>
+              ))}
+            </div>
+            {sensitivity === "pattern" && (
+              <div className="mt-2">
+                <label
+                  htmlFor="entity-validation-rule"
+                  className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-secondary"
+                >
+                  Pattern (regex)
+                </label>
+                <input
+                  id="entity-validation-rule"
+                  type="text"
+                  value={validationRule}
+                  onChange={(e) => {
+                    setValidationRule(e.target.value);
+                    setSensitivityError(null);
+                  }}
+                  placeholder="^\d{3}-\d{2}-\d{4}$"
+                  className="w-full rounded border border-border px-3 py-2 text-sm"
+                  style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                />
+              </div>
+            )}
+            {sensitivityError && (
+              <p role="alert" className="mt-1.5 text-xs text-red-600">
+                {sensitivityError}
+              </p>
+            )}
           </div>
 
           {/* REQUIRED FLAG */}

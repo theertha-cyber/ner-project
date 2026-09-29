@@ -37,6 +37,7 @@ from src.annotation_service.services.batch_acceptance import (
     agreement_rate,
     draw_sample,
 )
+from src.annotation_service.services.pii_masking import find_uncovered_local_only_type
 from src.shared.config import settings
 from src.shared.database import get_engine
 from src.shared.entity_config_version import load_active_entity_config
@@ -569,6 +570,21 @@ async def create_prelabel_batch(
             detail={
                 "code": "NO_ENTITY_TYPES",
                 "message": "No entity types are configured for this tenant",
+            },
+        )
+
+    # ADR-015: same check as the single-document trigger — a `local_only` type with no local
+    # detection mechanism must not reach a batch run either.
+    uncovered_type = find_uncovered_local_only_type(entity_types)
+    if uncovered_type:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "LOCAL_ONLY_TYPE_NOT_COVERED",
+                "message": (
+                    f"Entity type '{uncovered_type}' is classified local_only but has no "
+                    "base_label_mapping configured, so it has no local detection mechanism"
+                ),
             },
         )
 

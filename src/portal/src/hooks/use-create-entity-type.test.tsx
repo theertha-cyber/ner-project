@@ -27,6 +27,9 @@ const payload = {
   required_flag: false,
   cardinality: "multi" as const,
   value_kind: "text",
+  sensitivity: "open" as const,
+  validation_rule: null,
+  qa_examples: [],
 };
 
 describe("useCreateEntityType", () => {

@@ -27,9 +27,16 @@ from src.annotation_service.services.review_resolution import (
 )
 from src.annotation_service.services.llm_prelabel import (
     SYSTEM_PROMPT,
+    GroundingResult,
     build_user_payload,
     ground_entities,
     parse_llm_response,
+)
+from src.annotation_service.services.pii_masking import (
+    LocalDetectionUnavailable,
+    get_local_model_client,
+    mask_document,
+    translate_offset,
 )
 from src.annotation_service.services.schema_proposal import (
     build_user_payload as build_proposal_payload,
@@ -166,14 +173,27 @@ def _mark_failed(connection, schema: str, job_id: str, message: str) -> None:
     )
 
 
-def extract_and_ground_document(engine, tenant_id: str, doc_id: str, client, guidance_text: str = ""):
-    """One document through the provider and the grounder. The only implementation of it.
+def extract_and_ground_document(
+    engine,
+    tenant_id: str,
+    doc_id: str,
+    client,
+    guidance_text: str = "",
+    local_model_client=None,
+):
+    """One document through the safe-copy step, the provider, and the grounder. The only
+    implementation of it.
 
     Everything between "which document" and "which spans" lives here, so the batch task
     (`run_prelabel_batch_sync`) runs exactly this rather than a second, simplified copy of it.
     Two copies would be free to drift, and the thing they would drift on is the extractive-only
     guarantee — the batch path silently accepting a paraphrase the single-document path drops
     is the failure verification.md Risk 2 exists to catch (design.md Decision 2).
+
+    `mask_document` runs before anything reaches `client.complete_json`, and if it cannot
+    complete (`LocalDetectionUnavailable`), this function raises before that call is ever made —
+    fail-closed (ADR-015): a `pattern`/`local_only` entity type's real values must never reach
+    the external LLM provider, and a local-detection failure is not an exception to that.
 
     Storage is left to the caller. Each caller has its own bookkeeping row to write — a job for
     the single-document path, a per-document batch outcome for the batch — and writing the spans
@@ -183,6 +203,9 @@ def extract_and_ground_document(engine, tenant_id: str, doc_id: str, client, gui
     duration.
     """
     schema = _schema(tenant_id)
+    local_model_client = (
+        local_model_client if local_model_client is not None else get_local_model_client()
+    )
 
     with engine.begin() as connection:
         document_text = load_document_text(connection, schema, doc_id)
@@ -190,24 +213,68 @@ def extract_and_ground_document(engine, tenant_id: str, doc_id: str, client, gui
     with platform_engine.connect() as platform_connection:
         entity_types = load_active_entity_config_sync(platform_connection, tenant_id)
 
+    masked = mask_document(document_text, entity_types, local_model_client, tenant_id)
+    open_types = [
+        entity_type for entity_type in entity_types
+        if entity_type.get("sensitivity", "open") == "open"
+    ]
+
     response = client.complete_json(
         SYSTEM_PROMPT,
-        build_user_payload(document_text, entity_types, guidance_text=guidance_text),
+        build_user_payload(masked.masked_text, open_types, guidance_text=guidance_text),
     )
 
-    return ground_entities(
-        document_text,
+    llm_result = ground_entities(
+        masked.masked_text,
         parse_llm_response(response),
-        [entity_type["name"] for entity_type in entity_types],
+        [entity_type["name"] for entity_type in open_types],
+    )
+
+    # Every grounded LLM offset is against `masked.masked_text`; translated here to the
+    # original document before it is ever combined with the locally-detected spans or stored.
+    # A location that fails to translate (falls inside a placeholder) is structurally
+    # impossible in practice — the external prompt never names a `pattern`/`local_only` type,
+    # so nothing it returns should ground inside one — but is discarded rather than trusted,
+    # the same "a wrong offset is worse than a missing suggestion" principle `ground_quote`
+    # already applies.
+    translated_llm_spans = []
+    translation_failures = 0
+    for span in llm_result.spans:
+        translated = translate_offset(span["char_start"], span["char_end"], masked.segments)
+        if translated is None:
+            translation_failures += 1
+            continue
+        orig_start, orig_end = translated
+        translated_llm_spans.append(
+            {**span, "char_start": orig_start, "char_end": orig_end,
+             "text": document_text[orig_start:orig_end]}
+        )
+
+    # No further overlap resolution needed across the two sources: `masked.local_spans`
+    # occupy exactly the character ranges the masked copy replaced with placeholders, and a
+    # translated LLM span can only ever fall in the gaps between them (translation fails
+    # otherwise) — the two sets are disjoint by construction.
+    merged_spans = sorted(
+        translated_llm_spans + masked.local_spans, key=lambda span: span["char_start"]
+    )
+
+    return GroundingResult(
+        spans=merged_spans,
+        returned=llm_result.returned,
+        ungrounded=llm_result.ungrounded + translation_failures,
+        unconfigured_type=llm_result.unconfigured_type,
     )
 
 
-def run_llm_prelabel_sync(tenant_id: str, doc_id: str, job_id: str, llm_client=None) -> dict:
+def run_llm_prelabel_sync(
+    tenant_id: str, doc_id: str, job_id: str, llm_client=None, local_model_client=None
+) -> dict:
     """The task body, callable without Celery.
 
     Split out from the task so the pipeline can be exercised end to end — real database, stubbed
-    provider — without a broker. `llm_client` is a parameter for the same reason: the provider is
-    the one thing tests must not reach.
+    provider — without a broker. `llm_client` and `local_model_client` are parameters for the
+    same reason: the external provider and the local model are the two things tests must not
+    reach.
     """
     schema = _schema(tenant_id)
     client = llm_client if llm_client is not None else get_llm_client()
@@ -217,10 +284,19 @@ def run_llm_prelabel_sync(tenant_id: str, doc_id: str, job_id: str, llm_client=N
         _mark_running(connection, schema, job_id)
 
     try:
-        result = extract_and_ground_document(engine, tenant_id, doc_id, client)
+        result = extract_and_ground_document(
+            engine, tenant_id, doc_id, client, local_model_client=local_model_client
+        )
     except LLMUnavailable as exc:
         with engine.begin() as connection:
             _mark_failed(connection, schema, job_id, str(exc))
+        raise
+    except LocalDetectionUnavailable as exc:
+        # A distinct failure from `LLMUnavailable`: the external provider was never called
+        # (ADR-015, fail-closed). Recorded with its own prefix so a job's failure reason names
+        # which boundary broke rather than reading as an ordinary provider outage.
+        with engine.begin() as connection:
+            _mark_failed(connection, schema, job_id, f"local detection failed: {exc}")
         raise
 
     with engine.begin() as connection:
@@ -510,7 +586,11 @@ def _auto_promote_large_batch(connection, schema: str, tenant_id: str, batch_id:
 
 
 def run_prelabel_batch_sync(
-    tenant_id: str, batch_id: str, llm_client=None, guidance_text: str = ""
+    tenant_id: str,
+    batch_id: str,
+    llm_client=None,
+    guidance_text: str = "",
+    local_model_client=None,
 ) -> dict:
     """Pre-label every document in a batch, one at a time, on this worker.
 
@@ -562,8 +642,23 @@ def run_prelabel_batch_sync(
     for doc_id in doc_ids:
         try:
             result = extract_and_ground_document(
-                engine, tenant_id, doc_id, client, guidance_text=guidance_text
+                engine,
+                tenant_id,
+                doc_id,
+                client,
+                guidance_text=guidance_text,
+                local_model_client=local_model_client,
             )
+        except LocalDetectionUnavailable as exc:
+            # Distinguished from an ordinary provider/document error (ADR-015): the external
+            # LLM was never called for this document, not merely that its response failed.
+            failed += 1
+            with engine.begin() as connection:
+                _mark_batch_document(
+                    connection, schema, batch_id, doc_id, "failed",
+                    error=f"local detection failed: {exc}",
+                )
+            continue
         except Exception as exc:  # noqa: BLE001 - see docstring: one document, one failure
             failed += 1
             with engine.begin() as connection:

@@ -87,9 +87,17 @@ _ENTITY_DEFINITIONS_SQL = """
         is_active BOOLEAN DEFAULT true,
         provenance VARCHAR(16) NOT NULL DEFAULT 'manual',
         provenance_ref VARCHAR(255),
+        sensitivity VARCHAR(16) NOT NULL DEFAULT 'open',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
     )
+"""
+
+# Heals a table another test file's own (older) copy of this DDL already created without this
+# column — `CREATE TABLE IF NOT EXISTS` above is a no-op against a pre-existing table.
+_ADD_SENSITIVITY_IF_MISSING = """
+    ALTER TABLE public.entity_definitions
+        ADD COLUMN IF NOT EXISTS sensitivity VARCHAR(16) NOT NULL DEFAULT 'open'
 """
 
 
@@ -251,6 +259,7 @@ async def make_tenant(engine, entity_types=("person_name", "institute")):
         await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
         await conn.execute(text(_TENANTS_SQL))
         await conn.execute(text(_ENTITY_DEFINITIONS_SQL))
+        await conn.execute(text(_ADD_SENSITIVITY_IF_MISSING))
         await conn.execute(text(_NOTIFICATIONS_SQL))
         for ddl in tenant_tables_sql(schema):
             await conn.execute(text(ddl))
