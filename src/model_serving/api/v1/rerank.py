@@ -13,7 +13,10 @@ def get_tenant_id(request: Request) -> str:
 
 
 @router.post("/rerank", response_model=RerankResponse)
-async def rerank_endpoint(
+def rerank_endpoint(
+    # Plain `def` on purpose: FastAPI runs it in its threadpool. As `async def` the
+    # CPU-bound torch forward pass ran on the event loop and froze every other request
+    # to this service (NER inference, /health) for the length of each rerank.
     body: RerankRequest,
     request: Request,
 ):

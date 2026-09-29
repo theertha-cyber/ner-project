@@ -255,6 +255,35 @@ class TestDomainClassification:
         await self.guardrails.classify_domain("Which contracts mention Acme Corp?", None, client, "gpt-4o")
         assert client.call_count == 1
 
+    async def test_tabular_sources_reach_the_classifier_prompt(self):
+        """Live smoke (tabular-file-data-sources 8.2): "total closed revenue in EMEA?"
+        names no document or entity, and was declined before the planner could offer
+        `tabular_files`. The tenant's ready files must be in the classifier's prompt."""
+        seen = []
+
+        async def create(**kwargs):
+            seen.append(kwargs["messages"][0]["content"])
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="in_domain"))])
+
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        await self.guardrails.classify_domain(
+            "total closed revenue in EMEA?", None, client, "gpt-4o",
+            tabular_sources=["sales_q3.csv — Q3 sales deals by region (columns: region, status, amount, notes)"],
+        )
+        assert "sales_q3.csv — Q3 sales deals by region (columns: region, status, amount, notes)" in seen[0]
+        assert "uploaded spreadsheets" in seen[0]
+
+    async def test_no_tabular_sources_leaves_prompt_unchanged(self):
+        seen = []
+
+        async def create(**kwargs):
+            seen.append(kwargs["messages"][0]["content"])
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="in_domain"))])
+
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        await self.guardrails.classify_domain("Which contracts mention Acme Corp?", None, client, "gpt-4o")
+        assert "uploaded spreadsheets" not in seen[0]
+
     def test_no_complexity_assessment_method_remains(self):
         """Covers verification.md row 55: complexity assessment is removed entirely."""
         assert not hasattr(self.guardrails, "assess_complexity")

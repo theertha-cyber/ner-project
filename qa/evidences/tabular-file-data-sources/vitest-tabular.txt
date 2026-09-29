@@ -1,0 +1,18 @@
+npm notice run npx
+npm notice run vitest run src/components/data-sources/uploaded-files.test.tsx src/components/data-sources/file-review.test.tsx src/components/chat/CitationCard.test.tsx src/app/(auth)/settings/data-sources/page.test.tsx
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 C:/Users/Arjun.jayakumar/Documents/GitHub/ner-project/src/portal
+
+ ✓ src/components/chat/CitationCard.test.tsx (8 tests) 85ms
+ ✓ src/components/data-sources/file-review.test.tsx (3 tests) 375ms
+ ✓ src/components/data-sources/uploaded-files.test.tsx (6 tests) 523ms
+ ✓ src/app/(auth)/settings/data-sources/page.test.tsx (9 tests) 1396ms
+   ✓ DataSourcesPage > opens the new-connection modal, submits, and navigates to the new connection's detail route 501ms
+   ✓ DataSourcesPage > dismisses the new-connection modal on Escape without sending a request, and returns focus to the trigger 303ms
+
+ Test Files  4 passed (4)
+      Tests  26 passed (26)
+   Start at  19:57:15
+   Duration  3.75s (transform 397ms, setup 672ms, collect 1.94s, tests 2.38s, environment 3.89s, prepare 674ms)
+

@@ -14,6 +14,10 @@ import {
   type ManualSyncResult,
   type SafeApiError,
   type SafeConnection,
+  type TabularFile,
+  type TabularFileList,
+  type TabularProfileResponse,
+  type TabularReviewEdit,
 } from "@/lib/data-sources";
 
 export class SafeApiHttpError extends Error {
@@ -207,4 +211,112 @@ export async function publishContract(
   });
   if (!res.ok) await throwForStatus(res);
   return res.json() as Promise<{ version: number }>;
+}
+
+/* ------------------------------------------------------------------------
+ * Uploaded tabular files (ADR-018). Every mutation carries a fresh
+ * Idempotency-Key unless one is supplied.
+ * -------------------------------------------------------------------------*/
+
+const FILES_PATH = "/api/v1/data-sources/files";
+const IN_FLIGHT = new Set(["profiling", "publishing"]);
+
+export function useTabularFiles() {
+  return useQuery<TabularFileList>({
+    queryKey: ["tabular-files"],
+    queryFn: async () => {
+      const res = await authFetch(FILES_PATH);
+      if (!res.ok) await throwForStatus(res);
+      const body = (await res.json()) as Partial<TabularFileList>;
+      return { enabled: body.enabled !== false, files: Array.isArray(body.files) ? body.files : [] };
+    },
+    retry: false,
+    // Poll only while a version is being profiled or published.
+    refetchInterval: (query) => {
+      const files = query.state.data?.files ?? [];
+      const busy = files.some((f) => IN_FLIGHT.has(f.status) || (f.pending !== null && IN_FLIGHT.has(f.pending.status)));
+      return busy ? 3000 : false;
+    },
+  });
+}
+
+export function useTabularProfile(fileId: string | null, version: number | null) {
+  return useQuery<TabularProfileResponse>({
+    queryKey: ["tabular-profile", fileId, version],
+    enabled: Boolean(fileId && version),
+    queryFn: async () => {
+      const res = await authFetch(`${FILES_PATH}/${fileId}/versions/${version}/profile`);
+      if (!res.ok) await throwForStatus(res);
+      return res.json() as Promise<TabularProfileResponse>;
+    },
+  });
+}
+
+export function useTabularUpload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { file: File; fileId?: string; sheet?: string; idempotencyKey?: string }) => {
+      const form = new FormData();
+      form.append("file", input.file);
+      if (input.sheet) form.append("sheet", input.sheet);
+      const path = input.fileId ? `${FILES_PATH}/${input.fileId}/versions` : FILES_PATH;
+      const res = await authFetch(path, {
+        method: "POST",
+        headers: { "Idempotency-Key": input.idempotencyKey ?? newIdempotencyKey() },
+        body: form,
+      });
+      if (!res.ok) await throwForStatus(res);
+      return res.json() as Promise<TabularFile>;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tabular-files"] }),
+  });
+}
+
+export function useTabularReview(fileId: string, version: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { edit: TabularReviewEdit; idempotencyKey?: string }) => {
+      const res = await authFetch(`${FILES_PATH}/${fileId}/versions/${version}/review`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": input.idempotencyKey ?? newIdempotencyKey(),
+        },
+        body: JSON.stringify(input.edit),
+      });
+      if (!res.ok) await throwForStatus(res);
+      return res.json() as Promise<TabularProfileResponse>;
+    },
+    onSuccess: (data) => queryClient.setQueryData(["tabular-profile", fileId, version], data),
+  });
+}
+
+export function useTabularPublish(fileId: string, version: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input?: { idempotencyKey?: string }) => {
+      const res = await authFetch(`${FILES_PATH}/${fileId}/versions/${version}/publish`, {
+        method: "POST",
+        headers: { "Idempotency-Key": input?.idempotencyKey ?? newIdempotencyKey() },
+      });
+      if (!res.ok) await throwForStatus(res);
+      return res.json() as Promise<{ file: TabularFile; version: number; status: string }>;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tabular-files"] }),
+  });
+}
+
+export function useTabularDelete() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { fileId: string; idempotencyKey?: string }) => {
+      const res = await authFetch(`${FILES_PATH}/${input.fileId}`, {
+        method: "DELETE",
+        headers: { "Idempotency-Key": input.idempotencyKey ?? newIdempotencyKey() },
+      });
+      if (!res.ok) await throwForStatus(res);
+      return res.json() as Promise<{ id: string; status: string }>;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tabular-files"] }),
+  });
 }

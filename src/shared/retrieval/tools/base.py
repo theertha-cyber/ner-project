@@ -61,6 +61,14 @@ SqlSearch = Callable[..., Awaitable["list[dict] | None"]]
 # other tool failure.
 ExternalSearch = Callable[..., Awaitable[Any]]
 
+# Uploaded tabular files entry point used by the `tabular_files` tool, injected for
+# the same reason as `external_search`. Called as
+#   tabular_search(query, tenant_id, conversation_context, deadline)
+# and returns an object with `.rows`, `.truncated`, `.relations`, `.columns`,
+# `.files` and `.reason` (`TabularAnswer` in practice); a finite, expected failure
+# is `.reason`, never an exception.
+TabularSearch = Callable[..., Awaitable[Any]]
+
 
 @dataclass(frozen=True)
 class ToolContext:
@@ -75,6 +83,7 @@ class ToolContext:
     max_top_k: int = 20
     sql_search: SqlSearch | None = None
     external_search: ExternalSearch | None = None
+    tabular_search: TabularSearch | None = None
     deadline: float | None = None
     # Prior `{"role", "content"}` messages of the conversation this call belongs to.
     # A tool receives only its own `arguments` — the planner's history never reaches it

@@ -12,13 +12,22 @@ interface Citation {
   context_snippet?: string | null;
   page_number?: number | null;
   source_type?: string;
+  // `tabular_file` citations only (ADR-018): never a row value.
+  file_name?: string | null;
+  file_version?: number | null;
+  sheet?: string | null;
+  columns?: string[] | null;
 }
 
 export function CitationCard({ citation }: { citation: Citation }) {
   const [expanded, setExpanded] = useState(false);
 
   const hasContext = !!citation.context_snippet;
-  const docName = citation.document_name || (citation.document_id ? citation.document_id.slice(0, 8) + "..." : "Unknown document");
+  const docName =
+    citation.document_name ||
+    citation.file_name ||
+    (citation.document_id ? citation.document_id.slice(0, 8) + "..." : "Unknown document");
+  const isTabular = citation.source_type === "tabular_file";
 
   return (
     <div
@@ -35,6 +44,15 @@ export function CitationCard({ citation }: { citation: Citation }) {
       <div style={{ fontWeight: 600, fontSize: 13, color: "#111827", marginBottom: 2 }}>
         {docName}
       </div>
+      {isTabular && (
+        <div style={{ color: "#4b5563" }}>
+          {citation.file_version != null && <span>Version {citation.file_version}</span>}
+          {citation.sheet && <span> · Sheet {citation.sheet}</span>}
+          {citation.columns && citation.columns.length > 0 && (
+            <div>Columns: {citation.columns.join(", ")}</div>
+          )}
+        </div>
+      )}
       <div style={{ color: "#4b5563" }}>
         {citation.entity_type && <span><strong>{citation.entity_type}:</strong> </span>}
         {citation.entity_value && <span>{citation.entity_value}</span>}

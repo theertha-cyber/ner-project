@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass, field
 
 from src.chat_api.services.external_postgres_chat import EXTERNAL_OUTCOME_MESSAGES
+from src.chat_api.services.tabular_sql_generator import TABULAR_OUTCOME_MESSAGES
 from src.shared.config import settings
 from src.shared.conversation_history import render_history
 from src.shared.retrieval.chunking import TOKENIZER
@@ -21,11 +22,12 @@ Format your response naturally and conversationally.
 # assembler trimmed for budget — was still presented to the model as the complete set.
 EXHAUSTIVE_ENTITY_INSTRUCTION = """
 An `Entity data:` block, when present, is the complete result of a database query run
-against the tenant's extracted entities specifically to answer this question. Treat it as
-authoritative and exhaustive: when the question asks what something contains, lists, or
-has, report EVERY distinct value in that block. Collapse exact duplicates of the same
-value, but never drop a distinct one and never shorten the list because it seems long or
-repetitive — an omitted value reads as "this isn't in the document", which is wrong.
+against the tenant's extracted entities specifically to answer this question, with every
+condition in it already applied — each row is a match even if it shows only who it is
+about. Treat it as authoritative and exhaustive: when the question asks what something
+contains, lists, or has, report EVERY distinct value in that block. Collapse exact
+duplicates, but never drop a distinct value or shorten a long list — an omitted value
+reads as "this isn't in the document", which is wrong.
 Document passages alongside it add context and wording, and may mention things the
 extractor did not capture; you may include those, but say where they came from, and never
 let them replace or abbreviate the entity list.
@@ -49,9 +51,9 @@ something an earlier turn named — "which of the following candidates", "of tho
 "compare the two", "any of them" — those earlier subjects are the entire set you may
 answer about. Answer for each of them and for no one else: introducing a subject the user
 did not ask about contradicts the conversation, and dropping one leaves the question half
-answered. Retrieval may return rows about other subjects, because it searches more
-broadly than the question does; ignore them. If the context data holds no evidence for one
-of the named subjects, say that about that subject rather than substituting someone else.
+answered. Ignore rows about anyone else (retrieval searches broadly). If the context data holds no evidence for one of the named subjects, say that
+about that subject rather than substituting someone else. Name every value tied at the
+top of a ranking.
 
 Identify every subject by its name. `document_id` values are opaque internal
 identifiers — never present one to the user as a candidate, a person, or a subject's
@@ -206,6 +208,10 @@ class AdmittedEvidence:
     # row values — the citation built from this carries only these names
     # (ADR-015, ADR-016 Decision 6).
     external_relations: list[str] = field(default_factory=list)
+    # Uploaded tabular files the admitted result came from, and the column names
+    # the statement used — the only things the `tabular_file` citation carries.
+    tabular_files: list[dict] = field(default_factory=list)
+    tabular_columns: list[str] = field(default_factory=list)
 
     @property
     def structured_complete(self) -> bool:
@@ -249,6 +255,18 @@ def render_structured_block(rows: list[dict], matched: int | None, truncated: bo
     return f"Entity data ({completeness}): {json.dumps(rows, default=str)}"
 
 
+def render_structured_header(queries: list[str] | None) -> str:
+    """One line naming the question(s) the structured rows were retrieved for, or ""."""
+    queries = [q.strip() for q in (queries or []) if q and q.strip()]
+    if not queries:
+        return ""
+    asked = "; ".join(f'"{q}"' for q in queries)
+    return (
+        f"The entity rows below were returned for {asked}, with every condition in it "
+        "already applied: each row is a match, even one that shows only who it is about.\n"
+    )
+
+
 def render_external_block(rows: list[dict], relations: list[str], truncated: bool) -> str:
     """The tenant's connected-database result block, headed by the relations it
     used. Like `render_structured_block`, it states its own completeness so the
@@ -271,6 +289,31 @@ def render_external_failure(reason: str) -> str:
     message = EXTERNAL_OUTCOME_MESSAGES.get(reason, EXTERNAL_OUTCOME_MESSAGES["execution_failed"])
     return (
         f"The tenant's connected database could not answer this turn: {message} "
+        "Relay this notice to the user plainly. Do not invent a cause, a SQL "
+        "detail, or a workaround — state only what is written here."
+    )
+
+
+def render_tabular_block(rows: list[dict], files: list[dict], truncated: bool) -> str:
+    """The uploaded-file result block, headed by the files it came from and its
+    own completeness, like `render_external_block`."""
+    names = ", ".join(
+        f"{f.get('display_name')} (version {f.get('version')})" for f in files
+    ) or "an uploaded file"
+    if truncated:
+        completeness = f"showing {len(rows)} row(s) — PARTIAL, more rows matched than shown"
+    else:
+        completeness = f"showing all {len(rows)} matched row(s)"
+    return (
+        f"Exact query results from the tenant's uploaded file {names}, "
+        f"{completeness}: {json.dumps(rows, default=str)}"
+    )
+
+
+def render_tabular_failure(reason: str) -> str:
+    message = TABULAR_OUTCOME_MESSAGES.get(reason, TABULAR_OUTCOME_MESSAGES["execution_failed"])
+    return (
+        f"The tenant's uploaded files could not answer this turn: {message} "
         "Relay this notice to the user plainly. Do not invent a cause, a SQL "
         "detail, or a workaround — state only what is written here."
     )
@@ -311,7 +354,13 @@ class ContextAssembler:
         external_relations: list[str] | None = None,
         external_truncated: bool = False,
         external_failure_reason: str | None = None,
+        tabular_results: list[dict] | None = None,
+        tabular_files: list[dict] | None = None,
+        tabular_columns: list[str] | None = None,
+        tabular_truncated: bool = False,
+        tabular_failure_reason: str | None = None,
         return_evidence: bool = False,
+        structured_queries: list[str] | None = None,
     ):
         """Builds the generation prompt. Returns the messages, or
         `(messages, AdmittedEvidence)` when `return_evidence` is set.
@@ -377,16 +426,51 @@ class ContextAssembler:
                 remaining -= _count_tokens(external_part) + separator
                 evidence.external_relations = list(external_relations or [])
 
+        # Uploaded tabular file evidence (ADR-018): its own channel, admitted
+        # whole-row within the same budget. Only file and column names reach
+        # AdmittedEvidence; rows stay in the prompt.
+        if tabular_failure_reason:
+            separator = _SEPARATOR_TOKENS if context_parts else 0
+            failure_part = render_tabular_failure(tabular_failure_reason)
+            if _count_tokens(failure_part) + separator <= remaining:
+                context_parts.append(failure_part)
+                remaining -= _count_tokens(failure_part) + separator
+        elif tabular_results:
+            separator = _SEPARATOR_TOKENS if context_parts else 0
+            files = list(tabular_files or [])
+            admitted_tabular_rows: list[dict] = []
+            for count in range(len(tabular_results), 0, -1):
+                candidate = tabular_results[:count]
+                rendered = render_tabular_block(candidate, files, tabular_truncated or count < len(tabular_results))
+                if _count_tokens(rendered) <= remaining - separator:
+                    admitted_tabular_rows = candidate
+                    break
+            if admitted_tabular_rows:
+                tabular_part = render_tabular_block(
+                    admitted_tabular_rows, files,
+                    tabular_truncated or len(admitted_tabular_rows) < len(tabular_results),
+                )
+                context_parts.append(tabular_part)
+                remaining -= _count_tokens(tabular_part) + separator
+                evidence.tabular_files = files
+                evidence.tabular_columns = list(tabular_columns or [])
+
         if sql_results:
             distinct_rows = collapse_duplicate_rows(sql_results)
             if not matched_is_unknown and matched_total is None:
                 matched_total = len(distinct_rows)
 
             separator = _SEPARATOR_TOKENS if context_parts else 0
+            # What the rows answer, stated next to them. The answer model never sees the
+            # SQL, so a result of bare names for "who doesn't know Java" read to it as
+            # "no skill data" and it declined; told the rows are the matches for that
+            # question, it lists them. Charged to the same budget as the block.
+            header = render_structured_header(structured_queries)
+            header_cost = _count_tokens(header) if header else 0
             admitted_rows, assembler_truncated = self._fit_rows(
-                distinct_rows, matched_total, query_truncated, remaining - separator,
+                distinct_rows, matched_total, query_truncated, remaining - separator - header_cost,
             )
-            sql_part = render_structured_block(
+            sql_part = header + render_structured_block(
                 admitted_rows, matched_total, query_truncated or assembler_truncated,
             )
             context_parts.append(sql_part)

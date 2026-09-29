@@ -403,6 +403,23 @@ TENANT_STORE_META_DDL = """
 """
 
 
+def _migration_ddl(filename: str) -> list[str]:
+    """The DDL an Alembic revision executes, captured rather than restated, so the
+    test schema cannot drift from the migration (used for platform-only revisions
+    whose `upgrade()` is plain `op.execute` calls)."""
+    import importlib.util
+    import types
+
+    path = os.path.join(os.path.dirname(__file__), "..", "alembic", "versions", filename)
+    spec = importlib.util.spec_from_file_location(f"_migration_{filename[:3]}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    captured: list[str] = []
+    module.op = types.SimpleNamespace(execute=captured.append)
+    module.upgrade()
+    return captured
+
+
 async def main():
     _assert_test_database(DATABASE_URL)
     engine = create_async_engine(DATABASE_URL)
@@ -412,6 +429,9 @@ async def main():
             await conn.execute(text(ddl))
         for reconcile_ddl in PUBLIC_RECONCILE:
             await conn.execute(text(reconcile_ddl))
+        # Uploaded tabular files control plane (alembic 057).
+        for ddl in _migration_ddl("057_tabular_files.py"):
+            await conn.execute(text(ddl))
         print("  Created public tables")
 
         for schema in SCHEMAS:

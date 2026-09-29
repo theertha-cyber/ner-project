@@ -13,6 +13,7 @@ from src.shared.retrieval import DenseRetriever, SparseRetriever, HybridRetrieve
 from src.shared.retrieval.tools import build_default_registry
 from src.chat_api.api.v1.schemas import Source, Citation
 from src.chat_api.services.external_sql_generator import ExternalAnswer, ExternalSQLGenerator
+from src.chat_api.services.tabular_sql_generator import TabularAnswer, TabularSQLGenerator
 from src.chat_api.services.sql_generator import SQLGenerator
 from src.chat_api.services.embedding_service import EmbeddingService
 from src.chat_api.services.guardrails import GuardrailService
@@ -33,6 +34,7 @@ class RAGOrchestrator:
     def __init__(self):
         self.sql_generator = SQLGenerator()
         self.external_sql_generator = ExternalSQLGenerator()
+        self.tabular_sql_generator = TabularSQLGenerator()
         self.embedding_service = EmbeddingService()
         base_retriever = HybridRetriever(DenseRetriever(self.embedding_service), SparseRetriever())
         self.retriever = RerankingRetriever(base_retriever, CrossEncoderReranker())
@@ -214,6 +216,17 @@ class RAGOrchestrator:
             query, session, tenant_id, conversation_context, deadline,
         )
 
+    async def _tabular_source(self, query: str, tenant_id: str,
+                              conversation_context: list[dict] | None,
+                              deadline: float | None = None) -> TabularAnswer:
+        """`ToolContext.tabular_search`: passthrough to the generator. `tenant_id`
+        is the authenticated tenant from `ToolContext`, never a tool argument
+        (ADR-001); the generator resolves the served files from it itself."""
+        generator = getattr(self, "tabular_sql_generator", None)
+        if generator is None:
+            generator = self.tabular_sql_generator = TabularSQLGenerator()
+        return await generator.answer(query, tenant_id, render_history(conversation_context), deadline)
+
     async def _resolve_document_names(self, sources: list[Source], session: AsyncSession, schema: str,
                                       requesting_user=None) -> dict[str, str]:
         """Filenames for the documents behind a turn's sources.
@@ -293,5 +306,10 @@ class RAGOrchestrator:
                 page_number=s.page_number,
                 source_type=s.source_type,
                 model_version=s.model_version,
+                file_name=s.file_name,
+                file_version=s.file_version,
+                sheet=s.sheet,
+                relation=s.relation,
+                columns=s.columns,
             ))
         return enriched

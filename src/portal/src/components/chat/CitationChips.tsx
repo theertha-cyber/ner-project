@@ -14,6 +14,11 @@ interface Citation {
   context_snippet?: string | null;
   page_number?: number | null;
   source_type?: string;
+  // `tabular_file` citations only (ADR-018): never a row value.
+  file_name?: string | null;
+  file_version?: number | null;
+  sheet?: string | null;
+  columns?: string[] | null;
 }
 
 const VISIBLE_COUNT = 2;
@@ -53,6 +58,7 @@ export function CitationChips({ citations }: { citations: Citation[] }) {
         {visible.map((citation, i) => {
           const label =
             citation.document_name ||
+            citation.file_name ||
             (citation.document_id ? citation.document_id.slice(0, 8) + "..." : "Source");
           const isOpen = expandedIndex === i;
           // Citations from the relational and entity channels carry no document, so

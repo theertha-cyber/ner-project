@@ -21,11 +21,22 @@ async def lifespan(app: FastAPI):
     first query after every restart fell back to unranked results — a failure visible
     only as a client-side timeout with an empty message. Warming in a thread rather
     than awaiting it keeps /health responsive while the weights load."""
+    _configure_torch_threads()
     warm = asyncio.create_task(asyncio.to_thread(_warm_reranker))
     try:
         yield
     finally:
         warm.cancel()
+
+
+def _configure_torch_threads() -> None:
+    """Caps torch's intra-op thread pool before any model runs; see
+    `settings.torch_num_threads`."""
+    if settings.torch_num_threads > 0:
+        import torch
+
+        torch.set_num_threads(settings.torch_num_threads)
+        logger.info("torch intra-op threads set to %d", settings.torch_num_threads)
 
 
 def _warm_reranker() -> None:

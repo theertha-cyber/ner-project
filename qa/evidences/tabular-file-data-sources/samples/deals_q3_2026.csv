@@ -1,0 +1,61 @@
+Deal ID,Order Code,Close Date,Region,Country,Sales Rep,Product,Status,Amount (USD),Discount %,Renewal,Notes
+D-0001,229,25/07/2026,AMER,USA,Liam Carter,Analytics Suite,closed,7500,N/A,yes,multi-year
+D-0002,518,30/07/2026,APAC,India,Maria Silva,Analytics Suite,closed,6050,15,yes,-
+D-0003,829,05/08/2026,AMER,Mexico,Asha Menon,Data Connector,closed,15550,N/A,no,
+D-0004,105,13/08/2026,APAC,Japan,Asha Menon,Training Pack,closed,20000,0,no,champion left
+D-0005,550,28/08/2026,APAC,Australia,Asha Menon,Training Pack,lost,19150,0,no,champion left
+D-0006,047,09/07/2026,AMER,Brazil,Omar Haddad,Data Connector,open,18500,10,yes,champion left
+D-0007,855,20/09/2026,EMEA,Germany,Sofia Rossi,Data Connector,closed,12100,10,no,
+D-0008,074,21/09/2026,AMER,Brazil,Maria Silva,Data Connector,open,17950,15,yes,
+D-0009,705,20/09/2026,APAC,Singapore,Maria Silva,Data Connector,closed,24150,N/A,no,champion left
+D-0010,411,10/08/2026,EMEA,France,Sofia Rossi,Analytics Suite,lost,21100,5,no,
+D-0011,470,21/09/2026,AMER,Mexico,Liam Carter,Support Plan,closed,23900,5,yes,-
+D-0012,409,13/09/2026,AMER,Brazil,Sofia Rossi,Data Connector,open,11450,5,no,
+D-0013,433,26/09/2026,EMEA,Germany,Maria Silva,Analytics Suite,closed,4550,12.5,no,multi-year
+D-0014,697,02/07/2026,APAC,Australia,Omar Haddad,Analytics Suite,lost,22500,N/A,no,champion left
+D-0015,465,21/07/2026,AMER,Brazil,Asha Menon,Support Plan,closed,11600,15,yes,multi-year
+D-0016,204,16/09/2026,EMEA,UK,Liam Carter,Support Plan,lost,13450,5,yes,multi-year
+D-0017,900,16/08/2026,APAC,Singapore,Sofia Rossi,Data Connector,closed,24250,0,yes,multi-year
+D-0018,779,09/07/2026,EMEA,Germany,Maria Silva,Data Connector,open,21350,5,no,multi-year
+D-0019,988,24/08/2026,EMEA,UK,Liam Carter,Data Connector,open,16000,N/A,no,follow up in Q4
+D-0020,124,27/08/2026,AMER,Brazil,Liam Carter,Data Connector,closed,13700,0,no,
+D-0021,725,10/07/2026,AMER,Canada,Omar Haddad,Analytics Suite,open,650,5,yes,
+D-0022,498,24/09/2026,APAC,India,Liam Carter,Data Connector,open,7600,N/A,no,
+D-0023,442,23/09/2026,APAC,Singapore,Sofia Rossi,Training Pack,closed,2950,12.5,no,champion left
+D-0024,063,13/07/2026,AMER,USA,Kenji Sato,Support Plan,open,17000,0,yes,
+D-0025,474,05/08/2026,EMEA,Spain,Liam Carter,Analytics Suite,closed,5150,12.5,yes,
+D-0026,171,31/07/2026,AMER,USA,Kenji Sato,Training Pack,lost,24200,12.5,yes,champion left
+D-0027,272,19/08/2026,APAC,India,Kenji Sato,Support Plan,closed,550,12.5,no,
+D-0028,754,13/09/2026,EMEA,UK,Maria Silva,Analytics Suite,closed,1950,N/A,no,
+D-0029,162,06/09/2026,EMEA,Spain,Asha Menon,Analytics Suite,open,22300,5,yes,multi-year
+D-0030,253,11/09/2026,EMEA,France,Maria Silva,Analytics Suite,closed,24600,15,yes,follow up in Q4
+D-0031,734,24/09/2026,AMER,Brazil,Sofia Rossi,Data Connector,lost,5700,10,no,
+D-0032,010,10/07/2026,AMER,Brazil,Kenji Sato,Analytics Suite,closed,24250,0,yes,multi-year
+D-0033,901,09/07/2026,APAC,Japan,Liam Carter,Support Plan,lost,23050,10,yes,follow up in Q4
+D-0034,542,22/09/2026,AMER,Brazil,Asha Menon,Support Plan,open,21150,N/A,yes,
+D-0035,160,09/09/2026,APAC,India,Sofia Rossi,Support Plan,lost,19500,15,yes,-
+D-0036,518,03/08/2026,APAC,Japan,Kenji Sato,Support Plan,open,22300,0,yes,-
+D-0037,653,17/07/2026,APAC,Australia,Sofia Rossi,Data Connector,closed,9000,N/A,no,multi-year
+D-0038,968,10/07/2026,AMER,Mexico,Omar Haddad,Data Connector,open,3350,15,yes,champion left
+D-0039,374,09/08/2026,APAC,Japan,Asha Menon,Support Plan,closed,1550,5,yes,-
+D-0040,998,22/08/2026,EMEA,UK,Maria Silva,Data Connector,open,23100,5,yes,champion left
+D-0041,802,12/08/2026,EMEA,Spain,Kenji Sato,Data Connector,closed,19350,10,yes,champion left
+D-0042,228,30/08/2026,AMER,USA,Liam Carter,Training Pack,closed,1450,10,no,champion left
+D-0043,337,21/08/2026,EMEA,France,Sofia Rossi,Analytics Suite,closed,5400,10,no,-
+D-0044,340,07/09/2026,AMER,Mexico,Asha Menon,Analytics Suite,open,22050,10,yes,multi-year
+D-0045,747,14/08/2026,APAC,India,Sofia Rossi,Training Pack,closed,11600,15,yes,follow up in Q4
+D-0046,002,25/08/2026,AMER,Canada,Maria Silva,Data Connector,closed,18600,10,no,
+D-0047,738,16/07/2026,AMER,Brazil,Sofia Rossi,Support Plan,open,17450,N/A,no,
+D-0048,681,23/08/2026,APAC,Australia,Kenji Sato,Data Connector,open,5400,15,no,follow up in Q4
+D-0049,805,25/08/2026,AMER,USA,Maria Silva,Support Plan,closed,5850,12.5,no,follow up in Q4
+D-0050,675,22/07/2026,AMER,Canada,Asha Menon,Support Plan,open,20800,15,no,
+D-0051,026,19/07/2026,EMEA,UK,Asha Menon,Data Connector,closed,5550,12.5,yes,follow up in Q4
+D-0052,410,02/09/2026,APAC,Japan,Liam Carter,Data Connector,open,10300,N/A,yes,champion left
+D-0053,531,28/09/2026,EMEA,Spain,Kenji Sato,Analytics Suite,closed,21050,15,yes,champion left
+D-0054,544,24/09/2026,EMEA,Spain,Maria Silva,Support Plan,closed,12350,12.5,no,champion left
+D-0055,461,30/08/2026,AMER,Mexico,Sofia Rossi,Data Connector,lost,19500,N/A,no,champion left
+D-0056,080,26/08/2026,AMER,Mexico,Omar Haddad,Support Plan,open,7500,5,no,
+D-0057,711,19/08/2026,APAC,India,Liam Carter,Data Connector,closed,6400,0,no,follow up in Q4
+D-0058,399,23/08/2026,APAC,Singapore,Maria Silva,Analytics Suite,closed,5750,15,no,follow up in Q4
+D-0059,552,23/08/2026,EMEA,UK,Omar Haddad,Data Connector,closed,10450,12.5,yes,
+D-0060,696,24/09/2026,APAC,Singapore,Kenji Sato,Data Connector,closed,9100,12.5,yes,multi-year

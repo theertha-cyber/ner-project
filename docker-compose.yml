@@ -132,6 +132,9 @@ services:
       NER_CELERY_BROKER_URL: "redis://redis:6379/0"
       NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
       NER_MINIO_ENDPOINT: "minio:9000"
+      # Uploaded tabular files (ADR-018): the upload routes enqueue profiling and
+      # publishing on `tabular_ingest` over the broker above. Kill switch, default on.
+      NER_TABULAR_FILES_ENABLED: "true"
       NER_DOCUMENT_SERVICE_URL: "http://document_service:8000"
       NER_EXTRACTION_SERVICE_URL: "http://extraction_service:8000"
       NER_MODEL_SERVING_URL: "http://model_serving:8000"
@@ -176,6 +179,13 @@ services:
       # document_service uses. Without it the setting falls back to localhost:9000, which
       # inside this container is nothing, and the send fails with a connection error.
       NER_MINIO_ENDPOINT: "minio:9000"
+      # Uploaded tabular files (ADR-018): the chat tool is offered only to tenants
+      # with a ready file; the kill switch removes it everywhere. Published Parquet
+      # is cached per worker on the named volume below, keyed by file and version.
+      NER_TABULAR_FILES_ENABLED: "true"
+      NER_TABULAR_CACHE_DIR: "/var/cache/ner/tabular"
+    volumes:
+      - tabular_cache:/var/cache/ner/tabular
     depends_on:
       postgres-test:
         condition: service_healthy
@@ -243,6 +253,11 @@ services:
       NER_MINIO_ENDPOINT: "minio:9000"
       NER_MLFLOW_TRACKING_URI: "http://mlflow:5000"
       NER_TRAINING_SERVICE_URL: "http://training_service:8000"
+    # HuggingFace downloads (the reranker and base NER weights) land in $HOME/.cache,
+    # and HOME is /tmp in the image. Without a volume they lived in the container's
+    # writable layer and were re-downloaded on every recreate.
+    volumes:
+      - hf_cache:/tmp/.cache/huggingface
     depends_on:
       postgres-test:
         condition: service_healthy
@@ -430,6 +445,32 @@ services:
       db-init:
         condition: service_completed_successfully
 
+  # Uploaded tabular files ingest (ADR-018): profiling and publishing. Both tasks
+  # are routed to `tabular_ingest` in `src/shared/tabular_files/tasks.py`
+  # (`task_routes`), and the gateway enqueues on the same queue name.
+  celery_worker_tabular:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A src.shared.tabular_files.tasks worker -Q tabular_ingest --pool=solo --loglevel=info
+    env_file: .env
+    environment:
+      NER_DATABASE_URL: "postgresql+asyncpg://ner:ner@postgres-test:5432/ner_dev"
+      NER_OTLP_ENDPOINT: "otel-collector:4317"
+      NER_DATABASE_URL_SYNC: "postgresql://ner:ner@postgres-test:5432/ner_dev"
+      NER_REDIS_URL: "redis://redis:6379/0"
+      NER_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NER_CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      NER_MINIO_ENDPOINT: "minio:9000"
+      NER_TABULAR_FILES_ENABLED: "true"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+
   celery_beat_blob_sync:
     build:
       context: .
@@ -539,6 +580,8 @@ services:
 
 volumes:
   minio-data:
+  tabular_cache:
+  hf_cache:
   postgres-data:
   postgres-tenant-store-data:
   tempo-data:

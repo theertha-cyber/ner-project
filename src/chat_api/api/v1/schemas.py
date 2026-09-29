@@ -34,6 +34,14 @@ class Source(BaseModel):
     confidence: float | None = None
     page_number: int | None = None
     model_version: str | None = None
+    # `tabular_file` citations only (ADR-018): the uploaded file's display name,
+    # served version, sheet, relation and the column names the answer used. Never
+    # a row value or a filter parameter value.
+    file_name: str | None = None
+    file_version: int | None = None
+    sheet: str | None = None
+    relation: str | None = None
+    columns: list[str] | None = None
 
 
 class Citation(BaseModel):
@@ -47,6 +55,14 @@ class Citation(BaseModel):
     page_number: int | None = None
     source_type: str = "citation"
     model_version: str | None = None
+    # `tabular_file` citations only (ADR-018): the uploaded file's display name,
+    # served version, sheet, relation and the column names the answer used. Never
+    # a row value or a filter parameter value.
+    file_name: str | None = None
+    file_version: int | None = None
+    sheet: str | None = None
+    relation: str | None = None
+    columns: list[str] | None = None
 
 
 class CandidateEntity(BaseModel):

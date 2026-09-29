@@ -480,8 +480,10 @@ class TestPerInvocationRetrievalStatus:
             "q", None, client, "gpt-4o", registry, _context_factory(sql_search=sql_search), _budget(),
         )
 
-        outcomes = [e.outcome for e in result.status.entries]
+        outcomes = [e.outcome for e in result.status.entries if not e.recovery]
         assert outcomes == [OUTCOME_FAILED, OUTCOME_OK]
+        # The failed sibling gets the one semantic recovery, recorded as its own entry.
+        assert len([e for e in result.status.entries if e.recovery]) == 1
         assert "SQL generation failed" in result.status.entries[0].error
         assert result.status.entries[1].error is None
         # The second invocation's rows survive its sibling's failure.

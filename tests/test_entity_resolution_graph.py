@@ -47,6 +47,30 @@ class TestNoConversationId:
         assert "reply" not in result
 
 
+class TestPlanWithoutDocumentScopedEntries:
+    async def test_tabular_only_plan_skips_resolution(self, nodes, monkeypatch):
+        """Live smoke (tabular-file-data-sources 8.2): "total closed revenue in EMEA?"
+        planned onto `tabular_files`, then "in" matched a stored value and the turn
+        ended on a clarification about resumes. Resolution rescopes only document
+        entries, so a plan without any must never reach the resolver."""
+        async def fake_read_state(session, schema, cid):
+            return conv_state.ConversationState(conversation_id=cid)
+        async def fail_resolve(*args, **kwargs):
+            raise AssertionError("resolver must not run for a tabular-only plan")
+        monkeypatch.setattr(conv_state, "read_state", fake_read_state)
+        monkeypatch.setattr(entity_resolver, "resolve_entity", fail_resolve)
+
+        state = _base_state(message="total closed revenue in EMEA?")
+        state["retrieval_plan"] = RetrievalPlan(entries=[
+            PlanEntry(capability_name="tabular_files", arguments={"question": "total closed revenue in EMEA?"}),
+        ])
+        result = await nodes["entity_resolution"](state)
+
+        assert result["entity_resolution_outcome"] is None
+        assert result["resolved_document_ids"] == []
+        assert "reply" not in result
+
+
 class TestUnresolvedAndUnique:
     """Covers verification.md rows 15, 21, 28, 29, 50."""
 

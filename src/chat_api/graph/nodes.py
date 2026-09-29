@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.extraction_service.services.entity_normalizer import canonicalize
 from src.shared.config import settings
+from src.shared.conversation_history import recent_messages
 from src.shared.database import get_engine, get_resolver
 from src.shared.retrieval.orchestrator import (
     SEMANTIC_CAPABILITY_NAME,
@@ -28,6 +29,12 @@ from src.shared.external_postgres.capability import resolve_external_capability
 from src.shared.retrieval.tools.base import ToolContext
 from src.shared.retrieval.tools.external_tools import ExternalDatabaseTool, render_external_tool_description
 from src.shared.retrieval.tools.registry import ToolRegistry
+from src.shared.retrieval.tools.tabular_tools import (
+    TABULAR_TOOL_ADDENDUM,
+    TabularFilesTool,
+    render_tabular_tool_description,
+)
+from src.shared.tabular_files.capability import resolve_tabular_capability
 from src.chat_api.api.v1.schemas import CandidateEntity, PendingClarification, Source
 from src.chat_api.graph.state import ChatState
 from src.chat_api.services import conversation_entity_state as conv_state
@@ -149,7 +156,37 @@ def _has_anaphoric_reference(message: str) -> bool:
     return bool(_ANAPHORA_RE.search(message))
 
 
-def _rewrite_plan_for_resolution(plan, document_ids: list[str], query_override: str | None):
+def _per_entry_documents(plan, mention_documents: dict[str, list[str]] | None) -> dict[int, list[str] | None]:
+    """For a plan that split the question per subject — more than one entry of the same
+    capability — the documents each entry should be scoped to: those of the resolved
+    mentions its own query names, or None (leave it unscoped) when it names none of them.
+
+    Without this, "compare Hannah and Harshith" — where only Hannah resolved, because
+    Harshith's name was never extracted — scoped Harshith's own entry to Hannah's
+    document, so it could only ever come back empty. An entry that is its capability's
+    only one is not in the result: it is the whole question, and the whole resolved set
+    is its scope."""
+    if not mention_documents:
+        return {}
+    counts: dict[str, int] = {}
+    for entry in plan.entries:
+        if not entry.rejected:
+            counts[entry.capability_name] = counts.get(entry.capability_name, 0) + 1
+    per_entry: dict[int, list[str] | None] = {}
+    for index, entry in enumerate(plan.entries):
+        if entry.rejected or counts.get(entry.capability_name, 0) < 2:
+            continue
+        query = str(entry.arguments.get("query", "")).lower()
+        ids: list[str] = []
+        for mention, docs in mention_documents.items():
+            if mention and mention.lower() in query:
+                ids.extend(d for d in docs if d not in ids)
+        per_entry[index] = ids or None
+    return per_entry
+
+
+def _rewrite_plan_for_resolution(plan, document_ids: list[str], query_override: str | None,
+                                 mention_documents: dict[str, list[str]] | None = None):
     """Returns a new RetrievalPlan with every `semantic_retrieval` entry's `scope`
     overridden to the resolved documents, and every `structured_retrieval` entry
     constrained to the same set. When `query_override` is given (resuming after a
@@ -162,17 +199,16 @@ def _rewrite_plan_for_resolution(plan, document_ids: list[str], query_override: 
     if not document_ids:
         return plan
 
+    per_entry = _per_entry_documents(plan, mention_documents)
     new_entries = []
-    for entry in plan.entries:
+    for index, entry in enumerate(plan.entries):
         args = dict(entry.arguments)
-        if entry.capability_name == SEMANTIC_CAPABILITY_NAME:
+        if entry.capability_name in (SEMANTIC_CAPABILITY_NAME, STRUCTURED_CAPABILITY_NAME):
             if query_override is not None:
                 args["query"] = query_override
-            args["scope"] = {"type": "document", "document_ids": document_ids}
-        elif entry.capability_name == STRUCTURED_CAPABILITY_NAME:
-            if query_override is not None:
-                args["query"] = query_override
-            args["scope"] = {"type": "document", "document_ids": document_ids}
+            entry_ids = per_entry[index] if index in per_entry else document_ids
+            if entry_ids:
+                args["scope"] = {"type": "document", "document_ids": entry_ids}
         new_entries.append(PlanEntry(
             capability_name=entry.capability_name, arguments=args,
             rejected=entry.rejected, rejection_reason=entry.rejection_reason,
@@ -211,6 +247,143 @@ async def _conversation_attachment_filenames(session, schema: str, conversation_
         return []
 
 
+async def _tabular_sources_for_guardrail(tenant_id: str) -> list[str]:
+    """One line per `ready` uploaded file — display name, table description and
+    column names from the served contract — so the domain guardrail can tell that
+    a quantitative question is about the tenant's own spreadsheet. Read on its own
+    platform session (Design D10), like the orchestrator's capability resolution.
+    Best-effort: a failed lookup must never turn into a declined question."""
+    try:
+        platform_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+        async with platform_factory() as platform_session:
+            capability = await resolve_tabular_capability(platform_session, tenant_id)
+    except Exception as e:
+        logger.info("guardrail_tabular_lookup_failed", extra={"error_class": type(e).__name__})
+        return []
+    if not capability.get("executable"):
+        return []
+    sources = []
+    for served in capability["files"]:
+        contract = served["contract"]
+        line = served["display_name"]
+        if contract.get("description"):
+            line += f" — {contract['description']}"
+        columns = [c["name"] for c in contract.get("columns", [])]
+        if columns:
+            line += f" (columns: {', '.join(columns)})"
+        sources.append(line)
+    return sources
+
+
+def _pin_structured_query_to_question(plan, message: str, conversation_context) -> RetrievalPlan:
+    """On a turn with no history, a plan's single structured entry asks the user's own
+    question. The planner's only licence to rewrite is resolving references, and with no
+    history there are none — yet it still paraphrased "What is the most common programming
+    language" into "What programming languages do candidates know", dropping the aggregate
+    so the answer model hand-counted a raw list and got it wrong. A split plan (several
+    structured entries, one per subject) is left alone: each entry is a deliberate part."""
+    if recent_messages(conversation_context):
+        return plan
+    structured = [
+        e for e in plan.entries if e.capability_name == STRUCTURED_CAPABILITY_NAME and not e.rejected
+    ]
+    if len(structured) != 1 or structured[0].arguments.get("query") == message:
+        return plan
+    new_entries = []
+    for entry in plan.entries:
+        if entry is structured[0]:
+            entry = PlanEntry(
+                capability_name=entry.capability_name,
+                arguments={**entry.arguments, "query": message},
+                rejected=entry.rejected, rejection_reason=entry.rejection_reason,
+            )
+        new_entries.append(entry)
+    return RetrievalPlan(entries=new_entries, truncated=plan.truncated)
+
+
+def _structured_queries(plan) -> list[str]:
+    """The `query` of every executed structured entry, for the entity block's header."""
+    if plan is None:
+        return []
+    return [
+        str(e.arguments.get("query", "")) for e in plan.entries
+        if e.capability_name == STRUCTURED_CAPABILITY_NAME and not e.rejected and e.arguments.get("query")
+    ]
+
+
+async def _repair_plan_scopes(plan: RetrievalPlan, session_factory, schema: str) -> RetrievalPlan:
+    """Maps every planner-supplied `scope.document_ids` entry onto real document ids.
+
+    The planner is never shown document ids — the conversation it reads names files — so
+    when it scopes a follow-up ("compare the first two") it writes filenames:
+    `{"document_ids": ["Resume - Hannah.pdf"]}`. Passed through, that matched no document
+    and semantic retrieval came back empty for both people. Each reference is accepted as
+    an id or an exact filename; one that matches nothing is dropped, and an entry left
+    with no valid reference loses its scope (searching the tenant beats searching nothing).
+    Scopes written by entity resolution already hold ids and come through unchanged."""
+    refs: set[str] = set()
+    for entry in plan.entries:
+        scope = entry.arguments.get("scope") if not entry.rejected else None
+        if isinstance(scope, dict) and scope.get("type") == "document" and isinstance(scope.get("document_ids"), list):
+            refs.update(str(ref) for ref in scope["document_ids"])
+    if not refs:
+        return plan
+
+    try:
+        async with session_factory() as session:
+            result = await session.execute(
+                text(f"SELECT id, filename FROM {schema}.documents WHERE id = ANY(:refs) OR filename = ANY(:refs)"),
+                {"refs": sorted(refs)},
+            )
+            rows = result.fetchall()
+    except Exception as e:
+        logger.warning("plan_scope_repair_failed", extra={"error_class": type(e).__name__})
+        return plan
+
+    ids_by_ref: dict[str, set[str]] = {}
+    for row in rows:
+        ids_by_ref.setdefault(str(row.id), set()).add(str(row.id))
+        ids_by_ref.setdefault(row.filename, set()).add(str(row.id))
+
+    new_entries = []
+    for entry in plan.entries:
+        scope = entry.arguments.get("scope")
+        if entry.rejected or not (isinstance(scope, dict) and scope.get("type") == "document"
+                                  and isinstance(scope.get("document_ids"), list)):
+            new_entries.append(entry)
+            continue
+        resolved = sorted({i for ref in scope["document_ids"] for i in ids_by_ref.get(str(ref), ())})
+        args = dict(entry.arguments)
+        if resolved:
+            args["scope"] = {"type": "document", "document_ids": resolved}
+        else:
+            args.pop("scope", None)
+        new_entries.append(PlanEntry(
+            capability_name=entry.capability_name, arguments=args,
+            rejected=entry.rejected, rejection_reason=entry.rejection_reason,
+        ))
+    return RetrievalPlan(entries=new_entries, truncated=plan.truncated)
+
+
+async def _names_known_subject(state: ChatState) -> bool:
+    """Whether the message names a person the tenant's own extracted data knows — the
+    same deterministic, LLM-free lookup `entity_resolution_node` runs. Best-effort: any
+    failure (or no session, as in unit tests) answers False, leaving the decline as it was."""
+    session = state.get("session")
+    if session is None:
+        return False
+    try:
+        result = await entity_resolver.resolve_entity(
+            state["message"], session, state["schema"], state["tenant_id"],
+            requesting_user=state.get("requesting_user"),
+            conversation_id=state.get("conversation_id"),
+        )
+    except Exception as e:
+        logger.info("guardrail_subject_lookup_failed", extra={"error_class": type(e).__name__})
+        return False
+    return result.outcome in (entity_resolver.UNIQUE, entity_resolver.AMBIGUOUS, entity_resolver.OVER_CAP)
+
+
 def build_nodes(orchestrator) -> dict:
     """Returns a dict of node-name -> async callable, each closing over the given
     RAGOrchestrator instance so its attributes (retriever, sql_generator, guardrails,
@@ -231,10 +404,19 @@ def build_nodes(orchestrator) -> dict:
         attachment_filenames = await _conversation_attachment_filenames(
             state.get("session"), state["schema"], state.get("conversation_id"),
         )
+        tabular_sources = await _tabular_sources_for_guardrail(tenant_id)
         is_in_domain = await orchestrator.guardrails.classify_domain(
             message, conversation_context, orchestrator.llm_client, orchestrator.llm_model,
-            attachment_filenames,
+            attachment_filenames, tabular_sources=tabular_sources,
         )
+        if not is_in_domain and await _names_known_subject(state):
+            # The classifier sees only the text, and "Tell me about Zanith" reads as a
+            # general-knowledge request when you don't know Zanith is a candidate in this
+            # tenant's documents. The tenant's own data does know, so a message naming one
+            # of its subjects is admitted. Consulted only on the decline path, so an
+            # admitted turn pays nothing for it.
+            logger.info("guardrail: classifier declined a message naming a known subject; admitting")
+            is_in_domain = True
         if not is_in_domain:
             return {
                 "blocked_reason": DOMAIN_DECLINE_REASON,
@@ -281,15 +463,42 @@ def build_nodes(orchestrator) -> dict:
             )
             capability = {"executable": False}
 
+        try:
+            # Uploaded tabular files (ADR-018): the same D10 rule — control-plane
+            # tables, read on their own platform session. A failure leaves the
+            # tool unregistered and the turn continues with the other tools.
+            platform_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+            async with platform_factory() as platform_session:
+                tabular_capability = await resolve_tabular_capability(platform_session, tenant_id)
+        except Exception as e:
+            logger.warning(
+                "tabular_capability_resolution_failed",
+                extra={"error_class": type(e).__name__},
+            )
+            tabular_capability = {"executable": False}
+
+        extra_tools = []
+        addenda = []
         if capability.get("executable"):
+            extra_tools.append(ExternalDatabaseTool(
+                description=render_external_tool_description(capability["contract"]),
+            ))
+            addenda.append(EXTERNAL_TOOL_ADDENDUM)
+        if tabular_capability.get("executable"):
+            extra_tools.append(TabularFilesTool(
+                description=render_tabular_tool_description(
+                    tabular_capability["files"], settings.tabular_description_token_budget,
+                ),
+            ))
+            addenda.append(TABULAR_TOOL_ADDENDUM)
+        if extra_tools:
             turn_registry = ToolRegistry()
             for tool in orchestrator.tool_registry.list():
                 turn_registry.register(tool)
-            turn_registry.register(ExternalDatabaseTool(
-                description=render_external_tool_description(capability["contract"]),
-            ))
+            for tool in extra_tools:
+                turn_registry.register(tool)
             registry = turn_registry
-            system_prompt_addendum = EXTERNAL_TOOL_ADDENDUM
+            system_prompt_addendum = "\n\n".join(addenda)
 
         try:
             plan = await plan_retrieval(
@@ -317,6 +526,7 @@ def build_nodes(orchestrator) -> dict:
                 "orchestration_stop_reason": STOP_EMPTY_PLAN,
             }
 
+        plan = _pin_structured_query_to_question(plan, message, conversation_context)
         return {
             "retrieval_plan": plan, "tool_registry": registry,
             "orchestration_degraded": False, "orchestration_stop_reason": None,
@@ -380,6 +590,17 @@ def build_nodes(orchestrator) -> dict:
             logger.info("entity_resolution outcome=abandoned tenant_id=%s", tenant_id)
             return {"entity_resolution_outcome": "unresolved", "resolved_document_ids": []}
 
+        # A resolved scope only ever rewrites document-scoped entries (see
+        # `_rewrite_plan_for_resolution`). A plan with none — e.g. `tabular_files`
+        # alone — gains nothing from resolution, and an n-gram of the question
+        # ("in" in "total closed revenue in EMEA?") matching a stored value would
+        # otherwise end the turn on a clarification about unrelated documents.
+        if not any(
+            not entry.rejected and entry.capability_name in (SEMANTIC_CAPABILITY_NAME, STRUCTURED_CAPABILITY_NAME)
+            for entry in plan.entries
+        ):
+            return {"entity_resolution_outcome": None, "resolved_document_ids": []}
+
         result = await entity_resolver.resolve_entity(
             message, session, schema, tenant_id,
             requesting_user=state.get("requesting_user"),
@@ -389,11 +610,18 @@ def build_nodes(orchestrator) -> dict:
         if result.outcome == entity_resolver.UNIQUE:
             document_ids = result.resolved_document_ids
             await conv_state.set_binding(session, schema, conversation_id, document_ids, result.resolved_entity_value)
-            rewritten = _rewrite_plan_for_resolution(plan, document_ids, query_override=None)
+            rewritten = _rewrite_plan_for_resolution(
+                plan, document_ids, query_override=None, mention_documents=result.mention_documents,
+            )
             return {
                 "retrieval_plan": rewritten,
                 "entity_resolution_outcome": "unique",
                 "resolved_document_ids": document_ids,
+                # A per-subject entry naming nobody resolution matched was left unscoped
+                # on purpose; retrieval must not then filter its rows back out.
+                "resolution_left_entries_unscoped": any(
+                    ids is None for ids in _per_entry_documents(plan, result.mention_documents).values()
+                ),
             }
 
         if result.outcome == entity_resolver.AMBIGUOUS:
@@ -469,6 +697,7 @@ def build_nodes(orchestrator) -> dict:
                     retriever=orchestrator.retriever, jwt_token=jwt_token,
                     max_top_k=settings.retrieval_top_k, sql_search=orchestrator._sql_source,
                     external_search=orchestrator._external_source,
+                    tabular_search=orchestrator._tabular_source,
                     deadline=deadline, conversation_context=conversation_context,
                     conversation_id=conversation_id,
                     # From authenticated request state via graph state, exactly as
@@ -476,6 +705,7 @@ def build_nodes(orchestrator) -> dict:
                     requesting_user=state.get("requesting_user"),
                 )
 
+        plan = await _repair_plan_scopes(plan, session_factory, schema)
         budget = OrchestrationBudget(max_invocations=settings.orchestrator_max_invocations, deadline=deadline)
         result = await execute_plan(
             plan, registry, context_factory, budget,
@@ -483,7 +713,10 @@ def build_nodes(orchestrator) -> dict:
         )
 
         sql_results = result.sql_results
-        if resolved_document_ids and sql_results:
+        # Skipped when resolution deliberately left a per-subject entry unscoped (it named
+        # someone resolution could not match): its rows fall outside the resolved set by
+        # design, and filtering them here would undo that.
+        if resolved_document_ids and sql_results and not state.get("resolution_left_entries_unscoped"):
             # Secondary check only. Enforcement is the bound `document_id = ANY(:ids)`
             # predicate applied to the validated statement, so a limit-truncated result
             # can no longer be filtered down to nothing here. Every resolved document is
@@ -510,6 +743,11 @@ def build_nodes(orchestrator) -> dict:
             "external_relations": result.external_relations,
             "external_truncated": result.external_truncated,
             "external_failure_reason": result.external_failure_reason,
+            "tabular_results": result.tabular_results,
+            "tabular_files": result.tabular_files,
+            "tabular_columns": result.tabular_columns,
+            "tabular_truncated": result.tabular_truncated,
+            "tabular_failure_reason": result.tabular_failure_reason,
             "retrieval_status": status,
             "plan_trace": [asdict(t) for t in result.plan_trace],
             "orchestration_degraded": status.planning_degraded,
@@ -544,7 +782,13 @@ def build_nodes(orchestrator) -> dict:
             external_relations=state.get("external_relations"),
             external_truncated=state.get("external_truncated", False),
             external_failure_reason=state.get("external_failure_reason"),
+            tabular_results=state.get("tabular_results"),
+            tabular_files=state.get("tabular_files"),
+            tabular_columns=state.get("tabular_columns"),
+            tabular_truncated=state.get("tabular_truncated", False),
+            tabular_failure_reason=state.get("tabular_failure_reason"),
             return_evidence=True,
+            structured_queries=_structured_queries(state.get("retrieval_plan")),
         )
         return {
             "prompt_messages": llm_messages,
@@ -581,6 +825,21 @@ def build_nodes(orchestrator) -> dict:
                 value=json.dumps({"relations": admitted.external_relations}),
                 relevance_score=1.0,
             ))
+
+        if admitted is not None and admitted.tabular_files:
+            # File, version, sheet, relation and column names only — never a row
+            # value or a filter parameter value (ADR-015, tabular-file-chat spec).
+            columns = list(admitted.tabular_columns)
+            for ref in admitted.tabular_files:
+                sources.append(Source(
+                    source_type="tabular_file",
+                    file_name=ref.get("display_name"),
+                    file_version=ref.get("version"),
+                    sheet=ref.get("sheet"),
+                    relation=ref.get("relation"),
+                    columns=columns,
+                    relevance_score=1.0,
+                ))
 
         admitted_chunks = admitted.chunks if admitted is not None else []
         sources.extend(

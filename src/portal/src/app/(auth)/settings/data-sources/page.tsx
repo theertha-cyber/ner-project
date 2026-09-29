@@ -7,6 +7,7 @@ import { Pagination, SourceFilters, SourceTable, type FilterState } from "@/comp
 import { type ConfigPayload } from "@/components/data-sources/lifecycle";
 import { CreateConnectionModal } from "@/components/data-sources/create-connection-modal";
 import { SafeOutcomeNotice } from "@/components/data-sources/status";
+import { UploadedFilesSection } from "@/components/data-sources/uploaded-files";
 import { useDataSourceCollection, useDataSourceMutation, type SafeApiHttpError } from "@/hooks/use-data-sources";
 import { useDataPlaneStatus } from "@/hooks/use-data-plane";
 import {
@@ -189,6 +190,8 @@ function DataSourcesContent() {
           )}
         </>
       )}
+
+      <UploadedFilesSection dataPlaneMode={dataPlane?.mode ?? "platform"} />
     </div>
   );
 }

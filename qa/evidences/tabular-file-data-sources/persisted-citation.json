@@ -1,0 +1,29 @@
+{
+  "_note": "GET /api/v1/chat/conversations/da04d75b-6f20-4bde-9cfe-353e640f939e as returned to the portal on reload, 2026-09-23 (live smoke, tenant a3e06d2f-a028-4bcf-a7a6-7c4ef836e3ce). Verbatim assistant message; user message omitted.",
+  "assistant_message": {
+    "id": "e7f5a46e-13f8-4722-9826-5e17840f7402",
+    "role": "assistant",
+    "content": "The total closed revenue in EMEA is 1,650.",
+    "sources": [
+      {
+        "document_name": null,
+        "document_id": null,
+        "entity_type": null,
+        "entity_value": null,
+        "confidence": null,
+        "relevance_score": 1.0,
+        "context_snippet": null,
+        "page_number": null,
+        "source_type": "tabular_file",
+        "model_version": null,
+        "file_name": "sales_q3.csv",
+        "file_version": 1,
+        "sheet": null,
+        "relation": "sales_q3",
+        "columns": ["amount", "region", "status"]
+      }
+    ],
+    "created_at": "2026-09-23 14:09:39.330554+00:00",
+    "answer_kind": "answer"
+  }
+}

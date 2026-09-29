@@ -152,6 +152,10 @@ class Settings(BaseSettings):
     # scoring call — but it must still exceed a cold load, or the very first query
     # after a restart races the warm-up and silently falls back to unranked results.
     rerank_timeout_seconds: float = 30.0
+    # Intra-op threads for model_serving's PyTorch inference. 0 keeps torch's default
+    # (every logical CPU), which oversubscribes: on a 16-logical-CPU host a 20-candidate
+    # rerank took 1.9s at 16 threads and 0.9s at 8.
+    torch_num_threads: int = 8
 
     orchestrator_max_invocations: int = 3
     retrieval_deadline_seconds: float = 8.0
@@ -183,6 +187,30 @@ class Settings(BaseSettings):
     # truncating entries — see design.md Decisions 3 and 5.
     external_pg_sql_max_attempts: int = 3
     external_pg_schema_context_max_chars: int = 60000
+
+    # --- Uploaded tabular files (ADR-018, ADR-019) ---
+    # Kill switch, default on. Off hides the portal section, refuses the upload
+    # endpoints, and makes capability resolution non-executable without reading
+    # any table — so chat is byte-identical to a tenant with no files.
+    tabular_files_enabled: bool = True
+    tabular_max_file_bytes: int = 100 * 1024 * 1024
+    tabular_max_rows: int = 1_000_000
+    tabular_max_files_per_tenant: int = 20
+    tabular_celery_queue: str = "tabular_ingest"
+    # Worker-local scratch for profiling/publishing staging DuckDB files.
+    tabular_staging_dir: str = ""
+    # Per-query executor limits (design.md Decisions 5 and 9).
+    tabular_exec_memory_limit: str = "512MB"
+    tabular_exec_threads: int = 2
+    tabular_exec_timeout_seconds: float = 10.0
+    tabular_exec_max_rows: int = 1000
+    tabular_exec_concurrency: int = 4
+    # Local Parquet cache on each chat_api worker, keyed tenant/file/version.
+    tabular_cache_dir: str = "/var/cache/ner/tabular"
+    tabular_cache_max_bytes: int = 2 * 1024 * 1024 * 1024
+    # Planner tool-description budget; overflow lists relation names only.
+    tabular_description_token_budget: int = 2000
+    tabular_sql_max_attempts: int = 3
 
     entity_resolution_enabled: bool = True
     entity_resolution_max_candidates: int = 5

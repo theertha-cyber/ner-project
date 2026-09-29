@@ -96,4 +96,22 @@ describe("CitationCard", () => {
     );
     expect(screen.getByText("Unknown document")).toBeInTheDocument();
   });
+
+  it("renders a tabular_file citation by file name, version and columns", () => {
+    render(
+      <CitationCard
+        citation={{
+          source_type: "tabular_file",
+          file_name: "sales_q3.csv",
+          file_version: 1,
+          columns: ["amount", "region", "status"],
+          relevance_score: 1,
+        }}
+      />
+    );
+    expect(screen.getByText("sales_q3.csv")).toBeInTheDocument();
+    expect(screen.getByText("Version 1")).toBeInTheDocument();
+    expect(screen.getByText("Columns: amount, region, status")).toBeInTheDocument();
+    expect(screen.queryByText("Unknown document")).not.toBeInTheDocument();
+  });
 });

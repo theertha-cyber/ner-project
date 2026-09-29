@@ -51,7 +51,9 @@ class StructuredRetrievalTool:
                 "description": (
                     "Query extent. Omit or use {'type': 'tenant'} to query the whole "
                     "tenant's entities. Use {'type': 'document', 'document_ids': [...]} "
-                    "to restrict the query to specific, already-identified documents."
+                    "to restrict the query to specific, already-identified documents; each "
+                    "entry may be a document's filename exactly as the conversation shows it. "
+                    "Never guess one."
                 ),
             },
         },

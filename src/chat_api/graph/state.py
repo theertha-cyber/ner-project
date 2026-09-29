@@ -50,6 +50,9 @@ class ChatState(TypedDict, total=False):
     resolved_document_ids: list[str]
     pending_clarification: dict | None
     original_message: str | None
+    # True when a per-subject plan entry named nobody resolution matched and was left
+    # unscoped, so retrieval_execution skips its resolved-set row filter.
+    resolution_left_entries_unscoped: bool
 
     # stage outputs
     sql_results: list[dict] | None
@@ -68,6 +71,16 @@ class ChatState(TypedDict, total=False):
     external_relations: list[str] | None
     external_truncated: bool
     external_failure_reason: str | None
+
+    # Uploaded tabular file evidence (ADR-018), its own channel for the same
+    # reason: rows reach the generation prompt only. `tabular_files` and
+    # `tabular_columns` are citation material — names, versions, sheets — never
+    # row or parameter values.
+    tabular_results: list[dict] | None
+    tabular_files: list[dict] | None
+    tabular_columns: list[str] | None
+    tabular_truncated: bool
+    tabular_failure_reason: str | None
 
     # The turn's retrieval outcome, one entry per plan entry. Replaces `sql_error` and
     # `retrieval_error`, which were written here every turn and read nowhere: they

@@ -1202,6 +1202,7 @@ class SQLGenerator:
         grounding: SurfaceGrounding | None = None,
         surface: QuerySurface | None = None,
         previous_attempts: list[SQLAttempt] | None = None,
+        subject_scoped: bool = False,
     ) -> str:
         # The static tables, minus the EAV entity store. `document_entities` stays whitelisted
         # and granted — the grounding and defect probes read it — but it is not shown here:
@@ -1220,10 +1221,32 @@ class SQLGenerator:
             f"- {identifier} ({', '.join(CHILD_VALUE_COLUMNS)}) — {definition.name}"
             for identifier, definition in sorted((surface.child_tables if surface else {}).items())
         ) or "- (this tenant has no multi-valued entity tables)"
-        context = f"\nConversation context:\n{conversation_context}" if conversation_context else ""
+        # Labelled as reference-resolution material only. Unlabelled, the history outweighed
+        # the question: asked "What is Arjun's email?" straight after "What is Arjun's
+        # degree?", the generator re-answered the degree question.
+        context = (
+            "\nEarlier conversation — use it ONLY to work out who or what a pronoun or "
+            "reference in the question below points to. Those earlier questions are already "
+            "answered; do NOT answer them again. Your query answers the Question at the end "
+            f"and nothing else:\n{conversation_context}\n"
+        ) if conversation_context else ""
         surface_desc = self._render_surface(grounding)
         relation_list = self._render_relation_list(surface)
         feedback = _render_attempt_feedback(previous_attempts or [], surface)
+        # Entity resolution has already mapped the people this question names onto their
+        # documents, and the statement is narrowed to exactly those documents after
+        # validation. A name filter on top of that can only lose rows: the question's
+        # spelling ("Pon Selvakumar", "Hannah") is almost never the stored one
+        # ("Pon Selvakumar.A", "Hannah Susan Varughese Pichanattu"), so `s.name = '…'`
+        # returned zero rows for a subject that was already correctly identified.
+        scope_desc = (
+            "\n## The subject is already identified\n\n"
+            "The person or subject this question names has already been matched to its "
+            "document(s), and your statement will be restricted to exactly those documents "
+            "automatically. Do NOT filter on the subject's name, email or filename — write the "
+            "query as though the question said \"this subject\" (or \"these subjects\"), and "
+            "still project the name column so each row says who it is about.\n"
+        ) if subject_scoped else ""
 
         prompt = f"""You are a SQL query generator for a multi-tenant NER platform.
 Generate a SELECT SQL query answering the natural language question below.
@@ -1304,13 +1327,29 @@ above:
   `document_id` ranks subjects; grouping by `normalized_value` ranks the values themselves —
   similar wording, opposite questions. Every extra column in the GROUP BY changes what one row
   means, so a superlative about people ("who lists the most languages") splits into one row per
-  person *per language* if the value is grouped too, and no longer answers the question. A
-  singular superlative wants a single row.
+  person *per language* if the value is grouped too, and no longer answers the question. For a
+  superlative ("the most common", "who has the most"), return the ranking itself — ordered
+  `DESC` with its count and `LIMIT 10` — never `LIMIT 1`: a single row hides ties, and two
+  values sharing the top count is exactly what the answer needs to say.
 - **Match values at the right precision.** Short canonical values (skills, languages, tools,
   emails) compare cleanly with `=` against a lowercased literal on `normalized_value`. Narrative
   values (degrees, addresses, job titles) are almost never stored as the bare term — a degree is
   extracted as "B.Tech in Computer Science and Engineering", an address as a whole postal line —
   so `=` finds nothing and a substring match (`ILIKE '%…%'`) is what actually retrieves them.
+  **Names are narrative values too** — of people, companies, parties, patients. The name as
+  the user types it ("Jane Doe", "Acme") is rarely the stored one, which carries middle names,
+  initials, suffixes and legal forms ("Jane A. Doe", "Acme Corporation Pvt. Ltd."). Never
+  compare a name with `=`; match its most distinctive word with `ILIKE '%…%'`.
+- **Never join two `e_…` tables to each other in one row set.** Each is many-valued, so joining
+  two multiplies them: 10 tools × 12 companies is 120 rows of meaningless pairs, the LIMIT cuts
+  it off, and whole facts go missing. To show several kinds of fact per subject ("summarise X",
+  "X's facts of kind A and B"), select from `subject` and aggregate each kind in its own scalar
+  subquery, e.g. `(SELECT string_agg(DISTINCT x.value, ', ') FROM <that e_… table> x WHERE
+  x.document_id = s.document_id) AS <fact>`. (An `EXISTS` test on a second table is fine.)
+- **Never CAST a text column to a number.** Text columns hold the words as written — "2+ years",
+  "approx. 40 kg", "Net 30 days" — and `CAST(col AS INTEGER)` aborts the whole statement on the first
+  one. To rank or compare such a column numerically, extract the digits:
+  `NULLIF(substring(col FROM '[0-9]+'), '')::numeric`, and order with `NULLS LAST`.
 - **Prefer the typed columns for anything quantitative.** `value_number` / `value_date`, and the
   typed `subject` columns above, hold parsed numeric and date values (with `CURRENT_DATE`
   available for "today"); comparing or ordering the raw text instead gives wrong results. They
@@ -1352,7 +1391,7 @@ Always include a LIMIT clause. Unless the question itself asks for a specific nu
 than a small number that would silently truncate the result.
 Never use DDL, INSERT, UPDATE, DELETE, DROP, ALTER, or GRANT.
 Never use UNION, or JOINs on relations that are not listed here.
-{surface_desc}
+{scope_desc}{surface_desc}
 Other tables available (document metadata, not entity facts):
 {tables_desc}
 {context}{feedback}
@@ -1449,20 +1488,32 @@ Return ONLY the SQL query, no explanations:"""
         import asyncio
         role = self._execution_role()
         limit = _statement_limit(sql)
+        # Only a default-sized (or larger) limit can truncate. A smaller one is the question's
+        # own "top 3" / "the most" and the rows it keeps ARE the answer: probing it reported
+        # "most common language" (LIMIT 1) as "1 of 13 rows — PARTIAL", and the answer model
+        # then refused to name the winner.
+        if limit is not None and limit < DEFAULT_LIMIT:
+            limit = None
         probe_sql = _with_limit(sql, limit + 1) if (completeness_sink is not None and limit) else sql
         execution_started = time.monotonic()
 
         try:
             async with asyncio.timeout(10):
                 _metrics().assert_tenant_schema(schema, "chat_api.sql_generator.execute_sql")
+                # BEGIN first, then SET LOCAL. A failed attempt ends with a raw ROLLBACK
+                # (`_rollback_quietly`), which SQLAlchemy does not see, so on the retry no
+                # transaction is open when this runs. SET LOCAL outside a transaction block
+                # is silently discarded by PostgreSQL, so with the old order every retry ran
+                # against the default search_path and failed with `relation … does
+                # not exist` — the recovery loop could never recover. With BEGIN first, the
+                # SET LOCAL always lands inside a transaction (on the first attempt the BEGIN
+                # is a harmless "already in progress" notice).
+                await session.execute(text("BEGIN READ ONLY"))
                 # LOCAL, because the COMMIT below would otherwise make this permanent on
                 # the connection. A `tenant_owned` tenant's engine is pooled, so the next
                 # query on it -- semantic retrieval -- inherited a tenant-only path that
                 # cannot see pgvector's operators in `public`.
-                result = await session.execute(
-                    text(f"SET LOCAL search_path TO {schema}")
-                )
-                await session.execute(text("BEGIN READ ONLY"))
+                await session.execute(text(f"SET LOCAL search_path TO {schema}"))
                 # SET LOCAL scopes the role to this transaction, so the privilege
                 # boundary and the read-only boundary end together and neither can
                 # leak back onto the pooled connection.
@@ -1693,6 +1744,66 @@ Return ONLY the SQL query, no explanations:"""
             return QuerySurface(table_names=set())
         return resolved.get(schema) or QuerySurface(table_names=set())
 
+    @staticmethod
+    def _subject_name_column(surface: QuerySurface | None) -> str | None:
+        """The `subject` column holding each subject's name, when the tenant has one — the
+        single-valued definition whose type is one of the configured person types."""
+        if surface is None:
+            return None
+        person_types = {
+            t.strip().upper() for t in settings.entity_resolution_person_types.split(",") if t.strip()
+        }
+        for column in surface.subject_columns:
+            if (column.definition.name or "").upper() in person_types:
+                return column.name
+        return None
+
+    async def _attach_subject_names(
+        self, rows: list[dict], session: AsyncSession, schema: str, surface: QuerySurface | None,
+    ) -> list[dict]:
+        """Adds `subject_name` to every row that carries a `document_id` but not the name.
+
+        The generator is told to project the name and routinely does not: "who knows Python"
+        came back as five `(document_id, filename, language)` rows, and for files named
+        "Resume.pdf" / "Resume 4.pdf" the answer model had no way to say who they were — it
+        dropped those two people and borrowed a third name from an unrelated passage. Naming
+        the subject is not a judgement the model should get to skip, so it is done here,
+        deterministically, from the same `subject` row the statement already read.
+
+        Best-effort: a failed lookup returns the rows unchanged. Only ids already present in
+        the result are looked up, so this can never widen what the statement returned."""
+        name_column = self._subject_name_column(surface)
+        if not rows or name_column is None:
+            return rows
+        needing = {
+            str(row["document_id"]) for row in rows
+            if isinstance(row, dict) and row.get("document_id") is not None
+            and name_column not in row and "subject_name" not in row
+        }
+        if not needing:
+            return rows
+        try:
+            result = await session.execute(
+                text(
+                    f"SELECT document_id, {name_column} AS subject_name FROM {schema}.{SUBJECT_TABLE_NAME} "
+                    "WHERE document_id = ANY(:ids)"
+                ),
+                {"ids": sorted(needing)},
+            )
+            names = {str(r.document_id): r.subject_name for r in result.fetchall() if r.subject_name}
+        except Exception as e:
+            logger.warning("subject_name_attach_failed", extra={"error_class": type(e).__name__})
+            await self._rollback_quietly(session)
+            return rows
+        enriched = []
+        for row in rows:
+            name = names.get(str(row.get("document_id"))) if isinstance(row, dict) else None
+            if name and name_column not in row and "subject_name" not in row:
+                # Name first, so it leads the rendered row the answer model reads.
+                row = {"subject_name": name, **row}
+            enriched.append(row)
+        return enriched
+
     async def _fetch_surface_grounding(
         self, session: AsyncSession, schema: str, surface: QuerySurface
     ) -> SurfaceGrounding:
@@ -1915,6 +2026,7 @@ Return ONLY the SQL query, no explanations:"""
         try:
             sql = await self.generate_sql(
                 natural_language_query, conversation_context, grounding, surface, previous_attempts,
+                subject_scoped=bool(document_ids),
             )
         except Exception as e:
             return record(SQLAttemptOutcome.GENERATION_ERROR, error=_sanitize_error(e)), None
@@ -2143,6 +2255,8 @@ Return ONLY the SQL query, no explanations:"""
                     repair_depth=attempt.attempt - 1,
                     outcome="succeeded",
                 )
+                if rows:
+                    rows = await self._attach_subject_names(rows, session, schema, surface)
                 return rows
 
         _metrics().record_sql_repair_depth(max(0, len(attempts) - 1))

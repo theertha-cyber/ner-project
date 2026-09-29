@@ -17,6 +17,9 @@ STRUCTURED_CAPABILITY_NAME = "structured_retrieval"
 # Offered only per turn, and only to a tenant with an executable external
 # capability (ADR-016); never part of `build_default_registry()`.
 EXTERNAL_CAPABILITY_NAME = "external_database"
+# Offered only per turn, and only to a tenant with at least one `ready` uploaded
+# file (ADR-018); never part of `build_default_registry()`.
+TABULAR_CAPABILITY_NAME = "tabular_files"
 
 ORCHESTRATION_SYSTEM_PROMPT = (
     "You are a retrieval orchestrator for a tenant knowledge base assistant. Given the "
@@ -63,9 +66,22 @@ ORCHESTRATION_SYSTEM_PROMPT = (
     "and retrieves against the whole tenant, answering a different question than the one "
     "asked; 'which of Mahalakshmi S, Hannah, or Harshith Akshayraj R.S has AI or machine "
     "learning experience' carries the referent and retrieves the right evidence. Keep "
-    "every subject the user is asking about — do not silently narrow the set. If the "
+    "every subject the user is asking about — do not silently narrow the set. An ordinal "
+    "reference ('the first two', 'the last one', 'the second candidate') counts positions "
+    "in the MOST RECENT list the assistant gave, not an earlier one. If the "
     "history does not actually pin the reference down, pass the question through "
     "unresolved rather than inventing subjects.\n\n"
+    "**Keep the question's intent intact.** Resolving a reference is the only rewriting "
+    "you may do. Every word that decides what the answer IS — 'how many', 'most common', "
+    "'top 3', 'rank', 'both', 'not', 'doesn't', 'without', 'compare' — must survive into "
+    "the `query` argument. 'What is the most common programming language' rewritten as "
+    "'what programming languages do candidates know' asks the capability for a list and "
+    "leaves the counting to nobody; it comes back wrong. When in doubt, pass the user's own "
+    "wording through with only its references resolved.\n\n"
+    "**Plan for the CURRENT question only.** Earlier turns were already answered; never "
+    "re-issue one of their questions. For a terse follow-up ('and his email?', 'what about "
+    "Acme?'), write the one question it actually asks now ('What is Jane Doe's email?') "
+    "and nothing else.\n\n"
     "Do not attempt to answer the question yourself — only select capabilities to invoke. "
     "You will not see the results of these calls; make your best judgement about what "
     "evidence is needed up front."
@@ -227,6 +243,15 @@ class OrchestrationResult:
     external_relations: list[str] = field(default_factory=list)
     external_truncated: bool = False
     external_failure_reason: str | None = None
+    # Uploaded tabular file evidence, likewise its own channel: rows reach the
+    # generation prompt only; `tabular_files` carries the citation material
+    # (display name, served version, sheet, relation) and `tabular_columns` the
+    # column names used — never a row or parameter value.
+    tabular_results: list[dict] = field(default_factory=list)
+    tabular_files: list[dict] = field(default_factory=list)
+    tabular_columns: list[str] = field(default_factory=list)
+    tabular_truncated: bool = False
+    tabular_failure_reason: str | None = None
 
     # Views onto `status`, not a second channel: there is one stored value and these
     # read and write it. Kept because callers and the eval runner speak in these terms.
@@ -481,10 +506,29 @@ def _accumulate(
     external_relations: set[str] = set()
     external_truncated = False
     external_failure_reason: str | None = None
+    tabular_rows: list[dict] = []
+    tabular_files: list[dict] = []
+    tabular_columns: set[str] = set()
+    tabular_truncated = False
+    tabular_failure_reason: str | None = None
 
     for entry, result in entries_and_results:
         statuses.append(_entry_status(entry, result))
         if result is None:
+            continue
+        if entry.capability_name == TABULAR_CAPABILITY_NAME:
+            if result.error:
+                if tabular_failure_reason is None:
+                    tabular_failure_reason = result.error
+            else:
+                tabular_rows.extend(result.results)
+                tabular_truncated = tabular_truncated or bool((result.result_completeness or {}).get("truncated"))
+                for diagnostic in result.diagnostics:
+                    if isinstance(diagnostic, dict):
+                        tabular_columns.update(diagnostic.get("columns") or [])
+                        for ref in diagnostic.get("files") or []:
+                            if ref not in tabular_files:
+                                tabular_files.append(ref)
             continue
         if entry.capability_name == EXTERNAL_CAPABILITY_NAME:
             if result.error:
@@ -521,12 +565,19 @@ def _accumulate(
     # merge cap. A retrieval that returns fifty chunks of which two are kept is doing
     # different work from one that returns three and keeps three, and a duration
     # histogram cannot tell them apart.
-    _record_hit_rates(entries_and_results, kept, sql_results, external_rows)
+    _record_hit_rates(entries_and_results, kept, sql_results, external_rows, tabular_rows)
     external_evidence = {
         "results": external_rows,
         "relations": sorted(external_relations),
         "truncated": external_truncated,
         "failure_reason": external_failure_reason,
+        "tabular": {
+            "results": tabular_rows,
+            "files": tabular_files,
+            "columns": sorted(tabular_columns),
+            "truncated": tabular_truncated,
+            "failure_reason": tabular_failure_reason,
+        },
     }
     return kept, sql_results, statuses, completeness, external_evidence
 
@@ -536,6 +587,7 @@ def _record_hit_rates(
     kept_chunks: list[RetrievalResult],
     sql_results: list[dict],
     external_rows: list[dict] | None = None,
+    tabular_rows: list[dict] | None = None,
 ) -> None:
     returned: dict[str, int] = {}
     for entry, result in entries_and_results:
@@ -547,6 +599,7 @@ def _record_hit_rates(
         SEMANTIC_CAPABILITY_NAME: len(kept_chunks),
         STRUCTURED_CAPABILITY_NAME: len(sql_results),
         EXTERNAL_CAPABILITY_NAME: len(external_rows or []),
+        TABULAR_CAPABILITY_NAME: len(tabular_rows or []),
     }
     for capability, total in returned.items():
         if total:
@@ -574,6 +627,46 @@ def _recovery_is_warranted(entries: list[PlanEntry], statuses: list[CapabilitySt
     if not structured:
         return False
     return all(s.outcome in (OUTCOME_EMPTY, OUTCOME_FAILED) for s in structured)
+
+
+def _partial_recovery_targets(entries: list[PlanEntry], statuses: list[CapabilityStatus]) -> list[PlanEntry]:
+    """The structured entries that found nothing while a sibling structured entry did.
+
+    "Compare Hannah and Harshith" plans one structured entry per person. Harshith's name
+    was never extracted, so his entry is empty while Hannah's returns rows; the all-empty
+    rule above never fired, and the answer said there was only one person to compare. The
+    same single recovery invocation covers this case, aimed at the empty entries alone.
+    `statuses` is in plan order, one per entry, as `_accumulate` builds it."""
+    if any(e.capability_name == SEMANTIC_CAPABILITY_NAME for e in entries):
+        return []
+    pairs = [
+        (e, s) for e, s in zip(entries, statuses)
+        if e.capability_name == STRUCTURED_CAPABILITY_NAME
+    ]
+    if not any(s.outcome == OUTCOME_OK for _, s in pairs):
+        return []
+    return [e for e, s in pairs if s.outcome in (OUTCOME_EMPTY, OUTCOME_FAILED)]
+
+
+def _shared_document_scope(entries: list[PlanEntry]) -> dict | None:
+    """The document scope every structured entry agrees on, or None.
+
+    Only a scope all of them share is inherited: a recovery for a plan whose entries were
+    scoped differently (or not at all) has no single extent it could honestly claim."""
+    scopes = []
+    for entry in entries:
+        if entry.capability_name != STRUCTURED_CAPABILITY_NAME or entry.rejected:
+            continue
+        scope = entry.arguments.get("scope")
+        if not isinstance(scope, dict) or scope.get("type") != "document" or not scope.get("document_ids"):
+            return None
+        scopes.append(scope)
+    if not scopes:
+        return None
+    first_ids = sorted(scopes[0]["document_ids"])
+    if any(sorted(s["document_ids"]) != first_ids for s in scopes[1:]):
+        return None
+    return {"type": "document", "document_ids": first_ids}
 
 
 async def execute_plan(
@@ -666,9 +759,24 @@ async def execute_plan(
     # cycle: exactly one `semantic_retrieval` call on the turn's original question,
     # made at most once, and only when the plan asked for no semantic evidence at all
     # and the structured evidence it did ask for came back with nothing.
-    if recovery_query and _recovery_is_warranted(entries, statuses):
+    partial_targets = _partial_recovery_targets(entries, statuses) if recovery_query else []
+    if recovery_query and (partial_targets or _recovery_is_warranted(entries, statuses)):
+        # All-empty: the turn's own question. Partial: only what the empty entries asked,
+        # so the passages retrieved are about the subjects the rows are missing.
+        recovery_arguments = {
+            "query": " ; ".join(e.arguments.get("query", "") for e in partial_targets) or recovery_query
+            if partial_targets else recovery_query
+        }
+        # Inherit the structured entries' document scope. When entity resolution has
+        # pinned the question to one person, the structured entry carries that scope;
+        # a recovery on the bare question ignored it and searched the whole tenant, so
+        # "what is Hannah's phone number" came back with other candidates' passages
+        # mixed in — and cited them.
+        recovery_scope = _shared_document_scope(partial_targets or entries)
+        if recovery_scope is not None:
+            recovery_arguments["scope"] = recovery_scope
         recovery_entry = PlanEntry(
-            capability_name=SEMANTIC_CAPABILITY_NAME, arguments={"query": recovery_query},
+            capability_name=SEMANTIC_CAPABILITY_NAME, arguments=recovery_arguments,
         )
         used_invocations = sum(1 for s in statuses if s.outcome in ATTEMPTED_OUTCOMES)
         remaining_seconds = budget.deadline - time.monotonic()
@@ -713,6 +821,11 @@ async def execute_plan(
         external_relations=external_evidence["relations"],
         external_truncated=external_evidence["truncated"],
         external_failure_reason=external_evidence["failure_reason"],
+        tabular_results=external_evidence["tabular"]["results"],
+        tabular_files=external_evidence["tabular"]["files"],
+        tabular_columns=external_evidence["tabular"]["columns"],
+        tabular_truncated=external_evidence["tabular"]["truncated"],
+        tabular_failure_reason=external_evidence["tabular"]["failure_reason"],
     )
 
 

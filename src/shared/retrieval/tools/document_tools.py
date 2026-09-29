@@ -79,7 +79,9 @@ class SemanticRetrievalTool:
                 "description": (
                     "Search extent. Omit or use {'type': 'tenant'} to search the whole "
                     "tenant corpus. Use {'type': 'document', 'document_ids': [...]} to "
-                    "restrict the search to specific, already-identified documents."
+                    "restrict the search to specific, already-identified documents; each "
+                    "entry may be a document's filename exactly as the conversation shows it "
+                    "(e.g. 'Resume - Hannah.pdf'). Never guess one."
                 ),
             },
         },

@@ -35,8 +35,13 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const mockAuthFetch = vi.fn();
+// The "Uploaded files" section has its own tests; here it always sees an empty list
+// so these connection-collection assertions (and their call counts) are unaffected.
 vi.mock("@/lib/auth-fetch", () => ({
-  authFetch: (...args: unknown[]) => mockAuthFetch(...args),
+  authFetch: (...args: unknown[]) =>
+    String(args[0]).startsWith("/api/v1/data-sources/files")
+      ? Promise.resolve(new Response(JSON.stringify({ enabled: true, files: [] }), { status: 200 }))
+      : mockAuthFetch(...args),
 }));
 
 function Wrapper({ children }: { children: React.ReactNode }) {

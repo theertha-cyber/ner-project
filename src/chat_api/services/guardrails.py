@@ -61,6 +61,9 @@ In-domain examples (note: the subject matter varies by tenant — all of these a
 - "Find me candidates who graduated in 2026."
 - "Who interned at Acme Corp?" / "Who worked at Globex?" (a bare "who" question naming a company, school or skill is a lookup over the tenant's own documents, even when the name is unfamiliar)
 - "Is Arjun a good AI engineer?" (a lookup/judgement over this tenant's resume data)
+- "Tell me about Priya." / "Who is Jane Doe?" / "What do we have on Acme Traders?" (a bare name \
+of a person or organisation almost always refers to a subject of the tenant's own documents, not \
+a public figure)
 - "Find me candidates for a Backend Engineer role, preferably at an MNC."
 - "Which invoices are overdue?"
 - "List patients diagnosed with hypertension."
@@ -120,7 +123,8 @@ class GuardrailService:
         return None
 
     async def _classify_once(self, message: str, history: list[dict], llm_client, llm_model: str,
-                             attachment_filenames: list[str] | None = None) -> bool:
+                             attachment_filenames: list[str] | None = None,
+                             tabular_sources: list[str] | None = None) -> bool:
         """One classifier call. Returns True (in-domain) on any error, so a provider
         failure never manifests as a decline."""
         system_prompt = DOMAIN_CLASSIFIER_SYSTEM_PROMPT
@@ -134,6 +138,19 @@ class GuardrailService:
                 + ", ".join(attachment_filenames)
                 + ". A question about \"this\"/\"the\" document, role, file or its contents "
                 "refers to one of them and is therefore in_domain."
+            )
+        if tabular_sources:
+            # Uploaded tabular files (ADR-018): a question like "total closed revenue in
+            # EMEA?" names no document or entity, so without this the classifier reads it
+            # as general knowledge and declines before the planner can offer the tool.
+            # Only served contract metadata goes in (name, description, column names),
+            # never a row value.
+            system_prompt += (
+                "\n\nThe tenant has also uploaded spreadsheets that the platform queries for "
+                "exact totals, counts, filters and rankings: "
+                + "; ".join(tabular_sources)
+                + ". A question about what these tables cover, their columns or their values "
+                "is a question about the tenant's own data and is therefore in_domain."
             )
         messages = [{"role": "system", "content": system_prompt}]
         for turn in history:
@@ -162,7 +179,8 @@ class GuardrailService:
             return True
 
     async def classify_domain(self, message: str, conversation_context: list[dict] | None, llm_client, llm_model: str,
-                              attachment_filenames: list[str] | None = None) -> bool:
+                              attachment_filenames: list[str] | None = None,
+                              tabular_sources: list[str] | None = None) -> bool:
         """Returns True if the query is in-domain. Fails open (treats the query as
         in-domain) on any classifier error, since tenant isolation is enforced
         structurally elsewhere and an unsourced answer is already refused downstream —
@@ -182,15 +200,15 @@ class GuardrailService:
         resolves to admit. Only unanimous out-of-domain declines."""
         history = recent_messages(conversation_context)
         if not history:
-            in_domain = await self._classify_once(message, [], llm_client, llm_model, attachment_filenames)
+            in_domain = await self._classify_once(message, [], llm_client, llm_model, attachment_filenames, tabular_sources)
             _metrics().record_guardrail_decision(
                 RULE_DOMAIN, "admitted" if in_domain else "blocked"
             )
             return in_domain
 
         with_history, without_history = await asyncio.gather(
-            self._classify_once(message, history, llm_client, llm_model, attachment_filenames),
-            self._classify_once(message, [], llm_client, llm_model, attachment_filenames),
+            self._classify_once(message, history, llm_client, llm_model, attachment_filenames, tabular_sources),
+            self._classify_once(message, [], llm_client, llm_model, attachment_filenames, tabular_sources),
         )
         if with_history != without_history:
             logger.info(

@@ -341,3 +341,168 @@ export function buildPostgresPayload(values: {
     secret_references: { password_ref: values.password_ref.trim() },
   };
 }
+
+/* ------------------------------------------------------------------------
+ * Uploaded tabular files (ADR-018, ADR-019).
+ *
+ * Safe shapes only: file display names, versions, finite statuses and reason
+ * codes, column identifiers/labels/types, admin-written descriptions, and the
+ * profile/review/load-report content the administrator reviews before publish.
+ * -------------------------------------------------------------------------*/
+
+export const TABULAR_STATUS_LABELS: Record<string, string> = {
+  profiling: "Profiling",
+  needs_review: "Needs review",
+  publishing: "Publishing",
+  ready: "Ready",
+  failed: "Failed",
+};
+
+export const TABULAR_ACCEPTED_EXTENSIONS = [".csv", ".xlsx"] as const;
+export const TABULAR_MAX_FILE_MB = 100;
+export const TABULAR_MAX_FILES = 20;
+
+/** Fixed, safe messages per finite upload/publish code. Nothing server-supplied is quoted. */
+export const TABULAR_ERROR_MESSAGES: Record<string, string> = {
+  UNSUPPORTED_FILE_TYPE:
+    "Only .csv and .xlsx files can be uploaded. .xls and macro-enabled .xlsm workbooks are not supported.",
+  FILE_TOO_LARGE: `Files are limited to ${TABULAR_MAX_FILE_MB} MB.`,
+  FILE_LIMIT_REACHED: `Your tenant already has ${TABULAR_MAX_FILES} uploaded files. Delete one before uploading another.`,
+  TABULAR_FILES_DISABLED: "Uploaded files are turned off for this deployment.",
+  INGEST_QUEUE_UNAVAILABLE: "The processing queue is temporarily unavailable. Try again shortly.",
+  INTERNAL_ERROR: "The request could not be completed. Try again shortly.",
+};
+
+export const TABULAR_FAILURE_LABELS: Record<string, string> = {
+  ROW_LIMIT_EXCEEDED: "The file has more than 1,000,000 rows.",
+  UNSUPPORTED_SHEET_LAYOUT: "The sheet has merged or missing header cells.",
+  UNPARSEABLE_FILE: "The file could not be read.",
+  EMPTY_FILE: "The file is empty.",
+  SHEET_NOT_FOUND: "The selected sheet does not exist.",
+  NOT_PUBLISHABLE: "The review was incomplete when publishing started.",
+  INGEST_QUEUE_UNAVAILABLE: "The processing queue was unavailable.",
+  INTERNAL_ERROR: "Processing failed.",
+};
+
+export const TABULAR_BLOCKER_MESSAGES: Record<string, (column?: string) => string> = {
+  DATE_FORMAT_REQUIRED: (column) => `Choose a date format for column “${column}”.`,
+  DESCRIPTION_REQUIRED: () => "Add a table description.",
+  DUPLICATE_IDENTIFIER: (column) => `Two included columns are named “${column}”.`,
+  NO_INCLUDED_COLUMNS: () => "Include at least one column.",
+};
+
+export const TABULAR_COLUMN_TYPES = ["text", "boolean", "bigint", "numeric", "date", "timestamp"] as const;
+export type TabularColumnType = (typeof TABULAR_COLUMN_TYPES)[number];
+export const TABULAR_DATE_FORMATS = ["YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"] as const;
+
+export interface TabularVersionRef {
+  version: number;
+  status: string;
+  failure_reason?: string | null;
+  sheet: string | null;
+  published_at?: string | null;
+}
+
+export interface TabularFile {
+  id: string;
+  display_name: string;
+  status: string;
+  served_version: number | null;
+  served: TabularVersionRef | null;
+  pending: TabularVersionRef | null;
+  row_count: number | null;
+  updated_at: string;
+}
+
+export interface TabularFileList {
+  enabled: boolean;
+  files: TabularFile[];
+}
+
+export interface TabularWarning {
+  code: string;
+  candidate?: string;
+  count?: number;
+  rows?: number[];
+}
+
+export interface TabularProfileColumn {
+  index: number;
+  identifier: string;
+  label: string;
+  type: TabularColumnType;
+  date_format: string | null;
+  date_format_required: boolean;
+  null_count: number;
+  distinct_count: number;
+  warnings: TabularWarning[];
+}
+
+export interface TabularReviewColumn {
+  index: number;
+  label: string;
+  identifier: string;
+  type: TabularColumnType;
+  date_format: string | null;
+  excluded: boolean;
+  description: string;
+  value_hints: { value: string; approved: boolean }[];
+}
+
+export interface TabularReview {
+  table: { relation: string; description: string; null_tokens: string[] };
+  columns: TabularReviewColumn[];
+}
+
+export interface TabularLoadReport {
+  rows_read: number;
+  rows_to_load: number;
+  rows_rejected: number;
+  rejects: { row: number; reason: string; column: string }[];
+  preview: Record<string, unknown>[];
+}
+
+export interface TabularSchemaDiff {
+  added: string[];
+  removed: string[];
+  retyped: { column: string; from: string; to: string }[];
+  renamed: { from: string; to: string }[];
+}
+
+export interface TabularProfileResponse {
+  file: TabularFile;
+  version: number;
+  status: string;
+  failure_reason: string | null;
+  source_filename: string;
+  sheet: string | null;
+  profile: { relation: string; row_count: number; columns: TabularProfileColumn[] } | null;
+  review: TabularReview | null;
+  load_report: TabularLoadReport | null;
+  blockers: { code: string; column?: string }[];
+  schema_diff: TabularSchemaDiff | null;
+}
+
+export interface TabularColumnEdit {
+  index: number;
+  identifier?: string;
+  type?: TabularColumnType;
+  date_format?: string | null;
+  excluded?: boolean;
+  description?: string;
+  value_hints?: { value: string; approved: boolean }[];
+}
+
+export interface TabularReviewEdit {
+  table?: { description?: string; null_tokens?: string[] };
+  columns?: TabularColumnEdit[];
+}
+
+export function tabularExtensionAllowed(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return TABULAR_ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+export function tabularErrorMessage(code: string): string {
+  return TABULAR_ERROR_MESSAGES[code] ?? TABULAR_ERROR_MESSAGES.INTERNAL_ERROR;
+}

@@ -128,7 +128,7 @@ def _make_orchestrator(query_vector):
             return None
 
         async def classify_domain(self, message, conversation_context, llm_client,
-                                  llm_model, attachment_filenames=None):
+                                  llm_model, attachment_filenames=None, tabular_sources=None):
             return True
 
         def enforce_sources(self, reply, sources, retrieval_status=None):
