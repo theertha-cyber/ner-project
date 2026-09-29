@@ -92,6 +92,30 @@ export function EntityTypesPage() {
         </button>
       </div>
 
+      {/* Sensitivity explainer — a reviewer approving an LLM-suggested type, or defining one by
+       * hand, only sees the Open/Pattern/Local only picker at the moment of creation. Without
+       * this line, someone who never happens to open that form has no way to discover the
+       * feature exists at all: every card's badge (below) reads as just a label unless you
+       * already know what it controls. */}
+      <div
+        className="flex items-start gap-2 rounded-lg border border-border px-3 py-2.5"
+        style={{ background: "var(--surface-2)" }}
+      >
+        <span aria-hidden="true" className="text-sm leading-5" style={{ color: "var(--ink-3)" }}>
+          ⓘ
+        </span>
+        <p className="text-xs" style={{ color: "var(--ink-2)" }}>
+          Every entity type has a <span className="font-medium">Sensitivity</span> setting that
+          controls whether its values may be sent to the external LLM during pre-labeling — shown
+          as the badge on each card below. Change it via that card&apos;s Edit button, or set it
+          up front when approving a suggested type on the Schema Proposal screen.{" "}
+          <span className="font-medium">Open</span> may go to the LLM;{" "}
+          <span className="font-medium">Pattern</span> (regex-matchable, e.g. an SSN) and{" "}
+          <span className="font-medium">Local only</span> (free text, e.g. a name) are always
+          detected on your own infrastructure instead.
+        </p>
+      </div>
+
       {/* Loading skeleton */}
       {isLoading && (
         <div

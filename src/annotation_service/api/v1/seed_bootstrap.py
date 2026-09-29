@@ -369,6 +369,7 @@ async def edit_candidate(
 @router.post("/api/v1/schema-proposals/candidates/{candidate_id}/approve", status_code=201)
 async def approve_candidate(
     candidate_id: str,
+    body: dict | None = None,
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
@@ -437,6 +438,11 @@ async def approve_candidate(
             # Recorded so the Entity Types page can show where a type an admin does not
             # recognise came from (entity-type-provenance change).
             "provenance": "suggested",
+            # The reviewer's sensitivity call for this approval. Optional in the request body —
+            # an omitted body (the old contract) still works and falls back to
+            # `EntityService`'s own `open` default, same as before this field existed.
+            "sensitivity": (body or {}).get("sensitivity"),
+            "validation_rule": (body or {}).get("validation_rule"),
         },
     )
 

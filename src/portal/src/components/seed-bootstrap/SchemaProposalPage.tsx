@@ -12,6 +12,7 @@ import {
   useSchemaProposal,
 } from "@/hooks/use-schema-proposal";
 import type { SchemaProposalCandidate } from "@/types/seed-bootstrap";
+import type { EntitySensitivity } from "@/types/entity-types";
 
 const DISPOSITION_LABEL: Record<SchemaProposalCandidate["disposition"], string> = {
   pending: "Awaiting review",
@@ -19,6 +20,15 @@ const DISPOSITION_LABEL: Record<SchemaProposalCandidate["disposition"], string> 
   approved: "Approved",
   rejected: "Rejected",
 };
+
+// Mirrors DefineEntityTypeSlideOver.tsx's SENSITIVITY_OPTIONS — same three-way choice, same
+// wording, so a reviewer sees one consistent vocabulary whether a type is hand-defined or
+// approved from an LLM suggestion.
+const SENSITIVITY_OPTIONS: { value: EntitySensitivity; label: string; hint: string }[] = [
+  { value: "open", label: "Open", hint: "may be sent to the external LLM" },
+  { value: "pattern", label: "Pattern", hint: "fixed shape, e.g. SSN — needs a pattern below" },
+  { value: "local_only", label: "Local only", hint: "free text, e.g. a name — never sent externally" },
+];
 
 /**
  * One candidate, its evidence, and the three things a reviewer can do with it.
@@ -37,7 +47,7 @@ function CandidateCard({
   busy,
 }: {
   candidate: SchemaProposalCandidate;
-  onApprove: () => void;
+  onApprove: (sensitivity: EntitySensitivity, validationRule: string) => void;
   onReject: () => void;
   onEdit: (changes: { name?: string; description?: string }) => void;
   busy: boolean;
@@ -45,8 +55,19 @@ function CandidateCard({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(candidate.name);
   const [description, setDescription] = useState(candidate.description ?? "");
+  const [sensitivity, setSensitivity] = useState<EntitySensitivity>("open");
+  const [validationRule, setValidationRule] = useState("");
+  const [sensitivityError, setSensitivityError] = useState<string | null>(null);
 
   const decided = candidate.disposition === "approved" || candidate.disposition === "rejected";
+
+  function handleApproveClick() {
+    if (sensitivity === "pattern" && !validationRule.trim()) {
+      setSensitivityError("Pattern sensitivity requires a pattern to match against.");
+      return;
+    }
+    onApprove(sensitivity, validationRule);
+  }
 
   return (
     <div
@@ -117,7 +138,56 @@ function CandidateCard({
 
       {candidate.created_entity_type && (
         <div className="font-body text-xs" style={{ color: "var(--good)" }}>
-          Created entity type “{candidate.created_entity_type}”
+          Created entity type &ldquo;{candidate.created_entity_type}&rdquo;
+        </div>
+      )}
+
+      {!decided && (
+        <div>
+          <div className="font-body text-xs mb-1" style={{ color: "var(--ink-3)" }}>
+            Sensitivity — is this safe to send to the external LLM?
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {SENSITIVITY_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                disabled={busy}
+                title={option.hint}
+                onClick={() => {
+                  setSensitivity(option.value);
+                  setSensitivityError(null);
+                }}
+                aria-pressed={sensitivity === option.value}
+                className="rounded px-2 py-1 font-body text-xs border transition-colors disabled:opacity-50"
+                style={
+                  sensitivity === option.value
+                    ? { background: "var(--brand-primary)", color: "white", borderColor: "var(--brand-primary)" }
+                    : { borderColor: "var(--border)", color: "var(--ink-2)" }
+                }
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          {sensitivity === "pattern" && (
+            <input
+              value={validationRule}
+              onChange={(e) => {
+                setValidationRule(e.target.value);
+                setSensitivityError(null);
+              }}
+              placeholder="^\d{3}-\d{2}-\d{4}$"
+              aria-label="Sensitivity pattern (regex)"
+              className="mt-1.5 w-full rounded border border-border px-2 py-1 font-body text-xs"
+              style={{ background: "var(--surface-2)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
+            />
+          )}
+          {sensitivityError && (
+            <p role="alert" className="mt-1 font-body text-xs" style={{ color: "var(--bad)" }}>
+              {sensitivityError}
+            </p>
+          )}
         </div>
       )}
 
@@ -154,7 +224,7 @@ function CandidateCard({
               <button
                 type="button"
                 disabled={busy}
-                onClick={onApprove}
+                onClick={handleApproveClick}
                 className="rounded bg-brand-primary px-3 py-1.5 font-body text-xs font-medium text-white disabled:opacity-50"
               >
                 Approve
@@ -230,14 +300,25 @@ export function SchemaProposalPage() {
     );
   }
 
-  function handleApprove(candidate: SchemaProposalCandidate) {
-    approve.mutate(candidate.id, {
-      onSuccess: () => toast(`${candidate.name} created`),
-      // A duplicate name arrives here as an ordinary error. Surfacing the server's message
-      // rather than a generic one is what tells the reviewer the type already exists, which is
-      // an outcome they can act on, instead of that something went wrong.
-      onError: (err) => toast(err.message, "bad"),
-    });
+  function handleApprove(
+    candidate: SchemaProposalCandidate,
+    sensitivity: EntitySensitivity,
+    validationRule: string,
+  ) {
+    approve.mutate(
+      {
+        candidateId: candidate.id,
+        sensitivity,
+        ...(sensitivity === "pattern" ? { validationRule } : {}),
+      },
+      {
+        onSuccess: () => toast(`${candidate.name} created`),
+        // A duplicate name arrives here as an ordinary error. Surfacing the server's message
+        // rather than a generic one is what tells the reviewer the type already exists, which is
+        // an outcome they can act on, instead of that something went wrong.
+        onError: (err) => toast(err.message, "bad"),
+      },
+    );
   }
 
   function handleReject(candidate: SchemaProposalCandidate) {
@@ -372,7 +453,9 @@ export function SchemaProposalPage() {
                   key={candidate.id}
                   candidate={candidate}
                   busy={busy}
-                  onApprove={() => handleApprove(candidate)}
+                  onApprove={(sensitivity, validationRule) =>
+                    handleApprove(candidate, sensitivity, validationRule)
+                  }
                   onReject={() => handleReject(candidate)}
                   onEdit={(changes) => handleEdit(candidate, changes)}
                 />

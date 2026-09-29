@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type { SchemaProposal } from "@/types/seed-bootstrap";
+import type { EntitySensitivity } from "@/types/entity-types";
 
 /** Backend error envelopes come in two shapes; unwrap both rather than surfacing "[object Object]". */
 async function errorMessage(res: Response, fallback: string): Promise<string> {
@@ -96,14 +97,31 @@ export function useEditCandidate() {
  * list is invalidated alongside the proposal — a candidate approved here shows up on the Entity
  * Types screen, and a stale cache there would make it look as though nothing happened.
  */
+export interface ApproveCandidatePayload {
+  candidateId: string;
+  /** The reviewer's sensitivity call for the entity type this creates — same three-way choice
+   * as the manual Define Entity Type form (open/pattern/local_only). Omitted, it falls back to
+   * `open` server-side, same as before this field existed. */
+  sensitivity?: EntitySensitivity;
+  /** Required when `sensitivity` is `pattern`; ignored otherwise. */
+  validationRule?: string;
+}
+
 export function useApproveCandidate() {
   const queryClient = useQueryClient();
 
-  return useMutation<unknown, Error, string>({
-    mutationFn: async (candidateId) => {
+  return useMutation<unknown, Error, ApproveCandidatePayload>({
+    mutationFn: async ({ candidateId, sensitivity, validationRule }) => {
       const res = await authFetch(
         `/api/v1/schema-proposals/candidates/${candidateId}/approve`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(sensitivity ? { sensitivity } : {}),
+            ...(validationRule ? { validation_rule: validationRule } : {}),
+          }),
+        },
       );
       if (!res.ok) throw new Error(await errorMessage(res, "Approve failed"));
       return res.json();

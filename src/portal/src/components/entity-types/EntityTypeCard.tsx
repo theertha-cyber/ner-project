@@ -96,12 +96,22 @@ export function EntityTypeCard({ entityType, index, onEdit, onToggle }: EntityTy
             Required
           </span>
         )}
-        {entityType.sensitivity && entityType.sensitivity !== "open" && (
+        {entityType.sensitivity && entityType.sensitivity !== "open" ? (
           <span
             className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
             title="Never sent to the external LLM provider — detected locally instead"
           >
             {entityType.sensitivity === "pattern" ? "Pattern" : "Local only"}
+          </span>
+        ) : (
+          // Shown even for the default, rather than only for the two protected values — a type
+          // with no badge at all reads as "sensitivity doesn't apply here" rather than "this one
+          // may be sent externally," which is the one thing this badge exists to make visible.
+          <span
+            className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+            title="May be sent to the external LLM provider during pre-labeling"
+          >
+            Open
           </span>
         )}
         <span
