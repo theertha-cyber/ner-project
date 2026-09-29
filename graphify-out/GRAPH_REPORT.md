@@ -1,120 +1,120 @@
-# Graph Report - ner-project  (2026-09-18)
+# Graph Report - ner-project  (2026-09-26)
 
 ## Corpus Check
-- 2320 files · ~2,356,951 words
+- 2421 files · ~2,482,673 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 27695 nodes · 43419 edges · 1740 communities (1586 shown, 50 thin omitted)
-- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 1272 edges (avg confidence: 0.92)
+- 29586 nodes · 46909 edges · 1810 communities (1650 shown, 56 thin omitted)
+- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 1455 edges (avg confidence: 0.91)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5a298fbe`
+- Built from commit: `e245a8d3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - FakeSession
-- test_tenant_integration_profile.py
-- authFetch
+- integration_profile/service.py
+- react
 - AnnotationPage.tsx
 - extraction.ts
 - entity_eval/runner.py
 - test_annotation_import.py
 - ocr_worker.py
-- session_factory
-- migrate.py
-- sql_generator.py
-- _spec
+- DocumentIngestionService
+- provision_tenant_data_plane
+- apply_uploader_scope
+- EntityDefinitionSpec
 - entity_views.py
-- RetrievalResult
+- _context
 - FakeSession
-- chat.py
+- nav-config.ts
 - BatchAcceptancePage.tsx
-- get_engine
-- react
+- build_nodes
+- data-sources.ts
 - domain_metrics.py
 - _reconcile
 - support.js
-- vitest
-- build_role_statements
+- authFetch
+- resolve_query_surface
 - DenseRetriever
 - AuditService
-- @testing-library/user-event
+- OriginalDocumentViewer.tsx
 - RetrievalConfig
 - context-usage.ts
-- test_chat_api_streaming.py
+- _make_orchestrator
 - ContentStore
 - TestStructuredValueSQLExecution
-- nodes.py
-- test_relational_document_delete.py
+- build_chat_graph
+- visibility_predicate
 - RAGOrchestrator
-- _spec
+- vitest
 - shared/config.py
 - eval/runner.py
-- add_run
+- test_confidence_routing.py
 - _validate_on_surface
-- gateway/main.py
+- get_engine
 - test_chunk_metadata_ingest.py
 - chat_proxy.py
 - _predict
-- manual/page.tsx
-- external_postgres/__init__.py
-- documents.py
+- tenants
+- test_external_postgresql_chat.py
+- sync.py
 - test_document_ingestion.py
 - test_inference_endpoint.py
 - GuardrailService
-- mlflow_registry.py
+- test_mlflow_verification.py
 - _get
 - gateway/api/v1/dashboard.py
 - insert_document_entities
 - test_azure_blob_source_sync.py
 - build_default_registry
-- add_model_version
-- useAuth
+- add_run
+- useToast
 - MODIFIED Requirements
-- Base
+- verify
 - chat/page.tsx
 - app
 - AsyncAzureOpenAI
-- entity_normalizer.py
+- is_valid_entity
 - Requirement: Retriever interface
-- RetrievalStatus
-- data_plane.py
+- ingest.py
+- tabular_files.py
 - tracked_tenants
 - NormalizedEntity
 - canonicalize
 - Requirement: Deactivation and orphaning never drop a generated relation
-- @testing-library/react
+- DocumentTable.tsx
 - annotation_service/worker.py
 - _get
 - test_entity_definition_reconcile.py
-- test_external_postgresql_chat.py
+- blob_sync/__init__.py
 - _entity
-- test_llm_usage_metrics.py
+- reset_context
 - test_annotation_workspace.py
 - check_regression
 - test_telemetry_scan.py
 - test_extraction_worker_postprocess_failopen.py
-- stage_span
+- context_assembler.py
 - ContextAssembler
 - ground_entities
 - test_training_jobs_api.py
-- test_chat_stage_spans.py
+- test_entity_resolution_uploader_scope.py
 - NER Platform KT Handover Guide
 - Entity-Quality Evaluation Fixture README
-- test_chat_api_structured_scope.py
+- _scope
 - make_tenant
 - _create
 - test_model_registry.py
 - OpenSpec CLI
 - test_external_sql_generator.py
-- AnalyticsQueryRequest
-- schema_for_tenant
+- analytics_service/api/v1/schemas.py
+- extraction_service/worker.py
 - normalize_value
-- orchestrator.py
-- test_telemetry_failure_isolation.py
+- nodes.py
+- _get
 - training_jobs.py
 - test_celery_queue_metrics.py
 - _entity
@@ -123,16 +123,16 @@
 - _get_sync_engine
 - _entity
 - _insert_entity
-- _fake_session
+- documents.py
 - StubLLMClient
-- NotFoundError
-- entity_resolver.py
-- inference_service.py
+- v1/spans.py
+- Requirements — Multi-Tenant Custom NER Platform (v2)
+- test_tabular_files_tool.py
 - gateway/dependencies.py
 - make_tenant
 - Citation
 - configured
-- test_mlflow_verification.py
+- TestExperimentLifecycle
 - analytics/page.tsx
 - Requirement: Get training job status
 - telemetry_scan.py
@@ -141,7 +141,7 @@
 - _entity
 - test_migration_037_entity_view_metadata.py
 - collapse_duplicates
-- model_serving/main.py
+- ModelCache
 - TestSQLPrompt
 - test_extraction_metrics.py
 - OpenSpec CLI
@@ -150,23 +150,23 @@
 - test_inference_metrics.py
 - test_domain_metrics_declarations.py
 - test_batch_extraction_eligibility.py
-- seed_bootstrap.py
+- HTTPException
 - auth_header
 - TestSelectionInterpretation
 - Candidate
 - Requirement: Base Model (Version 0) Entry
-- OrchestrationBudget
+- ToolContext
 - _prompt_for
 - test_sysadmin_user_onboarding.py
 - Requirement: SQL query generation and validation
-- Decisions
+- test_tabular_executor.py
 - reconstruct_entities
 - Requirements
 - create_access_token
-- test_training_metrics.py
+- public.py
 - test_observability_wiring.py
 - Settings
-- model_serving/api/v1/schemas.py
+- tabular_files/storage.py
 - _app
 - Requirement: Document Upload Zone
 - Requirements
@@ -174,26 +174,26 @@
 - ADDED Requirements
 - v1/tasks.py
 - backfill_document_entities.py
-- useToast
+- test_chat_uploader_isolation_end_to_end.py
 - test_projection_metrics.py
 - test_imported_annotations_update.py
 - TestMigration036ExtractionRunsProcessingMode
-- test_warmup_endpoint.py
+- test_document_content_endpoint.py
 - OpenSpec Onboard Skill
 - semantic_normalizer.py
 - compilerOptions
 - v1/models.py
-- test_observability_context.py
-- test_tenant_document_registry_reconcile.py
-- test_entity_views_generator.py
-- external_pg_contracts.py
-- Requirement: Tenant data engines are resolved per tenant with no platform fallback
-- auth_header
+- _get
+- tenant_document_registry.py
+- ADDED Requirements
+- AnalyticsQueryRequest
+- conversation_entity_state.py
+- test_rerank_endpoint.py
 - OpenSpec CLI
 - ADDED Requirements
 - TestMigration035DocumentEntitiesProvenance
 - architect-reviewer skill
-- test_external_pg_contract_descriptions.py
+- external_postgres/__init__.py
 - Decision
 - _payload
 - TestSQLValidation
@@ -205,23 +205,23 @@
 - Requirements
 - _post_feedback
 - test_document_provenance_migration.py
-- Requirement: Safe activation and concurrent capability limits
-- EntityService
+- chat.py
+- ADDED Requirements
 - Document Ingestion Source Boundary (architecture proposal)
 - types/dashboard.ts
-- extraction_service/worker.py
+- ADDED Requirements
 - Requirements
 - TestEntityConfigValueKind
 - test_migration_032_chat_message_feedback.py
 - test_chat_chart_generation.py
 - Requirements
-- auth_header
-- test_health_endpoints.py
+- test_document_rendition.py
+- ADDED Requirements
 - TestMigration026DocumentEntities
 - TestMigration028EntityDefinitionValueKind
 - OpenSpec Store (registered standalone repo)
 - OpenSpec Onboard Skill
-- Requirement: Safe connection lifecycle interface
+- test_retrieval_tools_integration.py
 - MODIFIED Requirements
 - ADDED Requirements
 - ADDED Requirements
@@ -229,13 +229,13 @@
 - TestBackfillDocumentEntities
 - _get_summary
 - test_entity_config.py
-- test_extraction_api.py
+- test_document_content_authorization.py
 - test_migration_027_conversation_entity_state.py
 - TestMlflowServerLive
 - Requirements
 - ADDED Requirements
 - apply_to_all_tenant_schemas
-- tenant-postgresql-data-plane/tasks.md
+- ParquetCache
 - Requirements
 - TestTenantAdminQueries
 - test_dashboard_tenant_enumeration.py
@@ -243,11 +243,11 @@
 - Requirements
 - TestSetupTestDbGuard
 - ADDED Requirements
-- portal/package.json
+- stage_span
 - ADDED Requirements
 - Requirement: Async OCR Processing
 - ADDED Requirements
-- TestAMalformedSchemaIsCountedAndLogged
+- inference_service.py
 - ADDED Requirements
 - _run_tenant_schema_ddl
 - TestTenantSchemaReconciliation
@@ -266,13 +266,13 @@
 - Deploy Platform to Kubernetes on Azure (AKS) — requirements baseline
 - package.json
 - validate_name_labels.py
-- external_sql_generator.py
+- test_seed_bootstrap_proposal.py
 - ADDED Requirements
 - ADDED Requirements
 - Requirements
 - Requirements
-- DocumentUpload.annotationMode.test.tsx
-- TestBusinessUserQueries
+- OrchestrationBudget
+- entity_resolver.py
 - Requirement: Contract-authorized SQL execution
 - c4-diagram skill
 - Decisions
@@ -283,7 +283,7 @@
 - Requirement: Per-Entity-Type Dataset Readiness
 - ADDED Requirements
 - test_dashboard_summary.py
-- test_entity_resolver.py
+- external_pg_contracts.py
 - TestWorkerSemanticNormalization
 - Requirements
 - Requirement: Secondary Metrics Panel
@@ -291,7 +291,7 @@
 - Requirement: Define / Edit Entity Type Slide-Over
 - TestFeedbackTableIndependence
 - test_context_assembly_grep.py
-- TestWorkerNormalizesEntitiesOnIngest
+- to_sql_identifier
 - ADDED Requirements
 - P3 — Derived relational persistence: connection routing, not a repository abstraction
 - UI Inventory — Tenant Self-Service Data Sources (SCR-1/2/3, CMP-1..10)
@@ -318,7 +318,7 @@
 - MODIFIED Requirements
 - Requirements
 - Requirement: System Admin Cross-Tenant User Creation Endpoint
-- TestStatusToStageMapping
+- list_model_versions
 - ADDED Requirements
 - next.config.js
 - opencode.json
@@ -376,7 +376,7 @@
 - Requirement: SQL query generation and validation
 - Requirement: Dashboard Summary Endpoint
 - Requirement: Promote model version
-- TenantMismatchError
+- shared/auth.py
 - ADDED Requirements
 - ADDED Requirements
 - Requirement: Extraction Service Endpoints Auto-Resolve Tenant ID from JWT
@@ -449,7 +449,7 @@
 - Requirement: Wrong-entity-type defect detection
 - Requirement: Approve training job
 - Requirement: Widget API key management
-- test_chat_api_retrieval_status.py
+- _patch
 - review_queue.py
 - _FakeResult
 - ADDED Requirements
@@ -720,9 +720,9 @@
 - Requirements
 - Requirement: BIO Tag Persistence on Spans
 - Requirement: Manual Blob sync trigger action
-- Requirements
+- Requirement: Tenant Creation
 - Requirement: Tenant-Admin User CRUD Endpoints
-- lifecycle.py
+- data_sources/__init__.py
 - ADDED Requirements
 - 2026-06-08-env-config-setup/design.md
 - ADDED Requirements
@@ -826,7 +826,7 @@
 - Requirements
 - portal-containerization Specification
 - TestChatEndpointTurnShape
-- get_resolver
+- database.py
 - test_local_compose_delivery_evidence.py
 - Chat Attachment Upload — End-to-End Discovery and Requirements Baseline
 - ADDED Requirements
@@ -1093,8 +1093,8 @@
 - Requirement: Document provenance and retention metadata
 - Requirement: Query extracted entities
 - Infrastructure
-- auth_header
-- Requirement: Only platform default adapters are executable in this change
+- add_document
+- ADDED Requirements
 - 2026-09-10-cap-6-local-compose-delivery-migration-and-operational-evidence/design.md
 - test_seed_bootstrap_acceptance.py
 - test_retrain_request.py
@@ -1180,8 +1180,8 @@
 - openspec/specs/settings-page/spec.md
 - openspec/specs/worker-network-config/spec.md
 - 2026-09-11-redesign-azure-blob-connection-ui/design.md
-- _sanitize_error
-- TestTelemetry
+- test_uploader_scoping_telemetry.py
+- test_cited_document_viewer_end_to_end.py
 - Requirement: Sampled Acceptance Gate
 - 2026-06-08-env-config-setup/tasks.md
 - ADDED Requirements
@@ -1204,7 +1204,7 @@
 - 2026-09-08-fix-batch-runs-scroll-layout/tasks.md
 - ADDED Requirements
 - templates/tasks.md
-- CannedStreamOrchestrator
+- test_chat_api_streaming.py
 - Requirement: Structured retrieval returns candidate document IDs
 - Requirement: Retraining Decision Surface
 - Requirement: Get extraction run status
@@ -1212,7 +1212,7 @@
 - Requirement: Annotation Toolbar
 - Requirement: Focus Mode Entity Palette
 - Requirement: Per-request tool availability
-- Verification Plan
+- test_external_chat_graph_wiring.py
 - 2026-06-17-add-celery-extraction-worker/tasks.md
 - 2026-06-17-fix-worker-text-shadowing/tasks.md
 - 2026-06-23-fix-chat-api-docker-url/tasks.md
@@ -1231,12 +1231,12 @@
 - 2026-06-25-align-dashboard-to-mockup/README.md
 - task-1.3-baseline-diff.md
 - Verification Plan
-- replace_version_entries
+- NotFoundError
 - ADDED Requirements
 - local-compose-data-source-delivery Specification
 - external_pg_contract_skeleton.py
 - Tenant Data Sources — Local Delivery Runbook (dev only)
-- _build_windows
+- test_migration_chunk_uploader_backfill.py
 - QA Report -- tenant-self-service-data-sources-20260909-2
 - test_data_plane_status_endpoint.py
 - 2026-09-10-cap-4-contract-governed-external-postgresql-query-path/proposal.md
@@ -1247,18 +1247,18 @@
 - 2026-09-10-cap-6-local-compose-delivery-migration-and-operational-evidence/proposal.md
 - TestModelQualityIsNotMirrored
 - Requirement: Manual Blob sync trigger action
-- ToolContext
-- to_sql_identifier
+- SlidingWindowRateLimiter
+- test_cap_6_session_scoped_attachment_retrieval.py
 - external-postgresql-chat-sql-generation/tasks.md
 - 2026-09-10-cap-5-tenant-data-source-administration-portal/tasks.md
 - Verification Plan
-- annotation_service/main.py
-- conversation_entity_state.py
+- test_document_ocr_image.py
+- test_uploader_scope_attachments.py
 - analytics_proxy.py
 - Deployment: tenant-self-service-data-sources-20260909-2 — dev
 - 2026-09-11-manual-blob-sync-trigger/proposal.md
 - Security -- tenant-self-service-data-sources-20260909-2
-- TestBaseModelPathIsCalibrated
+- Requirement: Ephemeral retention uses a bounded working copy
 - training_service/worker.py
 - 2026-09-10-cap-4-contract-governed-external-postgresql-query-path-superseded-unrecorded/tasks.md
 - 2026-09-10-cap-4-contract-governed-external-postgresql-query-path/tasks.md
@@ -1270,17 +1270,17 @@
 - 2026-09-11-redesign-azure-blob-connection-ui/proposal.md
 - test_inference_confidence_calibration.py
 - external-postgresql-chat-sql-generation/proposal.md
-- dependencies
+- Decisions
 - Integration -- tenant-self-service-data-sources-20260909-2
 - Performance -- tenant-self-service-data-sources-20260909-2
 - Regression -- tenant-self-service-data-sources-20260909-2
 - Smoke -- tenant-self-service-data-sources-20260909-2
 - Unit -- tenant-self-service-data-sources-20260909-2
-- ADDED Requirements
+- Requirement: The relational answer channel is uploader-scoped
 - k6-smoke-avg.js
 - Requirement: Manual sync-now control
 - v1/llm_prelabel.py
-- ImportedDocuments.tsx
+- @testing-library/react
 - 2026-09-11-redesign-azure-blob-connection-ui/tasks.md
 - ADR-015. External Chat Replies Persist; External Rows Do Not
 - ADR-016. Contract-Grounded External SQL Generation
@@ -1288,42 +1288,42 @@
 - Requirement: Sampled Acceptance Gate
 - conftest.py
 - test_tenant_document_registry.py
-- exported
+- get_active_model
 - Requirement: Review Outcomes Become Confirmed Spans
 - test_tenant_data_plane_record.py
 - test_tenant_provisioning_data_plane.py
 - Requirements
-- test_seed_bootstrap_proposal.py
+- schema_proposal.py
 - ADDED Requirements
 - Tenant-Owned PostgreSQL Data Plane — Customer Prerequisites Runbook
-- tenant-postgresql-data-plane/proposal.md
-- Requirement: Tenant provisioning clones the template atomically
+- Requirement: Tenant data engines are resolved per tenant with no platform fallback
+- test_chat_uploader_scope_threading.py
 - ADDED Requirements
 - test_extraction_confidence_filtering.py
 - test_review_outcomes.py
 - Tenant Admin Navigation Restructure — Implementation Map (Phase 1)
 - test_data_plane_route_gate.py
-- test_data_plane_connection_replacement.py
-- data_plane/tasks.py
+- Requirement: Safe activation and concurrent capability limits
+- test_data_plane_health.py
 - ADDED Requirements
 - ADDED Requirements
-- Requirement: Tenant Creation
+- Requirement: Only platform default adapters are executable in this change
 - test_tenant_engine_construction_boundary.py
 - Requirements
-- Requirement: System Admin chooses and observes the tenant data plane
+- test_tenant_store_parity.py
 - test_seed_bootstrap_readiness.py
 - Alembic migrations
 - test_promotion_evidence.py
-- test_retrieval_foundation.py
-- _base_state
+- chat_api/test_retrieval_metrics.py
+- test_entity_postprocessor_tenant_scope.py
 - ADDED Requirements
 - Verification Plan
 - Decisions
-- run_llm_review_async
-- ADDED Requirements
+- TestResolveEntityEndToEnd
+- rendition.py
 - import_.py
 - _fix_undefined_alias
-- test_retraining_decision.py
+- Requirement: A tenant content store is a distinct write-capable connection
 - Requirement: Inline preview truncation is independent of export availability
 - Requirement: Retriever interface
 - test_chat_api_chart_response.py
@@ -1333,22 +1333,22 @@
 - test_entity_resolver_mentions.py
 - test_migration_042_045_guards.py
 - ADDED Requirements
-- Requirement: Ephemeral retention uses a bounded working copy
+- Requirement: Tenant data engines are resolved per tenant with no platform fallback
 - test_imported_annotations_list.py
 - Verification Plan
 - Verification Plan
 - Requirement: Role Navigation Matrix
+- Requirement: Activating a data-plane connection provisions the tenant schema in the tenant store
 - Requirement: Safe activation and concurrent capability limits
-- Requirement: Only platform default adapters are executable in this change
 - Requirement: Annotation Export
 - Requirement: Chart rendering in the chat thread
-- Requirement: A tenant content store is a distinct write-capable connection
+- Decisions
 - Requirements
 - Requirement: Notification Bell
-- review_resolution.py
+- ConnectionValidationError
 - test_tenant_store_migrate.py
-- promotion_evidence.py
-- emit
+- _run_stages
+- export_message
 - 2026-09-07-seed-bootstrap/design.md
 - Verification Plan
 - Requirement: Attachment-bearing chat turns
@@ -1368,18 +1368,18 @@
 - ADDED Requirements
 - ADDED Requirements
 - Requirement: Two-stage generation for chart-eligible turns
-- Requirement: Reads and deletes route by the recorded kind, never by current configuration
+- Requirement: Retriever interface
 - review.py
-- _extract_label_set
-- fine_tune_model
-- test_cap_5_documents_library_exclusion_and_delete.py
+- llm_review.py
+- _profile
+- session_factory
 - Requirement: Load annotated dataset
 - Verification Plan
 - 2026-09-10-automated-annotation-guided-workflow/design.md
 - 2026-09-14-cap-2-chat-composer-attachment-ux/design.md
 - cap-6-session-scoped-attachment-retrieval/design.md
 - chat-chart-generation/design.md
-- Requirement: Tenant users can see where their content is stored
+- Decisions
 - Requirement: Chat attachment staging
 - test_data_plane_task_retry.py
 - 2026-09-03-annotation-mode-selection/design.md
@@ -1405,17 +1405,17 @@
 - Verification Plan
 - Requirement: Pre-Step-1 Upload Entry Points
 - TestExecutionUnderRestrictedRole
-- v1/auth.py
+- auth_header
 - test_data_plane_recovery_sweep.py
-- _FakeSession
+- SQLAttempt
 - test_training_eligibility_overview.py
 - 2026-09-10-tenant-admin-console-nav-restructure/design.md
 - ADDED Requirements
 - 2026-09-14-cap-4-csv-ingestion-branch-for-chat-attachments/design.md
 - 2026-09-16-export-chat-results/design.md
 - Requirement: Sampled Acceptance Gate
-- retraining_decision.py
-- _schema
+- Requirement: Safe connection lifecycle interface
+- try_hybrid_retrieval.py
 - test_migration_047_chat_messages_export_rows.py
 - test_migration_048_chat_message_chart.py
 - test_notifications_api.py
@@ -1434,10 +1434,10 @@
 - Requirement: Attachment-bearing send interaction
 - Requirement: Conversation ownership determines retrieval visibility
 - Verification Plan
-- Requirement: Idempotent source version reconciliation and temporary retention
-- Verification Plan
+- ADDED Requirements
+- 2026-09-20-tenant-postgresql-data-plane/tasks.md
 - audit_sample_size
-- llm_review.py
+- Requirements
 - 2026-09-03-llm-assisted-prelabeling/tasks.md
 - 2026-09-08-confidence-routed-review/tasks.md
 - 2026-09-10-automated-annotation-guided-workflow/tasks.md
@@ -1462,13 +1462,13 @@
 - Requirement: Role Navigation Matrix
 - ADDED Requirements
 - cap-6-session-scoped-attachment-retrieval/tasks.md
-- tenant-owned-blob-storage/proposal.md
-- tenant-owned-blob-storage/tasks.md
+- test_chat_api_retrieval_status.py
+- dependencies
 - Requirement: Submit training job
-- parse_conll
-- parse_jsonl
-- _mention_matches
-- TestMultiSubjectPlanRewriting
+- auth_header
+- test_document_content_telemetry.py
+- scripts
+- AnnotationImportPreview.tsx
 - 039_seed_bootstrap.py
 - 040_confidence_routed_review.py
 - 011. Conversation-Scoped Chat Attachments in the Existing Document Model
@@ -1519,8 +1519,8 @@
 - Requirement: Workflow Steps
 - Requirement: Retraining Page Framing
 - Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently
-- scripts
-- _EngineLRU
+- migrate.py
+- _Result
 - 052_tenant_data_plane.py
 - Run: chat-attachment-upload-20260910
 - Requirement: Entity Type Definition
@@ -1548,8 +1548,8 @@
 - Verification Plan
 - Requirement: Upload Progress Bar
 - Requirement: List training jobs
-- _filename_filter_literals
-- consumed_spans.py
+- _prompt
+- Requirement: Reads and deletes route by the recorded kind, never by current configuration
 - 050_azure_blob_sync_ledger.py
 - 2026-09-03-annotation-mode-selection/tasks.md
 - Requirement: Post-processing confidence filtering
@@ -1576,7 +1576,7 @@
 - Requirement: Documents library excludes conversation-linked rows
 - Requirement: Upload deep link
 - Requirement: Submit slide-over source scope
-- strip_bio_prefix
+- Verification Plan
 - 002_main_feature_backlog.py
 - 042_automated_annotation_guided_workflow.py
 - 045_imported_annotation_pending_mapping.py
@@ -1601,7 +1601,7 @@
 - Requirement: Reject training job
 - CAP-6 Sanity Verification
 - setup_demo_tenants.py
-- _retrying
+- test_data_plane_connection_replacement.py
 - test_blob_sync_task_routing.py
 - 039b_tenant_integration_profiles.py
 - 049_tenant_data_source_connections.py
@@ -1625,10 +1625,11 @@
 - Requirement: Cancel training job
 - Requirement: Hide submit job action for non-tenant-admin roles
 - Requirement: Submit form span preflight is informational only
-- axe-scan.mjs
+- uploader-scoped-chat-retrieval/design.md
 - verify-docker-annotation-fix/summary.md
-- ChartFrame
+- TestPendingClarificationSerialization
 - 004_documents_conversation_id.py
+- Requirement: Document visibility by ingesting actor
 - verify-docker-annotation-fix-20260910-dev.md
 - 2026-09-12-large-batch-repeatable-upload/tasks.md
 - cap-6-docker-verification-of-single-request-annotation-gestures/verification.md
@@ -1644,25 +1645,94 @@
 - Requirement: Page header matches the mockup's breadcrumb, heading scale, and submit button
 - health-check.md
 - verify-docker-annotation-fix/integration.md
-- next
+- derive_conversation_title
 - 003_chat_messages_attachments.py
 - 005_document_chunks_conversation_id.py
-- 006_content_store_kind.py
+- test_annotation_export_source_scope.py
 - cap-6-docker-verification-of-single-request-annotation-gestures/tasks.md
 - Requirement: Filter tabs do not overflow into adjacent content
 - Requirement: Submit slide-over visual parity without behavior change
+- TestDomainClassification
+- Requirement: Tenant users can see where their content is stored
+- ADDED Requirements
+- cited-document-viewer/tasks.md
+- Verification Plan
+- Requirement: The registry follows the tenant store, which stays authoritative
+- NotificationBell.tsx
+- test_retrieval_query_class_eval.py
+- Requirement: Only platform default adapters are executable in this change
+- Verification Plan
+- Verification Plan
+- provision_role
+- TestKnownSubjectRescuesDomainDecline
+- TestMentionExtraction
+- RetrievalResult
+- ADDED Requirements
+- ADDED Requirements
+- uploader-scoped-chat-retrieval/tasks.md
+- test_context_assembly_path_equivalence.py
+- _validate
+- _executable_source
+- external_sql_generator.py
+- job-filter-tabs.tsx
+- TestTelemetry
+- Requirement: Idempotent source version reconciliation and temporary retention
+- Verification Plan
+- TestUploaderRestrictionIsNotOptional
+- enqueued
+- Requirement: A document's bytes reach a client only by passing through the application
+- tabular-file-data-sources/tasks.md
+- 2026-09-20-tenant-owned-blob-storage-dropped/proposal.md
+- 2026-09-20-tenant-owned-blob-storage-dropped/tasks.md
+- 2026-09-20-tenant-postgresql-data-plane/proposal.md
+- Requirement: Tenant provisioning clones the template atomically
+- Requirement: Message thread display
+- Requirement: Tenant scope is caller-supplied, never argument-supplied
+- test_conversion_toolchain_placement.py
+- cited-document-viewer/proposal.md
+- tabular-file-data-sources/proposal.md
+- uploader-scoped-chat-retrieval/proposal.md
+- test_health_endpoints.py
+- all_revisions
+- Requirement: Tenant Creation
+- Requirement: Tabular files tool
+- retraining_decision.py
+- test_data_plane_provisioning_task.py
+- TestParseOrdinalSelection
+- Uploaded spreadsheet files: tenant notes
+- test_extraction_api.py
+- _names
+- _sanitize_error
+- Tenant
+- ADR-018. Uploaded Tabular Files Are Queried via Locked In-Process DuckDB over Parquet
+- ADR-019. Uploaded Tabular Files Are Stored in Platform Object Storage for All Tenants (v1)
+- Requirement: System Admin chooses and observes the tenant data plane
+- copy-pdf-worker.mjs
+- AzureExternalDatabase
+- test_tabular_capability.py
+- 057_tabular_files.py
+- TestBackfillSemanticValues
+- TestStatusMapping
+- fetch-fonts.mjs
+- 006_document_chunks_uploader_visibility.py
+- tabular_files/__init__.py
+- mlflow_registry.py
+- Live smoke: uploaded tabular file answers in chat (task 8.2)
+- _FakeHealthClient
+- _annotator_type_counts
+- external_chat_answer
 
 ## God Nodes (most connected - your core abstractions)
-1. `app()` - 141 edges
-2. `create_access_token()` - 140 edges
-3. `authFetch()` - 132 edges
-4. `vitest` - 131 edges
-5. `@testing-library/react` - 119 edges
+1. `create_access_token()` - 160 edges
+2. `app()` - 151 edges
+3. `authFetch()` - 140 edges
+4. `vitest` - 137 edges
+5. `@testing-library/react` - 124 edges
 6. `FakeSession` - 112 edges
-7. `session_factory()` - 112 edges
+7. `session_factory()` - 100 edges
 8. `FakeLLM` - 98 edges
-9. `react` - 91 edges
-10. `RetrievalResult` - 90 edges
+9. `react` - 96 edges
+10. `SQLGenerator` - 93 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Logo — dark theme SVG` --semantically_similar_to--> `Design: Fix Dark Theme Issues Across Portal Pages`  [INFERRED] [semantically similar]
@@ -1671,10 +1741,10 @@
   .github/workflows/telemetry-scan.yml → .claude/skills/openspec-verify-change/SKILL.md
 - `Iris Run: add-doc-docx-upload-support` --semantically_similar_to--> `spec-driven Workflow Schema`  [INFERRED] [semantically similar]
   .iris/runs/add-doc-docx-upload-support-20260903/RUN-STATE.md → .codex/skills/openspec-apply-change/SKILL.md
-- `OpenCode OpsX Bulk Archive Command` --references--> `OpenSpec Sync Specs Skill (Claude)`  [AMBIGUOUS]
-  .opencode/commands/opsx-bulk-archive.md → .claude/skills/openspec-sync-specs/SKILL.md
-- `Fix Dark Theme Issues - Tasks` --conceptually_related_to--> `Logo (Dark Theme) SVG`  [AMBIGUOUS]
-  src/openspec/changes/fix-dark-theme-issues/tasks.md → src/portal/public/logo-dark-theme.svg
+- `test_graph_state_carries_the_requesting_user()` --uses--> `RAGOrchestrator`  [INFERRED]
+  tests/test_chat_uploader_scope_threading.py → src/chat_api/services/rag_orchestrator.py
+- `test_row_61_adapters_receive_values_never_a_reference_or_a_resolver()` --uses--> `TenantSecretContext`  [INFERRED]
+  tests/test_tenant_integration_profile.py → src/shared/integration_profile/secrets.py
 
 ## Import Cycles
 - None detected.
@@ -1708,31 +1778,31 @@
 - **Local observability release-gate: telemetry scan procedure validated against clean and failing captures plus the workload-instrumentation test suite** — docs_local_dev_telemetry_scan, docs_observability_evidence_scan_clean_run_pass, docs_observability_evidence_workload_instrumentation_tests_run [INFERRED 0.85]
 - **Training job governance evolution: ADR-006 base pipeline refined by ADR-009 (who sets hyperparams) and ADR-010 (readiness measurement)** — docs_adr_006_training_infrastructure_celery_gpu_workers, docs_adr_009_system_admin_sets_training_hyperparameters_admin_set_hyperparams, docs_adr_010_per_entity_type_dataset_threshold_per_entity_readiness [INFERRED 0.85]
 
-## Communities (1740 total, 50 thin omitted)
+## Communities (1810 total, 56 thin omitted)
 
 ### Community 0 - "FakeSession"
-Cohesion: 0.03
-Nodes (97): Answers a natural-language question against extracted structured entity data.…, StructuredRetrievalTool, A statement that outruns the 10s bound is cancelled, the transaction is rolled…, verification.md rows 6, 7, 13 — the execution path either runs a validated…, FakeLLM, FakeSession, _answer_from(), _AnswerLLM (+89 more)
+Cohesion: 0.02
+Nodes (120): Raised when every attempt failed. Deliberately an exception rather than a…, Closed set of per-attempt outcomes. `EMPTY_WITH_DEFECT` is the *only* way a…, SQLAttemptOutcome, SQLGenerationFailed, Answers a natural-language question against extracted structured entity data.…, StructuredRetrievalTool, A statement that outruns the 10s bound is cancelled, the transaction is rolled…, verification.md rows 6, 7, 13 — the execution path either runs a validated… (+112 more)
 
-### Community 1 - "test_tenant_integration_profile.py"
+### Community 1 - "integration_profile/service.py"
 Cohesion: 0.04
-Nodes (117): The declared set of adapter selections, and which of them are executable. A…, Names of the slots whose recorded selection is not executable in this change., unsupported_selections(), declared_secret_fields(), InvalidSecretReference, ProfileValidationError, Exception, Typed, allowlisted profile configuration. A value is rejected because it fails… (+109 more)
+Nodes (79): The declared set of adapter selections, and which of them are executable. A…, Names of the slots whose recorded selection is not executable in this change., unsupported_selections(), declared_secret_fields(), InvalidSecretReference, ProfileValidationError, Exception, Typed, allowlisted profile configuration. A value is rejected because it fails… (+71 more)
 
-### Community 2 - "authFetch"
-Cohesion: 0.03
-Nodes (68): ADR-0001, @tanstack/react-query, JobsPage(), TrainingJob, ROLES, TenantDetail, TenantDetailPage(), TenantUser (+60 more)
+### Community 2 - "react"
+Cohesion: 0.04
+Nodes (31): react, ROLES, TenantDetail, TenantDetailPage(), TenantUser, mockAuthFetch, TENANT, Role (+23 more)
 
 ### Community 3 - "AnnotationPage.tsx"
-Cohesion: 0.05
-Nodes (48): AnnotationPage(), mockAuthFetch, MY_TASK, OTHER_ANNOTATORS_TASK, searchParamsHolder, buildEntityColors(), ENTITY_COLORS, LayoutMode (+40 more)
+Cohesion: 0.03
+Nodes (97): AnnotatedDocuments(), AnnotatedDocumentsProps, sectionLabelStyle, AnnotationActionBar(), AnnotationActionBarProps, SAVE_LABELS, SaveState, task (+89 more)
 
 ### Community 4 - "extraction.ts"
 Cohesion: 0.03
-Nodes (69): BaseModelConfirmDialog(), BaseModelConfirmDialogProps, BatchDocumentSelectModal(), BatchDocumentSelectModalProps, EXTRACTED_DOC, FRESH_DOC, MIXED_DOCS, mockUseEligibleDocuments (+61 more)
+Nodes (66): BaseModelConfirmDialog(), BaseModelConfirmDialogProps, BatchDocumentSelectModal(), EXTRACTED_DOC, FRESH_DOC, MIXED_DOCS, mockUseEligibleDocuments, BatchRunCard() (+58 more)
 
 ### Community 5 - "entity_eval/runner.py"
-Cohesion: 0.04
-Nodes (56): fold_text(), Removes Unicode format characters (general category `Cf`) and folds typographic…, apply_semantic_normalization(), Populates the six semantic value fields on each entity in place, dispatched by…, ExpectedEntity, FixtureCase, FixtureError, load_fixture() (+48 more)
+Cohesion: 0.05
+Nodes (49): ExpectedEntity, FixtureCase, FixtureError, load_fixture(), _parse_case(), Exception, Path, The labelled entity-quality fixture and its loader. Every case is drawn from a… (+41 more)
 
 ### Community 6 - "test_annotation_import.py"
 Cohesion: 0.20
@@ -1740,83 +1810,83 @@ Nodes (29): auth_header(), cleanup_public(), client(), _create_tables_sql(), mak
 
 ### Community 7 - "ocr_worker.py"
 Cohesion: 0.04
-Nodes (62): needs_tesseract, classify_processing_error(), ContentUnresolvable, _embed_chunks(), extract_text_doc(), extract_text_image(), extract_text_pdf(), extract_text_pdf_as_image() (+54 more)
+Nodes (76): The document's bytes, or the enumerated reason they cannot be produced., _resolve_original(), ContentUnresolvable, has_source_reopener(), Exception, Obtaining a document's bytes from its recorded retention mode. One…, Obtain the bytes implied by the document's recorded retention mode.…, Resolve bytes, re-acquiring source-only content through its adapter. The one… (+68 more)
 
-### Community 8 - "session_factory"
+### Community 8 - "DocumentIngestionService"
+Cohesion: 0.05
+Nodes (103): AST, requires_real_stores, Where this document came from, in the source's own terms. Timestamps are never…, SourceReference, Records dispatches without executing them. For tests and for verification row…, RecordingDispatcher, DocumentIngestionService, _embed_chunks() (+95 more)
+
+### Community 9 - "provision_tenant_data_plane"
+Cohesion: 0.12
+Nodes (21): provision_tenant_data_plane(), Provisions `tenant_id`'s own store: `vector` extension, schema, baseline +…, apply(), Connection, Apply the tenant-store baseline and pending revisions to one store (Design D5,…, True when `schema` exists, holds at least one table, and has no…, Apply baseline + every tenant-store revision to `schema` on `conn`, then record…, The recorded `(store_id, schema_revision)` for `schema`, or `None` if the… (+13 more)
+
+### Community 10 - "apply_uploader_scope"
 Cohesion: 0.06
-Nodes (111): AST, requires_real_stores, _Resolver, register_kind(), Where this document came from, in the source's own terms. Timestamps are never…, SourceReference, Records dispatches without executing them. For tests and for verification row…, RecordingDispatcher (+103 more)
+Nodes (29): apply_conversation_scope(), apply_uploader_scope(), _conversation_predicate(), conversation_scope_columns(), `relation -> how a conversation scope reaches it`, static tables plus the…, A chunk-or-row is in scope when it belongs to no conversation — tenant-library…, Constrains every conversation-reachable relation in an already-validated…, `relation -> how an uploader scope reaches it`, static tables plus the surface.… (+21 more)
 
-### Community 9 - "migrate.py"
-Cohesion: 0.06
-Nodes (50): ModuleType, The real on-disk CA bundle this interpreter's OpenSSL trusts by default.…, system_ca_bundle_path(), apply(), Connection, Apply the tenant-store baseline and pending revisions to one store (Design D5,…, True when `schema` exists, holds at least one table, and has no…, Apply baseline + every tenant-store revision to `schema` on `conn`, then record… (+42 more)
-
-### Community 10 - "sql_generator.py"
+### Community 11 - "EntityDefinitionSpec"
 Cohesion: 0.04
-Nodes (55): accepted_columns(), apply_conversation_scope(), _conversation_predicate(), conversation_scope_columns(), _error_class(), _fix_document_name_reference(), _force_nulls_last_on_desc(), _is_identifier_token() (+47 more)
-
-### Community 11 - "_spec"
-Cohesion: 0.06
-Nodes (39): build_relational_delete_statements(), build_routing_index(), `sql_identifier -> entities routed to it`, skipping every unroutable entity. An…, The one value a `single` definition contributes to the document's `subject`…, The value a `subject` column receives, decided by the definition's…, Clear this document from every **existing** generated table, plus its `subject`…, `uppercased entity_type literal -> the one definition that claims it`. Only…, route_entities() (+31 more)
+Nodes (63): build_projection_statements(), build_relational_delete_statements(), build_routing_index(), _checked_table(), _child_insert(), _child_params(), Projects a document's final entity list into the tenant's generated relational…, `sql_identifier -> entities routed to it`, skipping every unroutable entity. An… (+55 more)
 
 ### Community 12 - "entity_views.py"
-Cohesion: 0.04
-Nodes (67): build_projection_statements(), _checked_table(), _child_insert(), _child_params(), project_document_entities(), Projects a document's final entity list into the tenant's generated relational…, `confidence` and `page_number` are projected; provenance is not.…, Every statement that writes this document's relational rows. Executes nothing.… (+59 more)
+Cohesion: 0.03
+Nodes (102): _checked_identifier(), hard_delete_documents(), has_table(), _active(), _as_list(), _as_mapping(), build_child_table_statements(), build_entity_table_statements() (+94 more)
 
-### Community 13 - "RetrievalResult"
+### Community 13 - "_context"
 Cohesion: 0.05
-Nodes (50): Any, resolve_rerank_candidate_count(), resolve_reranker_enabled(), resolve_top_k(), RetrievalResult, CrossEncoderReranker, _metrics(), Protocol (+42 more)
+Nodes (32): _context(), FailingReranker, _make_results(), parametrize, RaisingRetriever, Covers verification.md row 30., Covers verification.md row 26., Covers verification.md row 27. (+24 more)
 
 ### Community 14 - "FakeSession"
 Cohesion: 0.05
 Nodes (42): FakeLLM, _FakeResult, FakeSession, _generator(), `sql_attempt` records the shape of the query, never the query. Verification row…, A rejected statement has to be visible even when INFO is turned off., End to end through the real handler, since that is what `docker logs` sees., Answers the profile queries from canned tables and every data query with one… (+34 more)
 
-### Community 15 - "chat.py"
-Cohesion: 0.03
-Nodes (84): field_validator, _await_processed(), chat(), chat_stream(), _check_tenant_and_rate_limit(), _conversation_attachments_query(), create_conversation(), delete_conversation() (+76 more)
+### Community 15 - "nav-config.ts"
+Cohesion: 0.07
+Nodes (33): AppShell(), AppShellProps, Sidebar(), SidebarProps, mockLogout, mockPush, userInitials(), Topbar() (+25 more)
 
 ### Community 16 - "BatchAcceptancePage.tsx"
 Cohesion: 0.04
 Nodes (57): AutomatedLayout(), ReviewBatchLandingPage(), AutomatedStepper(), stateStyle, StepDef, StepState, BatchAcceptancePage(), BatchAcceptancePageProps (+49 more)
 
-### Community 17 - "get_engine"
-Cohesion: 0.05
-Nodes (69): add_bearer_security(), health(), lifespan(), FastAPI, get, BaseHTTPMiddleware, Request, TenantContextMiddleware (+61 more)
-
-### Community 18 - "react"
+### Community 17 - "build_nodes"
 Cohesion: 0.03
-Nodes (122): react, react-dom, DetailContent(), UPDATABLE, ContractsContent(), handlePublish(), handleUpload(), DataSourcesContent() (+114 more)
+Nodes (59): setter, PendingClarification, build_nodes(), Returns a dict of node-name -> async callable, each closing over the given…, _bounded(), Renders the turn's retrieval outcome for the answer model, or None when every…, render_retrieval_status(), measure_llm_call() (+51 more)
+
+### Community 18 - "data-sources.ts"
+Cohesion: 0.02
+Nodes (157): DetailContent(), UPDATABLE, ContractsContent(), handlePublish(), handleUpload(), DataSourcesContent(), isOrder(), isProvider() (+149 more)
 
 ### Community 19 - "domain_metrics.py"
 Cohesion: 0.04
-Nodes (78): main(), Regenerate `docs/observability/metric-contract.md` from the live declarations.…, render_family(), _defect_class(), The defect's category, without its payload. `SQLAttempt.defect` carries the…, _record_metric(), allowlist_violations(), _ambient_tenant() (+70 more)
+Nodes (82): main(), Regenerate `docs/observability/metric-contract.md` from the live declarations.…, render_family(), _defect_class(), The defect's category, without its payload. `SQLAttempt.defect` carries the…, set_trace_id(), allowlist_violations(), _ambient_tenant() (+74 more)
 
 ### Community 20 - "_reconcile"
-Cohesion: 0.07
-Nodes (41): `reconcile_entity_tables` for a synchronous `Connection`. The extraction worker…, reconcile_entity_tables_sync(), _column_types(), _columns(), _drop_schema(), _insert_child_row(), _make_schema(), asyncio (+33 more)
+Cohesion: 0.05
+Nodes (48): parametrize, `assert_tenant_schema` counts and logs; it never raises. Verification rows 30…, The `code_path` label is itself an enumerated value set — a free-form string…, The behavioural commitment. A raise here would be a behavioural change smuggled…, A violating value is by definition one we did not expect, so it must not be…, TestAMalformedSchemaIsCountedAndLogged, TestAWellFormedSchemaPasses, TestTheCallSitesAreDeclared (+40 more)
 
 ### Community 21 - "support.js"
 Cohesion: 0.07
 Nodes (61): boot(), collectProps(), compileAttr(), compileTemplate(), createComponentFactory(), getDC(), Dispatcher(), createExternalModules() (+53 more)
 
-### Community 22 - "vitest"
-Cohesion: 0.03
-Nodes (86): vitest, SettingsPage(), VALID_SOURCE_SCOPES, ViewMode, BASE_MODEL_ID, BASE_MODEL_NAME, BaseModelCard(), BaseModelCardProps (+78 more)
+### Community 22 - "authFetch"
+Cohesion: 0.02
+Nodes (124): ADR-0001, @tanstack/react-query, JobsPage(), TrainingJob, DataPlaneMode, NewTenantPage(), Tenant, TenantsPage() (+116 more)
 
-### Community 23 - "build_role_statements"
+### Community 23 - "resolve_query_surface"
 Cohesion: 0.06
-Nodes (43): _async_dsn(), main(), Provision the least-privilege role that generated chat SQL executes under, then…, build_role_statements(), _checked_identifier(), InvalidIdentifierError, _list_active_tenants(), list_tenant_schemas() (+35 more)
+Nodes (34): build_role_statements(), InvalidIdentifierError, ValueError, The full, idempotent provisioning script for the execution role. Returned…, `schema -> QuerySurface` for the execution role, `validate_sql`, and the…, `schema -> {generated table names}`, the name-only projection of the query…, The tenant schema name for a `entity_definitions.tenant_id`. One direction…, resolve_generated_tables() (+26 more)
 
 ### Community 24 - "DenseRetriever"
 Cohesion: 0.04
-Nodes (75): _fake_vector(), FakeEmbeddingService, main(), Manual playground for HybridRetriever/SparseRetriever/DenseRetriever — no…, Returns a fixed query vector — swap for the real EmbeddingService if you have…, run_query(), setup(), DenseRetriever (+67 more)
+Nodes (92): EmbeddingService, Who an answer is being produced for, taken from authenticated request state.…, RequestingUser, Any, resolve_rerank_candidate_count(), resolve_reranker_enabled(), resolve_top_k(), _conversation_clause() (+84 more)
 
 ### Community 25 - "AuditService"
 Cohesion: 0.04
-Nodes (62): app_error_handler(), exception_handler, Request, app_error_handler(), exception_handler, Request, app_error_handler(), exception_handler (+54 more)
+Nodes (68): DeclarativeBase, create_tenant(), create_tenant_user(), CreateTenantRequest, deactivate_tenant(), get_tenant(), list_audit_log(), list_tenant_users() (+60 more)
 
-### Community 26 - "@testing-library/user-event"
-Cohesion: 0.05
-Nodes (32): @testing-library/user-event, AuditEventRow(), AuditPage(), formatTimestamp(), KIND_COLORS, mockEvents, mockRefetch, mockTenants (+24 more)
+### Community 26 - "OriginalDocumentViewer.tsx"
+Cohesion: 0.03
+Nodes (67): pdfjs-dist, react-dom, @testing-library/user-event, DataSourceDetailPage(), mockAuthFetch, SchemaContractsPage(), HISTORY, mockAuthFetch (+59 more)
 
 ### Community 27 - "RetrievalConfig"
 Cohesion: 0.05
@@ -1826,77 +1896,77 @@ Nodes (68): ContextFactory, KeyError, _create_schema(), main(), CLI entry point 
 Cohesion: 0.05
 Nodes (60): applyTokenTelemetry(), buildCategory(), buildContextSummary(), capitalize(), CategoryEntry, CategoryEntrySource, CategorySummary, collectMessageTexts() (+52 more)
 
-### Community 29 - "test_chat_api_streaming.py"
-Cohesion: 0.07
-Nodes (27): _fake_citation(), _iter_sse_events_live(), _make_orchestrator(), NoopGuardrails, Tests for chat-response-token-streaming. Covers verification.md rows 1-27, 33,…, Covers verification.md rows 8, 9 (task 1.4, 1.5)., Regression: Azure OpenAI interleaves chunks with `choices: []` (e.g. a trailing…, Design Decision 3: source-emptiness is checked before entering the streaming… (+19 more)
+### Community 29 - "_make_orchestrator"
+Cohesion: 0.17
+Nodes (9): _make_orchestrator(), Covers verification.md rows 8, 9 (task 1.4, 1.5)., Regression: Azure OpenAI interleaves chunks with `choices: []` (e.g. a trailing…, Design Decision 3: source-emptiness is checked before entering the streaming…, Covers verification.md row 10 (task 1.6). Streaming is a runtime `state` value…, Fake `AsyncOpenAI`-shaped client. Non-streaming calls return `full_reply`.…, ScriptedLLMClient, TestGenerationNodeStreaming (+1 more)
 
 ### Community 30 - "ContentStore"
-Cohesion: 0.04
-Nodes (62): requires_minio, retry, ContentStore, Protocol, StorageReference, The application-owned boundary for a document's bytes. Three operations and…, Store bytes and return the reference by which they can be reopened. `filename`…, Return the bytes at a previously returned reference, or None if they are gone. (+54 more)
+Cohesion: 0.05
+Nodes (45): requires_minio, retry, store_for(), ContentStore, Protocol, StorageReference, The application-owned boundary for a document's bytes. Three operations and…, Store bytes and return the reference by which they can be reopened. `filename`… (+37 more)
 
 ### Community 31 - "TestStructuredValueSQLExecution"
 Cohesion: 0.39
 Nodes (3): asyncio, Covers verification.md rows 19, 22-25 — deterministic filtering over real rows., TestStructuredValueSQLExecution
 
-### Community 32 - "nodes.py"
-Cohesion: 0.03
-Nodes (58): _DummyOrchestrator, main(), Generates a Mermaid diagram for the chat graph's single, fixed topology using…, build_nodes() only closes over this; node bodies never run here., build_chat_graph(), Compiles the chat graph topology. With `entity_resolution_enabled` off (the…, _route_after_entity_resolution(), _route_after_guardrail() (+50 more)
+### Community 32 - "build_chat_graph"
+Cohesion: 0.05
+Nodes (38): _DummyOrchestrator, main(), Generates a Mermaid diagram for the chat graph's single, fixed topology using…, build_nodes() only closes over this; node bodies never run here., build_chat_graph(), Compiles the chat graph topology. With `entity_resolution_enabled` off (the…, _route_after_entity_resolution(), _route_after_guardrail() (+30 more)
 
-### Community 33 - "test_relational_document_delete.py"
-Cohesion: 0.18
-Nodes (14): client(), _count(), _define(), fixture, Deleting a document clears its rows from every generated relational table. The…, The document service's own app: `/api/v1/documents` is served there, not by…, verification.md rows 89, 90, 91, 92, verification.md row 29 — the property that keeps the two paths from diverging. (+6 more)
+### Community 33 - "visibility_predicate"
+Cohesion: 0.05
+Nodes (61): is_unscoped(), The uploader-visibility rule, defined once. A document is visible to a…, The rule for a row that reaches its document through `link_column`.…, `visibility_predicate` as an appendable ` AND ...` fragment, or `("", {})`. The…, Whether this role sees every document in the tenant regardless of ingesting…, The rule as a predicate over a row carrying `ingested_by_kind` and…, visibility_clause(), visibility_predicate() (+53 more)
 
 ### Community 34 - "RAGOrchestrator"
-Cohesion: 0.06
-Nodes (25): Queue, skip, Source, EmbeddingService, AsyncSession, Citation, RAGOrchestrator, The turn's retrieval outcome as a plain dict for the HTTP layer. `None` on a… (+17 more)
+Cohesion: 0.05
+Nodes (28): Queue, skip, Source, AsyncSession, Citation, RAGOrchestrator, The turn's retrieval outcome as a plain dict for the HTTP layer. `None` on a…, Derives the persisted `answer_kind` from the terminal graph state, per… (+20 more)
 
-### Community 35 - "_spec"
-Cohesion: 0.07
-Nodes (26): build_child_table_statements(), build_entity_table_statements(), build_subject_table_statements(), child_index_name(), entity_type_literals(), Every stored `entity_type` value that means this definition, uppercased and…, `idx_<identifier>_normalized_value`, bounded to the identifier length limit.…, `CREATE TABLE IF NOT EXISTS` plus its `normalized_value` index, for one `multi`… (+18 more)
+### Community 35 - "vitest"
+Cohesion: 0.03
+Nodes (87): vitest, mockAuthFetch, mockPush, jsonResponse(), mockFetch, mockPush, mockUser, TASKS (+79 more)
 
 ### Community 36 - "shared/config.py"
 Cohesion: 0.02
-Nodes (132): Formatter, Handler, LogRecord, Sync tenant_{id} schemas with tenant_template. Clones missing tables and adds…, _init_worker_observability(), connect, Wire this worker's telemetry when it starts as a worker. Bound to the signal…, Ensure the ner_mlflow database exists before the MLflow tracking server starts.… (+124 more)
+Nodes (137): Formatter, Handler, LogRecord, Sync tenant_{id} schemas with tenant_template. Clones missing tables and adds…, Ensure the ner_mlflow database exists before the MLflow tracking server starts.…, current_context(), get_tenant_id(), get_trace_id() (+129 more)
 
 ### Community 37 - "eval/runner.py"
 Cohesion: 0.09
 Nodes (40): Judgment, aggregate(), AggregateMetrics, compute_query_metrics(), _grade_map(), Judgment, mrr_at_k(), ndcg_at_k() (+32 more)
 
-### Community 38 - "add_run"
-Cohesion: 0.05
-Nodes (57): purge_expired_predictions(), Persisting the confidence split for an extraction run. This is the write half…, Delete routed predictions older than the retention bound, returning how many…, Write one `routed_predictions` row per reconstructed entity and report the…, record_routed_predictions(), is_base_model_version(), is_below_business_threshold(), The confidence split, as pure functions. Shared rather than owned by either… (+49 more)
+### Community 38 - "test_confidence_routing.py"
+Cohesion: 0.07
+Nodes (37): This tenant's route, falling back to the configured default. Read from…, _tenant_review_policy(), purge_expired_predictions(), Persisting the confidence split for an extraction run. This is the write half…, Delete routed predictions older than the retention bound, returning how many…, Write one `routed_predictions` row per reconstructed entity and report the…, record_routed_predictions(), is_base_model_version() (+29 more)
 
 ### Community 39 - "_validate_on_surface"
-Cohesion: 0.05
-Nodes (23): _names(), The whitelist check used to resolve only the first identifier after each…, `public.documents` is not `documents` — the qualifier is grounds for rejection,…, A legitimate comma join must keep working — the fix is a security fix, not a…, verification.md rows 22-25 — the accepted relation set is the resolved surface., Row 24 — the shape the prompt teaches: a child table joined to `subject`., Row 22 — a relation the resolver does not report is not readable., Row 25 — the surface is per-tenant; `e_skill` elsewhere means nothing here. (+15 more)
+Cohesion: 0.10
+Nodes (12): verification.md rows 22-25 — the accepted relation set is the resolved surface., Row 24 — the shape the prompt teaches: a child table joined to `subject`., Row 22 — a relation the resolver does not report is not readable., Row 25 — the surface is per-tenant; `e_skill` elsewhere means nothing here., verification.md rows 23, 38 — the first authoritative column list., Row 23 — the rejection has to name the column, or the retry cannot fix it., Row 38 — the static tables get the same treatment from the same map., design.md Decision 6 / Risk 5. The tokenizer is a reference parser, not a full… (+4 more)
 
-### Community 40 - "gateway/main.py"
-Cohesion: 0.06
-Nodes (63): AsyncEngine, add_bearer_security(), health(), health_live(), lifespan(), FastAPI, get, add_bearer_security() (+55 more)
+### Community 40 - "get_engine"
+Cohesion: 0.03
+Nodes (112): AsyncEngine, add_bearer_security(), app_error_handler(), health(), lifespan(), exception_handler, FastAPI, get (+104 more)
 
 ### Community 41 - "test_chunk_metadata_ingest.py"
-Cohesion: 0.07
-Nodes (25): _store_chunks(), chunk_text(), Chunk, BaseModel, _fake_vector(), FakeEmbeddingService, asyncio, fixture (+17 more)
+Cohesion: 0.06
+Nodes (32): _store_chunks(), chunk_text(), Chunk, BaseModel, _async_embed(), _fake_vector(), FakeEmbeddingService, asyncio (+24 more)
 
 ### Community 42 - "chat_proxy.py"
 Cohesion: 0.12
 Nodes (30): _proxy(), proxy_chat(), proxy_chat_stream(), proxy_create_conversation(), proxy_create_widget_key(), proxy_delete_conversation(), proxy_export_message(), proxy_get_conversation() (+22 more)
 
 ### Community 43 - "_predict"
-Cohesion: 0.05
-Nodes (23): _FakeResponse, _predict(), fixture, The extraction worker writes EAV and relational rows in one transaction, or…, verification.md rows 1, 14, 15, 22, 81, verification.md rows 13, 24, verification.md rows 25, 26, 27, 83, verification.md rows 2, 31 (+15 more)
-
-### Community 44 - "manual/page.tsx"
-Cohesion: 0.04
-Nodes (62): AutomatedLandingPage(), mockPush, ManualAnnotationLanding(), jsonResponse(), mockFetch, mockPush, mockUser, TASKS (+54 more)
-
-### Community 45 - "external_postgres/__init__.py"
 Cohesion: 0.06
-Nodes (38): external_chat_answer(), ExternalNotExecutable, Exception, External PostgreSQL chat capability (CAP-4, ADR-013). A separate selection from…, No executable external capability for this tenant; finite reason only., Answer one external chat turn: resolve, then drift-gated execution. Returns…, AzureExternalDatabase, build_live_database() (+30 more)
+Nodes (22): _FakeResponse, _predict(), The extraction worker writes EAV and relational rows in one transaction, or…, verification.md rows 1, 14, 15, 22, 81, verification.md rows 13, 24, verification.md rows 25, 26, 27, 83, verification.md rows 2, 31, verification.md rows 79, 80, 84 (+14 more)
 
-### Community 46 - "documents.py"
-Cohesion: 0.04
-Nodes (71): delete_document(), get_document(), get_document_text(), get_session(), get_tenant_id(), has_column(), has_table(), list_documents() (+63 more)
+### Community 44 - "tenants"
+Cohesion: 0.07
+Nodes (82): Server-side tabular-file capability resolution (tabular-file-chat spec).…, Returns ``{"executable": True, "files": [served, ...]}`` or ``{"executable":…, resolve_tabular_capability(), create_file(), Served contracts of this tenant's `ready`, non-deleted files — the only thing…, ready_contracts(), admin_headers(), drain() (+74 more)
+
+### Community 45 - "test_external_postgresql_chat.py"
+Cohesion: 0.12
+Nodes (34): is_external_request_executable(), Server-side external-query capability resolution (CAP-4, ADR-001/011/013).…, Resolve the tenant's executable external-query capability. Returns…, Whether one named connection may serve this tenant's external request., resolve_external_capability(), clamp_limit(), execute_external_query(), Enforce the server row cap: keep a smaller LIMIT, else append one. (+26 more)
+
+### Community 46 - "sync.py"
+Cohesion: 0.05
+Nodes (58): _ingest_attachments(), Ingest each attachment as a conversation-owned document and wait for it to…, Record a sighted object: current version, linked document, absence cleared., upsert_source_seen(), _active_blob_connection(), _media_type(), _prefix(), _profile_retention() (+50 more)
 
 ### Community 47 - "test_document_ingestion.py"
 Cohesion: 0.07
@@ -1907,124 +1977,124 @@ Cohesion: 0.12
 Nodes (12): auth_header(), asyncio, Regression guard: _infer_with_onnx() used to unconditionally send…, Covers verification.md row 51: base-model predictions must be an ordered, non-…, Regression guard: inference_service._resolve_active_version() used to hardcode…, TestInferenceAuth, TestInferenceBaseModelFallback, TestInferenceCustomLabelList (+4 more)
 
 ### Community 49 - "GuardrailService"
-Cohesion: 0.04
-Nodes (38): GuardrailService, _metrics(), Deterministic short-circuits that decline without an LLM call: a reference to…, One classifier call. Returns True (in-domain) on any error, so a provider…, Returns True if the query is in-domain. Fails open (treats the query as in-…, Only `generation_node` calls this. An entity-resolution clarification reply…, The domain-metric recorders, resolved on first use. `domain_metrics` imports…, _Classifier (+30 more)
+Cohesion: 0.07
+Nodes (25): GuardrailService, _metrics(), Deterministic short-circuits that decline without an LLM call: a reference to…, One classifier call. Returns True (in-domain) on any error, so a provider…, Returns True if the query is in-domain. Fails open (treats the query as in-…, Only `generation_node` calls this. An entity-resolution clarification reply…, The domain-metric recorders, resolved on first use. `domain_metrics` imports…, _Classifier (+17 more)
 
-### Community 50 - "mlflow_registry.py"
-Cohesion: 0.10
-Nodes (29): _cache_model_version(), demote_model_version(), get_active_model(), _get_client(), _get_sync_engine(), list_model_versions(), _lookup_run_number(), _metrics_with_label_list() (+21 more)
+### Community 50 - "test_mlflow_verification.py"
+Cohesion: 0.15
+Nodes (14): cleanup(), _complete_run(), _create_run(), db_schema(), experiment_name(), mlflow_client(), fixture, Comprehensive end-to-end verification of the MLflow integration. Preconditions:… (+6 more)
 
 ### Community 51 - "_get"
 Cohesion: 0.08
 Nodes (15): auth_header(), _clear_entity_definitions(), _get(), asyncio, fixture, parametrize, public.entity_definitions survives the per-test tenant-schema teardown, so…, demo-tenant's shape: real spans, no configured entity definitions. A… (+7 more)
 
 ### Community 52 - "gateway/api/v1/dashboard.py"
-Cohesion: 0.09
-Nodes (54): _activity_tag_colour(), ActivityRow, _all_active_tenant_ids(), _annotator_continue_work(), _annotator_data(), _annotator_side_panel(), _annotator_task_activity(), _annotator_type_counts() (+46 more)
+Cohesion: 0.10
+Nodes (52): _activity_tag_colour(), ActivityRow, _all_active_tenant_ids(), _annotator_continue_work(), _annotator_data(), _annotator_side_panel(), _annotator_task_activity(), _business_avg_response_time() (+44 more)
 
 ### Community 53 - "insert_document_entities"
-Cohesion: 0.11
-Nodes (21): insert_document_entities(), Writes reconstructed entities, with the provenance that says where each value…, _entity(), asyncio, fixture, Covers verification.md rows 56-63. `document_entities` could not previously…, Row 57 — a NULL means unchanged, not unknown., Rows 59-62 at the storage boundary. (+13 more)
+Cohesion: 0.12
+Nodes (20): insert_document_entities(), Writes reconstructed entities, with the provenance that says where each value…, _entity(), asyncio, fixture, Covers verification.md rows 56-63. `document_entities` could not previously…, Row 57 — a NULL means unchanged, not unknown., Rows 59-62 at the storage boundary. (+12 more)
 
 ### Community 54 - "test_azure_blob_source_sync.py"
-Cohesion: 0.05
-Nodes (104): AzureBlobLiveProvider, SDK-backed Azure Blob provider (CAP-3, ADR-012). Replaces…, One tenant connection's live Azure Blob container, via the SDK., Durable Azure Blob synchronization runtime (CAP-3, ADR-012). One tenant-bound…, acquire_lease(), confirm_missing(), ensure_sync_tables(), get_source() (+96 more)
+Cohesion: 0.10
+Nodes (63): acquire_lease(), confirm_missing(), ensure_sync_tables(), get_source(), hidden_document_ids(), hide_document(), last_successful_run_at(), ledger_identities() (+55 more)
 
 ### Community 55 - "build_default_registry"
-Cohesion: 0.06
-Nodes (68): RuntimeError, orchestrate_retrieval(), Top-level entry point: plans, executes, and degrades to a fallback plan (both…, build_default_registry(), _budget(), _context_factory(), _make_chunk(), Exception (+60 more)
-
-### Community 56 - "add_model_version"
 Cohesion: 0.05
-Nodes (59): record_sql(), add_model_version(), add_training_job(), complete_run(), consumed_rows(), dataset_span_ids_now(), ensure_audit_events(), Fixtures shared by the `human-gated-retraining` test files. Extends… (+51 more)
+Nodes (70): RuntimeError, orchestrate_retrieval(), Top-level entry point: plans, executes, and degrades to a fallback plan (both…, build_default_registry(), _budget(), _context_factory(), _make_chunk(), Exception (+62 more)
 
-### Community 57 - "useAuth"
+### Community 56 - "add_run"
 Cohesion: 0.04
-Nodes (66): lucide-react, mockFetch, mockPush, mockReplace, TrainingJobsPage(), mockLogin, mockReplace, DEMO_CHIPS (+58 more)
+Nodes (74): dataset_span_ids(), dataset_span_ids_sql(), What a training run consumed, recorded when the run finishes. This is the…, The span ids the dataset just built from this tenant covers. Called at dataset-…, Record `span_ids` as consumed by `model_version`. Returns how many ids were…, record_consumed_spans(), record_sql(), add_run() (+66 more)
+
+### Community 57 - "useToast"
+Cohesion: 0.04
+Nodes (42): hankenGrotesk, inter, jetbrainsMono, callLog, createWrapper(), entityTypes, prelabelCalls, prelabelFailures (+34 more)
 
 ### Community 58 - "MODIFIED Requirements"
 Cohesion: 0.04
 Nodes (48): ADDED Requirements, MODIFIED Requirements, REMOVED Requirements, Requirement: Annotation Task Queue, Requirement: Annotation Toolbar, Requirement: Document Viewer and Token Rendering, Requirement: Entity Type Palette and Armed Mode, Requirement: Focus Mode Entity Palette (+40 more)
 
-### Community 59 - "Base"
-Cohesion: 0.08
-Nodes (21): DeclarativeBase, AuditEvent, Base, EntityDefinition, str, Tenant, TenantStatus, TenantUser (+13 more)
+### Community 59 - "verify"
+Cohesion: 0.18
+Nodes (10): _declared_public_tables(), _declared_tenant_template_tables(), main(), Verify the live database's schema matches what the Alembic migration chain…, Table name -> declared column names, for every ORM model mapped to…, Union of every table any migration creates in tenant_template. Every migration…, Returns a list of human-readable drift descriptions. Empty means clean., verify() (+2 more)
 
 ### Community 60 - "chat/page.tsx"
-Cohesion: 0.03
-Nodes (74): react-markdown, remark-gfm, buildSendRequest(), ChatPage(), ChatPageInner(), Conversation, ExportAvailability, Message (+66 more)
+Cohesion: 0.02
+Nodes (94): results, @axe-core/playwright, eslint, eslint-config-next, eslint-config-prettier, jsdom, lucide-react, next (+86 more)
 
 ### Community 61 - "app"
-Cohesion: 0.04
-Nodes (46): ProcessingMode, Enum, str, The processing mode a batch extraction run executes under. The mode is chosen…, app(), fixture, auth_header(), asyncio (+38 more)
+Cohesion: 0.05
+Nodes (38): app(), fixture, auth_header(), asyncio, TestAnalyticsExportEndpoint, auth_header(), TestAnalyticsQueryEndpoint, auth_header() (+30 more)
 
 ### Community 62 - "AsyncAzureOpenAI"
-Cohesion: 0.36
+Cohesion: 0.31
 Nodes (6): AsyncAzureOpenAI, build_client(), find_name_span(), main(), process_record(), One-off script: identifies the resume owner's own name span in each…
 
-### Community 63 - "entity_normalizer.py"
-Cohesion: 0.09
-Nodes (23): filter_valid_entities(), _is_adjacent(), is_valid_entity(), Whether `current` continues the entity `prev` belongs to. Model serving filters…, The entity's surface text. When the caller supplies the full ordered token…, Whether an entity is a fact worth storing. `NOT NULL` does not catch an empty…, Partitions entities into those worth persisting and a count of those dropped.…, Splits a `B-TYPE`/`I-TYPE` label into (prefix, type). Labels with no recognized… (+15 more)
+### Community 63 - "is_valid_entity"
+Cohesion: 0.11
+Nodes (17): filter_valid_entities(), is_valid_entity(), Whether an entity is a fact worth storing. `NOT NULL` does not catch an empty…, Partitions entities into those worth persisting and a count of those dropped.…, _short_value_types(), _entity(), parametrize, Covers verification.md rows 20-23. `document_entities.normalized_value` is `NOT… (+9 more)
 
 ### Community 64 - "Requirement: Retriever interface"
 Cohesion: 0.04
 Nodes (48): Purpose, Requirement: Centralized retrieval configuration, Requirement: Citation enrichment executes without error, Requirement: Reranker interface, Requirement: Reranking configuration, Requirement: Reranking retriever composition, Requirement: Retrieval excludes superseded and confirmed-missing source documents, Requirement: Retriever interface (+40 more)
 
-### Community 65 - "RetrievalStatus"
-Cohesion: 0.08
-Nodes (17): _bounded(), Renders the turn's retrieval outcome for the answer model, or None when every…, render_retrieval_status(), CapabilityStatus, What one plan entry actually did. `error` holds the specific failure text,…, The turn's retrieval outcome, as one value with named consumers. Replaces…, The strongest signal any invocation of this capability produced, ordered failed…, RetrievalStatus (+9 more)
+### Community 65 - "ingest.py"
+Cohesion: 0.05
+Nodes (75): is_valid_identifier(), SQL-safe identifiers from spreadsheet headers (tabular-file-ingestion spec).…, One header to one identifier, without de-duplication., Sanitizes a header row and de-duplicates in order with `_2`, `_3`, ..., Whether an administrator-supplied identifier is already in canonical sanitized…, sanitize_all(), sanitize_identifier(), build_profile() (+67 more)
 
-### Community 66 - "data_plane.py"
-Cohesion: 0.11
-Nodes (19): _Cache, DataPlaneRecord, _default_platform_record(), get_data_plane_record(), get_data_plane_record_sync(), The per-tenant data-plane record: lookup, short-TTL cache, and typed errors…, Short-TTL in-process cache (default 15s, `NER_DATA_PLANE_CACHE_TTL_SECONDS`).…, `conn` is an `AsyncConnection` or `AsyncSession` on the *platform* database. (+11 more)
+### Community 66 - "tabular_files.py"
+Cohesion: 0.08
+Nodes (62): _default_object_store(), delete_file(), _disabled(), _display_name(), _enqueue_or_fail(), _enqueue_profile(), _enqueue_publish(), _error() (+54 more)
 
 ### Community 67 - "tracked_tenants"
-Cohesion: 0.07
-Nodes (52): evaluate_connection(), datetime, Sync scheduling evaluation (CAP-3, ADR-012). The beat scheduler evaluates every…, Decide whether a connection is due for a scheduled run or a catch-up., ScheduleDecision, test_scheduler_cadence_and_catchup_decisions(), active_connection(), enqueued() (+44 more)
+Cohesion: 0.09
+Nodes (39): active_connection(), parametrize, Verification for the manual Azure Blob sync trigger. Maps to…, test_broker_unavailable_returns_safe_code(), test_connection_reports_latest_completed_sync_run(), test_cross_tenant_manual_sync_is_not_found(), test_inactive_connection_enqueues_nothing(), test_manual_sync_enqueues_manual_trigger() (+31 more)
 
 ### Community 68 - "NormalizedEntity"
-Cohesion: 0.08
-Nodes (45): NormalizedEntity, Strips leading and trailing punctuation, returning `(trimmed, left, right)`…, trim_span(), apply_decisions(), build_candidates(), _build_client(), build_window(), call_postprocessor() (+37 more)
+Cohesion: 0.07
+Nodes (48): NormalizedEntity, Strips leading and trailing punctuation, returning `(trimmed, left, right)`…, trim_span(), apply_decisions(), build_candidates(), _build_client(), build_window(), call_postprocessor() (+40 more)
 
 ### Community 69 - "canonicalize"
 Cohesion: 0.06
-Nodes (22): canonicalize(), Deterministic fallback (format-character removal, typographic folding, NFKC,…, verification.md rows 10-13, TestCanonicalNormalization, asyncio, Covers verification.md rows 8-11. The defect: `canonicalize()` applied NFKC,…, Row 8's second clause: the point of folding is that the persisted row is…, The development tenant stored a JOB_TITLE whose only content was an em dash;… (+14 more)
+Nodes (23): canonicalize(), fold_text(), _is_adjacent(), Removes Unicode format characters (general category `Cf`) and folds typographic…, Deterministic fallback (format-character removal, typographic folding, NFKC,…, Whether `current` continues the entity `prev` belongs to. Model serving filters…, The entity's surface text. When the caller supplies the full ordered token…, Splits a `B-TYPE`/`I-TYPE` label into (prefix, type). Labels with no recognized… (+15 more)
 
 ### Community 70 - "Requirement: Deactivation and orphaning never drop a generated relation"
 Cohesion: 0.04
 Nodes (45): ADDED Requirements, MODIFIED Requirements, REMOVED Requirements, RENAMED Requirements, Requirement: Deactivation and orphaning never drop a generated relation, Requirement: Each active multi-valued entity gets a child table, Requirement: Each tenant gets a subject table with one column per single-valued entity, Requirement: Entity type matching is case-insensitive and covers base-model labels (+37 more)
 
-### Community 71 - "@testing-library/react"
-Cohesion: 0.04
-Nodes (49): Favicon — dark theme SVG, Logo — dark theme SVG, @testing-library/react, Hardcoded-color-to-CSS-variable mapping (text-gray-900 -> var(--ink), bg-white -> var(--surface-2), etc.), Design: Fix Dark Theme Issues Across Portal Pages, Proposal: Fix Dark Theme Issues Across Portal Pages, Fix Dark Theme Issues - Tasks, In-app Logo SVG (+41 more)
+### Community 71 - "DocumentTable.tsx"
+Cohesion: 0.05
+Nodes (40): Favicon — dark theme SVG, Logo — dark theme SVG, Hardcoded-color-to-CSS-variable mapping (text-gray-900 -> var(--ink), bg-white -> var(--surface-2), etc.), Design: Fix Dark Theme Issues Across Portal Pages, Proposal: Fix Dark Theme Issues Across Portal Pages, Fix Dark Theme Issues - Tasks, In-app Logo SVG, Logo (Dark Theme) SVG (+32 more)
 
 ### Community 72 - "annotation_service/worker.py"
-Cohesion: 0.05
-Nodes (70): get_llm_client(), The client this deployment is configured to use. A deployment that has…, build_existing_config_block(), build_qa_pair_block(), build_seed_block(), build_user_payload(), _cap_example_length(), count_qa_pairs() (+62 more)
+Cohesion: 0.07
+Nodes (53): get_llm_client(), LLMClient, Protocol, The client this deployment is configured to use. A deployment that has…, One call: a system prompt and a user payload in, parsed JSON out., build_user_payload(), propose_candidates(), The Q&A-driven prompt when a Q&A-pair document is attached, the discovery… (+45 more)
 
 ### Community 73 - "_get"
-Cohesion: 0.09
-Nodes (12): DashboardSummaryResponse, _get(), asyncio, TestDashboardSummaryShape, TestRouteDispatch, TestSystemAdminActivityFeed, TestSystemAdminPlatformHealthEndpoint, TestSystemAdminResponseShape (+4 more)
+Cohesion: 0.11
+Nodes (8): DashboardSummaryResponse, _get(), _seed_conversations(), TestBusinessUserQueries, TestDashboardSummaryShape, TestRouteDispatch, TestSystemAdminSchemaExclusion, TestSystemAdminStatMetrics
 
 ### Community 74 - "test_entity_definition_reconcile.py"
 Cohesion: 0.08
 Nodes (24): _column_type(), _columns(), _persisted_value_kind(), fixture, All four entity-definition write paths reconcile the tenant's generated schema,…, verification.md rows 64, 114, verification.md row 115, verification.md rows 65, 67, 68, 116 (+16 more)
 
-### Community 75 - "test_external_postgresql_chat.py"
-Cohesion: 0.15
-Nodes (28): clamp_limit(), execute_external_query(), Enforce the server row cap: keep a smaller LIMIT, else append one., Run one drift-gated, validated, parameterized external SELECT. Returns…, check(), FixtureExternalDatabase, In-memory fake: declared metadata plus scripted rows, no network., Compare live metadata against the accepted fingerprint. Returns "clean" or… (+20 more)
+### Community 75 - "blob_sync/__init__.py"
+Cohesion: 0.07
+Nodes (35): AzureBlobLiveProvider, SDK-backed Azure Blob provider (CAP-3, ADR-012). Replaces…, One tenant connection's live Azure Blob container, via the SDK., Durable Azure Blob synchronization runtime (CAP-3, ADR-012). One tenant-bound…, BlobListingFailed, BlobObject, BlobObjectMissing, BlobProvider (+27 more)
 
 ### Community 76 - "_entity"
 Cohesion: 0.13
-Nodes (18): EntityTypeConfig, _entity(), fixture, Covers verification.md rows 42-47 — the permitted-transformation contract.…, Row 43 — merging is bounded exactly as BIO continuation is., Rows 44 and 45 — the largest thing only this stage can fix, bounded to the…, Row 46 — an unverifiable number in an indexed numeric column is exactly what…, Punctuation, whitespace and casing are handled deterministically, so the prompt… (+10 more)
+Nodes (17): _entity(), fixture, Covers verification.md rows 42-47 — the permitted-transformation contract.…, Row 43 — merging is bounded exactly as BIO continuation is., Rows 44 and 45 — the largest thing only this stage can fix, bounded to the…, Row 46 — an unverifiable number in an indexed numeric column is exactly what…, Punctuation, whitespace and casing are handled deterministically, so the prompt…, Row 42 — the `two` / `half years` shape. (+9 more)
 
-### Community 77 - "test_llm_usage_metrics.py"
-Cohesion: 0.09
-Nodes (15): _calls(), _latency_observations(), LLM calls report tokens, latency and an outcome — and never the provider's…, Row 5's second clause., Cost is derived from configured rates, not from a table in source., Found on the running stack, not in a test. Three of the four LLM operations —…, Attribution degrades to `unknown` rather than dropping the observation — a lost…, Row 5's first clause. (+7 more)
+### Community 77 - "reset_context"
+Cohesion: 0.07
+Nodes (20): Clear all four. Used by the Celery task-postrun hook, where the worker process…, reset_context(), _calls(), _latency_observations(), LLM calls report tokens, latency and an outcome — and never the provider's…, Row 5's second clause., Cost is derived from configured rates, not from a table in source., Found on the running stack, not in a test. Three of the four LLM operations —… (+12 more)
 
 ### Community 78 - "test_annotation_workspace.py"
-Cohesion: 0.08
-Nodes (74): only_record(), asyncio, Token/tag alignment in the annotation export. Covers verification.md Spec…, verification.md row 6. Establishes the defect is whitespace-general, not…, verification.md row 7. The stored `bio_tags` column is itself derived from the…, Insert one document with `text_content` and the given confirmed spans. Each…, verification.md row 5. The exact case verified by hand in the proposal: with a…, seed_document() (+66 more)
+Cohesion: 0.06
+Nodes (87): _bio_tags_from_offsets(), export_annotations(), get_session(), get_tenant_id(), AsyncSession, get, Request, Derive BIO tags purely from each span's `char_start`/`char_end`. The stored… (+79 more)
 
 ### Community 79 - "check_regression"
 Cohesion: 0.08
@@ -2038,25 +2108,25 @@ Nodes (19): _load_scan(), parametrize, The release-gate scan's four behaviours, 
 Cohesion: 0.08
 Nodes (18): dict, _entity(), _FakeHeaders, _FakeHttpResponse, _FakeResponse, asyncio, fixture, Covers verification.md rows 48-52. Post-processing is an optional enhancement… (+10 more)
 
-### Community 82 - "stage_span"
-Cohesion: 0.04
-Nodes (42): langsmith_extra(), One hop between a LangSmith run and the OTel trace it happened inside. They are…, `langsmith_extra=` for one wrapped provider call, or `{}` when unavailable.…, _run_id_setter(), current_trace_id(), BaseException, Span helpers for the workload instrumentation. Auto-instrumentation gives one…, The ambient trace id as a 32-character hex string, or None outside a trace. (+34 more)
+### Community 82 - "context_assembler.py"
+Cohesion: 0.06
+Nodes (37): AdmittedEvidence, build_system_prompt(), collapse_duplicate_rows(), _dedupe_chunks(), _fit_external_rows(), _label_for(), Returns rendered chunk text (label + body), overlap-trimmed. Never mutates…, Exactly what prompt assembly put in front of the model. Citations are derived… (+29 more)
 
 ### Community 83 - "ContextAssembler"
-Cohesion: 0.04
-Nodes (59): build_system_prompt(), collapse_duplicate_rows(), ContextAssembler, _count_tokens(), _dedupe_chunks(), _fit_external_rows(), _label_for(), Returns rendered chunk text (label + body), overlap-trimmed. Never mutates… (+51 more)
+Cohesion: 0.06
+Nodes (39): ContextAssembler, _count_tokens(), TestStructuredBlockHeader, _make_chunk(), _overlap_marker(), _prose(), Finds a word present in both chunk texts (the shared boundary region)., Covers scenario 6: task 3.4. (+31 more)
 
 ### Community 84 - "ground_entities"
 Cohesion: 0.04
-Nodes (46): build_entity_type_block(), build_user_payload(), ground_entities(), ground_quote(), GroundingResult, parse_llm_response(), Prompt construction, response parsing, and grounding for LLM pre-labeling.…, The model's output reduced to `{entity_type, quote}` pairs. Accepts either the… (+38 more)
+Nodes (40): build_entity_type_block(), build_user_payload(), ground_entities(), GroundingResult, parse_llm_response(), Prompt construction, response parsing, and grounding for LLM pre-labeling.…, The model's output reduced to `{entity_type, quote}` pairs. Accepts either the…, Grounded suggestions plus the counts that make the drop rate observable.… (+32 more)
 
 ### Community 85 - "test_training_jobs_api.py"
 Cohesion: 0.13
 Nodes (46): auth_header(), client(), _create_tables_sql(), engine(), fake_celery_send_task(), make_token(), asyncio, fixture (+38 more)
 
-### Community 86 - "test_chat_stage_spans.py"
-Cohesion: 0.06
-Nodes (26): _node_outcome(), What this node decided, as a category — never what it decided *about*. Every…, _bucket(), _observations(), A retrieval that finds nothing is recorded as such, not as an absence of…, Task 3.5's fourth measurement — what survived merge and the cap., The recording sits in `_invoke_entry`, which is the one point every dispatched…, TestHitRate (+18 more)
+### Community 86 - "test_entity_resolution_uploader_scope.py"
+Cohesion: 0.11
+Nodes (26): _lookup(), fixture, Verification for entity resolution — verification.md rows 59-61, plus the…, Row 59 — the disclosure this change exists to stop, at the point where a *name*…, Row 61. The rule must not cost the user their own data., Row 60. The word-level match means one mention reaches every 'Arjun' in the…, The widget path: an anonymous visitor must not resolve staff-uploaded people., The leak this closes: same user, same tenant, different conversation. (+18 more)
 
 ### Community 87 - "NER Platform KT Handover Guide"
 Cohesion: 0.07
@@ -2066,13 +2136,13 @@ Nodes (35): MLflow Tracking Server K8s Service, Grafana Datasources Provisioning
 Cohesion: 0.08
 Nodes (33): _embed(), main(), One-off generator for…, Entity-Quality Evaluation Fixture README, correct_extraction failure class, date_value failure class, Development tenant d2eb33ab-68f1-4e67-a841-f040f7eaf233, duplicate_mentions failure class (+25 more)
 
-### Community 89 - "test_chat_api_structured_scope.py"
+### Community 89 - "_scope"
 Cohesion: 0.09
-Nodes (18): apply_document_scope(), document_scope_columns(), `relation -> the column a document scope constrains`, static tables plus the…, Constrains every scoped table reference in an already-validated statement to a…, Structural document-scope enforcement for structured retrieval —…, A derived table needs a name; using the table's own keeps every qualified…, An aggregate projects no document_id, so a post-execution row filter could…, verification.md row 40 — the predicate is inside the source, so the row limit… (+10 more)
+Nodes (17): apply_document_scope(), document_scope_columns(), `relation -> the column a document scope constrains`, static tables plus the…, Constrains every scoped table reference in an already-validated statement to a…, A derived table needs a name; using the table's own keeps every qualified…, An aggregate projects no document_id, so a post-execution row filter could…, verification.md row 40 — the predicate is inside the source, so the row limit…, verification.md rows 16-19 — the same rewrite, over the relations the prompt… (+9 more)
 
 ### Community 90 - "make_tenant"
-Cohesion: 0.07
-Nodes (51): drop_test_schemas(), make_tenant(), make_token(), Fixtures shared by the `test_confidence_routing` / `test_review_queue` /…, A throwaway tenant with its own schema and catalog row., Drop only the schemas this module created. Scoped by the tenant's own slug…, Every tenant table these tests touch, in dependency order., tenant_tables_sql() (+43 more)
+Cohesion: 0.10
+Nodes (30): make_tenant(), A throwaway tenant with its own schema and catalog row., Every tenant table these tests touch, in dependency order., tenant_tables_sql(), _accepted_population(), cleanup(), _client(), _complete_audit() (+22 more)
 
 ### Community 91 - "_create"
 Cohesion: 0.08
@@ -2087,32 +2157,32 @@ Cohesion: 0.16
 Nodes (34): Caveman (README Overview), Auto-Clarity Rule, Caveman (SKILL Instructions), Caveman Intensity Levels (lite/full/ultra/wenyan), Brainstorm-Then-Decompose Principle, Feature Decomposer Skill, OpenSpec Apply Change Skill, OpenSpec CLI (+26 more)
 
 ### Community 94 - "test_external_sql_generator.py"
-Cohesion: 0.17
+Cohesion: 0.18
 Nodes (23): CountingFixtureExternalDatabase, executable_tenant(), FakeLLM, _make_connection(), make_generator(), _patch_live_database(), _patch_live_database_unreachable(), _publish() (+15 more)
 
-### Community 95 - "AnalyticsQueryRequest"
-Cohesion: 0.08
-Nodes (37): analytics_dashboard(), fetch_widget_data(), AsyncSession, get, Request, analytics_export(), analytics_query(), analytics_refresh() (+29 more)
+### Community 95 - "analytics_service/api/v1/schemas.py"
+Cohesion: 0.17
+Nodes (19): analytics_dashboard(), fetch_widget_data(), AsyncSession, get, Request, AnalyticsFilter, AnalyticsQueryResponse, ConfidenceBucket (+11 more)
 
-### Community 96 - "schema_for_tenant"
-Cohesion: 0.09
-Nodes (56): _get_tenant_id(), _get_user_id(), list_entities(), patch_entity(), AsyncSession, get, Request, extract_entities() (+48 more)
+### Community 96 - "extraction_service/worker.py"
+Cohesion: 0.03
+Nodes (114): _get_tenant_id(), _get_user_id(), list_entities(), patch_entity(), AsyncSession, get, Request, extract_entities() (+106 more)
 
 ### Community 97 - "normalize_value"
 Cohesion: 0.05
 Nodes (26): normalize_value(), Pure, deterministic dispatch by declared value kind. No network, database, or…, parametrize, Covers verification.md rows 24-28. `_read_number` tried `_digits_to_number`…, Row 28 — the fallback must not start inventing numbers., The fallback anchors at the start of the phrase, so a trailing identifier…, Row 24 — the exact stored value from `Resume RENJIEAPEN.pdf`., Row 26 — what the reconstruction fix now hands the parser. (+18 more)
 
-### Community 98 - "orchestrator.py"
-Cohesion: 0.05
-Nodes (72): setter, Returns a new RetrievalPlan with every `semantic_retrieval` entry's `scope`…, _rewrite_plan_for_resolution(), Single definition of how much prior conversation each LLM call sees, and how it…, The trailing window of history, oldest first. Empty list when there is none., The same window rendered as `role: content` lines, for the prompts that…, recent_messages(), render_history() (+64 more)
+### Community 98 - "nodes.py"
+Cohesion: 0.04
+Nodes (95): _candidates_to_schema(), _conversation_attachment_filenames(), _node_outcome(), _per_entry_documents(), _pin_structured_query_to_question(), Candidate, Log, span and time one graph node. The span lives here rather than in a second…, For a plan that split the question per subject — more than one entry of the… (+87 more)
 
-### Community 99 - "test_telemetry_failure_isolation.py"
-Cohesion: 0.15
-Nodes (9): _get(), A telemetry outage must not become a platform outage. Verification rows 21 and…, The config-only rollback. If telemetry ever causes a production problem,…, The counterpart: a passing test above means nothing if export never happens., One request could pass before the exporter's first failed connection. A run of…, Risk-register item 5 — the property that makes the above true, asserted…, TestExportIsDisabledByAnEmptyEndpoint, TestRequestsSurviveAnUnreachableCollector (+1 more)
+### Community 99 - "_get"
+Cohesion: 0.21
+Nodes (6): _get(), The config-only rollback. If telemetry ever causes a production problem,…, The counterpart: a passing test above means nothing if export never happens., One request could pass before the exporter's first failed connection. A run of…, TestExportIsDisabledByAnEmptyEndpoint, TestRequestsSurviveAnUnreachableCollector
 
 ### Community 100 - "training_jobs.py"
-Cohesion: 0.11
-Nodes (45): AsyncSession, post, Request, Requesting a retrain from the decision surface. A retrain is a training job.…, Production-review spans no completed run has consumed yet. A local count rather…, Create an ordinary training job in `pending_approval`. Returns the created job,…, request_retrain(), _schema() (+37 more)
+Cohesion: 0.09
+Nodes (48): AsyncSession, post, Request, Requesting a retrain from the decision surface. A retrain is a training job.…, Production-review spans no completed run has consumed yet. A local count rather…, Create an ordinary training job in `pending_approval`. Returns the created job,…, request_retrain(), _schema() (+40 more)
 
 ### Community 101 - "test_celery_queue_metrics.py"
 Cohesion: 0.09
@@ -2120,15 +2190,15 @@ Nodes (17): _depth(), _duration_count(), _failures(), Queue depth, wait time and
 
 ### Community 102 - "_entity"
 Cohesion: 0.10
-Nodes (13): _entity(), fixture, Covers verification.md rows 29-33. Post-processing every entity was measured…, Row 31 — the type declares a number and the parser produced none., Row 32 — the `two` / `half years` shape, if reconstruction ever leaves one., A raw logit of 5.63 is not on the `[0, 1]` scale the threshold is expressed in;…, stable_settings(), TestCandidatesAreBatchedPerDocument (+5 more)
+Nodes (14): EntityTypeConfig, _entity(), fixture, Covers verification.md rows 29-33. Post-processing every entity was measured…, Row 31 — the type declares a number and the parser produced none., Row 32 — the `two` / `half years` shape, if reconstruction ever leaves one., A raw logit of 5.63 is not on the `[0, 1]` scale the threshold is expressed in;…, stable_settings() (+6 more)
 
 ### Community 103 - "test_document_content_hash.py"
 Cohesion: 0.11
 Nodes (19): auth_header(), client(), engine(), _fake_store(), _FakeContentStore, make_token(), _provision_tenant(), asyncio (+11 more)
 
 ### Community 104 - "test_inference_windowing.py"
-Cohesion: 0.08
-Nodes (24): _get_tokenizer(), Resolves (window_budget, overlap) in WordPiece units, clamped so that…, WordPiece length of each whitespace word, in word order. Uses one…, _window_geometry(), _wordpiece_counts(), _fake_session(), _FakeInput, label_list() (+16 more)
+Cohesion: 0.07
+Nodes (26): _build_windows(), _get_tokenizer(), Resolves (window_budget, overlap) in WordPiece units, clamped so that…, Partitions word indices into overlapping `[start, end)` windows, each fitting…, _window_geometry(), _fake_session(), _FakeInput, label_list() (+18 more)
 
 ### Community 105 - "_get_sync_engine"
 Cohesion: 0.15
@@ -2139,48 +2209,44 @@ Cohesion: 0.16
 Nodes (13): _entity(), fixture, Covers verification.md rows 34-38. "Invalid LLM output must never be written…, Row 35 — and never the extraction., _respond(), stable_settings(), TestAcceptedValuesGoThroughDeterministicNormalization, TestInvalidItemDoesNotInvalidateSiblings (+5 more)
 
 ### Community 107 - "_insert_entity"
-Cohesion: 0.10
-Nodes (13): _insert_entity(), usefixtures, Covers verification.md rows 22, 23, 26-31., Covers verification.md row 23: two tenant schemas share a normalized value;…, verification.md row 41. Resolution used to stop at the first mention that…, verification.md row 43 — the single-subject path behaves exactly as before., verification.md row 45 — the cap applies to the union, and an over-cap turn is…, Ambiguity is still a property of ONE mention matching several people — two… (+5 more)
+Cohesion: 0.08
+Nodes (16): entity_schema(), _insert_entity(), fixture, usefixtures, Covers verification.md rows 22, 23, 26-31., Covers verification.md row 23: two tenant schemas share a normalized value;…, verification.md row 41. Resolution used to stop at the first mention that…, verification.md row 43 — the single-subject path behaves exactly as before. (+8 more)
 
-### Community 108 - "_fake_session"
-Cohesion: 0.29
-Nodes (7): _fake_session(), _install_session(), The exact regression: a max logit of 5.0 used to be reported verbatim., `np.max` over the softmax must pick the same element `argmax` did, or a…, Session whose per-position logit vector is produced by `logit_fn(position)`.…, Row 2: every returned confidence is the softmax probability of the predicted…, TestFineTunedPathIsCalibrated
+### Community 108 - "documents.py"
+Cohesion: 0.11
+Nodes (38): _content_error(), _ContentUnavailable, delete_document(), get_document(), get_document_content(), get_document_content_status(), get_document_text(), get_session() (+30 more)
 
 ### Community 109 - "StubLLMClient"
 Cohesion: 0.08
-Nodes (36): A client that returns a canned response and counts its calls. Lives beside the…, StubLLMClient, _add_document(), auth_header(), cleanup(), client(), engine(), fake_send_task() (+28 more)
+Nodes (37): The only module in `annotation_service` that knows which LLM provider is…, A client that returns a canned response and counts its calls. Lives beside the…, StubLLMClient, _add_document(), auth_header(), cleanup(), client(), engine() (+29 more)
 
-### Community 110 - "NotFoundError"
-Cohesion: 0.14
-Nodes (30): _compute_bio_tags(), create_span(), delete_span(), get_session(), get_tenant_id(), list_spans(), prelabel_document(), promote_suggested_span() (+22 more)
+### Community 110 - "v1/spans.py"
+Cohesion: 0.12
+Nodes (28): _compute_bio_tags(), create_span(), delete_span(), get_session(), list_spans(), prelabel_document(), promote_suggested_span(), AsyncSession (+20 more)
 
-### Community 111 - "entity_resolver.py"
-Cohesion: 0.10
-Nodes (26): _accept_matching_mentions(), _build_candidates(), _depossessive(), _extract_mentions(), interpret_selection(), _lookup_candidate_rows(), _MentionMatch, _metrics() (+18 more)
+### Community 111 - "Requirements — Multi-Tenant Custom NER Platform (v2)"
+Cohesion: 0.05
+Nodes (36): 0. Document Control, 10. AI-Native SDD Requirements, 11. Contradiction Resolution (new section), 12. Risks and Mitigations, 13. Success Metrics, 14. Clarified Decisions, 15.1 Delivery Gates, 15.2 Mandatory Repository Artifacts (+28 more)
 
-### Community 112 - "inference_service.py"
-Cohesion: 0.14
-Nodes (25): WarmupRequest, post, Request, warmup_endpoint(), _get_base_pipeline(), infer(), _infer_window(), _infer_with_base_model() (+17 more)
+### Community 112 - "test_tabular_files_tool.py"
+Cohesion: 0.05
+Nodes (50): `ToolContext.tabular_search`: passthrough to the generator. `tenant_id` is the…, _columns_used(), Loads only the accepted relations' served Parquet (from the local cache, keyed…, Contract columns of the accepted relations that the statement names. Every…, TabularAnswer, TabularSQLGenerator, One instance per turn, built with a description rendered from the authenticated…, TabularFilesTool (+42 more)
 
 ### Community 113 - "gateway/dependencies.py"
-Cohesion: 0.08
-Nodes (42): list_notifications(), mark_all_read(), mark_read(), MarkReadResult, Notification, NotificationList, AsyncSession, BaseModel (+34 more)
+Cohesion: 0.09
+Nodes (33): login(), logout(), AsyncSession, JSONResponse, post, Request, refresh(), _set_refresh_cookie() (+25 more)
 
 ### Community 114 - "make_tenant"
-Cohesion: 0.12
-Nodes (50): add_document(), auth_header(), make_tenant(), A throwaway tenant with its own schema, catalog row, and entity types., _add_qa_pair(), _approve_new_initial(), cleanup(), client() (+42 more)
+Cohesion: 0.13
+Nodes (47): add_document(), auth_header(), make_tenant(), make_token(), Fixtures shared by the four `test_seed_bootstrap_*` files. Not a test module —…, A throwaway tenant with its own schema, catalog row, and entity types., tenant_tables_sql(), _add_qa_pair() (+39 more)
 
 ### Community 115 - "Citation"
-Cohesion: 0.09
-Nodes (33): Citation, cap_rows(), _columns(), Defensively caps a raw SQL result to MAX_EXPORT_ROWS before it is persisted as…, render_csv(), render_xlsx(), _sanitize_cell(), _app() (+25 more)
+Cohesion: 0.11
+Nodes (27): Citation, cap_rows(), Defensively caps a raw SQL result to MAX_EXPORT_ROWS before it is persisted as…, _app(), _auth(), _patch_orchestrator(), asyncio, chat-export / chat-api export field — verification.md scenarios 1-10 and… (+19 more)
 
 ### Community 116 - "configured"
 Cohesion: 0.11
 Nodes (18): configured(), fixture, parametrize, Every process logs, at the configured level, with the context keys always…, Deriving it from the message would make the client IP the event name — a…, The reason this matters: an access line is the one record that quotes a caller-…, Row 3 — `NER_LOG_LEVEL` governs what is emitted., Row 5 — present, and null, when no request is active. (+10 more)
-
-### Community 117 - "test_mlflow_verification.py"
-Cohesion: 0.10
-Nodes (16): cleanup(), _complete_run(), _create_run(), db_schema(), experiment_name(), mlflow_client(), fixture, Comprehensive end-to-end verification of the MLflow integration. Preconditions:… (+8 more)
 
 ### Community 118 - "analytics/page.tsx"
 Cohesion: 0.10
@@ -2214,13 +2280,13 @@ Nodes (16): _columns(), _insert_definition(), migrated(), fixture, parametrize, 
 Cohesion: 0.15
 Nodes (12): collapse_duplicates(), Collapses repeated mentions of the same fact within one document into a single…, _entity(), asyncio, Covers verification.md rows 64-67. 364 rows on the development tenant held only…, Row 67 — the key is per document, so two documents naming the same skill keep…, They canonicalize to the same value, which is what the key uses., Row 65 — citations point at this row, so its offsets must be real text. (+4 more)
 
-### Community 126 - "model_serving/main.py"
-Cohesion: 0.05
-Nodes (21): add_bearer_security(), app_error_handler(), health(), lifespan(), exception_handler, FastAPI, get, Request (+13 more)
+### Community 126 - "ModelCache"
+Cohesion: 0.10
+Nodes (7): CachedModel, ModelCache, cache(), fixture, TestCacheHitOnSubsequentRequest, TestLoadModelOnFirstRequest, TestLRUEvictionOnMemoryPressure
 
 ### Community 127 - "TestSQLPrompt"
-Cohesion: 0.09
-Nodes (15): accepted_relations(), Every relation a statement may name: the static tables plus this tenant's…, verification.md row 1 and Risk 7 — the prompt teaches the relational surface,…, Row 1 — no instruction to select from `document_entities`, and no `entity_type`…, Row 5.5 — the graph's scope filter and citation assembly both need it., Task 5.3 — the guidance that was never EAV-specific stays., Task 5.4 — document metadata questions still work; the EAV store is not offered., definition_row() (+7 more)
+Cohesion: 0.20
+Nodes (6): verification.md row 1 and Risk 7 — the prompt teaches the relational surface,…, Row 1 — no instruction to select from `document_entities`, and no `entity_type`…, Row 5.5 — the graph's scope filter and citation assembly both need it., Task 5.3 — the guidance that was never EAV-specific stays., Task 5.4 — document metadata questions still work; the EAV store is not offered., TestSQLPrompt
 
 ### Community 128 - "test_extraction_metrics.py"
 Cohesion: 0.10
@@ -2250,9 +2316,9 @@ Nodes (13): The declarations in `domain_metrics.py` are the cardinality and disc
 Cohesion: 0.18
 Nodes (16): auth_header(), eligibility_tenant_schema(), _insert_document(), _mark_extracted(), _promote_model(), asyncio, fixture, Mirrors production shape: the legacy `version` column is left NULL and the real… (+8 more)
 
-### Community 135 - "seed_bootstrap.py"
-Cohesion: 0.10
-Nodes (56): accept_batch(), _acceptance_body(), approve_candidate(), _batch_document_ids(), _coerce_json(), create_prelabel_batch(), _derive_batch_state(), _document_ids() (+48 more)
+### Community 135 - "HTTPException"
+Cohesion: 0.11
+Nodes (59): HTTPException, require_tenant_admin(), accept_batch(), _acceptance_body(), approve_candidate(), _batch_document_ids(), _coerce_json(), create_prelabel_batch() (+51 more)
 
 ### Community 136 - "auth_header"
 Cohesion: 0.15
@@ -2270,9 +2336,9 @@ Nodes (15): Candidate, Deterministic clarification text — no LLM call., render
 Cohesion: 0.05
 Nodes (42): Purpose, Requirement: Base Model (Version 0) Entry, Requirement: Demote Model Version, Requirement: Model Detail Panel, Requirement: Model Version Card, Requirement: Model Versions API Hooks, Requirement: Model Versions List Page, Requirement: Promote Model Version (+34 more)
 
-### Community 140 - "OrchestrationBudget"
-Cohesion: 0.07
-Nodes (29): OrchestrationBudget, _create_chunks_table(), _fake_vector(), FakeEmbeddingService, _insert_chunk(), _insert_document(), fixture, Covers verification.md row 18. (+21 more)
+### Community 140 - "ToolContext"
+Cohesion: 0.04
+Nodes (56): ExternalAnswer, The generator's outcome for one question. `reason` is `None` on success; every…, ArgValidationError, assert_no_tenancy_params(), Any, Exception, Protocol, Renders this result into a plain-text observation for an LLM conversation.… (+48 more)
 
 ### Community 141 - "_prompt_for"
 Cohesion: 0.11
@@ -2286,9 +2352,9 @@ Nodes (23): auth_header(), create_tenant(), AsyncClient, asyncio, tenant_admin_t
 Cohesion: 0.08
 Nodes (25): chat-api (delta), MODIFIED Requirements, Purpose, Requirement: SQL query generation and validation, Scenario: A child table retained from a `multi` era is excluded from the query surface, Scenario: A generated entity table is both granted and whitelisted, Scenario: A grant for a table that does not yet exist is skipped safely, Scenario: A table that leaves the query surface loses its grant (+17 more)
 
-### Community 144 - "Decisions"
-Cohesion: 0.10
-Nodes (19): Context, Currently-In-Force ADRs, Decision 10: Cross-plane reads are explicit, Decision 11: Local Compose tenant store, Decision 12: Feature flag for shared environments, Decision 1: Relocate the whole tenant schema by connection routing, Decision 2: Control-plane data-plane record with an explicit status machine, Decision 3: New provider `azure_postgresql_data_plane` (+11 more)
+### Community 144 - "test_tabular_executor.py"
+Cohesion: 0.07
+Nodes (38): execute(), execute_locked(), _jsonable(), Exception, Locked in-memory DuckDB execution for uploaded tabular files (ADR-018). Per…, Async entry point: bounded concurrency, execution off the event loop., `%(p1)s` to `$p1` on validated text only; returns the names used., Blocking execution; `tables` maps relation name to local Parquet path. (+30 more)
 
 ### Community 145 - "reconstruct_entities"
 Cohesion: 0.04
@@ -2299,12 +2365,12 @@ Cohesion: 0.05
 Nodes (42): Model Serving, Purpose, Requirement: Cross-encoder reranking endpoint, Requirement: Internal inference endpoint, Requirement: Model cache, Requirement: Model loader uses API-provided artifact path, Requirement: Model Registry URL is configurable and targets the correct in-network port, Requirement: Model warmup on promotion (+34 more)
 
 ### Community 147 - "create_access_token"
-Cohesion: 0.12
-Nodes (39): _make_service_token(), Service-to-service credential, matching `training_service.worker`'s pattern.…, create_access_token(), _bearer(), fixture, Verification for the `require_data_plane_ready` circuit breaker (ADR-017, task…, A `ready` `tenant_owned` tenant whose *recorded* health is `unreachable` (as a…, A `ready`-status tenant already recorded `unreachable` gets 503 straight from… (+31 more)
+Cohesion: 0.10
+Nodes (43): _make_service_token(), Service-to-service credential, matching `training_service.worker`'s pattern.…, create_access_token(), _bearer(), fixture, Verification for the `require_data_plane_ready` circuit breaker (ADR-017, task…, A `ready` `tenant_owned` tenant whose *recorded* health is `unreachable` (as a…, A `ready`-status tenant already recorded `unreachable` gets 503 straight from… (+35 more)
 
-### Community 148 - "test_training_metrics.py"
-Cohesion: 0.11
-Nodes (12): BaseException, Map a raised exception onto the enumerated failure causes. Deliberately coarse.…, _training_failure_cause(), _duration_count(), _failures(), parametrize, Training reports its lifecycle. Model quality stays in MLflow. Verification…, ADR-009 makes the `training_jobs` row the authority on a job's state, and… (+4 more)
+### Community 148 - "public.py"
+Cohesion: 0.09
+Nodes (24): AsyncSession, get, options, post, Request, serve_widget_js(), widget_chat(), widget_chat_preflight() (+16 more)
 
 ### Community 149 - "test_observability_wiring.py"
 Cohesion: 0.11
@@ -2312,11 +2378,11 @@ Nodes (13): parametrize, _python_sources(), Structural guards: one logging confi
 
 ### Community 150 - "Settings"
 Cohesion: 0.07
-Nodes (34): BaseSettings, model_validator, Inject database_ssl_mode into the default connection URLs when the URLs…, Settings, clean_ner_environment(), parametrize, Secret-class settings must have no default, including the new telemetry pepper.…, Run with no `NER_` variables set, restoring them afterwards. The suite's own… (+26 more)
+Nodes (33): BaseSettings, model_validator, Inject database_ssl_mode into the default connection URLs when the URLs…, Settings, clean_ner_environment(), parametrize, Run with no `NER_` variables set, restoring them afterwards. The suite's own…, Row 30 — no plaintext secret defaults in `src/shared/config.py`. (+25 more)
 
-### Community 151 - "model_serving/api/v1/schemas.py"
-Cohesion: 0.24
-Nodes (15): get_tenant_id(), inference_endpoint(), post, Request, get_tenant_id(), post, Request, rerank_endpoint() (+7 more)
+### Community 151 - "tabular_files/storage.py"
+Cohesion: 0.08
+Nodes (38): build_contract(), The canonical published contract: only included columns, with types,…, staged_labels(), discard(), ensure_staged(), _lock_for(), Lock, Process-local staging DuckDB files for uploaded tabular versions. Profiling… (+30 more)
 
 ### Community 152 - "_app"
 Cohesion: 0.21
@@ -2340,15 +2406,15 @@ Nodes (40): ADDED Requirements, Requirement: Bounded agentic retrieval loop, Req
 
 ### Community 157 - "v1/tasks.py"
 Cohesion: 0.16
-Nodes (23): current_role(), Request, Role gates for annotation_service routes. `TenantContextMiddleware`…, Raise 403 unless the caller's role is one of `allowed`. Returns the role., require_annotator(), require_annotator_or_tenant_admin(), require_roles(), require_tenant_admin() (+15 more)
+Nodes (22): current_role(), Request, Role gates for annotation_service routes. `TenantContextMiddleware`…, Raise 403 unless the caller's role is one of `allowed`. Returns the role., require_annotator(), require_annotator_or_tenant_admin(), require_roles(), create_task() (+14 more)
 
 ### Community 158 - "backfill_document_entities.py"
-Cohesion: 0.07
-Nodes (27): backfill_document(), backfill_semantic_values_for_document(), _documents_for_semantic_backfill(), _documents_needing_backfill(), _fetch_token_records(), main(), Backfill `document_entities` for documents extracted before normalized entity…, Populates typed value columns for an already-normalized document by re-parsing… (+19 more)
+Cohesion: 0.09
+Nodes (24): backfill_document(), backfill_semantic_values_for_document(), _documents_for_semantic_backfill(), _documents_needing_backfill(), _fetch_token_records(), main(), Backfill `document_entities` for documents extracted before normalized entity…, Populates typed value columns for an already-normalized document by re-parsing… (+16 more)
 
-### Community 159 - "useToast"
-Cohesion: 0.05
-Nodes (42): hankenGrotesk, inter, jetbrainsMono, BASE_LABELS, CARDINALITY_OPTIONS, mockFetch, cardinalityChangeMessage(), DefineEntityTypeSlideOver() (+34 more)
+### Community 159 - "test_chat_uploader_isolation_end_to_end.py"
+Cohesion: 0.07
+Nodes (33): _ask(), chat, _cited_document_ids(), _Delta, _fake_vector(), _FakeCompletions, FakeEmbeddingService, FakeLLMClient (+25 more)
 
 ### Community 160 - "test_projection_metrics.py"
 Cohesion: 0.13
@@ -2362,9 +2428,9 @@ Nodes (19): auth_header(), cleanup_public(), client(), _create_tables_sql(), mak
 Cohesion: 0.19
 Nodes (11): _columns(), asyncio, fixture, Covers verification.md rows 90-92 for migration 036., Covers verification.md rows 90-92., Row 91 — every run that already happened really was BERT-only., Row 92 — provisioning clones the template, so the template must carry them., `tenant_template.extraction_runs` is created by the shared database setup and… (+3 more)
 
-### Community 163 - "test_warmup_endpoint.py"
-Cohesion: 0.13
-Nodes (13): auth_header(), asyncio, Tests for model-serving warmup endpoint., ADR-006: Model artifacts path must follow tenants/{tid}/models/v{version}/., Task 3.6: Model loads on-demand when cache is empty., Task 3.5: Warmup → cache populated, verified via subsequent lookup., TestArtifactPathConvention, TestInferOnDemandLoad (+5 more)
+### Community 163 - "test_document_content_endpoint.py"
+Cohesion: 0.08
+Nodes (36): auth(), _content(), docs(), _FakeStore, _get(), _probe(), fixture, The content routes: bytes, probe, media-type coercion and the failure taxonomy.… (+28 more)
 
 ### Community 164 - "OpenSpec Onboard Skill"
 Cohesion: 0.27
@@ -2382,29 +2448,29 @@ Nodes (18): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModu
 Cohesion: 0.29
 Nodes (18): _base_model_metadata(), _compute_run_name(), demote_model(), get_active_model(), get_session(), get_tenant_id(), _get_version_or_404(), list_model_versions() (+10 more)
 
-### Community 168 - "test_observability_context.py"
-Cohesion: 0.15
-Nodes (13): app_and_log(), _get(), BaseHTTPMiddleware, fixture, A record emitted during a request carries that request's context, opaquely.…, A leaked contextvar would silently merge two users' work under one identifier., Rows 15 and 17 — a hash for the user, a UUID for the tenant, nothing else., Stands in for each service's real `TenantContextMiddleware`. Only the part this… (+5 more)
+### Community 168 - "_get"
+Cohesion: 0.24
+Nodes (7): _get(), A leaked contextvar would silently merge two users' work under one identifier., Rows 15 and 17 — a hash for the user, a UUID for the tenant, nothing else., Row 4 — the four fields match the values resolved for that request., _records(), TestContextMatchesTheRequest, TestIdentityIsOpaque
 
-### Community 169 - "test_tenant_document_registry_reconcile.py"
-Cohesion: 0.15
-Nodes (19): Upserts one document's registry row. Called after ingestion, an OCR status…, record(), fixture, Verification for `registry.record`/`update_status` and…, Scenario #33: Status transitions reach the registry., Scenario #34: Drift is reconciled., Scenario #35: Unreachable store does not erase registry rows., Scenario #36: System admin sees counts during a tenant outage. (+11 more)
+### Community 169 - "tenant_document_registry.py"
+Cohesion: 0.09
+Nodes (28): `public.tenant_document_registry` — the content-free per-document projection…, `record` for a sync `Connection`/`Session` (Celery workers — OCR status…, Re-derives every document row in `schema` into the registry (tenant- document-…, Hard-removes one document's registry row. The tenant-content delete path itself…, A status-only transition (OCR processed/failed, blob-sync replace/hide) on a…, Upserts one document's registry row. Called after ingestion, an OCR status…, reconcile_schema_sync(), record() (+20 more)
 
-### Community 170 - "test_entity_views_generator.py"
-Cohesion: 0.08
-Nodes (27): catalogued_table_names(), expected_table_names(), generated_table_names(), `schema -> QuerySurface` for the execution role, `validate_sql`, and the…, Every table `build_entity_table_statements` would create or extend. `subject`,…, Every table name any supplied definition claims, active or not. Wider than…, The tenant's query surface: `subject` plus every active `multi` definition's…, resolve_query_surface() (+19 more)
+### Community 170 - "ADDED Requirements"
+Cohesion: 0.05
+Nodes (38): ADDED Requirements, Requirement: Administrator review and load report, Requirement: Column identifier sanitization, Requirement: Draft profile, Requirement: File deletion, Requirement: Platform object storage layout, Requirement: Publish gate, Requirement: Safe file parsing (+30 more)
 
-### Community 171 - "external_pg_contracts.py"
-Cohesion: 0.22
-Nodes (17): contract_history(), _error(), _owned_pg_connection(), publish_contract(), AsyncSession, get, post, Request (+9 more)
+### Community 171 - "AnalyticsQueryRequest"
+Cohesion: 0.17
+Nodes (14): analytics_export(), analytics_query(), analytics_refresh(), AsyncSession, post, Request, AnalyticsExportRequest, AnalyticsQueryRequest (+6 more)
 
-### Community 172 - "Requirement: Tenant data engines are resolved per tenant with no platform fallback"
-Cohesion: 0.11
-Nodes (17): ADDED Requirements, Requirement: Every tenant has exactly one data plane recorded in the control plane, Requirement: Fleet operations enumerate tenants from the control plane, Requirement: Tenant content routes are gated on data-plane readiness, Requirement: Tenant data engines are resolved per tenant with no platform fallback, Scenario: Awaiting-store tenant administrator can configure the store, Scenario: Awaiting-store tenant cannot upload, Scenario: Data-plane record carries no sensitive values (+9 more)
-
-### Community 173 - "auth_header"
+### Community 172 - "conversation_entity_state.py"
 Cohesion: 0.14
-Nodes (12): auth_header(), asyncio, Covers scenario 4, Hallucination Risk 1: task 2.8., Covers scenario 5 (adjusted to 401 to match TenantContextMiddleware convention…, Covers scenario 1: task 2.5., Covers scenario 2: task 2.6., Covers scenario 3: task 2.7., TestRerankAuth (+4 more)
+Nodes (20): _candidates_from_json(), _candidates_to_json(), clear_binding(), clear_pending(), ConversationState, decode_document_ids(), encode_document_ids(), increment_reask() (+12 more)
+
+### Community 173 - "test_rerank_endpoint.py"
+Cohesion: 0.15
+Nodes (13): auth_header(), asyncio, Tests for model-serving rerank endpoint., Covers scenario 4, Hallucination Risk 1: task 2.8., Covers scenario 5 (adjusted to 401 to match TenantContextMiddleware convention…, Covers scenario 1: task 2.5., Covers scenario 2: task 2.6., Covers scenario 3: task 2.7. (+5 more)
 
 ### Community 174 - "OpenSpec CLI"
 Cohesion: 0.28
@@ -2422,9 +2488,9 @@ Nodes (9): _columns(), asyncio, fixture, Covers verification.md rows 86-89 for m
 Cohesion: 0.22
 Nodes (17): AC Verification Policy (AGENTS.md Invariant 2), AC Verification Policy (docs/workflow/acceptance-criteria.md), Project coding standards (docs/standards/coding-standards.md), Microservice pattern-selection rules (docs/architecture/microservice-patterns.md), openspec/project.md (PROJECT.md), Reviewer Council conventions (docs/agents/reviewer-council.md), Architect Review Checklist, architect-reviewer skill (+9 more)
 
-### Community 178 - "test_external_pg_contract_descriptions.py"
-Cohesion: 0.12
-Nodes (34): canonical_fingerprint(), CanonicalContract, ContractValidation, fingerprint_of_metadata(), _is_safe_name(), _normalize_relations(), publish_version(), Canonical schema-contract lifecycle (CAP-4, ADR-013). A contract declares… (+26 more)
+### Community 178 - "external_postgres/__init__.py"
+Cohesion: 0.10
+Nodes (44): accepted_contract(), canonical_fingerprint(), CanonicalContract, ContractValidation, fingerprint_of_metadata(), _is_safe_name(), _normalize_relations(), publish_version() (+36 more)
 
 ### Community 179 - "Decision"
 Cohesion: 0.12
@@ -2439,8 +2505,8 @@ Cohesion: 0.12
 Nodes (3): verification.md row 33: entity lookups match on the canonical value., verification.md row 34: extracted_entities (raw BIO tokens) must not be…, TestSQLValidation
 
 ### Community 182 - "test_document_visibility.py"
-Cohesion: 0.22
-Nodes (16): client(), listed_ids(), asyncio, fixture, Verification for document visibility by ingesting actor — verification.md rows…, Retrieval filters on `purpose` alone, so anything it can cite must be listable., The two queries build their WHERE clause from one list of conditions; a…, seed_document() (+8 more)
+Cohesion: 0.14
+Nodes (27): client(), listed_ids(), asyncio, fixture, Verification for document visibility by ingesting actor — verification.md rows…, Retrieval filters on `purpose` alone, so anything it can cite must be listable., The two queries build their WHERE clause from one list of conditions; a…, The ids the uploader-visibility rule admits for this user, evaluated directly… (+19 more)
 
 ### Community 183 - "TestMigration029DocumentEntitiesTypedValues"
 Cohesion: 0.26
@@ -2448,7 +2514,7 @@ Nodes (8): _columns(), _index_names(), asyncio, fixture, Covers verification.md 
 
 ### Community 184 - "data_sources/service.py"
 Cohesion: 0.06
-Nodes (73): _require_keys(), _cas_status(), mark_paused(), mark_provisioning(), mark_ready_from_paused(), mark_retired(), Active connection paused -> data plane `paused` (content routes 409)., First activation of a data-plane connection -> `provisioning`, binding the… (+65 more)
+Nodes (69): _set_outcome(), _cas_status(), get_data_plane_record(), invalidate(), mark_paused(), mark_provisioning(), mark_ready_from_paused(), mark_retired() (+61 more)
 
 ### Community 185 - "ADDED Requirements"
 Cohesion: 0.05
@@ -2470,13 +2536,13 @@ Nodes (5): auth_header(), _insert_conversation(), _insert_message(), _post_feedb
 Cohesion: 0.20
 Nodes (15): _columns(), migrated_database(), _migration(), asyncio, fixture, Verification for migration 038 — verification.md rows 82-87. The migration is…, Provisioning clones `tenant_template`, so inheriting is a property of the…, No unique constraint: `documents` is soft-deleted, and content-addressed reuse… (+7 more)
 
-### Community 190 - "Requirement: Safe activation and concurrent capability limits"
-Cohesion: 0.12
-Nodes (16): ADDED Requirements, MODIFIED Requirements, Requirement: Data-plane connection pause and retirement drive data-plane status, Requirement: Safe activation and concurrent capability limits, Requirement: Tenant-admin-managed finite Azure connections, Scenario: Cross-tenant connection access is denied, Scenario: Data-plane test reports a missing vector extension, Scenario: Duplicate active provider is rejected (+8 more)
+### Community 190 - "chat.py"
+Cohesion: 0.06
+Nodes (57): field_validator, _await_processed(), chat(), chat_stream(), _check_tenant_and_rate_limit(), _conversation_attachments_query(), create_conversation(), delete_conversation() (+49 more)
 
-### Community 191 - "EntityService"
-Cohesion: 0.08
-Nodes (32): create_entity_type(), delete_entity_type(), EntityTypeCreate, EntityTypeToggle, EntityTypeUpdate, get_entity_type(), list_entity_types(), AsyncSession (+24 more)
+### Community 191 - "ADDED Requirements"
+Cohesion: 0.06
+Nodes (35): ADDED Requirements, Requirement: A citation chip opens the document it cites, Requirement: An attachment chip opens the file it represents, Requirement: Document bytes are fetched as authenticated data, never as a subresource URL, Requirement: The viewer is operable from the keyboard, Requirement: The viewer releases what it holds, Requirement: The viewer renders the document, at the cited page, Requirement: The viewer shows the document and its controls, and nothing else (+27 more)
 
 ### Community 192 - "Document Ingestion Source Boundary (architecture proposal)"
 Cohesion: 0.20
@@ -2486,9 +2552,9 @@ Nodes (14): Document Ingestion Source Boundary (architecture proposal), Document
 Cohesion: 0.05
 Nodes (50): DashboardPage(), ActiveModelCard(), ActiveModelCardProps, ActivityPanel(), ActivityPanelProps, ActivityRowList(), ActivityRowListProps, ROW_ICONS (+42 more)
 
-### Community 194 - "extraction_service/worker.py"
+### Community 194 - "ADDED Requirements"
 Cohesion: 0.06
-Nodes (43): get_already_extracted(), Documents (of the given IDs) already extracted under the given model version,…, delete_relational_entities(), Clear the document's relational rows on the caller's connection. Resolves which…, _accumulate_entity_counts(), _get_active_model_version(), _get_cached_model_version(), _get_document_filenames() (+35 more)
+Nodes (34): ADDED Requirements, Requirement: A document's original bytes are retrievable over HTTP, Requirement: An availability probe answers before bytes are transferred, Requirement: Content access applies the same visibility rules as every other answer channel, Requirement: Content access is observable without recording document content, Requirement: Every failure outcome is distinct and actionable, Requirement: Source-only content is re-read from its originating source, Requirement: The served media type is determined by the system, never echoed from stored input (+26 more)
 
 ### Community 195 - "Requirements"
 Cohesion: 0.15
@@ -2510,13 +2576,13 @@ Nodes (20): _drain(), _generation_node(), NoopGuardrails, Covers verification.md
 Cohesion: 0.05
 Nodes (39): Purpose, Requirement: authFetch stub, Requirement: Badge component, Requirement: MiniBar component, Requirement: PlaceholderScreen component, Requirement: Primitive barrel export, Requirement: SegmentControl component, Requirement: SlideOver component (+31 more)
 
-### Community 200 - "auth_header"
-Cohesion: 0.33
-Nodes (6): auth_header(), asyncio, The regression this guards: if serving ever reverts to raw logits, the values…, _stub_infer(), TestLowConfidenceEntitiesAreFiltered, TestThresholdIsMeaningfulAgainstTheReturnedScale
+### Community 200 - "test_document_rendition.py"
+Cohesion: 0.11
+Nodes (31): Convert an original into a PDF, or raise a `ConversionFailed`. Never returns…, to_pdf(), convertible(), _csv_bytes(), _fetch(), _pdf_page_count(), _pdf_text(), fixture (+23 more)
 
-### Community 201 - "test_health_endpoints.py"
-Cohesion: 0.37
-Nodes (12): _get(), asyncio, chat_api readiness checks base model_serving reachability only — it must not…, test_chat_api_health_200_when_all_dependencies_healthy(), test_chat_api_health_503_when_database_unhealthy(), test_chat_api_health_live_returns_200_regardless_of_dependencies(), test_chat_api_health_stays_healthy_when_only_base_model_reachable(), test_document_service_health_checks_database_and_minio() (+4 more)
+### Community 201 - "ADDED Requirements"
+Cohesion: 0.07
+Nodes (29): ADDED Requirements, Requirement: An answer with no requesting user sees source-system content only, Requirement: Conversation-owned attachments remain visible to their own uploader, Requirement: Every chat answer channel enforces the rule, Requirement: Listing and every answer channel agree in both directions, Requirement: Narrowing is observable without recording tenant content, Requirement: The requesting user is derived from authenticated state, never from input, Requirement: Uploader visibility is one rule, stated once (+21 more)
 
 ### Community 202 - "TestMigration026DocumentEntities"
 Cohesion: 0.27
@@ -2534,17 +2600,17 @@ Nodes (12): OpenSpec Explore Skill (Claude), OpenSpec Sync Specs Skill (Claude),
 Cohesion: 0.24
 Nodes (12): OpenSpec Apply Change Skill, OpenSpec Archive Change Skill, OpenSpec Bulk Archive Change Skill, OpenSpec Continue Change Skill, OpenSpec Explore Skill, OpenSpec Fast-Forward Change Skill, OpenSpec New Change Skill, OpenSpec Onboard Skill (+4 more)
 
-### Community 206 - "Requirement: Safe connection lifecycle interface"
-Cohesion: 0.12
-Nodes (15): ADDED Requirements, MODIFIED Requirements, Requirement: Safe connection lifecycle interface, Requirement: Tenant users see a safe data-plane readiness state, Scenario: A failed test hides the attestation checkboxes and returns the control to a retry state, Scenario: A passed test surfaces the attestation checkboxes inline, Activate stays disabled until both are checked, Scenario: Activation is blocked safely, Scenario: Awaiting-store tenant administrator is guided to setup (+7 more)
+### Community 206 - "test_retrieval_tools_integration.py"
+Cohesion: 0.13
+Nodes (20): _create_chunks_table(), _create_second_schema(), _fake_vector(), FakeEmbeddingService, _insert_chunk(), _insert_document(), fixture, Covers verification.md row 28: multi-document scope, results restricted to the… (+12 more)
 
 ### Community 207 - "MODIFIED Requirements"
 Cohesion: 0.05
 Nodes (38): ADDED Requirements, MODIFIED Requirements, REMOVED Requirements, Requirement: Annotation Task Queue, Requirement: Annotation Toolbar, Requirement: Entity Type Palette and Armed Mode, Requirement: Focus Mode Entity Palette, Requirement: Layout and Navigation (+30 more)
 
 ### Community 208 - "ADDED Requirements"
-Cohesion: 0.12
-Nodes (15): ADDED Requirements, Requirement: Activating a data-plane connection provisions the tenant schema in the tenant store, Requirement: Pending tenant-store revisions are applied per store on deploy, Requirement: Replacement connections must point at the same store, Requirement: Tenant-store schema is defined by a versioned baseline and ordered revisions, Scenario: Credential rotation keeps the tenant ready, Scenario: Deploy upgrades a residency store, Scenario: Missing tenant-store revision fails the build (+7 more)
+Cohesion: 0.07
+Nodes (26): ADDED Requirements, Requirement: Capability-gated tabular tool, Requirement: Contract-validated SQL generation, Requirement: End-to-end tabular answer, Requirement: Locked in-memory execution, Requirement: Prompt injection resistance, Requirement: Safe tabular outcomes, Requirement: Tabular citations without row values (+18 more)
 
 ### Community 209 - "ADDED Requirements"
 Cohesion: 0.05
@@ -2566,9 +2632,9 @@ Nodes (5): auth_header(), _get_summary(), Creates `total` eligible assistant ans
 Cohesion: 0.21
 Nodes (22): auth_header(), AsyncClient, asyncio, fixture, qa_tenant(), verification.md row 17., verification.md row 18., verification.md row 19. QA pairs go through the same versioned update path as… (+14 more)
 
-### Community 214 - "test_extraction_api.py"
-Cohesion: 0.29
-Nodes (6): auth_header(), asyncio, TestExtractNoModelReturns400, TestExtractNonAdminReturns403, TestExtractTextReturnsEntities, TestLowConfidenceFiltered
+### Community 214 - "test_document_content_authorization.py"
+Cohesion: 0.11
+Nodes (23): auth(), _FakeStore, _get(), fixture, Authorization for the content routes. Covers the six authorization scenarios…, Every other route in the module excludes conversation-owned rows; the content…, Deliberate: a tenant admin sees the library, but a colleague's private chat…, Credentials for a different tenant must not reach this tenant's document.… (+15 more)
 
 ### Community 215 - "test_migration_027_conversation_entity_state.py"
 Cohesion: 0.26
@@ -2590,16 +2656,16 @@ Nodes (37): ADDED Requirements, Requirement: authFetch stub, Requirement: Badge 
 Cohesion: 0.13
 Nodes (19): upgrade(), downgrade(), upgrade(), downgrade(), upgrade(), downgrade(), qa_examples on entity_definitions, source on suggested_spans Two additive…, Every tenant schema, `tenant_template` included. The template is not optional:… (+11 more)
 
-### Community 220 - "tenant-postgresql-data-plane/tasks.md"
-Cohesion: 0.12
-Nodes (15): 10. Provisioning task and per-store migration, 11. Failure isolation, 12. Document registry, 13. Portal, 14. Documentation, 15. Verification & Evidence, 1. Prerequisites, 2. Control-plane schema (migration 043) (+7 more)
+### Community 220 - "ParquetCache"
+Cohesion: 0.11
+Nodes (10): ParquetCache, Lock, Local path of the served version's Parquet, downloading on a miss. Blocking;…, Removes every object under one server-built prefix; returns the count., Thin boto3 wrapper; every method takes an already-built key from the helpers…, TabularObjectStore, minio_cleanup(), fixture (+2 more)
 
 ### Community 221 - "Requirements"
 Cohesion: 0.05
 Nodes (37): Local Development Stack, Purpose, Requirement: Application Service Port Mapping, Requirement: Automated Database Initialization on Compose Up, Requirement: Docker Build Context Hygiene, Requirement: Postgres Data Persistence Across Compose Cycles, Requirement: Service Startup Dependencies, Requirement: Shared Root Dockerfile (+29 more)
 
 ### Community 222 - "TestTenantAdminQueries"
-Cohesion: 0.31
+Cohesion: 0.36
 Nodes (4): _seed_docs(), _seed_promoted_model(), _seed_training_jobs(), TestTenantAdminQueries
 
 ### Community 223 - "test_dashboard_tenant_enumeration.py"
@@ -2611,8 +2677,8 @@ Cohesion: 0.31
 Nodes (7): _create_annotation_tasks(), _create_bare_documents(), asyncio, fixture, _run_upgrade_022(), sync_engine(), TestMigration022Guard
 
 ### Community 225 - "Requirements"
-Cohesion: 0.05
-Nodes (43): Purpose, Requirement: Entity definition value kind columns are added to the public schema, Requirement: Existing tenant schemas are reconciled to the current template shape, Requirement: Per-tenant-schema DDL tolerates tenant schemas missing a table, Requirement: Semantic value columns are added to the template and every existing tenant schema, Requirement: Tenant provisioning clones the template atomically, Requirement: Tenant-scoped migration DDL is authored once and delegated to, Requirement: Tenant-scoped migrations propagate to existing tenant schemas (+35 more)
+Cohesion: 0.04
+Nodes (46): Purpose, Requirement: Entity definition value kind columns are added to the public schema, Requirement: Existing tenant schemas are reconciled to the current template shape, Requirement: Per-tenant-schema DDL tolerates tenant schemas missing a table, Requirement: Semantic value columns are added to the template and every existing tenant schema, Requirement: Tenant provisioning clones the template atomically, Requirement: Tenant-scoped migration DDL is authored once and delegated to, Requirement: Tenant-scoped migrations also reach residency stores (+38 more)
 
 ### Community 226 - "TestSetupTestDbGuard"
 Cohesion: 0.29
@@ -2622,9 +2688,9 @@ Nodes (4): CompletedProcess, asyncio, _run_script(), TestSetupTestDbGuard
 Cohesion: 0.05
 Nodes (36): ADDED Requirements, Requirement: Celery Queue Instrumentation, Requirement: Chat And Retrieval Path Instrumentation, Requirement: Entity Resolution Outcomes Are Recorded, Requirement: Extraction And Projection Instrumentation, Requirement: Guardrail Decisions Are Counted, Including Fail-Open, Requirement: LangSmith And OpenTelemetry Traces Are Correlated, Requirement: Model Serving Instrumentation (+28 more)
 
-### Community 228 - "portal/package.json"
-Cohesion: 0.10
-Nodes (18): eslint, eslint-config-next, eslint-config-prettier, jsdom, postcss, recharts, @testing-library/jest-dom, @types/node (+10 more)
+### Community 228 - "stage_span"
+Cohesion: 0.05
+Nodes (34): langsmith_extra(), One hop between a LangSmith run and the OTel trace it happened inside. They are…, `langsmith_extra=` for one wrapped provider call, or `{}` when unavailable.…, _run_id_setter(), annotate_current_span(), current_trace_id(), BaseException, Span helpers for the workload instrumentation. Auto-instrumentation gives one… (+26 more)
 
 ### Community 229 - "ADDED Requirements"
 Cohesion: 0.06
@@ -2638,9 +2704,9 @@ Nodes (35): ADDED Requirements, MODIFIED Requirements, Requirement: Async OCR Pr
 Cohesion: 0.06
 Nodes (34): ADDED Requirements, Requirement: Conversation CRUD, Requirement: Disclaimer in every response, Requirement: Guardrail — blocked question types, Requirement: Guardrail — query complexity limits, Requirement: Guardrail — source citation enforcement, Requirement: NER inference for chat context, Requirement: pgvector semantic search (+26 more)
 
-### Community 232 - "TestAMalformedSchemaIsCountedAndLogged"
-Cohesion: 0.13
-Nodes (9): parametrize, `assert_tenant_schema` counts and logs; it never raises. Verification rows 30…, The `code_path` label is itself an enumerated value set — a free-form string…, The behavioural commitment. A raise here would be a behavioural change smuggled…, A violating value is by definition one we did not expect, so it must not be…, TestAMalformedSchemaIsCountedAndLogged, TestAWellFormedSchemaPasses, TestTheCallSitesAreDeclared (+1 more)
+### Community 232 - "inference_service.py"
+Cohesion: 0.07
+Nodes (52): get_tenant_id(), inference_endpoint(), post, Request, get_tenant_id(), post, Request, rerank_endpoint() (+44 more)
 
 ### Community 233 - "ADDED Requirements"
 Cohesion: 0.06
@@ -2714,9 +2780,9 @@ Nodes (7): devDependencies, autoprefixer, tailwindcss, autoprefixer, tailwindcss
 Cohesion: 0.39
 Nodes (7): _clean(), _contains_blocklisted_substring(), main(), name_span(), Deterministic post-validation safety net over annotations.jsonl.labeled's NAME…, Returns the char offset where a blocklisted word starts inside the concatenated…, validate()
 
-### Community 251 - "external_sql_generator.py"
-Cohesion: 0.08
-Nodes (35): Identifier, _build_system_prompt(), ExternalSQLGenerator, _metrics(), _missing_param_name(), _parse_llm_output(), Contract-grounded external SQL generation (ADR-016). Turns a natural-language…, Resolved on use, like the other generators, so this module never pulls the… (+27 more)
+### Community 251 - "test_seed_bootstrap_proposal.py"
+Cohesion: 0.11
+Nodes (19): count_qa_pairs(), How many question/answer pairs the tenant's Q&A document contains. Tenants…, _candidate_named(), _candidates(), cleanup(), client(), engine(), fake_send_task() (+11 more)
 
 ### Community 252 - "ADDED Requirements"
 Cohesion: 0.06
@@ -2734,9 +2800,13 @@ Nodes (34): Document Ingestion Boundary, Purpose, Requirement: Azure Blob sync s
 Cohesion: 0.06
 Nodes (34): Purpose, Requirement: Baseline regression gate, Requirement: Configuration matrix comparison, Requirement: Deterministic offline evaluation, Requirement: Evaluation executes through the tool layer, Requirement: Report output, Requirement: Retrieval metrics, Requirement: Versioned golden set (+26 more)
 
-### Community 256 - "DocumentUpload.annotationMode.test.tsx"
-Cohesion: 0.05
-Nodes (25): ACCEPTED_TYPES, AnnotationMode, callLog, createWrapper(), entityTypes, prelabelCalls, prelabelFailures, renderUpload() (+17 more)
+### Community 256 - "OrchestrationBudget"
+Cohesion: 0.17
+Nodes (16): OrchestrationBudget, _create_chunks_table(), _fake_vector(), FakeEmbeddingService, _insert_chunk(), _insert_document(), fixture, Covers verification.md row 18. (+8 more)
+
+### Community 257 - "entity_resolver.py"
+Cohesion: 0.13
+Nodes (24): _accept_matching_mentions(), _build_candidates(), _conversation_predicate_via_document(), _extract_mentions(), interpret_selection(), _lookup_candidate_rows(), _MentionMatch, _metrics() (+16 more)
 
 ### Community 258 - "Requirement: Contract-authorized SQL execution"
 Cohesion: 0.11
@@ -2755,16 +2825,16 @@ Cohesion: 0.43
 Nodes (6): clean_span(), _clean_word(), main(), name_span(), Deterministic cleanup pass over annotations.jsonl.labeled's NAME spans. Trims…, Returns (new_start, new_end) or None if nothing salvageable. Strategy: walk…
 
 ### Community 262 - "test_mlflow_integration_live.py"
-Cohesion: 0.19
-Nodes (12): MlflowClient, _experiment_name(), cleanup(), db_schema(), experiment_name(), mlflow_client(), fixture, Live integration tests for MLflow integration. Requires: - MLflow Tracking… (+4 more)
+Cohesion: 0.29
+Nodes (10): _experiment_name(), cleanup(), db_schema(), experiment_name(), mlflow_client(), fixture, Live integration tests for MLflow integration. Requires: - MLflow Tracking…, Create tenant schema + model_versions table for DB cache writes. (+2 more)
 
 ### Community 263 - "Requirements"
 Cohesion: 0.06
 Nodes (33): entity-normalization Specification, Purpose, Requirement: Backfill of previously extracted documents, Requirement: BIO sequence reconstruction, Requirement: Canonical value normalization, Requirement: Entity-level confidence aggregation, Requirement: Location metadata on normalized entities, Requirement: Normalized entity persistence (+25 more)
 
 ### Community 264 - "Requirements"
-Cohesion: 0.06
-Nodes (33): Purpose, Requirement: Adapter selection is observable, Requirement: Only platform default adapters are executable in this change, Requirement: Per-tenant integration profile in control-plane storage, Requirement: Profile status model, Requirement: Profiles are developer-managed, Requirement: Profiles hold secret references, never secret values, Requirement: Typed profile configuration with an allowlisted shape (+25 more)
+Cohesion: 0.05
+Nodes (38): Purpose, Requirement: Adapter selection is observable, Requirement: Only platform default adapters are executable in this change, Requirement: Per-tenant integration profile in control-plane storage, Requirement: Profile status model, Requirement: Profiles are developer-managed, Requirement: Profiles hold secret references, never secret values, Requirement: Tenant-owned data plane forbids platform-retained originals (+30 more)
 
 ### Community 265 - "Requirement: Per-Entity-Type Dataset Readiness"
 Cohesion: 0.06
@@ -2775,12 +2845,12 @@ Cohesion: 0.06
 Nodes (32): ADDED Requirements, Requirement: Baseline regression gate, Requirement: Configuration matrix comparison, Requirement: Deterministic offline evaluation, Requirement: Evaluation executes through the tool layer, Requirement: Report output, Requirement: Retrieval metrics, Requirement: Versioned golden set (+24 more)
 
 ### Community 267 - "test_dashboard_summary.py"
-Cohesion: 0.15
-Nodes (10): _platform_health_status(), auth_header(), _FakeHealthClient, _FakeHealthResponse, _seed_annotator_tasks(), _seed_spans(), test_platform_health_status_critical_when_gateway_or_model_serving_offline(), test_platform_health_status_degraded_when_noncritical_offline() (+2 more)
+Cohesion: 0.12
+Nodes (14): _platform_health_status(), auth_header(), asyncio, _seed_annotator_tasks(), _seed_spans(), test_platform_health_status_critical_when_gateway_or_model_serving_offline(), test_platform_health_status_degraded_when_noncritical_offline(), test_platform_health_status_healthy_when_all_online() (+6 more)
 
-### Community 268 - "test_entity_resolver.py"
-Cohesion: 0.11
-Nodes (7): entity_schema(), fixture, Covers verification.md rows 24-27., Covers verification.md row 42 (ordinal path)., TestMentionExtraction, TestParseOrdinalSelection, TestPersonTypes
+### Community 268 - "external_pg_contracts.py"
+Cohesion: 0.22
+Nodes (17): contract_history(), _error(), _owned_pg_connection(), publish_contract(), AsyncSession, get, post, Request (+9 more)
 
 ### Community 269 - "TestWorkerSemanticNormalization"
 Cohesion: 0.21
@@ -2806,9 +2876,9 @@ Nodes (31): ADDED Requirements, MODIFIED Requirements, Requirement: Changing an 
 Cohesion: 0.47
 Nodes (5): _python_files(), Covers scenario 14: task 6.3., Covers Hallucination Risk 1: task 6.4., test_exactly_one_system_prompt_definition(), test_no_character_slice_of_chunk_text()
 
-### Community 276 - "TestWorkerNormalizesEntitiesOnIngest"
-Cohesion: 0.18
-Nodes (5): _FakeResponse, asyncio, Covers verification.md row 19: a failure while inserting normalized entities…, Covers verification.md rows 16-19, 25 — normalized entities are persisted…, TestWorkerNormalizesEntitiesOnIngest
+### Community 276 - "to_sql_identifier"
+Cohesion: 0.12
+Nodes (12): _backfill_sql_identifiers(), view-layer metadata on entity_definitions The read model for extracted entities…, Assigns every existing row an identifier, resolving collisions within each…, upgrade(), The identifier body, before the prefix, the length bound, and collision…, Deterministic, collision-free, <=63 chars, matches `^e_[a-z0-9][a-z0-9_]*$`.…, _slug_base(), to_sql_identifier() (+4 more)
 
 ### Community 277 - "ADDED Requirements"
 Cohesion: 0.06
@@ -2871,8 +2941,8 @@ Cohesion: 0.07
 Nodes (29): Original Document Storage, Purpose, Requirement: Document content store boundary, Requirement: Ephemeral retention uses a bounded working copy, Requirement: No consumer parses the storage reference, Requirement: Reprocessability is bounded by retention mode and stated, never silently assumed, Requirement: Retention mode is explicit and determines content resolution, Requirement: The storage reference is an outcome, never an input (+21 more)
 
 ### Community 294 - "test_seed_bootstrap_batch.py"
-Cohesion: 0.07
-Nodes (30): AzureOpenAIClient, LLMClient, LLMUnavailable, Exception, Protocol, The only module in `annotation_service` that knows which LLM provider is…, The provider could not be reached, or returned something unusable. Raised…, One call: a system prompt and a user payload in, parsed JSON out. (+22 more)
+Cohesion: 0.08
+Nodes (26): AzureOpenAIClient, LLMUnavailable, Exception, The provider could not be reached, or returned something unusable. Raised…, The configured provider. The SDK import is deferred so importing this module —…, AlwaysFailingClient, FailingOnNthClient, Every call raises — models a large batch where every document fails. (+18 more)
 
 ### Community 295 - "Multi-tenant NER Platform investor/exec deck (scroll-snap slide deck)"
 Cohesion: 0.50
@@ -2887,8 +2957,8 @@ Cohesion: 0.07
 Nodes (28): ADDED Requirements, Requirement: Activity Panel, Requirement: Dashboard Data Shape, Requirement: Dashboard Summary Endpoint, Requirement: Data Freshness, Requirement: Hero Section, Requirement: Secondary Metrics Panel, Requirement: Stat Card Strip (+20 more)
 
 ### Community 298 - "setup_test_db.py"
-Cohesion: 0.67
-Nodes (3): _assert_test_database(), main(), Create extraction service tables in ner_test database.
+Cohesion: 0.47
+Nodes (5): _assert_test_database(), main(), _migration_ddl(), Create extraction service tables in ner_test database., The DDL an Alembic revision executes, captured rather than restated, so the…
 
 ### Community 299 - "Requirement: Contract-authorized SQL execution"
 Cohesion: 0.11
@@ -2905,6 +2975,10 @@ Nodes (46): Purpose, Requirement: Annotation File Import — Frontend Button, Re
 ### Community 302 - "Requirement: System Admin Cross-Tenant User Creation Endpoint"
 Cohesion: 0.07
 Nodes (28): Purpose, Requirement: Admin Console Cross-Tenant User Creation UI, Requirement: Shared User Creation Business Logic, Requirement: System Admin Cross-Tenant User Creation Endpoint, Requirement: Tenant Admin Onboarding Flow Remains Unchanged, Requirement: User Creation Is Audited, Requirements, Scenario: Audit event recorded when System Admin creates a user (+20 more)
+
+### Community 303 - "list_model_versions"
+Cohesion: 0.13
+Nodes (13): MlflowClient, demote_model_version(), _get_client(), list_model_versions(), _metrics_with_label_list(), _mlflow_run_url(), promote_model_version(), _registered_model_name() (+5 more)
 
 ### Community 304 - "ADDED Requirements"
 Cohesion: 0.07
@@ -2935,8 +3009,8 @@ Cohesion: 0.07
 Nodes (27): ADDED Requirements, Requirement: Document content store boundary, Requirement: Ephemeral retention uses a bounded working copy, Requirement: No consumer parses the storage reference, Requirement: Reprocessability is bounded by retention mode and stated, never silently assumed, Requirement: Retention mode is explicit and determines content resolution, Requirement: The storage reference is an outcome, never an input, Scenario: A NULL reference is not reported as a failure (+19 more)
 
 ### Community 419 - "data_sources.py"
-Cohesion: 0.10
-Nodes (47): enqueue_sync(), activate_data_source(), _body_digest(), create_data_source(), _created(), _data_plane_body(), _enqueue_blob_sync(), _error() (+39 more)
+Cohesion: 0.12
+Nodes (41): enqueue_sync(), activate_data_source(), _body_digest(), create_data_source(), _created(), _data_plane_body(), _enqueue_blob_sync(), _error() (+33 more)
 
 ### Community 420 - "Requirement: Contract-authorized SQL execution"
 Cohesion: 0.11
@@ -3070,9 +3144,9 @@ Nodes (21): Purpose, Requirement: Dashboard Summary Endpoint, Requirement: Dashb
 Cohesion: 0.09
 Nodes (21): Model Registry, Purpose, Requirement: Demote model version, Requirement: Get active model version, Requirement: List model versions, Requirement: Promote model version, Requirements, Scenario: Demote a non-promoted model returns 422 (+13 more)
 
-### Community 453 - "TenantMismatchError"
-Cohesion: 0.07
-Nodes (18): _count_rejection(), Count one rejection, splitting the bucket key into its scope and tenant. Keys…, SlidingWindowRateLimiter, A validated token asserting one tenant, addressing another. The counter and the…, TenantMismatchError, The four counters Exit Gate 3 names: mismatch, auth failure, rate-limit…, Row 32's second clause. The reason is drawn from the exception type, so there…, The tenant label here is deliberate: a rejected request produces the least… (+10 more)
+### Community 453 - "shared/auth.py"
+Cohesion: 0.05
+Nodes (64): BaseHTTPMiddleware, Request, TenantContextMiddleware, BaseHTTPMiddleware, Request, TenantContextMiddleware, BaseHTTPMiddleware, Request (+56 more)
 
 ### Community 454 - "ADDED Requirements"
 Cohesion: 0.13
@@ -3362,13 +3436,13 @@ Nodes (16): MODIFIED Requirements, Requirement: Approve training job, Requiremen
 Cohesion: 0.12
 Nodes (16): Purpose, Requirement: CORS configuration for widget endpoints, Requirement: Hosted widget JS file, Requirement: Widget API key management, Requirement: Widget-specific chat endpoint, Requirements, Scenario: Chat with invalid widget API key, Scenario: Generate widget API key (+8 more)
 
-### Community 526 - "test_chat_api_retrieval_status.py"
-Cohesion: 0.12
-Nodes (22): Per-capability retrieval outcome for the turn. Additive: a client that ignores…, RetrievalStatusOut, _proxy(), proxy_batch(), proxy_batch_list(), proxy_batch_status(), proxy_eligible_documents(), proxy_extract() (+14 more)
+### Community 526 - "_patch"
+Cohesion: 0.26
+Nodes (13): _proxy(), proxy_batch(), proxy_batch_list(), proxy_batch_status(), proxy_eligible_documents(), proxy_extract(), proxy_list_entities(), proxy_patch_entity() (+5 more)
 
 ### Community 527 - "review_queue.py"
-Cohesion: 0.10
-Nodes (37): Random, complete_audit_sample(), _document_text(), get_review_accumulation(), list_review_queue(), open_audit_sample(), AsyncSession, get (+29 more)
+Cohesion: 0.07
+Nodes (49): Random, complete_audit_sample(), _document_text(), get_review_accumulation(), list_review_queue(), open_audit_sample(), AsyncSession, get (+41 more)
 
 ### Community 529 - "ADDED Requirements"
 Cohesion: 0.12
@@ -4431,32 +4505,32 @@ Cohesion: 0.17
 Nodes (11): Context, Currently-In-Force ADRs, Decision 1: One sync use case, four triggers, identity-only queued payloads, Decision 2: Ledger, lease, and run record in the tenant schema, Decision 3: Replace-by-reprocessing with retrieval hiding for missing objects, Decision 4: Temporary working storage with guaranteed deletion, Decisions, Goals / Non-Goals (+3 more)
 
 ### Community 794 - "Requirements"
-Cohesion: 0.17
-Nodes (11): Admin Console, Purpose, Requirement: GPU Job Monitoring, Requirement: Tenant Detail View, Requirement: Tenant Management Dashboard, Requirements, Scenario: System Admin creates a user in the tenant from this view, Scenario: System Admin creates tenant via UI (+3 more)
+Cohesion: 0.13
+Nodes (14): Admin Console, Purpose, Requirement: GPU Job Monitoring, Requirement: System Admin chooses and observes the tenant data plane, Requirement: Tenant Detail View, Requirement: Tenant Management Dashboard, Requirements, Scenario: Document counts remain visible during a tenant outage (+6 more)
 
 ### Community 795 - "Requirement: BIO Tag Persistence on Spans"
 Cohesion: 0.17
 Nodes (11): BIO Tag Storage, Purpose, Requirement: BIO Tag Persistence on Spans, Requirement: BIO Tag Schema Migration, Requirements, Scenario: BIO tags are recomputed on entity type retype, Scenario: BIO tags are stored when a span is created, Scenario: Export falls back to computed BIO for legacy spans with NULL bio_tags (+3 more)
 
 ### Community 796 - "Requirement: Manual Blob sync trigger action"
-Cohesion: 0.11
-Nodes (18): Purpose, Requirement: Manual Blob sync trigger action, Requirement: Safe activation and concurrent capability limits, Requirement: Tenant-admin-managed finite Azure connections, Requirements, Scenario: Administrator triggers a manual sync on an active Blob connection, Scenario: Cross-tenant connection access is denied, Scenario: Cross-tenant manual sync is denied (+10 more)
+Cohesion: 0.08
+Nodes (24): Purpose, Requirement: Data-plane connection pause and retirement drive data-plane status, Requirement: Manual Blob sync trigger action, Requirement: Safe activation and concurrent capability limits, Requirement: Tenant-admin-managed finite Azure connections, Requirements, Scenario: Administrator triggers a manual sync on an active Blob connection, Scenario: Cross-tenant connection access is denied (+16 more)
 
-### Community 797 - "Requirements"
-Cohesion: 0.17
-Nodes (11): Purpose, Requirement: Tenant Creation, Requirement: Tenant Listing and Detail, Requirement: Tenant Quotas, Requirements, Scenario: System Admin creates a tenant with duplicate slug, Scenario: System Admin creates a tenant with valid data, Scenario: System Admin deactivates a tenant (+3 more)
+### Community 797 - "Requirement: Tenant Creation"
+Cohesion: 0.14
+Nodes (13): Purpose, Requirement: Tenant Creation, Requirement: Tenant Listing and Detail, Requirement: Tenant Quotas, Requirements, Scenario: Invalid data plane mode is rejected, Scenario: System Admin creates a tenant-owned data plane tenant, Scenario: System Admin creates a tenant with duplicate slug (+5 more)
 
 ### Community 798 - "Requirement: Tenant-Admin User CRUD Endpoints"
 Cohesion: 0.17
 Nodes (11): Purpose, Requirement: Tenant-Admin User CRUD Endpoints, Requirements, Scenario: Non-tenant-admin role cannot access user endpoints (role enforcement), Scenario: Tenant Admin creates a user in their own tenant, Scenario: Tenant Admin deactivates a user in their tenant, Scenario: Tenant Admin gets a specific user in their tenant, Scenario: Tenant Admin lists users in their own tenant (+3 more)
 
-### Community 799 - "lifecycle.py"
-Cohesion: 0.08
-Nodes (34): _connection_string(), DataPlaneSecureTester, _query_role_available(), The `azure_postgresql_data_plane` secure tester (ADR-017, Design D3, D11 — task…, Registered for `azure_postgresql_data_plane` in `testing.py`'s tester registry.…, Returns a failure reason, or `None` if the target schema is absent, empty, or…, run_data_plane_test_sync(), _schema_create_privilege() (+26 more)
+### Community 799 - "data_sources/__init__.py"
+Cohesion: 0.06
+Nodes (50): _connection_string(), DataPlaneSecureTester, _query_role_available(), The `azure_postgresql_data_plane` secure tester (ADR-017, Design D3, D11 — task…, Registered for `azure_postgresql_data_plane` in `testing.py`'s tester registry.…, Returns a failure reason, or `None` if the target schema is absent, empty, or…, run_data_plane_test_sync(), _schema_create_privilege() (+42 more)
 
 ### Community 800 - "ADDED Requirements"
-Cohesion: 0.14
-Nodes (13): ADDED Requirements, Requirement: An unreachable tenant store fails closed for that tenant only, Requirement: Background tasks retry with bounded backoff and then park, Requirement: Per-tenant store health is a content-free control-plane signal, Requirement: Uploads are rejected before bytes are accepted when the store is unavailable, Scenario: Chat fails closed during a store outage, Scenario: Driver error text is not exposed, Scenario: Extraction parks after bounded retries (+5 more)
+Cohesion: 0.09
+Nodes (22): ADDED Requirements, Requirement: Both the durable and the working store follow the tenant, Requirement: Failure is closed, with no fallback to platform storage, Requirement: Model artifacts and experiment tracking are excluded from content-store routing, Requirement: Resolved tenant content stores are cached within a bounded size, Requirement: The content store is resolved per tenant at write time, Scenario: A chat attachment follows the same routing, Scenario: A model is served from platform storage for a routed tenant (+14 more)
 
 ### Community 801 - "2026-06-08-env-config-setup/design.md"
 Cohesion: 0.18
@@ -4683,16 +4757,16 @@ Cohesion: 0.18
 Nodes (10): Purpose, Requirement: Explicit opt-in override for the fixture guard, Requirement: Fixture setup scripts refuse non-test databases, Requirements, Scenario: Override permits a non-standard test database name, Scenario: Script refuses to run against the development database, Scenario: Script runs against a test database, Scenario: The guard reads the URL actually used, not the default (+2 more)
 
 ### Community 857 - "SQLGenerator"
-Cohesion: 0.04
-Nodes (62): _metrics(), AsyncSession, Renders the tenant's relations and columns, each with what it means and a…, The relations a statement may name, as a bare list, for the hard-constraints…, Executes an already-validated statement and returns its rows. When…, The total the statement would have matched without its row limit, or None if…, Bounded, representative values per stored `entity_type`, still read from the…, Why the relational surface cannot answer at all, or None when it can. The… (+54 more)
+Cohesion: 0.03
+Nodes (85): accepted_columns(), accepted_relations(), _error_class(), _fix_document_name_reference(), _force_nulls_last_on_desc(), _is_identifier_token(), iter_table_references(), _langsmith_extra() (+77 more)
 
 ### Community 858 - "Verification Plan"
 Cohesion: 0.15
 Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
 
 ### Community 859 - "Requirement: Safe connection lifecycle interface"
-Cohesion: 0.08
-Nodes (25): Purpose, Requirement: Data source collection and navigation, Requirement: Manual sync-now control, Requirement: Safe connection lifecycle interface, Requirement: Schema-contract administration interface, Requirements, Scenario: A failed test hides the attestation checkboxes and returns the control to a retry state, Scenario: A passed test surfaces the attestation checkboxes inline, Activate stays disabled until both are checked (+17 more)
+Cohesion: 0.06
+Nodes (30): Purpose, Requirement: Data source collection and navigation, Requirement: Manual sync-now control, Requirement: Safe connection lifecycle interface, Requirement: Schema-contract administration interface, Requirement: Tenant users see a safe data-plane readiness state, Requirements, Scenario: A failed test hides the attestation checkboxes and returns the control to a retry state (+22 more)
 
 ### Community 860 - "ADDED Requirements"
 Cohesion: 0.20
@@ -4866,9 +4940,9 @@ Nodes (9): portal-containerization Specification, Purpose, Requirement: Portal C
 Cohesion: 0.32
 Nodes (4): asyncio, verification.md rows 16, 17, 20, 21 — the RAG chat endpoint's existing…, Real ingestion over an in-memory store. The default store is object storage,…, TestChatEndpointTurnShape
 
-### Community 903 - "get_resolver"
-Cohesion: 0.04
-Nodes (67): handle_extraction_completed(), task, refresh_analytics_materialized_views(), get_session(), AsyncSession, Routed through EngineResolver (ADR-017). `SELECT 1` proves the connection is…, blob_sync_tick(), _data_plane_retry_countdown() (+59 more)
+### Community 903 - "database.py"
+Cohesion: 0.02
+Nodes (125): get_db(), AsyncSession, Request, Routed through EngineResolver (ADR-017)., handle_extraction_completed(), task, refresh_analytics_materialized_views(), get_session() (+117 more)
 
 ### Community 904 - "test_local_compose_delivery_evidence.py"
 Cohesion: 0.23
@@ -5934,13 +6008,13 @@ Nodes (7): Requirement: Query extracted entities, Scenario: Query entities as an
 Cohesion: 0.29
 Nodes (6): Infrastructure, Purpose, Requirement: Seed script idempotent for promoted model, Requirements, Scenario: First run inserts promoted model, Scenario: Re-run seed script skips existing promoted model
 
-### Community 1170 - "auth_header"
-Cohesion: 0.12
-Nodes (24): auth_header(), cleanup(), _client(), engine(), _outcomes(), fixture, _queued(), The review queue and its human resolution route. Covers verification.md rows… (+16 more)
+### Community 1170 - "add_document"
+Cohesion: 0.05
+Nodes (62): _load_queued_predictions(), Queued predictions, oldest first, with the document text each one needs. The…, Review this tenant's queued predictions with the LLM. Returns counts rather…, run_llm_review_async(), add_document(), add_prediction(), auth_header(), make_token() (+54 more)
 
-### Community 1171 - "Requirement: Only platform default adapters are executable in this change"
-Cohesion: 0.15
-Nodes (12): ADDED Requirements, MODIFIED Requirements, Requirement: Only platform default adapters are executable in this change, Requirement: Tenant-owned data plane forbids platform-retained originals, Scenario: A non-default selection cannot be activated, Scenario: A non-default selection may be recorded, Scenario: A read-only PostgreSQL source does not relocate the tenant, Scenario: An approved Azure connection can execute after activation (+4 more)
+### Community 1171 - "ADDED Requirements"
+Cohesion: 0.09
+Nodes (22): ADDED Requirements, Requirement: A rendition is derived, and never replaces the original, Requirement: A rendition is persisted only where the original is already persisted, Requirement: Conversion is bounded and its failure is reported, never masked, Requirement: Conversion runs only where its toolchain belongs, Requirement: Formats a browser cannot render are converted to PDF for display, Scenario: A conversion that exceeds its time bound is reported as such, Scenario: A corrupt original fails explicitly (+14 more)
 
 ### Community 1172 - "2026-09-10-cap-6-local-compose-delivery-migration-and-operational-evidence/design.md"
 Cohesion: 0.17
@@ -6282,9 +6356,13 @@ Nodes (4): Purpose, Requirement: Worker host service connectivity, Requirements,
 Cohesion: 0.18
 Nodes (10): Context, Currently-In-Force ADRs, Decision 1: Merge test, attestation, and activation into one sequential control — attestation checkboxes stay, no auto-submission, Decision 2: Reorder via straight JSX reordering in `DetailContent`, not a new layout abstraction, Decision 3: New-connection modal reuses `SlideOver`'s internals as a centered dialog, not a right-edge panel, Decisions, Goals / Non-Goals, Migration Plan (+2 more)
 
-### Community 1257 - "_sanitize_error"
-Cohesion: 0.24
-Nodes (6): BaseException, Renders an exception into a single bounded line safe to put in a prompt., _sanitize_error(), Row 57 — SQLAlchemy appends the statement and bound values to str(exc)., Row 57 — bounded length., TestFeedback
+### Community 1257 - "test_uploader_scoping_telemetry.py"
+Cohesion: 0.11
+Nodes (16): One answer-channel invocation and how the uploader-visibility rule resolved.…, The declared outcome for a `RequestingUser`, so the three channels classify the…, record_uploader_scope(), uploader_scope_outcome(), parametrize, Verification for uploader-scoping telemetry — verification.md rows 20-21.…, The defence against a filename becoming a label is that there is nowhere to put…, A declared value set is only safe if the values themselves are categories. A… (+8 more)
+
+### Community 1258 - "test_cited_document_viewer_end_to_end.py"
+Cohesion: 0.13
+Nodes (20): library(), _open(), _probe(), fixture, End-to-end proof that a cited document opens — verification.md § end-to-end…, The feature, end to end., No platform copy exists for these at all — the bytes come back from the source…, The uploader rule reaches the byte boundary too: a chip is only shown for a… (+12 more)
 
 ### Community 1259 - "Requirement: Sampled Acceptance Gate"
 Cohesion: 0.06
@@ -6374,9 +6452,9 @@ Nodes (3): ADDED Requirements, Requirement: Touched OCR failure paths emit safe 
 Cohesion: 0.50
 Nodes (3): 1. <!-- Task Group Name (e.g., Setup) -->, 2. <!-- Task Group Name (e.g., Core Implementation) -->, N. Verification & Evidence
 
-### Community 1281 - "CannedStreamOrchestrator"
-Cohesion: 0.18
-Nodes (16): _app(), auth_header(), CannedStreamOrchestrator, _patch_orchestrator(), Patched onto `chat_module.orchestrator` for endpoint tests. Both entry points…, Parses an httpx streaming response body into a list of (event, data) pairs., Covers verification.md rows 13, 14, 15, 35 (tasks 2.13, 2.14)., Covers row 35 (chat-api guardrail spec): a turn whose sources come back empty… (+8 more)
+### Community 1281 - "test_chat_api_streaming.py"
+Cohesion: 0.08
+Nodes (36): ChartFrame, A chart travelling down the token sink ahead of the answer's first delta. The…, _app(), auth_header(), CannedStreamOrchestrator, _fake_citation(), _iter_sse_events_live(), NoopGuardrails (+28 more)
 
 ### Community 1282 - "Requirement: Structured retrieval returns candidate document IDs"
 Cohesion: 0.50
@@ -6406,9 +6484,9 @@ Nodes (4): Requirement: Focus Mode Entity Palette, Scenario: Arming from the bot
 Cohesion: 0.18
 Nodes (10): ADDED Requirements, Requirement: External database retrieval tool, Requirement: Per-request tool availability, Scenario: Drift block is returned as a finite error, Scenario: Fallback plan excludes the external tool, Scenario: Successful query returns rows, Scenario: Tenant with a published contract is offered the tool, Scenario: Tenant without a connection is never offered the tool (+2 more)
 
-### Community 1289 - "Verification Plan"
-Cohesion: 0.15
-Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+### Community 1289 - "test_external_chat_graph_wiring.py"
+Cohesion: 0.13
+Nodes (14): _base_state(), nodes(), orchestrator(), fixture, Verification for chat graph wiring of the `external_database` capability…, Row 33, at the `build_fallback_plan` unit rather than through the node., Never dereferenced: every test here either avoids the DB entirely or…, Records nothing beyond returning the scripted tool calls; adequate for… (+6 more)
 
 ### Community 1296 - "Requirement: A missing generated relation fails the document"
 Cohesion: 0.67
@@ -6450,9 +6528,9 @@ Nodes (3): Requirement: Span Deselection, Scenario: Clicking an unannotated toke
 Cohesion: 0.18
 Nodes (10): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, Edge Case Evidence, Functional Evidence (+2 more)
 
-### Community 1308 - "replace_version_entries"
-Cohesion: 0.31
-Nodes (8): clear_connection_entries(), entry_text_for_relation(), _index_table(), Tenant-isolated schema-index representations (CAP-4, ADR-013). The index helps…, Bounded context text for one relation: its description, columns (each with an…, Replace one version's index entries; returns the entry count., Remove every index entry for one connection (retirement path)., replace_version_entries()
+### Community 1308 - "NotFoundError"
+Cohesion: 0.09
+Nodes (33): delete, revoke_widget_key(), create_entity_type(), delete_entity_type(), EntityTypeCreate, EntityTypeToggle, EntityTypeUpdate, get_entity_type() (+25 more)
 
 ### Community 1309 - "ADDED Requirements"
 Cohesion: 0.20
@@ -6470,9 +6548,9 @@ Nodes (9): Namespace, _build_contract(), _introspect_columns(), _introspect_fore
 Cohesion: 0.22
 Nodes (8): 1. Rolling deployment sequence, 2. Health/readiness checklist, 3. Safe operational telemetry, 4. Compatible rollback / roll-forward (dev target: healthy within 30 min), 5. Activation gate (unchanged), 6. Explicitly out of scope, Recovery exercise record (2026-09-10), Tenant Data Sources — Local Delivery Runbook (dev only)
 
-### Community 1313 - "_build_windows"
-Cohesion: 0.31
-Nodes (4): _build_windows(), Partitions word indices into overlapping `[start, end)` windows, each fitting…, A single monster token must not wedge the walk into an infinite loop., TestBuildWindows
+### Community 1313 - "test_migration_chunk_uploader_backfill.py"
+Cohesion: 0.16
+Nodes (20): migrated_database(), _migration(), fixture, integration, verification, Verification for migration 056 — verification.md rows 30-31. The migration is…, Two tenant schemas, each with documents and chunks predating the migration., The failure this catches is a migration that updates `tenant_template` and… (+12 more)
 
 ### Community 1314 - "QA Report -- tenant-self-service-data-sources-20260909-2"
 Cohesion: 0.22
@@ -6514,13 +6592,13 @@ Nodes (5): Row 23 — the registry walk., The walk, not the grep. A dynamically 
 Cohesion: 0.22
 Nodes (8): ADDED Requirements, Requirement: Manual Blob sync trigger action, Scenario: Administrator triggers a manual sync on an active Blob connection, Scenario: Cross-tenant manual sync is denied, Scenario: Idempotent manual sync replay renders the safe result, Scenario: Manual sync on a PostgreSQL connection is rejected, Scenario: Manual sync on an inactive connection is rejected safely, Scenario: Non-administrator is denied
 
-### Community 1324 - "ToolContext"
-Cohesion: 0.03
-Nodes (79): ExternalAnswer, The generator's outcome for one question. `reason` is `None` on success; every…, ArgValidationError, assert_no_tenancy_params(), Any, Exception, Protocol, Validates `args` against a minimal JSON-Schema-shaped `args_schema` (type,… (+71 more)
+### Community 1324 - "SlidingWindowRateLimiter"
+Cohesion: 0.14
+Nodes (6): _count_rejection(), Count one rejection, splitting the bucket key into its scope and tenant. Keys…, SlidingWindowRateLimiter, The tenant label here is deliberate: a rejected request produces the least…, TestRateLimitRejectionsAreCounted, TestRateLimiter
 
-### Community 1325 - "to_sql_identifier"
-Cohesion: 0.12
-Nodes (12): _backfill_sql_identifiers(), view-layer metadata on entity_definitions The read model for extracted entities…, Assigns every existing row an identifier, resolving collisions within each…, upgrade(), The identifier body, before the prefix, the length bound, and collision…, Deterministic, collision-free, <=63 chars, matches `^e_[a-z0-9][a-z0-9_]*$`.…, _slug_base(), to_sql_identifier() (+4 more)
+### Community 1325 - "test_cap_6_session_scoped_attachment_retrieval.py"
+Cohesion: 0.10
+Nodes (14): _fake_vector(), FakeEmbeddingService, asyncio, fixture, CAP-6 / ADR-014 — a conversation's attachment answers that conversation and no…, verification.md rows 1-4, 12-15, 17., The `scope` argument the model chooses becomes `metadata_filter`. Naming the…, risk 2 — a table added to the query whitelist must not quietly escape scoping. (+6 more)
 
 ### Community 1326 - "external-postgresql-chat-sql-generation/tasks.md"
 Cohesion: 0.22
@@ -6534,13 +6612,13 @@ Nodes (6): 1. Navigation and data layer, 2. SCR-1 collection screen, 3. SCR-2 li
 Cohesion: 0.29
 Nodes (6): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log and Audit Record, Verification Plan
 
-### Community 1329 - "annotation_service/main.py"
-Cohesion: 0.12
-Nodes (21): _bio_tags_from_offsets(), export_annotations(), get_session(), get_tenant_id(), AsyncSession, get, Request, Derive BIO tags purely from each span's `char_start`/`char_end`. The stored… (+13 more)
+### Community 1329 - "test_document_ocr_image.py"
+Cohesion: 0.18
+Nodes (13): needs_tesseract, extract_text_image(), extract_text_pdf_as_image(), _ocr_image(), Run tesseract on a single PIL image, normalising it first., OCR a raster image. Multi-frame TIFFs yield one span per frame., OCR a scanned PDF by rasterising pages with PyMuPDF (no poppler needed).…, _encode() (+5 more)
 
-### Community 1330 - "conversation_entity_state.py"
+### Community 1330 - "test_uploader_scope_attachments.py"
 Cohesion: 0.14
-Nodes (18): _candidates_from_json(), _candidates_to_json(), clear_binding(), clear_pending(), ConversationState, decode_document_ids(), encode_document_ids(), increment_reask() (+10 more)
+Nodes (18): _fake_vector(), FakeEmbeddingService, fixture, Attachments under both rules — verification.md rows 15-16. A chat attachment is…, Row 15. Both rules admit it: the user uploaded it, and this is its conversation., Row 16. The uploader rule admits it and the conversation rule denies it; a…, The conversation rule alone would admit this — the conversation matches. The…, The rules must narrow attachments without hiding the tenant library. (+10 more)
 
 ### Community 1331 - "analytics_proxy.py"
 Cohesion: 0.50
@@ -6558,13 +6636,13 @@ Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Q
 Cohesion: 0.33
 Nodes (5): Decision, Findings, Gaps (honest, non-blocking), Security -- tenant-self-service-data-sources-20260909-2, What passed
 
-### Community 1335 - "TestBaseModelPathIsCalibrated"
-Cohesion: 0.33
-Nodes (4): slow, Row 3: the base-model fallback reports the same scale, so a tenant with no…, Downloads the base model, so it is excluded from the default run. It is the…, TestBaseModelPathIsCalibrated
+### Community 1335 - "Requirement: Ephemeral retention uses a bounded working copy"
+Cohesion: 0.10
+Nodes (19): ADDED Requirements, MODIFIED Requirements, Requirement: A storage reference is accompanied by its producing store, Requirement: Ephemeral retention uses a bounded working copy, Requirement: Retention mode is explicit and determines content resolution, Scenario: A NULL reference is not reported as a failure, Scenario: A routed tenant's ephemeral bytes never reach platform storage, Scenario: An adapter cannot override retention (+11 more)
 
 ### Community 1336 - "training_service/worker.py"
-Cohesion: 0.09
-Nodes (20): _assert_dataset_splittable(), _load_annotated_dataset(), _make_service_token(), Exception, Tokenise a batch and align BIO tags to subwords. When `truncation_stats` is…, Fail the job when no train/evaluation split with at least one evaluation row…, tokenize_and_align_labels(), TrainingDataError (+12 more)
+Cohesion: 0.04
+Nodes (50): data_plane_retry_countdown(), Bounded exponential backoff for a `DataPlaneUnavailable`/`DataPlaneNotReady`…, record_training_completion(), record_training_failure(), _assert_dataset_splittable(), _extract_label_set(), fine_tune_model(), _load_annotated_dataset() (+42 more)
 
 ### Community 1337 - "2026-09-10-cap-4-contract-governed-external-postgresql-query-path-superseded-unrecorded/tasks.md"
 Cohesion: 0.40
@@ -6599,16 +6677,16 @@ Cohesion: 0.25
 Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
 
 ### Community 1345 - "test_inference_confidence_calibration.py"
-Cohesion: 0.14
-Nodes (12): ndarray, Numerically stable softmax over `axis`. Subtracting the per-row maximum before…, softmax(), _FakeInput, label_list(), patched_serving(), fixture, Guards the calibration fix: `_infer_window()` used to report `np.max(logits)`… (+4 more)
+Cohesion: 0.08
+Nodes (23): ndarray, Numerically stable softmax over `axis`. Subtracting the per-row maximum before…, softmax(), _fake_session(), _FakeInput, _install_session(), label_list(), patched_serving() (+15 more)
 
 ### Community 1346 - "external-postgresql-chat-sql-generation/proposal.md"
 Cohesion: 0.25
 Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
 
-### Community 1347 - "dependencies"
-Cohesion: 0.22
-Nodes (9): dependencies, lucide-react, next, react, react-dom, react-markdown, recharts, remark-gfm (+1 more)
+### Community 1347 - "Decisions"
+Cohesion: 0.10
+Nodes (19): Context, Currently-In-Force ADRs, Decision 10: Cross-plane reads are explicit, Decision 11: Local Compose tenant store, Decision 12: Feature flag for shared environments, Decision 1: Relocate the whole tenant schema by connection routing, Decision 2: Control-plane data-plane record with an explicit status machine, Decision 3: New provider `azure_postgresql_data_plane` (+11 more)
 
 ### Community 1348 - "Integration -- tenant-self-service-data-sources-20260909-2"
 Cohesion: 0.50
@@ -6630,9 +6708,9 @@ Nodes (3): Decision, Results, Smoke -- tenant-self-service-data-sources-20260909
 Cohesion: 0.50
 Nodes (3): Decision, Results, Unit -- tenant-self-service-data-sources-20260909-2
 
-### Community 1353 - "ADDED Requirements"
-Cohesion: 0.17
-Nodes (11): ADDED Requirements, Requirement: Content-free document registry in the control plane, Requirement: Quotas and fleet counts use the registry, Requirement: The registry follows the tenant store, which stays authoritative, Scenario: Drift is reconciled, Scenario: Existing documents are backfilled, Scenario: Quota uses the registry, Scenario: Registry schema holds no content columns (+3 more)
+### Community 1353 - "Requirement: The relational answer channel is uploader-scoped"
+Cohesion: 0.10
+Nodes (19): ADDED Requirements, Requirement: Entity resolution is conversation-scoped, Requirement: Entity resolution is uploader-scoped, Requirement: The relational answer channel is uploader-scoped, Requirement: The requesting user reaches every answer channel as execution state, Scenario: A disambiguation prompt names only visible people, Scenario: A row limit does not defeat the scope, Scenario: A row-returning statement excludes another user's documents (+11 more)
 
 ### Community 1355 - "Requirement: Manual sync-now control"
 Cohesion: 0.29
@@ -6640,11 +6718,11 @@ Nodes (6): ADDED Requirements, Requirement: Manual sync-now control, Scenario: A
 
 ### Community 1356 - "v1/llm_prelabel.py"
 Cohesion: 0.11
-Nodes (29): _coerce_json(), _content_hash(), get_llm_prelabel_job(), _load_document_text(), AsyncSession, get, post, Request (+21 more)
+Nodes (27): _coerce_json(), _content_hash(), get_llm_prelabel_job(), _load_document_text(), AsyncSession, get, post, Request (+19 more)
 
-### Community 1357 - "ImportedDocuments.tsx"
+### Community 1357 - "@testing-library/react"
 Cohesion: 0.04
-Nodes (64): ImportAnnotationLanding(), mockFiles, mockPush, mockAuthFetch, mockUseAnnotationImport, mockUseAuth, mockUseEntityTypes, ImportedDocumentsPage() (+56 more)
+Nodes (52): @testing-library/react, AutomatedLandingPage(), mockPush, ImportAnnotationLanding(), mockFiles, mockPush, mockAuthFetch, mockUseAnnotationImport (+44 more)
 
 ### Community 1358 - "2026-09-11-redesign-azure-blob-connection-ui/tasks.md"
 Cohesion: 0.33
@@ -6674,9 +6752,9 @@ Nodes (13): _assert_test_database(), captured_spans(), client(), db_session(), e
 Cohesion: 0.20
 Nodes (11): _backfill_registry_from_schema(), fixture, Verification for `public.tenant_document_registry` (ADR-017). Maps to…, The same projection alembic migration 043 runs per platform tenant schema,…, Scenario: Existing documents are backfilled. Given a platform tenant with 5…, A throwaway tenant schema shaped like `documents` at head 042 (migration 038's…, Scenario: Registry schema holds no content columns., registry_source_schema() (+3 more)
 
-### Community 1365 - "exported"
-Cohesion: 0.09
-Nodes (19): _attributes(), _bodies(), exported(), fixture, Row 32 — delivery, not emission., The provisioned Loki datasource derives its trace link from `"trace_id": "..."`…, A log store queries on attributes, not on the body text, so the correlation…, They stay present-and-null in the body, where a query can filter on them. As… (+11 more)
+### Community 1365 - "get_active_model"
+Cohesion: 0.14
+Nodes (9): get_active_model(), Verify model registry proxy works against live MLflow., list_model_versions returns empty when no registered model exists., Can register a model and see it via the proxy., Promote a model and verify it shows as active., Demote a promoted model back to completed., Promoting a new version archives the previous Production version., TestModelRegistryProxyLive (+1 more)
 
 ### Community 1366 - "Requirement: Review Outcomes Become Confirmed Spans"
 Cohesion: 0.07
@@ -6694,9 +6772,9 @@ Nodes (10): auth_header(), AsyncClient, asyncio, Verification for tenant creatio
 Cohesion: 0.07
 Nodes (28): LLM Pre-labeling, Purpose, Requirement: Asynchronous Execution, Requirement: Entity Type Constraint, Requirement: Extraction Scope, Requirement: Extractive-Only Output, Requirement: Grounding and Verification, Requirement: LLM Pre-labeling Trigger (+20 more)
 
-### Community 1370 - "test_seed_bootstrap_proposal.py"
-Cohesion: 0.13
-Nodes (17): _candidate_named(), _candidates(), cleanup(), client(), engine(), fake_send_task(), fixture, Entity schema proposal: request, candidate validation, and per-candidate… (+9 more)
+### Community 1370 - "schema_proposal.py"
+Cohesion: 0.08
+Nodes (26): ground_quote(), Where `quote` actually is in `document_text`, or `None`. Exact, case-…, build_existing_config_block(), build_qa_pair_block(), build_seed_block(), _cap_example_length(), _dedupe(), _is_non_value() (+18 more)
 
 ### Community 1371 - "ADDED Requirements"
 Cohesion: 0.07
@@ -6706,13 +6784,13 @@ Nodes (27): ADDED Requirements, Requirement: Batch Pre-labeling, Requirement: En
 Cohesion: 0.22
 Nodes (8): 1. Server, 2. The `vector` extension, 3. A dedicated database, 4. A login role for the platform's connection, 5. The query role — two supported paths, 6. Network reachability, 7. What happens if a prerequisite is missing later, not at setup, Tenant-Owned PostgreSQL Data Plane — Customer Prerequisites Runbook
 
-### Community 1373 - "tenant-postgresql-data-plane/proposal.md"
-Cohesion: 0.22
-Nodes (8): Capabilities, Change Notes, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+### Community 1373 - "Requirement: Tenant data engines are resolved per tenant with no platform fallback"
+Cohesion: 0.10
+Nodes (19): Purpose, Requirement: Every tenant has exactly one data plane recorded in the control plane, Requirement: Fleet operations enumerate tenants from the control plane, Requirement: Tenant content routes are gated on data-plane readiness, Requirement: Tenant data engines are resolved per tenant with no platform fallback, Requirements, Scenario: Awaiting-store tenant administrator can configure the store, Scenario: Awaiting-store tenant cannot upload (+11 more)
 
-### Community 1374 - "Requirement: Tenant provisioning clones the template atomically"
-Cohesion: 0.22
-Nodes (8): ADDED Requirements, MODIFIED Requirements, Requirement: Tenant provisioning clones the template atomically, Requirement: Tenant-scoped migrations also reach residency stores, Scenario: A column added by migration reaches both planes, Scenario: A failed table clone rolls back the whole tenant, Scenario: A provisioned tenant has the full template table set, Scenario: A tenant-owned tenant is not cloned on the platform
+### Community 1374 - "test_chat_uploader_scope_threading.py"
+Cohesion: 0.09
+Nodes (19): _FakeRequest, _FakeState, parametrize, Verification for uploader-scope threading — verification.md rows 17-19, 52-53.…, Rows 17-18. The widget must not inherit a default that happens to be right; the…, Row 19 at the value level: the widget's scope excludes every human upload., An unauthenticated or half-populated request must not produce an admin., Row 52. The streaming route is a separate call site and is the one that gets… (+11 more)
 
 ### Community 1375 - "ADDED Requirements"
 Cohesion: 0.07
@@ -6734,13 +6812,13 @@ Nodes (26): 1.1 Architecture, 1.2 RBAC, 1.3 Current Tenant Admin navigation (`sr
 Cohesion: 0.28
 Nodes (8): awaiting_store_tenant(), _bearer(), fixture, Verification for the content-route readiness gate (ADR-017, Design D9) —…, Scenario: Awaiting-store tenant cannot upload., Scenario: Awaiting-store tenant administrator can configure the store. Data-…, test_awaiting_store_tenant_administrator_can_configure_the_store(), test_awaiting_store_tenant_cannot_upload()
 
-### Community 1380 - "test_data_plane_connection_replacement.py"
-Cohesion: 0.32
-Nodes (7): fixture, Verification for "Replacement connections must point at the same store"…, The stored configuration validates as `sslmode=verify-full` (production shape);…, A `tenant_owned` tenant already `ready`, with a real `tenant_<id>` schema and…, ready_tenant_with_real_store(), _relax_data_plane_tls(), _store_engine()
+### Community 1380 - "Requirement: Safe activation and concurrent capability limits"
+Cohesion: 0.11
+Nodes (18): MODIFIED Requirements, Requirement: Safe activation and concurrent capability limits, Requirement: Tenant-admin-managed finite Azure connections, Scenario: An unapproved provider is rejected, Scenario: Content-store test leaves no scratch object behind, Scenario: Content-store test reports a missing expiry rule, Scenario: Content-store test reports a read-only credential, Scenario: Cross-tenant connection access is denied (+10 more)
 
-### Community 1381 - "data_plane/tasks.py"
-Cohesion: 0.08
-Nodes (31): _connection_url(), _platform_engine(), _probe_one(), probe_tenant_data_plane_health(), _ProfileShim, provision_tenant_data_plane(), task, The tenant-store provisioning Celery task (ADR-017, Design D6 — task 10.1).… (+23 more)
+### Community 1381 - "test_data_plane_health.py"
+Cohesion: 0.39
+Nodes (7): _cleanup(), _make_ready_tenant(), Verification for "Per-tenant store health is a content-free control-plane…, Scenario #29: Service stays ready during a tenant outage., Scenario #30: Recovery is detected., test_scenario_29_service_stays_ready_during_a_tenant_outage(), test_scenario_30_recovery_is_detected()
 
 ### Community 1382 - "ADDED Requirements"
 Cohesion: 0.07
@@ -6750,9 +6828,9 @@ Nodes (26): ADDED Requirements, Requirement: Asynchronous Execution, Requirement
 Cohesion: 0.07
 Nodes (26): ADDED Requirements, Requirement: Accumulation Reporting, Requirement: Auto-Accept Audit Sampling, Requirement: Confidence-Based Routing, Requirement: Review Outcomes Become Confirmed Spans, Requirement: Review Queue Resolution, Scenario: A confirmed outcome creates a span at the predicted offsets, Scenario: A corrected outcome creates a span at the corrected offsets (+18 more)
 
-### Community 1384 - "Requirement: Tenant Creation"
-Cohesion: 0.29
-Nodes (6): MODIFIED Requirements, Requirement: Tenant Creation, Scenario: Invalid data plane mode is rejected, Scenario: System Admin creates a tenant-owned data plane tenant, Scenario: System Admin creates a tenant with duplicate slug, Scenario: System Admin creates a tenant with valid data
+### Community 1384 - "Requirement: Only platform default adapters are executable in this change"
+Cohesion: 0.11
+Nodes (18): MODIFIED Requirements, Requirement: Only platform default adapters are executable in this change, Requirement: Tenant-owned data plane forbids platform-retained originals, Scenario: A content-store selection executes with an active content-store connection, Scenario: A non-default selection cannot be activated, Scenario: A non-default selection may be recorded, Scenario: A platform-plane tenant may execute a tenant content store, Scenario: A read-only Blob source does not make the content store executable (+10 more)
 
 ### Community 1385 - "test_tenant_engine_construction_boundary.py"
 Cohesion: 0.38
@@ -6762,25 +6840,25 @@ Nodes (6): _iter_py_files(), Source checks for the tenant-data-plane-routing spe
 Cohesion: 0.07
 Nodes (26): Purpose, Requirement: Annotation Mode Selector Visibility, Requirement: Automated Mode Triggers Pre-labeling Per Uploaded Document, Requirement: Automated Option Gating, Requirement: Batch Outcome Reporting, Requirement: Manual Mode Performs No Pre-labeling, Requirement: Pre-labeling Failure Does Not Affect Uploads, Requirements (+18 more)
 
-### Community 1387 - "Requirement: System Admin chooses and observes the tenant data plane"
-Cohesion: 0.40
-Nodes (4): ADDED Requirements, Requirement: System Admin chooses and observes the tenant data plane, Scenario: Document counts remain visible during a tenant outage, Scenario: System Admin creates a tenant-owned tenant
+### Community 1387 - "test_tenant_store_parity.py"
+Cohesion: 0.15
+Nodes (17): _guarded_add_constraint(), The tenant-store schema baseline (ADR-017, Design D5). `statements(schema)`…, `ALTER TABLE ... ADD CONSTRAINT` has no `IF NOT EXISTS` in PostgreSQL; guard…, Idempotent DDL that produces `tenant_template` at head 043 inside `schema`.…, statements(), _indexes(), _matviews(), fixture (+9 more)
 
 ### Community 1388 - "test_seed_bootstrap_readiness.py"
-Cohesion: 0.12
-Nodes (24): drop_test_schemas(), make_token(), Fixtures shared by the four `test_seed_bootstrap_*` files. Not a test module —…, tenant_tables_sql(), cleanup(), engine(), asyncio, fixture (+16 more)
+Cohesion: 0.11
+Nodes (27): drop_test_schemas(), cleanup(), engine(), asyncio, fixture, Entity type provenance — assigned at creation, immutable, server-controlled.…, The create API's request model has no `provenance` field, so a value in the…, _session() (+19 more)
 
 ### Community 1392 - "test_promotion_evidence.py"
-Cohesion: 0.12
-Nodes (19): _annotation_client(), cleanup(), engine(), _evidence(), fixture, Evidence for the promotion decision, and the verdict it must not produce.…, A tenant whose versions have recorded the given numbers of consumed spans.…, Both versions' metrics, and what each was trained on, in one response. (+11 more)
+Cohesion: 0.07
+Nodes (34): dataset_sizes_comparable(), get_promotion_evidence(), _promoted_row(), AsyncSession, get, Request, Evidence for the promotion decision. Promotion was already a human action…, Whether two trained-on counts are close enough to read the metrics side by… (+26 more)
 
-### Community 1393 - "test_retrieval_foundation.py"
-Cohesion: 0.14
-Nodes (17): _fake_vector(), FakeEmbeddingService, _old_similarity_search(), asyncio, fixture, integration, Covers scenario 3: DenseRetriever output must be identical to the pre-refactor…, Deterministic stand-in for EmbeddingService.embed — avoids a live OpenAI call. (+9 more)
+### Community 1393 - "chat_api/test_retrieval_metrics.py"
+Cohesion: 0.15
+Nodes (9): _bucket(), _observations(), A retrieval that finds nothing is recorded as such, not as an absence of…, Task 3.5's fourth measurement — what survived merge and the cap., The recording sits in `_invoke_entry`, which is the one point every dispatched…, TestHitRate, TestTheOrchestratorRecordsEveryDispatchedCapability, TestZeroResults (+1 more)
 
-### Community 1394 - "_base_state"
-Cohesion: 0.10
-Nodes (12): _base_state(), Covers verification.md rows 14, 32, 33, 34., Never dereferenced directly — every call that would touch the DB is…, Covers verification.md rows 42-49., Covers verification.md rows 54-58., Covers verification.md rows 15, 21, 28, 29, 50., _SentinelSession, TestAmbiguousAndOverCap (+4 more)
+### Community 1394 - "test_entity_postprocessor_tenant_scope.py"
+Cohesion: 0.18
+Nodes (10): _entity(), fixture, Covers verification.md rows 53-55. ADR-001 requires zero cross-tenant leakage,…, `insert_document_entities` takes its schema and document id from the caller., Tenant scope is the worker's, resolved from server-controlled context; the…, stable_settings(), TestEvidenceWindowIsBounded, TestOneDocumentPerRequest (+2 more)
 
 ### Community 1395 - "ADDED Requirements"
 Cohesion: 0.08
@@ -6794,25 +6872,25 @@ Nodes (23): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR 
 Cohesion: 0.08
 Nodes (23): Context, Currently-In-Force ADRs, Decision 10: Human review only at first; the LLM route is a per-tenant switch, default off, Decision 11: Below-threshold predictions are discarded on resolution, with an age cap, Decision 12: A rejection records an outcome and produces no training signal, Decision 13: Audit sampling runs weekly at max(20, 5%), capped at 100, Decision 14: Routing lives in the batch extraction worker, not the ad-hoc `/extract` endpoint, Decision 15: The visibility guarantee is about the routing store, not about filtering `document_entities` (+15 more)
 
-### Community 1398 - "run_llm_review_async"
-Cohesion: 0.12
-Nodes (17): _load_queued_predictions(), This tenant's route, falling back to the configured default. Read from…, Queued predictions, oldest first, with the document text each one needs. The…, Review this tenant's queued predictions with the LLM. Returns counts rather…, run_llm_review_async(), _tenant_review_policy(), The route that resolves this tenant's queued predictions. A tenant with no…, resolve_review_policy() (+9 more)
+### Community 1398 - "TestResolveEntityEndToEnd"
+Cohesion: 0.17
+Nodes (8): _coro(), _FakeSession, asyncio, The exact failing question., james" must resolve to James, not be shortened to "jame" and lost., verification.md row 46. A stored name can carry a single-letter token ("zanith…, Stands in for the DB. `_lookup_candidate_rows` is patched out, so this only has…, TestResolveEntityEndToEnd
 
-### Community 1399 - "ADDED Requirements"
-Cohesion: 0.09
-Nodes (22): ADDED Requirements, Requirement: Both the durable and the working store follow the tenant, Requirement: Failure is closed, with no fallback to platform storage, Requirement: Model artifacts and experiment tracking are excluded from content-store routing, Requirement: Resolved tenant content stores are cached within a bounded size, Requirement: The content store is resolved per tenant at write time, Scenario: A chat attachment follows the same routing, Scenario: A model is served from platform storage for a routed tenant (+14 more)
+### Community 1399 - "rendition.py"
+Cohesion: 0.17
+Nodes (14): ConversionFailed, ConversionTimedOut, ConversionTooLarge, _csv_to_pdf(), Exception, Converting an original into a PDF the viewer can render. The viewer has exactly…, LibreOffice, out of process, in a scratch directory it cannot escape., The original could not be turned into a PDF. Never swallowed into an empty or… (+6 more)
 
 ### Community 1400 - "import_.py"
-Cohesion: 0.19
-Nodes (22): compute_entity_type_counts(), generate_uuid(), get_known_entity_types_lower(), get_session(), get_tenant_id(), import_annotations(), list_import_files(), map_import_types() (+14 more)
+Cohesion: 0.10
+Nodes (27): compute_entity_type_counts(), generate_uuid(), get_known_entity_types_lower(), get_session(), get_tenant_id(), import_annotations(), list_import_files(), map_import_types() (+19 more)
 
 ### Community 1401 - "_fix_undefined_alias"
 Cohesion: 0.13
 Nodes (10): _fix_undefined_alias(), Deterministically repairs a qualifier the model never bound to a relation. The…, FakeSurface, The generator reliably produces the right aggregate shape and then refers to…, The exact SQL the generator produced in dev, which Postgres rejected with…, `document_id` exists on both relations, so nothing here says which was meant.…, One column belongs to e_money and the other to subject, so no single relation…, TestDoesNotMisreadSql (+2 more)
 
-### Community 1402 - "test_retraining_decision.py"
-Cohesion: 0.13
-Nodes (16): cleanup(), _client(), _decision(), engine(), fixture, The retraining decision surface. Covers verification.md rows 6-9. Row 8 is the…, The spec's 120/14 split at a smaller scale, with the same shape. The breakdown…, A base-model tenant is a distinct state, not a zero. ADR-008: the base model… (+8 more)
+### Community 1402 - "Requirement: A tenant content store is a distinct write-capable connection"
+Cohesion: 0.11
+Nodes (17): ADDED Requirements, Requirement: A tenant content store is a distinct write-capable connection, Requirement: Bounded working-copy lifetime is enforced by the tenant's container, Requirement: One container holds durable and working bytes under separate prefixes, Requirement: Pause and retirement stop content routing without deleting tenant objects, Scenario: A correctly scoped rule passes, Scenario: A literal credential is rejected, Scenario: A missing lifecycle rule blocks activation (+9 more)
 
 ### Community 1403 - "Requirement: Inline preview truncation is independent of export availability"
 Cohesion: 0.09
@@ -6840,7 +6918,7 @@ Nodes (20): ADDED Requirements, MODIFIED Requirements, Requirement: Backend Part
 
 ### Community 1409 - "test_entity_resolver_mentions.py"
 Cohesion: 0.14
-Nodes (10): _coro(), _FakeSession, asyncio, Entity resolution never fired on real questions. Two causes, both here: 1.…, The exact failing question., james" must resolve to James, not be shortened to "jame" and lost., verification.md row 46. A stored name can carry a single-letter token ("zanith…, Stands in for the DB. `_lookup_candidate_rows` is patched out, so this only has… (+2 more)
+Nodes (10): _depossessive(), _mention_matches(), Whether a mention identifies the person whose stored name is…, Strips a trailing possessive from a canonical mention, or None if there is…, parametrize, Entity resolution never fired on real questions. Two causes, both here: 1.…, Substring matching would make "jay" resolve to "arjun jayakumar"., TestDepossessive (+2 more)
 
 ### Community 1410 - "test_migration_042_045_guards.py"
 Cohesion: 0.19
@@ -6850,9 +6928,9 @@ Nodes (14): _base_tables(), _has_column(), _has_table(), _load(), prepared(), fi
 Cohesion: 0.10
 Nodes (19): ADDED Requirements, Requirement: Chart eligibility gating, Requirement: Chart is suppressed when the answer is not trusted, Requirement: Chart numbers are grounded in retrieved rows, Requirement: Chart tool contract, Scenario: Blocked question is never offered the chart tool, Scenario: Chart containing an invented value is rejected, Scenario: Chart whose values all appear in the rows is accepted (+11 more)
 
-### Community 1412 - "Requirement: Ephemeral retention uses a bounded working copy"
-Cohesion: 0.10
-Nodes (19): ADDED Requirements, MODIFIED Requirements, Requirement: A storage reference is accompanied by its producing store, Requirement: Ephemeral retention uses a bounded working copy, Requirement: Retention mode is explicit and determines content resolution, Scenario: A NULL reference is not reported as a failure, Scenario: A routed tenant's ephemeral bytes never reach platform storage, Scenario: An adapter cannot override retention (+11 more)
+### Community 1412 - "Requirement: Tenant data engines are resolved per tenant with no platform fallback"
+Cohesion: 0.11
+Nodes (17): ADDED Requirements, Requirement: Every tenant has exactly one data plane recorded in the control plane, Requirement: Fleet operations enumerate tenants from the control plane, Requirement: Tenant content routes are gated on data-plane readiness, Requirement: Tenant data engines are resolved per tenant with no platform fallback, Scenario: Awaiting-store tenant administrator can configure the store, Scenario: Awaiting-store tenant cannot upload, Scenario: Data-plane record carries no sensitive values (+9 more)
 
 ### Community 1413 - "test_imported_annotations_list.py"
 Cohesion: 0.23
@@ -6870,13 +6948,13 @@ Nodes (18): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR 
 Cohesion: 0.11
 Nodes (18): ADDED Requirements, MODIFIED Requirements, Requirement: Method Landing Routes and Legacy Redirects, Requirement: Role Navigation Matrix, Requirement: Screen Title Map, Scenario: a section with no permitted links is dropped, Scenario: annotator nav, Scenario: automated step routes are tenant-admin only (+10 more)
 
-### Community 1417 - "Requirement: Safe activation and concurrent capability limits"
+### Community 1417 - "Requirement: Activating a data-plane connection provisions the tenant schema in the tenant store"
 Cohesion: 0.11
-Nodes (18): MODIFIED Requirements, Requirement: Safe activation and concurrent capability limits, Requirement: Tenant-admin-managed finite Azure connections, Scenario: An unapproved provider is rejected, Scenario: Content-store test leaves no scratch object behind, Scenario: Content-store test reports a missing expiry rule, Scenario: Content-store test reports a read-only credential, Scenario: Cross-tenant connection access is denied (+10 more)
+Nodes (17): Purpose, Requirement: Activating a data-plane connection provisions the tenant schema in the tenant store, Requirement: Pending tenant-store revisions are applied per store on deploy, Requirement: Replacement connections must point at the same store, Requirement: Tenant-store schema is defined by a versioned baseline and ordered revisions, Requirements, Scenario: Credential rotation keeps the tenant ready, Scenario: Deploy upgrades a residency store (+9 more)
 
-### Community 1418 - "Requirement: Only platform default adapters are executable in this change"
-Cohesion: 0.11
-Nodes (18): MODIFIED Requirements, Requirement: Only platform default adapters are executable in this change, Requirement: Tenant-owned data plane forbids platform-retained originals, Scenario: A content-store selection executes with an active content-store connection, Scenario: A non-default selection cannot be activated, Scenario: A non-default selection may be recorded, Scenario: A platform-plane tenant may execute a tenant content store, Scenario: A read-only Blob source does not make the content store executable (+10 more)
+### Community 1418 - "Requirement: Safe activation and concurrent capability limits"
+Cohesion: 0.12
+Nodes (16): ADDED Requirements, MODIFIED Requirements, Requirement: Data-plane connection pause and retirement drive data-plane status, Requirement: Safe activation and concurrent capability limits, Requirement: Tenant-admin-managed finite Azure connections, Scenario: Cross-tenant connection access is denied, Scenario: Data-plane test reports a missing vector extension, Scenario: Duplicate active provider is rejected (+8 more)
 
 ### Community 1419 - "Requirement: Annotation Export"
 Cohesion: 0.11
@@ -6886,9 +6964,9 @@ Nodes (17): MODIFIED Requirements, Requirement: Annotation Export, Scenario: A d
 Cohesion: 0.11
 Nodes (17): ADDED Requirements, MODIFIED Requirements, Requirement: Chart delivered over the streaming connection, Requirement: Chart rendering in the chat thread, Requirement: Message thread display, Scenario: Assistant message with a chart renders it above its citations, Scenario: Bar chart renders with title and categories, Scenario: Chart honours the active theme (+9 more)
 
-### Community 1421 - "Requirement: A tenant content store is a distinct write-capable connection"
-Cohesion: 0.11
-Nodes (17): ADDED Requirements, Requirement: A tenant content store is a distinct write-capable connection, Requirement: Bounded working-copy lifetime is enforced by the tenant's container, Requirement: One container holds durable and working bytes under separate prefixes, Requirement: Pause and retirement stop content routing without deleting tenant objects, Scenario: A correctly scoped rule passes, Scenario: A literal credential is rejected, Scenario: A missing lifecycle rule blocks activation (+9 more)
+### Community 1421 - "Decisions"
+Cohesion: 0.12
+Nodes (16): Context, Currently-In-Force ADRs, Decision 1: Two routes — a probe and the bytes, Decision 2: Bytes stream through the service; the store's shape is never disclosed, Decision 3: The served media type is decided by us, never echoed, Decision 4: Extract content resolution out of the OCR worker, Decision 5: The reopener registry is populated at API startup, Decision 6: Convert to PDF on the server, in a separate image (+8 more)
 
 ### Community 1422 - "Requirements"
 Cohesion: 0.11
@@ -6898,21 +6976,21 @@ Nodes (17): manual-annotation-landing Specification, Purpose, Requirement: Annot
 Cohesion: 0.11
 Nodes (17): notifications Specification, Purpose, Requirement: Notification Bell, Requirement: Notification Read API, Requirement: Notification Storage, Requirements, Scenario: A business user does not see annotation notifications, Scenario: A completed manual annotation task notification routes to Models & Training scoped to manual (+9 more)
 
-### Community 1424 - "review_resolution.py"
-Cohesion: 0.16
-Nodes (17): compute_bio_tags(), create_span_from_outcome(), discard_prediction(), normalize_resolution(), ValueError, Turning a reviewed prediction into a recorded outcome, and an outcome into a…, Insert the review outcome and return its id. The row carries its own copy of…, Create the confirmed span a confirmed or corrected outcome implies, or `None`.… (+9 more)
+### Community 1424 - "ConnectionValidationError"
+Cohesion: 0.24
+Nodes (12): _require_keys(), ConnectionValidationError, Exception, The finite approved provider catalog for the tenant control plane (CAP-2). Only…, Reject anything outside the two approved providers., Check one provider's non-secret configuration against its closed key set., A connection write that does not match the closed provider schema. Carries a…, _require_non_empty_string() (+4 more)
 
 ### Community 1425 - "test_tenant_store_migrate.py"
 Cohesion: 0.25
 Nodes (17): main(), Returns 0 always — see module docstring. Prints one safe outcome line per…, _cleanup_tenant(), _has_marker_column(), _provisioned_tenant_at_baseline(), Verification for `src/shared/tenant_store/migrate.py` (ADR-017, task 10.6) —…, Scenario #19: Deploy upgrades a residency store., Scenario #20: Unreachable store during deploy is isolated. (+9 more)
 
-### Community 1426 - "promotion_evidence.py"
-Cohesion: 0.16
-Nodes (15): dataset_sizes_comparable(), get_promotion_evidence(), _promoted_row(), AsyncSession, get, Request, Evidence for the promotion decision. Promotion was already a human action…, Whether two trained-on counts are close enough to read the metrics side by… (+7 more)
+### Community 1426 - "_run_stages"
+Cohesion: 0.18
+Nodes (9): nodes(), _orchestrator(), fixture, A declined question never reaches generation, and the absence of the span is…, A node added later without widening the enumeration lands on `other`, which is…, A bare orchestrator with only what the stages under test dereference. `__new__`…, Execute the stages a question actually reaches, in graph order., _run_stages() (+1 more)
 
-### Community 1427 - "emit"
-Cohesion: 0.13
-Nodes (11): emit(), fixture, parametrize, `max_tokens=4` is a shape field, not a credential. A word-boundary miss here…, Emit through the real handler `init_observability` installs and return the…, Redaction must not swallow the shape fields that replace the content — an event…, The denylist reaches field names and `key=value` runs. A statement echoed as…, The failure mode this exists for: someone sets `NER_LOG_LEVEL=DEBUG` to… (+3 more)
+### Community 1427 - "export_message"
+Cohesion: 0.27
+Nodes (8): export_message(), Downloads the structured-result snapshot persisted for an assistant message…, _columns(), render_csv(), render_xlsx(), _sanitize_cell(), Hallucination Risk 5., TestFormulaInjectionMitigation
 
 ### Community 1428 - "2026-09-07-seed-bootstrap/design.md"
 Cohesion: 0.12
@@ -6972,7 +7050,7 @@ Nodes (15): ADDED Requirements, Requirement: Chart event on the streaming endpoi
 
 ### Community 1442 - "Decisions"
 Cohesion: 0.12
-Nodes (15): Context, Currently-In-Force ADRs, Decision 1: A separate write-capable provider, `azure_blob_content_store`, Decision 2: The backend is recorded per document, never re-derived, Decision 3: One container, two prefixes, with a prefix-scoped lifecycle rule, Decision 4: Tenant-scoped store resolution, bounded cache, fail closed, Decision 5: Lift ADR-017's `platform_blob` rejection, conditionally, Decision 6: No migration of existing bytes (+7 more)
+Nodes (16): Context, Currently-In-Force ADRs, Decision 1: New control-plane table, not the connections table, Decision 2: Platform MinIO for all tenants, metadata in `public`, Decision 3: DuckDB over Parquet as the query engine, Decision 4: Reuse the validator unchanged; rewrite placeholders after validation, Decision 5: Load, then lock, Decision 6: Ingest with DuckDB (trusted code); XLSX via openpyxl (+8 more)
 
 ### Community 1443 - "Requirement: Define / Edit Entity Type Slide-Over"
 Cohesion: 0.13
@@ -6990,25 +7068,25 @@ Nodes (14): ADDED Requirements, Requirement: CSV export endpoint, Requirement: E
 Cohesion: 0.13
 Nodes (14): ADDED Requirements, MODIFIED Requirements, Requirement: Chart payload carried in graph state, Requirement: Fixed topology with no agentic behaviour, Requirement: Two-stage generation for chart-eligible turns, Scenario: Blocked question short-circuits to END, Scenario: Chart tool call does not alter graph routing, Scenario: Excess complexity short-circuits to END (+6 more)
 
-### Community 1447 - "Requirement: Reads and deletes route by the recorded kind, never by current configuration"
-Cohesion: 0.13
-Nodes (14): ADDED Requirements, Requirement: Every stored document records which content store produced its reference, Requirement: Existing documents carry a backfilled backend kind, Requirement: Reads and deletes route by the recorded kind, never by current configuration, Scenario: A mixed-backend tenant resolves each document independently, Scenario: A platform-stored document records the platform kind, Scenario: A tenant-stored document records the tenant kind, Scenario: Activation does not orphan existing documents (+6 more)
+### Community 1447 - "Requirement: Retriever interface"
+Cohesion: 0.12
+Nodes (16): MODIFIED Requirements, Requirement: Retriever interface, Scenario: A chat query cannot bypass the purpose restriction, Scenario: An administrator is unscoped by the uploader restriction, Scenario: Dense retrieval excludes another user's human-ingested chunks, Scenario: DenseRetriever uses the hnsw index, Scenario: HybridRetriever fuses dense and sparse results via RRF, Scenario: HybridRetriever includes dense-only matches when sparse search returns nothing (+8 more)
 
 ### Community 1448 - "review.py"
-Cohesion: 0.33
-Nodes (13): get_imported_annotation(), get_session(), get_tenant_id(), list_imported_annotations(), mark_imported_annotation_reviewed(), _parse_entity_types(), AsyncSession, get (+5 more)
-
-### Community 1449 - "_extract_label_set"
-Cohesion: 0.18
-Nodes (7): _extract_label_set(), verification.md row 12. A record holding a full export window must survive the…, verification.md row 13. ADR-009 puts sequence length in the System Admin's…, verification.md row 14. Truncation is allowed to happen; it is not allowed to…, TestExtractLabelSet, TestLabelMapping, TestSequenceLength
-
-### Community 1450 - "fine_tune_model"
 Cohesion: 0.22
-Nodes (7): fine_tune_model(), MLflowCallback, task, _save_artifacts(), Return a mock sync engine whose connection returns a row with given status., TestFineTuneRetryGuard, TrainerCallback
+Nodes (15): strip_bio_prefix(), get_imported_annotation(), get_session(), get_tenant_id(), list_imported_annotations(), mark_imported_annotation_reviewed(), _parse_entity_types(), AsyncSession (+7 more)
 
-### Community 1451 - "test_cap_5_documents_library_exclusion_and_delete.py"
-Cohesion: 0.34
-Nodes (14): chat_client(), doc_client(), asyncio, fixture, seed_document_with_conversation(), test_4_1_library_listing_excludes_chat_attachments(), test_4_2_library_fetch_by_id_of_chat_attachment_fails_404(), test_4_3_library_text_retrieval_of_chat_attachment_fails_404() (+6 more)
+### Community 1449 - "llm_review.py"
+Cohesion: 0.24
+Nodes (10): build_user_payload(), LLMReviewError, parse_review_response(), ValueError, Asking the LLM to judge one low-confidence prediction. The deterministic half…, One provider call, validated. Returns a resolution body for…, The provider's answer could not be read as a review outcome. Raised rather than…, The excerpt, the span, and the configured type list. The excerpt's… (+2 more)
+
+### Community 1450 - "_profile"
+Cohesion: 0.18
+Nodes (16): _profile(), Type inference by candidate elimination (tabular-file-ingestion spec)., Scenario: Leading zeros stay text., Scenario: Null tokens are ignored., Scenario: Mixed column falls back with a warning., Scenario: Ambiguous dates are not guessed., Scenario: Unambiguous day-first dates are detected., Hallucination risk 7: evidence covers every row, not a sample. (+8 more)
+
+### Community 1451 - "session_factory"
+Cohesion: 0.10
+Nodes (56): Record a profile. Validation is by declared schema, never by value inspection.…, write_profile(), chat_client(), doc_client(), asyncio, fixture, seed_document_with_conversation(), test_4_1_library_listing_excludes_chat_attachments() (+48 more)
 
 ### Community 1452 - "Requirement: Load annotated dataset"
 Cohesion: 0.14
@@ -7034,9 +7112,9 @@ Nodes (13): Context, Currently-In-Force ADRs, Decision 1: Attachment-bearing tur
 Cohesion: 0.14
 Nodes (13): Context, Currently-In-Force ADRs, Decision 1: Two-stage generation rather than tool-calling inside the stream, Decision 2: Validate every chart number against the retrieved rows, Decision 3: Chart is bound to the same trust decision as the reply, Decision 4: Additive wire contract, with the chart as its own SSE event, Decision 5: Recharts in the portal, persisted as JSONB, Decision 6: Stage A receives the full assembled prompt (+5 more)
 
-### Community 1458 - "Requirement: Tenant users can see where their content is stored"
-Cohesion: 0.14
-Nodes (13): ADDED Requirements, Requirement: Content routes present a safe state when the tenant store is unavailable, Requirement: Content-store connections are administrable in the portal, Requirement: Tenant users can see where their content is stored, Scenario: A content-store connection is created through the standard form, Scenario: A failed write test surfaces only a safe reason class, Scenario: A recorded but unexecutable selection does not claim tenant storage, Scenario: An active content store is reflected in the portal (+5 more)
+### Community 1458 - "Decisions"
+Cohesion: 0.12
+Nodes (15): Context, Currently-In-Force ADRs, Decision 1: A separate write-capable provider, `azure_blob_content_store`, Decision 2: The backend is recorded per document, never re-derived, Decision 3: One container, two prefixes, with a prefix-scoped lifecycle rule, Decision 4: Tenant-scoped store resolution, bounded cache, fail closed, Decision 5: Lift ADR-017's `platform_blob` rejection, conditionally, Decision 6: No migration of existing bytes (+7 more)
 
 ### Community 1459 - "Requirement: Chat attachment staging"
 Cohesion: 0.14
@@ -7138,17 +7216,17 @@ Nodes (12): automated-annotation-landing Specification, Purpose, Requirement: Pr
 Cohesion: 0.27
 Nodes (4): The role generated SQL runs under, or None to keep the connection role. Read…, The statement below is exactly what a table-reference gap would let through.…, Two independent controls. The read-only transaction is unchanged by this work;…, TestExecutionUnderRestrictedRole
 
-### Community 1484 - "v1/auth.py"
-Cohesion: 0.29
-Nodes (10): login(), logout(), AsyncSession, JSONResponse, post, Request, refresh(), _set_refresh_cookie() (+2 more)
+### Community 1484 - "auth_header"
+Cohesion: 0.33
+Nodes (6): auth_header(), asyncio, The regression this guards: if serving ever reverts to raw logits, the values…, _stub_infer(), TestLowConfidenceEntitiesAreFiltered, TestThresholdIsMeaningfulAgainstTheReturnedScale
 
 ### Community 1485 - "test_data_plane_recovery_sweep.py"
 Cohesion: 0.24
 Nodes (12): _insert_processing_document(), fixture, Verification for the recovery sweep half of task 11.3…, A document stuck in `processing` longer than the threshold is reset and…, A document still well within a normal processing window is not stolen from…, A `ready` `tenant_owned` tenant with a real, fully-provisioned schema on…, A `source_only` document with no reopener registered — `process_document`…, _read_status() (+4 more)
 
-### Community 1486 - "_FakeSession"
-Cohesion: 0.18
-Nodes (6): _FakeResult, _FakeSession, asyncio, Answers the existence probe from a set of filenames the tenant supposedly has., list the tools in Resume 4.pdf' is a legitimate filename query — a zero-row…, TestFilenameDefectDetection
+### Community 1486 - "SQLAttempt"
+Cohesion: 0.08
+Nodes (17): _filename_filter_literals(), Renders prior attempts into the corrective block appended to a retry prompt. At…, The literals a query requires `documents.filename` to match, with any SQL…, One pass of generate -> validate -> execute -> classify., _render_attempt_feedback(), SQLAttempt, Rows 52, 58 — the feedback has to name the relation that would work, and must…, _FakeResult (+9 more)
 
 ### Community 1487 - "test_training_eligibility_overview.py"
 Cohesion: 0.32
@@ -7174,13 +7252,13 @@ Nodes (11): Context, Decision 1: Snapshot storage — new column on `chat_messag
 Cohesion: 0.17
 Nodes (12): Requirement: Sampled Acceptance Gate, Scenario: A large batch refuses every acceptance-gate endpoint, Scenario: A tenant admin cannot accept a large batch, Scenario: A tenant admin cannot review or accept an initial batch, Scenario: Accepting an initial batch neither notifies nor marks training-eligible, Scenario: Annotator acceptance of a large batch makes it training-eligible and notifies the tenant admin, Scenario: Annotator acceptance of an initial batch is recorded but is not the training-eligibility gate, Scenario: Batch below the threshold cannot be bulk-accepted (+4 more)
 
-### Community 1493 - "retraining_decision.py"
-Cohesion: 0.23
-Nodes (11): get_retraining_decision(), AsyncSession, get, Request, The retraining decision surface. Change 5 produced an accumulation figure and…, Whether a training job for this tenant is awaiting approval, queued, or running., Evidence for the retrain decision. No verdict, no threshold, no job.…, _schema() (+3 more)
+### Community 1493 - "Requirement: Safe connection lifecycle interface"
+Cohesion: 0.12
+Nodes (15): ADDED Requirements, MODIFIED Requirements, Requirement: Safe connection lifecycle interface, Requirement: Tenant users see a safe data-plane readiness state, Scenario: A failed test hides the attestation checkboxes and returns the control to a retry state, Scenario: A passed test surfaces the attestation checkboxes inline, Activate stays disabled until both are checked, Scenario: Activation is blocked safely, Scenario: Awaiting-store tenant administrator is guided to setup (+7 more)
 
-### Community 1494 - "_schema"
-Cohesion: 0.36
-Nodes (3): ModelVersionRepository, AsyncSession, _schema()
+### Community 1494 - "try_hybrid_retrieval.py"
+Cohesion: 0.31
+Nodes (7): _fake_vector(), FakeEmbeddingService, main(), Manual playground for HybridRetriever/SparseRetriever/DenseRetriever — no…, Returns a fixed query vector — swap for the real EmbeddingService if you have…, run_query(), setup()
 
 ### Community 1495 - "test_migration_047_chat_messages_export_rows.py"
 Cohesion: 0.20
@@ -7254,21 +7332,21 @@ Nodes (10): ADDED Requirements, Requirement: Conversation ownership determines r
 Cohesion: 0.18
 Nodes (10): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, Edge Case Evidence, Functional Evidence (+2 more)
 
-### Community 1513 - "Requirement: Idempotent source version reconciliation and temporary retention"
-Cohesion: 0.18
-Nodes (10): MODIFIED Requirements, Requirement: Idempotent source version reconciliation and temporary retention, Scenario: A routed tenant may retain a synchronized original durably, Scenario: Changed object is atomically replaced, Scenario: Deleted source object, Scenario: Platform-stored durable retention still blocks a sync, Scenario: Processing reaches a terminal outcome, Scenario: Retry or unchanged object (+2 more)
+### Community 1513 - "ADDED Requirements"
+Cohesion: 0.12
+Nodes (15): ADDED Requirements, Requirement: Activating a data-plane connection provisions the tenant schema in the tenant store, Requirement: Pending tenant-store revisions are applied per store on deploy, Requirement: Replacement connections must point at the same store, Requirement: Tenant-store schema is defined by a versioned baseline and ordered revisions, Scenario: Credential rotation keeps the tenant ready, Scenario: Deploy upgrades a residency store, Scenario: Missing tenant-store revision fails the build (+7 more)
 
-### Community 1514 - "Verification Plan"
-Cohesion: 0.18
-Nodes (10): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, Edge Case Evidence, Functional Evidence (+2 more)
+### Community 1514 - "2026-09-20-tenant-postgresql-data-plane/tasks.md"
+Cohesion: 0.12
+Nodes (15): 10. Provisioning task and per-store migration, 11. Failure isolation, 12. Document registry, 13. Portal, 14. Documentation, 15. Verification & Evidence, 1. Prerequisites, 2. Control-plane schema (migration 043) (+7 more)
 
 ### Community 1515 - "audit_sample_size"
 Cohesion: 0.25
 Nodes (5): audit_sample_size(), `min(cap, max(floor, ceil(fraction * N)))`, and never more than the population…, Decision 13's formula, before any database. The floor and the cap are the whole…, Decision 13 as configured: weekly, max(20, 5%), capped at 100., TestSampleSizing
 
-### Community 1516 - "llm_review.py"
-Cohesion: 0.24
-Nodes (10): build_user_payload(), LLMReviewError, parse_review_response(), ValueError, Asking the LLM to judge one low-confidence prediction. The deterministic half…, One provider call, validated. Returns a resolution body for…, The provider's answer could not be read as a review outcome. Raised rather than…, The excerpt, the span, and the configured type list. The excerpt's… (+2 more)
+### Community 1516 - "Requirements"
+Cohesion: 0.12
+Nodes (15): Purpose, Requirement: An unreachable tenant store fails closed for that tenant only, Requirement: Background tasks retry with bounded backoff and then park, Requirement: Per-tenant store health is a content-free control-plane signal, Requirement: Uploads are rejected before bytes are accepted when the store is unavailable, Requirements, Scenario: Chat fails closed during a store outage, Scenario: Driver error text is not exposed (+7 more)
 
 ### Community 1517 - "2026-09-03-llm-assisted-prelabeling/tasks.md"
 Cohesion: 0.20
@@ -7366,29 +7444,33 @@ Nodes (8): ADDED Requirements, Requirement: Prove the deployed CAP-5 image and h
 Cohesion: 0.22
 Nodes (8): 1. Schema — conversation ownership on chunks, 2. Ingestion — attachments become real documents, 3. Retrieval — the mandatory conversation predicate, 4. SQL path — the second channel, 5. Chat API — multipart turns, ingestion, and the bounded wait, 6. Portal — send file content and report progress, 7. End-to-end — the HR scenario, 8. Verification & Evidence
 
-### Community 1541 - "tenant-owned-blob-storage/proposal.md"
-Cohesion: 0.22
-Nodes (8): Capabilities, Decisions, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+### Community 1541 - "test_chat_api_retrieval_status.py"
+Cohesion: 0.20
+Nodes (9): Per-capability retrieval outcome for the turn. Additive: a client that ignores…, RetrievalStatusOut, _app(), auth_header(), CannedOrchestrator, _fake_citation(), `retrieval_status` on the chat response — verification.md rows 18, 19, 28. The…, A client reading only the previously specified fields sees no change, and a… (+1 more)
 
-### Community 1542 - "tenant-owned-blob-storage/tasks.md"
-Cohesion: 0.22
-Nodes (8): 1. Backend attribution (migration step 1 — inert), 2. Route reads and deletes by recorded kind (migration step 2 — inert), 3. The content-store connection provider (migration step 3 — inert), 4. The Azure Blob content store adapter (migration step 4 — inert), 5. Make the selection executable and relax the retention rules (migration step 5 — behaviour change), 6. Portal, 7. Local stack and documentation, 8. Verification & Evidence
+### Community 1542 - "dependencies"
+Cohesion: 0.20
+Nodes (10): dependencies, lucide-react, next, pdfjs-dist, react, react-dom, react-markdown, recharts (+2 more)
 
 ### Community 1543 - "Requirement: Submit training job"
 Cohesion: 0.22
 Nodes (9): Requirement: Submit training job, Scenario: An invalid source_scope value is rejected, Scenario: Automated-scoped submission gates only on promoted spans, Scenario: Import-scoped submission skips the span-based gates entirely, Scenario: Manual-scoped submission excludes promoted spans from its gate, Scenario: Submit a valid training job, Scenario: Submit training job as non-admin, Scenario: Submit training job with insufficient entities (+1 more)
 
-### Community 1544 - "parse_conll"
-Cohesion: 0.36
-Nodes (3): parse_conll(), _strip_null_bytes(), TestParseConll
+### Community 1544 - "auth_header"
+Cohesion: 0.14
+Nodes (11): auth_header(), asyncio, ADR-006: Model artifacts path must follow tenants/{tid}/models/v{version}/., Task 3.6: Model loads on-demand when cache is empty., Task 3.5: Warmup → cache populated, verified via subsequent lookup., TestArtifactPathConvention, TestInferOnDemandLoad, TestWarmupEndpointExists (+3 more)
 
-### Community 1546 - "_mention_matches"
-Cohesion: 0.33
-Nodes (4): _mention_matches(), Whether a mention identifies the person whose stored name is…, Substring matching would make "jay" resolve to "arjun jayakumar"., TestMentionMatches
+### Community 1545 - "test_document_content_telemetry.py"
+Cohesion: 0.10
+Nodes (26): content_class(), The declared class of a document, derived from a media type. A category…, One conversion of an original into a viewable PDF., record_document_conversion(), parametrize, Verification for document-content telemetry. Covers: "An access is recorded as…, A metric must never be able to fail the work it measures., The defence against a document id becoming a label is that there is nowhere to… (+18 more)
 
-### Community 1547 - "TestMultiSubjectPlanRewriting"
-Cohesion: 0.28
-Nodes (4): Covers verification.md rows 42, 44, 47, 48. `_rewrite_plan_for_resolution` used…, Only "Girish" resolves; "Hannah" is not in the tenant's data. The turn must not…, verification.md row 44 — one mention matching several people is still an…, TestMultiSubjectPlanRewriting
+### Community 1546 - "scripts"
+Cohesion: 0.20
+Nodes (10): scripts, build, dev, format, lint, prebuild, predev, start (+2 more)
+
+### Community 1547 - "AnnotationImportPreview.tsx"
+Cohesion: 0.19
+Nodes (16): AnnotationImportPreview(), AnnotationImportPreviewProps, PreviewState, makeQC(), mockAuthFetch, mockUseEntityTypes, renderPreview(), computeEntityTypeCounts() (+8 more)
 
 ### Community 1548 - "039_seed_bootstrap.py"
 Cohesion: 0.39
@@ -7590,13 +7672,9 @@ Nodes (7): Purpose, Requirement: Retraining Page Framing, Requirements, retraini
 Cohesion: 0.25
 Nodes (8): Requirement: Batch Pre-labeling Screen Shows Both Stages Persistently, Scenario: A notification fires when each stage completes, Scenario: Both stages remain visible once the initial batch is approved and a large batch exists, Scenario: Starting another large batch is disabled while one is already running, Scenario: The large-batch picker stays available after a previous large batch has already completed, Scenario: The large-batch section is visible but locked before the initial batch is approved, Scenario: The large-batch section unlocks its picker once the initial batch is approved, Scenario: Train model navigates to the Automated flow's own training entry point
 
-### Community 1598 - "scripts"
-Cohesion: 0.25
-Nodes (8): scripts, build, dev, format, lint, start, test, typecheck
-
-### Community 1599 - "_EngineLRU"
-Cohesion: 0.25
-Nodes (3): _EngineLRU, A bounded LRU of tenant-store engines, keyed by `(tenant_id, connection_id,…, Stores `engine` under `key`; returns an evicted engine (oldest, over capacity)…
+### Community 1598 - "migrate.py"
+Cohesion: 0.31
+Nodes (8): The real on-disk CA bundle this interpreter's OpenSSL trusts by default.…, system_ca_bundle_path(), _connection_url(), _migrate_one(), _ProfileShim, Deploy-time tenant-store migration step (ADR-017, Design D5, D6, D11 — task…, The minimal shape `resolve_for_tenant` needs — a tenant id and a…, Returns `(outcome, revision)` — a safe outcome class (`up_to_date`, `migrated`,…
 
 ### Community 1600 - "052_tenant_data_plane.py"
 Cohesion: 0.38
@@ -7706,13 +7784,13 @@ Nodes (7): Requirement: Upload Progress Bar, Scenario: Batch position is shown d
 Cohesion: 0.29
 Nodes (7): Requirement: List training jobs, Scenario: List jobs includes tenant_id on each item, Scenario: List jobs paginated, Scenario: List jobs with status filter, Scenario: System Admin lists jobs across tenants with an explicit status filter, Scenario: System Admin lists jobs with an explicit tenant_id, Scenario: System Admin lists jobs with no tenant_id sees an aggregated pending-approval queue
 
-### Community 1627 - "_filename_filter_literals"
-Cohesion: 0.43
-Nodes (3): _filename_filter_literals(), The literals a query requires `documents.filename` to match, with any SQL…, TestFilenameFilterLiterals
+### Community 1627 - "_prompt"
+Cohesion: 0.32
+Nodes (3): _prompt(), PromptCapturingLLM, TestSqlPromptGuidance
 
-### Community 1628 - "consumed_spans.py"
-Cohesion: 0.33
-Nodes (6): dataset_span_ids(), dataset_span_ids_sql(), What a training run consumed, recorded when the run finishes. This is the…, The span ids the dataset just built from this tenant covers. Called at dataset-…, Record `span_ids` as consumed by `model_version`. Returns how many ids were…, record_consumed_spans()
+### Community 1628 - "Requirement: Reads and deletes route by the recorded kind, never by current configuration"
+Cohesion: 0.13
+Nodes (14): ADDED Requirements, Requirement: Every stored document records which content store produced its reference, Requirement: Existing documents carry a backfilled backend kind, Requirement: Reads and deletes route by the recorded kind, never by current configuration, Scenario: A mixed-backend tenant resolves each document independently, Scenario: A platform-stored document records the platform kind, Scenario: A tenant-stored document records the tenant kind, Scenario: Activation does not orphan existing documents (+6 more)
 
 ### Community 1629 - "050_azure_blob_sync_ledger.py"
 Cohesion: 0.47
@@ -7818,6 +7896,10 @@ Nodes (6): Requirement: Upload deep link, Scenario: An unrelated query parameter
 Cohesion: 0.33
 Nodes (6): Requirement: Submit slide-over source scope, Scenario: Arriving with a source query parameter auto-opens the slide-over, Scenario: Choosing a source unlocks the preflight check and submission, Scenario: Generic entry point requires an explicit source choice, Scenario: Locked source shows read-only text, not a picker, Scenario: Submitting sends the effective source_scope
 
+### Community 1655 - "Verification Plan"
+Cohesion: 0.13
+Nodes (14): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Decisions To Confirm Before Archive (+6 more)
+
 ### Community 1656 - "002_main_feature_backlog.py"
 Cohesion: 0.40
 Nodes (5): _guarded_add_constraint(), Backfills the tenant-store baseline for Alembic migrations 039-048 (main's…, Same guard as `baseline.py`'s: no `ADD CONSTRAINT IF NOT EXISTS` in Postgres., Idempotent DDL, applied after `baseline.py`'s (and in the same order it uses):…, statements()
@@ -7914,9 +7996,9 @@ Nodes (4): CAP-6 Sanity Verification, CAP-6 Sanity Verification, Deployed gestur
 Cohesion: 0.60
 Nodes (4): create_tenant(), login(), main(), Provision the four demo/showcase tenants over the admin API. Requires the…
 
-### Community 1680 - "_retrying"
-Cohesion: 0.70
-Nodes (4): _retrying(), asyncio, test_fatal_error_raised_after_retry_bound_exhausted(), test_retries_with_exponential_backoff_before_succeeding()
+### Community 1680 - "test_data_plane_connection_replacement.py"
+Cohesion: 0.32
+Nodes (7): fixture, Verification for "Replacement connections must point at the same store"…, The stored configuration validates as `sslmode=verify-full` (production shape);…, A `tenant_owned` tenant already `ready`, with a real `tenant_<id>` schema and…, ready_tenant_with_real_store(), _relax_data_plane_tls(), _store_engine()
 
 ### Community 1681 - "test_blob_sync_task_routing.py"
 Cohesion: 0.40
@@ -8002,17 +8084,25 @@ Nodes (4): Requirement: Hide submit job action for non-tenant-admin roles, Scena
 Cohesion: 0.50
 Nodes (4): Requirement: Submit form span preflight is informational only, Scenario: Backend rejection for insufficient entities is surfaced after submit, Scenario: Preflight display shows span count while loading and on fetch failure, Scenario: Submit enabled with span count below the legacy 500 threshold
 
-### Community 1704 - "axe-scan.mjs"
-Cohesion: 0.50
-Nodes (3): results, @axe-core/playwright, @playwright/test
+### Community 1704 - "uploader-scoped-chat-retrieval/design.md"
+Cohesion: 0.13
+Nodes (14): Context, Currently-In-Force ADRs, Decision 1: One shared predicate definition, not one per channel, Decision 2: Denormalize the ingesting actor onto `document_chunks`, Decision 3: The relational channel reuses the inline-view rewrite, Decision 4: Thread the requesting user exactly where `conversation_id` is threaded, Decision 5: One rule, no per-tenant switch, Decision 6: No requesting user means source-system content only (+6 more)
 
 ### Community 1705 - "verify-docker-annotation-fix/summary.md"
 Cohesion: 0.50
 Nodes (3): CAP-6 Verification Summary, CAP-6 Verification Summary, Disposition: BLOCKED
 
+### Community 1706 - "TestPendingClarificationSerialization"
+Cohesion: 0.48
+Nodes (3): CandidateEntity, Covers verification.md rows 6, 7: `pending_clarification` is present with…, TestPendingClarificationSerialization
+
 ### Community 1707 - "004_documents_conversation_id.py"
 Cohesion: 0.67
 Nodes (3): _guarded_add_constraint(), Matches Alembic migration 053…, statements()
+
+### Community 1713 - "Requirement: Document visibility by ingesting actor"
+Cohesion: 0.13
+Nodes (14): ADDED Requirements, MODIFIED Requirements, Requirement: Chunks carry their document's ingesting actor, Requirement: Document visibility by ingesting actor, Scenario: A newly written chunk carries the actor, Scenario: A source-system document's chunks are marked as such, Scenario: A system-ingested document is visible tenant-wide, Scenario: A user does not see another user's upload (+6 more)
 
 ### Community 1717 - "Requirement: Per-request authorization context isolation"
 Cohesion: 0.67
@@ -8054,6 +8144,242 @@ Nodes (3): Requirement: Live running-job callout, Scenario: Non-running job show
 Cohesion: 0.67
 Nodes (3): Requirement: Page header matches the mockup's breadcrumb, heading scale, and submit button, Scenario: Header shows the API-path breadcrumb above the heading, Scenario: Submit button copy matches the mockup exactly
 
+### Community 1732 - "test_annotation_export_source_scope.py"
+Cohesion: 0.22
+Nodes (19): drop_test_schemas(), Drop only the schemas this module created. Scoped by the tenant's own slug…, _add_imported_row(), _add_span(), cleanup(), _client(), engine(), asyncio (+11 more)
+
+### Community 1740 - "TestDomainClassification"
+Cohesion: 0.08
+Nodes (14): HistorySensitiveClassifierClient, Exception, parametrize, Covers verification.md rows 41-43, 45-46, 55., A question the classifier calls in-domain on its own must not be declined just…, The mirror case: an anaphoric follow-up ("and him?") reads as out-of-domain…, Genuine out-of-domain requests read the same way with and without history, so…, With no history the two views are the same call, so only one is made. (+6 more)
+
+### Community 1741 - "Requirement: Tenant users can see where their content is stored"
+Cohesion: 0.14
+Nodes (13): ADDED Requirements, Requirement: Content routes present a safe state when the tenant store is unavailable, Requirement: Content-store connections are administrable in the portal, Requirement: Tenant users can see where their content is stored, Scenario: A content-store connection is created through the standard form, Scenario: A failed write test surfaces only a safe reason class, Scenario: A recorded but unexecutable selection does not claim tenant storage, Scenario: An active content store is reflected in the portal (+5 more)
+
+### Community 1742 - "ADDED Requirements"
+Cohesion: 0.14
+Nodes (13): ADDED Requirements, Requirement: An unreachable tenant store fails closed for that tenant only, Requirement: Background tasks retry with bounded backoff and then park, Requirement: Per-tenant store health is a content-free control-plane signal, Requirement: Uploads are rejected before bytes are accepted when the store is unavailable, Scenario: Chat fails closed during a store outage, Scenario: Driver error text is not exposed, Scenario: Extraction parks after bounded retries (+5 more)
+
+### Community 1743 - "cited-document-viewer/tasks.md"
+Cohesion: 0.14
+Nodes (13): 10. Portal: the viewer, 11. Portal: chip wiring, 12. End-to-end proof, 13. Verification & Evidence, 1. Content resolution extraction, 2. Adapter registration in the serving process, 3. Telemetry, 4. Authorization for content access (+5 more)
+
+### Community 1744 - "Verification Plan"
+Cohesion: 0.14
+Nodes (13): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+5 more)
+
+### Community 1745 - "Requirement: The registry follows the tenant store, which stays authoritative"
+Cohesion: 0.14
+Nodes (13): Purpose, Requirement: Content-free document registry in the control plane, Requirement: Quotas and fleet counts use the registry, Requirement: The registry follows the tenant store, which stays authoritative, Requirements, Scenario: Drift is reconciled, Scenario: Existing documents are backfilled, Scenario: Quota uses the registry (+5 more)
+
+### Community 1746 - "NotificationBell.tsx"
+Cohesion: 0.24
+Nodes (9): hrefFor(), NotificationBell(), mockItems, mockMarkRead, mockPush, AppNotification, NotificationList, useMarkNotificationRead() (+1 more)
+
+### Community 1747 - "test_retrieval_query_class_eval.py"
+Cohesion: 0.10
+Nodes (15): AnswerCase, AnswerCaseResult, evaluate_answer(), Answer-level evaluation — verification.md rows 85, 86, 87. Chunk-ranking…, The single most damaging failure the investigation found: a broken turn…, One answer-level case. `required_facts` are the substrings the reply must…, TestAnswerLevelHarness, Query-class evaluation coverage — verification.md rows 36, 37, 88, 89, 90, 91.… (+7 more)
+
+### Community 1748 - "Requirement: Only platform default adapters are executable in this change"
+Cohesion: 0.15
+Nodes (12): ADDED Requirements, MODIFIED Requirements, Requirement: Only platform default adapters are executable in this change, Requirement: Tenant-owned data plane forbids platform-retained originals, Scenario: A non-default selection cannot be activated, Scenario: A non-default selection may be recorded, Scenario: A read-only PostgreSQL source does not relocate the tenant, Scenario: An approved Azure connection can execute after activation (+4 more)
+
+### Community 1749 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1750 - "Verification Plan"
+Cohesion: 0.15
+Nodes (12): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, AI Output Review, Edge Case Evidence (+4 more)
+
+### Community 1751 - "provision_role"
+Cohesion: 0.10
+Nodes (27): _async_dsn(), main(), Provision the least-privilege role that generated chat SQL executes under, then…, _list_active_tenants(), list_tenant_schemas(), provision_role(), AsyncSession, Platform tenant schemas only — the shape existing callers (tests passing an… (+19 more)
+
+### Community 1754 - "RetrievalResult"
+Cohesion: 0.07
+Nodes (36): RetrievalResult, CrossEncoderReranker, _metrics(), Protocol, The domain-metric recorders, resolved on first use rather than imported at the…, Reranker, Protocol, Wraps a Retriever with a Reranker (decorator pattern). Implements the Retriever… (+28 more)
+
+### Community 1755 - "ADDED Requirements"
+Cohesion: 0.17
+Nodes (11): ADDED Requirements, Requirement: Content-free document registry in the control plane, Requirement: Quotas and fleet counts use the registry, Requirement: The registry follows the tenant store, which stays authoritative, Scenario: Drift is reconciled, Scenario: Existing documents are backfilled, Scenario: Quota uses the registry, Scenario: Registry schema holds no content columns (+3 more)
+
+### Community 1756 - "ADDED Requirements"
+Cohesion: 0.17
+Nodes (11): ADDED Requirements, Requirement: File replace and delete controls, Requirement: File review interface, Requirement: Uploaded files section, Scenario: Administrator sees uploaded files, Scenario: Delete requires confirmation, Scenario: Pending version shown alongside served version, Scenario: Review shows blocking reasons (+3 more)
+
+### Community 1757 - "uploader-scoped-chat-retrieval/tasks.md"
+Cohesion: 0.17
+Nodes (11): 10. Rollout, 11. Verification & Evidence, 1. Shared predicate definition, 2. Telemetry, 3. Chunk denormalization and migration, 4. Retrieval enforcement, 5. Tool layer, 6. Orchestration threading (+3 more)
+
+### Community 1758 - "test_context_assembly_path_equivalence.py"
+Cohesion: 0.23
+Nodes (8): _make_chunk(), Stands in for RAGOrchestrator's two DB-touching helpers. `prompt_assembly`…, Covers scenario 13: task 6.5. Both execution paths delegate to ContextAssembler…, verification.md rows 71, 72, 73. `source_assembly` used to slice chunks at a…, _state(), _StubOrchestrator, test_graph_path_matches_direct_assembler_call(), TestCitationsDeriveFromAdmittedEvidence
+
+### Community 1759 - "_validate"
+Cohesion: 0.19
+Nodes (6): `public.documents` is not `documents` — the qualifier is grounds for rejection,…, A legitimate comma join must keep working — the fix is a security fix, not a…, The gap this change closes: the second entry of the FROM list was never…, TestRoleSwitchRejection, TestWhitelistEnforcement, _validate()
+
+### Community 1760 - "_executable_source"
+Cohesion: 0.18
+Nodes (8): _executable_source(), A module's code with docstrings and comments removed. Both are stripped because…, Structural half: no `send_task`, `delay`, or `apply_async` anywhere in this…, No cron entry, no beat schedule, no timer. design.md Decision 3 names schedules…, No threshold, and no numeric literal that could become one. The one comparison…, Structural: no promote call is reachable from anything this change added.…, TestCompletionDoesNotSelfPromote, TestLargeAccumulationCreatesNoJob
+
+### Community 1761 - "external_sql_generator.py"
+Cohesion: 0.05
+Nodes (55): Identifier, External PostgreSQL chat capability (CAP-4, ADR-013). A separate selection from…, _build_system_prompt(), ExternalSQLGenerator, _metrics(), _missing_param_name(), _parse_llm_output(), Contract-grounded external SQL generation (ADR-016). Turns a natural-language… (+47 more)
+
+### Community 1762 - "job-filter-tabs.tsx"
+Cohesion: 0.40
+Nodes (4): FilterTab, JobFilterTabs(), JobFilterTabsProps, TABS
+
+### Community 1764 - "Requirement: Idempotent source version reconciliation and temporary retention"
+Cohesion: 0.18
+Nodes (10): MODIFIED Requirements, Requirement: Idempotent source version reconciliation and temporary retention, Scenario: A routed tenant may retain a synchronized original durably, Scenario: Changed object is atomically replaced, Scenario: Deleted source object, Scenario: Platform-stored durable retention still blocks a sync, Scenario: Processing reaches a terminal outcome, Scenario: Retry or unchanged object (+2 more)
+
+### Community 1765 - "Verification Plan"
+Cohesion: 0.18
+Nodes (10): 1. Spec Alignment, 2. Hallucination Risk Register, 3. Pattern & ADR Compliance, 4. Evidence Requirements, 5. Evidence Log, 6. Audit Record, Edge Case Evidence, Functional Evidence (+2 more)
+
+### Community 1767 - "enqueued"
+Cohesion: 0.67
+Nodes (3): enqueued(), fixture, Record broker enqueues instead of sending them.
+
+### Community 1768 - "Requirement: A document's bytes reach a client only by passing through the application"
+Cohesion: 0.20
+Nodes (9): ADDED Requirements, Requirement: A document's bytes reach a client only by passing through the application, Requirement: Content resolution is shared by every reader of a document's bytes, Scenario: A content response carries bytes, not a location, Scenario: Authorization precedes delivery, Scenario: Existing callers are unaffected by the extraction, Scenario: No pre-authorized URL is minted, Scenario: Processing and delivery resolve identically (+1 more)
+
+### Community 1769 - "tabular-file-data-sources/tasks.md"
+Cohesion: 0.20
+Nodes (9): 1. Setup and data model, 2. Parsing, identifiers and type inference, 3. Ingest tasks and gateway API, 4. Chat: capability, tool, generator, executor, 5. Deployment wiring, 6. Portal, 7. Rollout, 8. End-to-end (+1 more)
+
+### Community 1773 - "2026-09-20-tenant-owned-blob-storage-dropped/proposal.md"
+Cohesion: 0.22
+Nodes (8): Capabilities, Decisions, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1774 - "2026-09-20-tenant-owned-blob-storage-dropped/tasks.md"
+Cohesion: 0.22
+Nodes (8): 1. Backend attribution (migration step 1 — inert), 2. Route reads and deletes by recorded kind (migration step 2 — inert), 3. The content-store connection provider (migration step 3 — inert), 4. The Azure Blob content store adapter (migration step 4 — inert), 5. Make the selection executable and relax the retention rules (migration step 5 — behaviour change), 6. Portal, 7. Local stack and documentation, 8. Verification & Evidence
+
+### Community 1775 - "2026-09-20-tenant-postgresql-data-plane/proposal.md"
+Cohesion: 0.22
+Nodes (8): Capabilities, Change Notes, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1776 - "Requirement: Tenant provisioning clones the template atomically"
+Cohesion: 0.22
+Nodes (8): ADDED Requirements, MODIFIED Requirements, Requirement: Tenant provisioning clones the template atomically, Requirement: Tenant-scoped migrations also reach residency stores, Scenario: A column added by migration reaches both planes, Scenario: A failed table clone rolls back the whole tenant, Scenario: A provisioned tenant has the full template table set, Scenario: A tenant-owned tenant is not cloned on the platform
+
+### Community 1777 - "Requirement: Message thread display"
+Cohesion: 0.22
+Nodes (8): MODIFIED Requirements, Requirement: Message thread display, Scenario: A citation naming a document offers to open it, Scenario: A citation without a document offers no viewer, Scenario: An attachment on a user message offers to open it, Scenario: Opening a document keeps the conversation in place, Scenario: Send message and receive response, Scenario: Source citations are expandable
+
+### Community 1778 - "Requirement: Tenant scope is caller-supplied, never argument-supplied"
+Cohesion: 0.22
+Nodes (8): MODIFIED Requirements, Requirement: Tenant scope is caller-supplied, never argument-supplied, Scenario: A document scope cannot reach another user's document, Scenario: Purpose restriction survives the tool layer, Scenario: Tool queries the context's schema only, Scenario: Tool schemas expose no tenancy parameters, Scenario: Tool schemas expose no uploader parameters, Scenario: Uploader restriction survives the tool layer
+
+### Community 1780 - "test_conversion_toolchain_placement.py"
+Cohesion: 0.28
+Nodes (7): The conversion toolchain lives only where conversion happens. Covers "Only the…, Each build stage's instructions, keyed by its name. Comments are dropped: this…, It must inherit tesseract, poppler and the installed packages rather than…, _stages(), test_no_other_stage_carries_the_toolchain(), test_the_converting_stage_carries_the_toolchain(), test_the_converting_stage_extends_the_shared_runtime()
+
+### Community 1781 - "cited-document-viewer/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1782 - "tabular-file-data-sources/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1783 - "uploader-scoped-chat-retrieval/proposal.md"
+Cohesion: 0.25
+Nodes (7): Capabilities, Impact, Modified Capabilities, New Capabilities, Open Questions, What Changes, Why
+
+### Community 1784 - "test_health_endpoints.py"
+Cohesion: 0.37
+Nodes (12): _get(), asyncio, chat_api readiness checks base model_serving reachability only — it must not…, test_chat_api_health_200_when_all_dependencies_healthy(), test_chat_api_health_503_when_database_unhealthy(), test_chat_api_health_live_returns_200_regardless_of_dependencies(), test_chat_api_health_stays_healthy_when_only_base_model_reachable(), test_document_service_health_checks_database_and_minio() (+4 more)
+
+### Community 1785 - "all_revisions"
+Cohesion: 0.52
+Nodes (6): ModuleType, all_revisions(), _discover(), latest_revision(), pending_revisions(), The tenant-store revision interface (ADR-017, Design D5). A revision is a…
+
+### Community 1786 - "Requirement: Tenant Creation"
+Cohesion: 0.29
+Nodes (6): MODIFIED Requirements, Requirement: Tenant Creation, Scenario: Invalid data plane mode is rejected, Scenario: System Admin creates a tenant-owned data plane tenant, Scenario: System Admin creates a tenant with duplicate slug, Scenario: System Admin creates a tenant with valid data
+
+### Community 1787 - "Requirement: Tabular files tool"
+Cohesion: 0.29
+Nodes (6): ADDED Requirements, Requirement: Tabular files tool, Scenario: Envelope omits SQL text, Scenario: Tool reads only the context tenant's files, Scenario: Tool registered only when a file is ready, Scenario: Tool schema exposes no tenancy or file-location parameters
+
+### Community 1788 - "retraining_decision.py"
+Cohesion: 0.16
+Nodes (16): get_retraining_decision(), AsyncSession, get, Request, The retraining decision surface. Change 5 produced an accumulation figure and…, Whether a training job for this tenant is awaiting approval, queued, or running., Evidence for the retrain decision. No verdict, no threshold, no job.…, _schema() (+8 more)
+
+### Community 1789 - "test_data_plane_provisioning_task.py"
+Cohesion: 0.29
+Nodes (4): provisioning_tenant(), fixture, Verification for `provision_tenant_data_plane` (ADR-017, task 10.1): the Celery…, A `tenant_owned` tenant in `provisioning`, with a real connection row pointing…
+
+### Community 1791 - "Uploaded spreadsheet files: tenant notes"
+Cohesion: 0.33
+Nodes (5): Formats and limits, From upload to chat, Turning the feature off, Uploaded spreadsheet files: tenant notes, Where your data is stored (residency)
+
+### Community 1792 - "test_extraction_api.py"
+Cohesion: 0.29
+Nodes (6): auth_header(), asyncio, TestExtractNoModelReturns400, TestExtractNonAdminReturns403, TestExtractTextReturnsEntities, TestLowConfidenceFiltered
+
+### Community 1793 - "_names"
+Cohesion: 0.29
+Nodes (4): _names(), The routine that feeds the whitelist check. One routine resolves every…, `EXTRACT(YEAR FROM value_date)` carries a FROM that belongs to no SELECT., TestTableReferenceEnumeration
+
+### Community 1794 - "_sanitize_error"
+Cohesion: 0.25
+Nodes (5): BaseException, Renders an exception into a single bounded line safe to put in a prompt., _sanitize_error(), Row 57 — SQLAlchemy appends the statement and bound values to str(exc)., Row 57 — bounded length.
+
+### Community 1796 - "Tenant"
+Cohesion: 0.24
+Nodes (3): fixture, A tenant schema plus the handful of helpers every test below needs., Tenant
+
+### Community 1797 - "ADR-018. Uploaded Tabular Files Are Queried via Locked In-Process DuckDB over Parquet"
+Cohesion: 0.40
+Nodes (4): ADR-018. Uploaded Tabular Files Are Queried via Locked In-Process DuckDB over Parquet, Consequences, Context, Decision
+
+### Community 1798 - "ADR-019. Uploaded Tabular Files Are Stored in Platform Object Storage for All Tenants (v1)"
+Cohesion: 0.40
+Nodes (4): ADR-019. Uploaded Tabular Files Are Stored in Platform Object Storage for All Tenants (v1), Consequences, Context, Decision
+
+### Community 1799 - "Requirement: System Admin chooses and observes the tenant data plane"
+Cohesion: 0.40
+Nodes (4): ADDED Requirements, Requirement: System Admin chooses and observes the tenant data plane, Scenario: Document counts remain visible during a tenant outage, Scenario: System Admin creates a tenant-owned tenant
+
+### Community 1800 - "copy-pdf-worker.mjs"
+Cohesion: 0.40
+Nodes (4): entry, require, source, targetDir
+
+### Community 1804 - "AzureExternalDatabase"
+Cohesion: 0.13
+Nodes (15): AzureExternalDatabase, build_live_database(), ExternalDatabaseUnavailable, Connection, Exception, A connection's own configuration or secret can't produce a live database., Build a real asyncpg-backed database from a connection's own config and…, The tenant's active `azure_postgresql` connection as a live database, or… (+7 more)
+
+### Community 1805 - "test_tabular_capability.py"
+Cohesion: 0.16
+Nodes (18): make_file(), Inserts a file with one version directly through the store. `status` `ready`…, orchestrator(), _plan(), fixture, Capability-gated tabular tool (tabular-file-chat spec): per-turn registration…, Scenario: Another tenant's files are never offered., Scenario: Kill switch removes the tool — without reading any table. (+10 more)
+
+### Community 1807 - "TestBackfillSemanticValues"
+Cohesion: 0.39
+Nodes (3): asyncio, Covers verification.md rows 26-28., TestBackfillSemanticValues
+
+### Community 1816 - "mlflow_registry.py"
+Cohesion: 0.29
+Nodes (10): _cache_model_version(), _get_sync_engine(), _lookup_run_number(), MLflowRegistryError, Exception, The one place this module obtains a tenant-schema engine — routed through…, _read_cache_active_model(), _read_cache_model_versions() (+2 more)
+
+### Community 1817 - "Live smoke: uploaded tabular file answers in chat (task 8.2)"
+Cohesion: 0.25
+Nodes (7): Defects found and fixed during the run, Environment, Environment issues (not defects in this change), Live smoke: uploaded tabular file answers in chat (task 8.2), Result, Screenshots, Timeline (UTC)
+
+### Community 1823 - "_annotator_type_counts"
+Cohesion: 0.33
+Nodes (6): _annotator_type_counts(), Span counts for every entity type the tenant cares about, least-annotated…, get_training_readiness(), AsyncSession, get, Per-entity-type confirmed entity counts against the per-type threshold.…
+
+### Community 1829 - "external_chat_answer"
+Cohesion: 0.33
+Nodes (5): external_chat_answer(), ExternalNotExecutable, Exception, No executable external capability for this tenant; finite reason only., Answer one external chat turn: resolve, then drift-gated execution. Returns…
+
 ## Ambiguous Edges - Review These
 - `OpenSpec Sync Specs Skill (Claude)` → `OpenCode OpsX Archive Command`  [AMBIGUOUS]
   .opencode/commands/opsx-archive.md · relation: calls
@@ -8071,9 +8397,9 @@ Nodes (3): Requirement: Page header matches the mockup's breadcrumb, heading sca
   docs/adr/003-model-serving-topology.md · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **11627 isolated node(s):** `$schema`, `plugin`, `vendorRoot`, `SessionMessage`, `SessionMessageInfo` (+11622 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 15735 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **50 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **12108 isolated node(s):** `$schema`, `plugin`, `vendorRoot`, `SessionMessage`, `SessionMessageInfo` (+12103 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 16718 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **56 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
